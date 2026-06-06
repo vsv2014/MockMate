@@ -1,27 +1,100 @@
 {
-  "name": "interview-coach",
+  "name": "mockmate",
   "version": "1.0.0",
   "type": "module",
   "main": "electron/main.cjs",
-  "description": "Speech-first AI interview practice — solo (vs AI) and consented peer mocks (LiveKit), with shared AI feedback",
-  "engines": { "node": ">=18" },
+  "description": "Real-Time AI Interview Companion — floats over Zoom/Teams/Meet, invisible to screen capture",
+  "author": "MockMate",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "concurrently -k \"PORT=3002 node server.js\" \"vite\" \"npm run electron:launch\"",
     "electron:launch": "wait-on http://localhost:5174 && ./node_modules/.bin/electron .",
     "dev:browser": "concurrently \"PORT=3002 node server.js\" \"vite\"",
     "server": "node server.js",
     "vite": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "electron:build": "vite build && electron-builder",
+    "electron:build:win": "vite build && electron-builder --win",
+    "electron:build:mac": "vite build && electron-builder --mac",
+    "electron:build:linux": "vite build && electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.mockmate.app",
+    "productName": "MockMate",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "api/**/*",
+      "src/delivery.js",
+      "server.js",
+      "server-entry.cjs",
+      "package.json",
+      "node_modules/**/*",
+      "!node_modules/electron/**/*",
+      "!node_modules/.cache/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/**/*.node"
+    ],
+    "extraFiles": [
+      {
+        "from": "assets",
+        "to": "assets"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "MockMate"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Utility"
+    }
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.36.3",
-    "@livekit/components-react": "^2.9.9",
-    "@livekit/components-styles": "^1.1.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "livekit-client": "^2.9.9",
-    "livekit-server-sdk": "^2.9.0",
     "openai": "^6.25.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
@@ -30,6 +103,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "electron": "^32.0.0",
+    "electron-builder": "^24.0.0",
     "vite": "^6.0.7",
     "wait-on": "^8.0.0"
   }

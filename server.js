@@ -4,14 +4,14 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
-import { mintToken, makeReport, availableProviders, deepgramConfigured, deepgramToken } from './api/_lib/core.js'
+import { makeReport, availableProviders, deepgramConfigured, deepgramToken, searchConfigured } from './api/_lib/core.js'
 import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen } from './api/_lib/interview.js'
 
 const app = express()
 app.use(cors())
 app.use(express.json({ limit: '2mb' }))
 
-app.get('/api/providers', (req, res) => res.json({ providers: availableProviders(), deepgram: deepgramConfigured() }))
+app.get('/api/providers', (req, res) => res.json({ providers: availableProviders(), deepgram: deepgramConfigured(), search: searchConfigured() }))
 
 app.post('/api/deepgram-token', async (req, res) => {
   const host = req.headers.host || ''
@@ -20,10 +20,6 @@ app.post('/api/deepgram-token', async (req, res) => {
   catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
 
-app.post('/api/token', async (req, res) => {
-  try { res.json(await mintToken(req.body || {})) }
-  catch (e) { res.status(e.status || 500).json({ error: e.message }) }
-})
 
 app.post('/api/report', async (req, res) => {
   try { res.json({ report: await makeReport(req.body || {}) }) }

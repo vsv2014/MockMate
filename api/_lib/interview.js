@@ -2,6 +2,7 @@
 // no difficulty knob — the interviewer calibrates to the target role.
 import { completeJSON, resolveVisionProvider, extractJSON } from './core.js'
 import { analyze } from '../../src/delivery.js'
+import { searchWeb, needsWebSearch } from './search.js'
 import OpenAI from 'openai'
 
 function profileBlock(p = {}) {
@@ -41,19 +42,27 @@ Respond with ONE valid JSON object and nothing else, no markdown fences:
 { "say": "<your spoken line>", "kind": "question" | "followup", "questionNumber": <1-based integer of the current MAIN question>, "isComplete": false }`
 }
 
-export async function interviewerTurn({ config = {}, transcript = [], profile = {}, provider }) {
+export async function interviewerTurn({ config = {}, transcript = [], profile = {}, provider, language = 'English' }) {
   const messages = transcript.map(t => ({ role: t.role === 'interviewer' ? 'assistant' : 'user', content: t.text }))
   if (messages.length === 0) messages.push({ role: 'user', content: "I'm ready. Please begin the interview with your first question." })
+  const langNote = language && language !== 'English' ? `\n\nConduct this interview entirely in ${language}.` : ''
   return await completeJSON({
     maxTokens: 700, provider,
-    messages: [{ role: 'system', content: buildPrompt(config, profile) }, ...messages]
+    messages: [{ role: 'system', content: buildPrompt(config, profile) + langNote }, ...messages]
   })
 }
 
-export async function generateHint({ question, profile = {}, conversationHistory = [], provider }) {
+export async function generateHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '' }) {
   const ctx = profileBlock(profile)
+  const langInstruction = language && language !== 'English'
+    ? `\n\nLANGUAGE: Respond ENTIRELY in ${language}. The fullAnswer, sampleAnswer, keyPoints, opener, resumeStory, and watchOut must ALL be written in ${language}. Do not mix languages.`
+    : ''
 
-  const system = `You are a private interview coach. The candidate is in a REAL LIVE INTERVIEW with 5 seconds to glance at this hint.
+  const system = `You are a private interview coach. The candidate is in a REAL LIVE INTERVIEW with 5 seconds to glance at this hint.${langInstruction}
+
+FIRST — decide if this is an interview-relevant input:
+- If it is a greeting, filler word, incomplete sentence, or clearly NOT an interview question → return ONLY: {"skip": true}
+- If it IS an interview question or statement worth responding to → continue with full response below
 
 You operate in TWO modes. Switch based on question type — do NOT mix them.
 
@@ -122,7 +131,7 @@ Return ONE JSON object, no prose, no markdown fences:
   "opener": "<one sentence to literally start speaking>",
   "keyPoints": ["<3-5 word bullet>", "<3-5 word bullet>", "<3-5 word bullet>"],
   "sampleAnswer": "<spoken answer — natural, follows all rules above>",
-  "fullAnswer": "<complete ready-to-speak answer, 4-8 sentences. Natural, conversational, sounds like a real engineer in a live interview. No filler intros like 'Great question'. Starts immediately with substance. Resume-grounded for behavioral/resume types. Pattern-first for DSA. Same speech rules apply.>",
+  "fullAnswer": "<complete answer using simple markdown: **bold** for key terms, - bullet points for lists, **Section:** labels for STAR structure. Natural, conversational tone. 4-8 sentences. Resume-grounded for behavioral. Pattern-first for DSA. No filler intros.>",
   "watchOut": "<one specific mistake for THIS exact question>"
 }`
 
@@ -131,13 +140,42 @@ Return ONE JSON object, no prose, no markdown fences:
       conversationHistory.slice(-6).map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n')
     : ''
 
-  return await completeJSON({
-    maxTokens: 900, provider,
+  const extraBlock = extraContext?.trim()
+    ? `\n\nEXTRA CONTEXT FROM CANDIDATE (use this to tailor the answer):\n${extraContext.trim()}`
+    : ''
+
+  // Live web search for company/product/current-events questions
+  let searchBlock = ''
+  let searchSources = []
+  if (needsWebSearch(question)) {
+    try {
+      const results = await searchWeb(question)
+      if (results?.sources?.length) {
+        searchSources = results.sources
+        searchBlock = '\n\nLIVE WEB SEARCH RESULTS (use these facts — they are current and specific):\n'
+        if (results.answer) searchBlock += `Summary: ${results.answer}\n\n`
+        searchBlock += results.sources.map(s => `[${s.title}]\n${s.snippet}`).join('\n\n')
+        searchBlock += '\n\nIMPORTANT: Ground your answer in these search results. Reference specific details from them.'
+      }
+    } catch { /* search failure is non-fatal — answer without it */ }
+  }
+
+  // gpt-4o-mini is 3x faster than gpt-4o with same quality for short hints
+  const fastProvider = process.env.OPENAI_API_KEY ? 'openai_mini' : provider
+
+  const hint = await completeJSON({
+    maxTokens: 900, provider: fastProvider,
     messages: [
       { role: 'system', content: system },
-      { role: 'user', content: `${historyBlock}\n\nCurrent question: "${String(question).slice(0, 800)}"` }
+      { role: 'user', content: `${historyBlock}${extraBlock}${searchBlock}\n\nCurrent question: "${String(question).slice(0, 800)}"` }
     ]
   })
+
+  // LLM decided this wasn't an interview question — skip silently
+  if (hint?.skip) return null
+  // Attach search metadata so the UI can show sources
+  if (searchSources.length) hint._searchSources = searchSources
+  return hint
 }
 
 export async function evaluateSolo({ config = {}, transcript = [], profile = {}, provider }) {

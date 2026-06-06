@@ -1,6 +1,5 @@
 // Shared logic for the serverless functions (api/*.js) and the local dev server
 // (server.js). Files prefixed with _ are not treated as routes by Vercel.
-import { AccessToken } from 'livekit-server-sdk'
 import OpenAI from 'openai'
 import { analyze } from '../../src/delivery.js'
 
@@ -8,6 +7,16 @@ import { analyze } from '../../src/delivery.js'
 // Keys live in env (server-side, never shipped to the browser). The client
 // chooses which provider by id; the server resolves it here.
 const CATALOG = {
+  openai: {
+    label: 'GPT-4o', envKey: 'OPENAI_API_KEY',
+    baseURL: 'https://api.openai.com/v1',
+    model: () => process.env.OPENAI_MODEL || 'gpt-4o'
+  },
+  openai_mini: {
+    label: 'GPT-4o mini (fast)', envKey: 'OPENAI_API_KEY',
+    baseURL: 'https://api.openai.com/v1',
+    model: () => 'gpt-4o-mini'
+  },
   groq: {
     label: 'Groq · Llama 3.3 70B', envKey: 'GROQ_API_KEY',
     baseURL: 'https://api.groq.com/openai/v1',
@@ -20,6 +29,10 @@ const CATALOG = {
   }
 }
 
+export function searchConfigured() {
+  return !!(process.env.TAVILY_API_KEY || process.env.SERPER_API_KEY)
+}
+
 // Which providers are actually configured (have a key) — for the UI picker.
 export function availableProviders() {
   const list = Object.entries(CATALOG)
@@ -29,13 +42,16 @@ export function availableProviders() {
   return list
 }
 
-// Vision-capable provider — Gemini supports image input, Groq does not.
+// Vision-capable provider — GPT-4o preferred, Gemini as fallback.
 export function resolveVisionProvider() {
+  if (process.env.OPENAI_API_KEY) {
+    return { key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' }
+  }
   if (process.env.GEMINI_API_KEY) {
     const g = CATALOG.gemini
     return { key: process.env.GEMINI_API_KEY, baseURL: g.baseURL, model: g.model() }
   }
-  throw Object.assign(new Error('Screen analysis requires GEMINI_API_KEY — add it to your .env file.'), { status: 400 })
+  throw Object.assign(new Error('Screen analysis requires OPENAI_API_KEY or GEMINI_API_KEY in your .env file.'), { status: 400 })
 }
 
 // Resolve a chosen provider id to { key, baseURL, model }, with sensible fallback.
@@ -70,38 +86,72 @@ export function extractJSON(text) {
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const isRateLimit = e => e?.status === 429 || /\b429\b|rate.?limit|quota|resource.?exhausted/i.test(e?.message || '')
 
+// Cache: remember which provider last worked so we skip failed ones immediately
+let lastWorkingProvider = null
+const rateLimitedUntil = {}   // provId → timestamp when ban expires (5 min)
+
+function getFallbackProviders(requestedId) {
+  const order = ['openai_mini', 'groq', 'gemini', 'openai']
+  const configured = availableProviders().map(p => p.id)
+  const now = Date.now()
+  // Filter out recently rate-limited providers
+  const available = [...new Set([requestedId, ...order])]
+    .filter(id => configured.includes(id))
+    .filter(id => !rateLimitedUntil[id] || rateLimitedUntil[id] < now)
+  // Put last-known-working first for speed
+  if (lastWorkingProvider && available.includes(lastWorkingProvider)) {
+    return [lastWorkingProvider, ...available.filter(id => id !== lastWorkingProvider)]
+  }
+  return available.length ? available : [requestedId]
+}
+
 export async function completeJSON({ messages, maxTokens = 1600, provider }) {
-  const prov = resolveProvider(provider)
-  const llm = clientFor(prov), model = prov.model
-  // One LLM call, retrying transient rate limits (429) with backoff.
-  const ask = async msgs => {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const r = await llm.chat.completions.create({ model, max_tokens: maxTokens, messages: msgs })
-        return r.choices[0].message.content
-      } catch (e) {
-        if (!isRateLimit(e) || attempt === 2) {
-          if (isRateLimit(e)) {
-            const err = new Error('The model is rate-limited (free-tier quota). Wait a moment and try again — or switch to a higher-limit provider like Groq (see README).')
-            err.status = 429; throw err
-          }
-          throw e
+  const providerQueue = getFallbackProviders(provider)
+  let lastError
+
+  for (const provId of providerQueue) {
+    let prov
+    try { prov = resolveProvider(provId) } catch { continue }
+    const llm = clientFor(prov), model = prov.model
+
+    const ask = async msgs => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const r = await llm.chat.completions.create({ model, max_tokens: maxTokens, messages: msgs })
+          return r.choices[0].message.content
+        } catch (e) {
+          if (!isRateLimit(e) || attempt === 1) throw e
+          await sleep(1000)
         }
-        await sleep(1500 * (attempt + 1))   // 1.5s, 3s
       }
     }
+
+    try {
+      const raw = await ask(messages)
+      lastWorkingProvider = provId   // remember what worked
+      try {
+        return extractJSON(raw)
+      } catch {
+        const fixed = await ask([
+          { role: 'system', content: 'You repair malformed JSON. Output ONLY one valid JSON object — no prose, no code fences, no trailing commas.' },
+          { role: 'user', content: 'Fix this into a single valid JSON object:\n\n' + String(raw || '').slice(0, 8000) }
+        ])
+        return extractJSON(fixed)
+      }
+    } catch (e) {
+      lastError = e
+      if (isRateLimit(e)) {
+        rateLimitedUntil[provId] = Date.now() + 5 * 60 * 1000   // ban for 5 min
+      console.warn(`[MockMate] ${provId} rate-limited → trying next provider`)
+      continue
+      }
+      throw e   // non-rate-limit errors (auth, network) — fail fast
+    }
   }
-  const raw = await ask(messages)
-  try {
-    return extractJSON(raw)
-  } catch {
-    // Only a PARSE failure reaches here — ask the model to fix its own JSON.
-    const fixed = await ask([
-      { role: 'system', content: 'You repair malformed JSON. Output ONLY one valid JSON object — no prose, no code fences, no trailing commas.' },
-      { role: 'user', content: 'Fix this into a single valid JSON object:\n\n' + String(raw || '').slice(0, 8000) }
-    ])
-    return extractJSON(fixed)
-  }
+
+  // All providers exhausted
+  const e = new Error('All configured AI providers are rate-limited. Add GROQ_API_KEY (free) or GEMINI_API_KEY (free) to .env for automatic fallback.')
+  e.status = 429; throw e
 }
 
 // ── Deepgram (accurate speech-to-text) ──────────────────────────────────────
@@ -126,17 +176,6 @@ export async function deepgramToken({ allowRawKey = false } = {}) {
   throw e
 }
 
-// ── LiveKit access token ────────────────────────────────────────────────────
-export async function mintToken({ room, identity, name } = {}) {
-  const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_URL } = process.env
-  if (!room || !identity) { const e = new Error('room and identity are required'); e.status = 400; throw e }
-  if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !LIVEKIT_URL) {
-    const e = new Error('LiveKit is not configured — set LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET.'); e.status = 500; throw e
-  }
-  const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity, name: name || identity, ttl: '2h' })
-  at.addGrant({ roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: true })
-  return { token: await at.toJwt(), url: LIVEKIT_URL }
-}
 
 // ── Shared AI feedback report (peer mocks) ──────────────────────────────────
 export async function makeReport({ transcript = [], candidateName = 'the candidate', provider } = {}) {

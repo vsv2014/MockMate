@@ -5,37 +5,31 @@
 // This blanks the window in ALL capture: Zoom, Teams, Meet, OBS, getDisplayMedia.
 const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut } = require('electron')
 const path = require('path')
+const { fork } = require('child_process')
 
+const isProd = app.isPackaged
 const DEV_URL = 'http://localhost:5174'
 
-let mainWindow, copilotWindow
+let mainWindow, apiServer
 
-function createCopilotWindow() {
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize
-  copilotWindow = new BrowserWindow({
-    width: 420,
-    height: 400,
-    x: width - 440,
-    y: 20,
-    alwaysOnTop: true,
-    frame: false,
-    transparent: false,
-    resizable: true,
-    skipTaskbar: true,
-    show: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload-copilot.cjs'),
-      contextIsolation: true,
-      nodeIntegration: false
-    }
+// ── Start the Express API server (production only) ────────────────────────────
+function startApiServer() {
+  if (!isProd) return   // dev: server is started separately via npm run dev
+  const serverEntry = path.join(app.getAppPath(), 'server-entry.cjs')
+  // Load .env from userData so keys survive app updates
+  const envPath = path.join(app.getPath('userData'), '.env')
+  require('dotenv').config({ path: envPath })
+
+  apiServer = fork(serverEntry, [], {
+    env: { ...process.env, PORT: '3002', NODE_ENV: 'production' },
+    cwd: app.getAppPath(),
+    stdio: 'pipe'
   })
-
-  // This is the key call — blanks the window from every screen capture tool at the OS level.
-  copilotWindow.setContentProtection(true)
-
-  copilotWindow.loadFile(path.join(__dirname, 'copilot.html'))
-  copilotWindow.on('closed', () => { copilotWindow = null })
+  apiServer.stdout?.on('data', d => console.log('[API]', d.toString().trim()))
+  apiServer.stderr?.on('data', d => console.error('[API]', d.toString().trim()))
+  apiServer.on('error', e => console.error('[API] fork error:', e.message))
 }
+
 
 function createMainWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize
@@ -44,19 +38,31 @@ function createMainWindow() {
     height: 680,
     x: width - 480,
     y: 20,
-    alwaysOnTop: true,          // floats over Zoom / Teams / Meet / any app
-    frame: false,               // no OS titlebar — we have our own drag handle
-    transparent: false,         // disabled — Linux compositor doesn't support this reliably
+    alwaysOnTop: true,
+    frame: false,
+    transparent: true,
     backgroundColor: '#00000000',
     resizable: true,
-    skipTaskbar: false,
+    skipTaskbar: true,   // hidden from taskbar and Alt+Tab switcher
+    icon: path.join(__dirname, '../assets/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false
     }
   })
-  mainWindow.loadURL(DEV_URL)
+
+  // Main window is the only window — protect it from all screen capture
+  mainWindow.setContentProtection(true)
+
+  if (isProd) {
+    // Production: load built Vite app, wait for API server to be ready
+    const distIndex = path.join(app.getAppPath(), 'dist', 'index.html')
+    setTimeout(() => mainWindow.loadFile(distIndex), 1500)  // wait for API to start
+  } else {
+    mainWindow.loadURL(DEV_URL)
+  }
+
   mainWindow.on('closed', () => app.quit())
   // IPC to move/resize from React drag handle
   ipcMain.on('window-drag', (_, { dx, dy }) => {
@@ -69,8 +75,36 @@ function createMainWindow() {
 }
 
 app.whenReady().then(() => {
-  createCopilotWindow()
+  startApiServer()
   createMainWindow()
+
+  // Alt+H / Ctrl+Shift+H — toggle window visibility at OS level
+  // Works even when window is hidden (global shortcut fires regardless)
+  const toggleVisibility = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (mainWindow.isVisible()) {
+      mainWindow.hide()
+      console.log('[MockMate] Window hidden — press Alt+H to restore')
+    } else {
+      mainWindow.show()
+      mainWindow.focus()
+      console.log('[MockMate] Window restored')
+    }
+  }
+  globalShortcut.register('Alt+H', toggleVisibility)
+  globalShortcut.register('CommandOrControl+Shift+H', toggleVisibility)
+
+  // Tray icon as backup restore if shortcuts don't work
+  const { Tray, Menu, nativeImage } = require('electron')
+  try {
+    const tray = new Tray(nativeImage.createEmpty())
+    tray.setToolTip('MockMate — Click to show/hide')
+    tray.on('click', toggleVisibility)
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'Show MockMate', click: () => { mainWindow?.show(); mainWindow?.focus() } },
+      { label: 'Quit', click: () => app.quit() }
+    ]))
+  } catch {} // tray not available on all Linux setups
 
   // Ctrl+Shift+U — capture screen and send to overlay for vision analysis
   globalShortcut.register('CommandOrControl+Shift+U', async () => {
@@ -94,18 +128,28 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  apiServer?.kill()
 })
+
+// Auto-detect when Zoom / Teams / Meet is running — notify the UI
+let meetingWasActive = false
+setInterval(async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  try {
+    const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } })
+    const active = sources.some(s => /zoom meeting|google meet|microsoft teams|webex|whereby/i.test(s.name))
+    if (active !== meetingWasActive) {
+      meetingWasActive = active
+      mainWindow.webContents.send('meeting-detected', active)
+    }
+  } catch {}
+}, 3000)
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-// Hint update from React → forward to the protected co-pilot window.
-ipcMain.on('hint-update', (_, data) => {
-  if (!copilotWindow || copilotWindow.isDestroyed()) return
-  copilotWindow.show()
-  copilotWindow.webContents.send('hint-data', data)
-})
+// hint-update is handled in the React UI directly — no separate copilot window needed
 
 // Return all desktop/window sources so the renderer can pick system audio.
 ipcMain.handle('get-audio-sources', async () => {
@@ -116,8 +160,10 @@ ipcMain.handle('get-audio-sources', async () => {
   return sources.map(s => ({ id: s.id, name: s.name }))
 })
 
-// Candidate left the room — hide co-pilot.
-ipcMain.on('room-state', (_, { active }) => {
-  if (!copilotWindow || copilotWindow.isDestroyed()) return
-  if (!active) copilotWindow.hide()
+ipcMain.on('get-userdata-path', e => { e.returnValue = app.getPath('userData') })
+
+ipcMain.on('hide-window', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide()
 })
+
+
