@@ -1,180 +1,125 @@
 # MockMate — Real-Time AI Interview Companion
 
-MockMate is an **Electron desktop app** that floats over your screen during live interviews, generates AI answers in real time, and is **completely invisible to screen recording software** (Zoom, Teams, Meet, OBS).
+A desktop overlay app that floats over your screen during live interviews.  
+Generates AI answers in real time. **Invisible to all screen recording software.**
 
-> Built as a serious alternative to LockedIn AI — with resume-grounded answers, DSA pattern detection, and true OS-level screen capture protection.
+## Quick Start
 
----
+```bash
+git clone https://github.com/vsv2014/MockMate
+cd MockMate
+npm install
+cp .env.example .env   # add your API keys
+npm run dev            # Electron overlay launches automatically
+```
 
-## What it does
+## Modes
 
 ### 🎯 Live Interview Companion
-- Runs as a **floating overlay** on top of Zoom / Google Meet / Microsoft Teams
-- Captures system audio — hears the interviewer's voice through your speakers
-- Transcribes questions in real time via **Deepgram nova-2**
-- Generates a full natural-sounding answer in 2–4 seconds
-- Press **`Ctrl+Shift+U`** to screenshot the screen — analyzes coding problems, slides, whiteboards via **Gemini vision**
-- Answer streams in word by word so you can read and speak naturally
+- Floats over **Zoom / Google Meet / Microsoft Teams** — always on top of every window
+- Captures system audio — transcribes the interviewer's voice in real time via **Deepgram nova-2**
+- Generates structured answers instantly, streamed word by word
+- Press **`Ctrl+Shift+U`** to screenshot the screen — analyzes coding problems, slides, and whiteboards via **GPT-4o vision**
+- Answers grounded in **your resume** — references your actual projects, never generic
+- **Web search** auto-triggers for company/product questions — uses live data
+- **Extra context field** — type mid-session to steer answers ("focus on Python", "system design round")
+- **Post-session AI notes** — summary of questions covered when you end the session
 
 ### 🤖 Solo Practice
-- AI interviewer asks open-ended questions calibrated to your target role
+- AI interviewer asks open-ended questions calibrated to your target role and resume
 - You answer out loud — it listens, probes with follow-ups, and scores you at the end
 - Detailed scorecard: technical knowledge, communication, problem-solving, delivery
 
----
+## Screen Protection
 
-## Why MockMate beats LockedIn AI
-
-| Feature | LockedIn AI | MockMate |
+| Platform | Mechanism | Protection |
 |---|---|---|
-| Resume-grounded answers | ❌ Generic | ✅ Uses YOUR projects and experience |
-| Screen capture protection | ⚠ Partial | ✅ `WDA_EXCLUDEFROMCAPTURE` / `NSWindow.sharingType=none` — blanked at OS level |
-| DSA pattern detection | ❌ | ✅ Sliding Window, BFS, DP, etc. |
-| Natural speech style | ❌ Sounds like ChatGPT | ✅ "Yeah so in my case…" — human rules |
-| Follow-up handling | ❌ | ✅ Conversation context (last 6 turns) |
-| Buy-time phrase | ❌ | ✅ Instant filler shown while loading |
-| Screen + vision analysis | ✅ | ✅ `Ctrl+Shift+U` → Gemini vision |
-| Confidence markers | ❌ | ✅ 🟢 From your resume / 🟡 General knowledge |
+| **Windows** | `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` | Invisible to all capture tools |
+| **macOS** | `NSWindow.sharingType = NSWindowSharingNone` | Invisible to all capture tools |
+| **Linux** | Document Picture-in-Picture (`getDisplayMedia` exclusion) | Invisible to Google Meet / Zoom |
 
----
+**Hide shortcut:** Press `Alt+H` or `Ctrl+Shift+H` to completely hide the window — restore with the same shortcut. Works even when the window is not visible.
 
-## Screen protection
+## Answer Intelligence
 
-MockMate uses `setContentProtection(true)` on the overlay window:
-- **Windows** → `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` 
-- **macOS** → `NSWindow.sharingType = NSWindowSharingNone`
+MockMate detects the question type and generates structured answers:
 
-The window appears **black/blank** in every screen capture tool — Zoom sharing, Teams recording, OBS, `getDisplayMedia`. The interviewer never knows it exists.
-
----
-
-## Setup
-
-### 1. Clone and install
-```bash
-git clone <repo-url>
-cd interview-coach
-npm install
-```
-
-### 2. Configure `.env`
-```bash
-# Required — at least one LLM key:
-GROQ_API_KEY=          # https://console.groq.com/keys (free, fastest)
-GEMINI_API_KEY=        # https://aistudio.google.com/apikey (required for screen analysis)
-
-# Required for live audio transcription:
-DEEPGRAM_API_KEY=      # https://console.deepgram.com (free credits)
-```
-
-### 3. Run
-```bash
-npm run dev
-```
-
-The **Electron overlay window** opens automatically in the top-right of your screen.  
-The browser (`localhost:5174`) shows a "use the desktop app" message — ignore it.
-
----
-
-## Usage
-
-### Live Interview Companion
-1. Launch MockMate → click **🎯 Live Interview Companion**
-2. Enter your name, target role, and paste your resume (makes answers resume-specific)
-3. Select audio source:
-   - **System Audio** — captures everything you hear through speakers/headphones (interviewer's voice from Zoom/Teams)
-   - **Microphone** — fallback if system audio doesn't work
-4. Click **Start listening →**
-5. Join your Zoom/Teams/Meet call normally
-6. When the interviewer speaks, MockMate automatically detects the question and generates an answer
-7. **Read the answer** in the overlay — speak it in your own words
-
-**Keyboard shortcuts:**
-- `Ctrl+Shift+U` — screenshot current screen → instant vision analysis (coding problems, slides, whiteboards)
-- `Alt+H` — toggle stealth mode (panel fades to near-invisible)
-- Drag title bar — move the overlay anywhere
-- ◢ corner — resize the overlay
-
-### Solo Practice
-1. Launch MockMate → click **🤖 Solo Practice**
-2. Fill in your target role and paste your resume
-3. Click **Start interview →** — AI interviewer begins asking questions
-4. Answer aloud — it listens and probes with follow-ups
-5. Click **End & get feedback** for your scored report
-
----
-
-## Answer intelligence
-
-MockMate operates in two modes based on question type:
-
-**CS Expert mode** (DSA, technical, system design):
-- Identifies algorithm pattern: Sliding Window, BFS, DFS, DP, HashMap, Heap, etc.
-- Shows time + space complexity
-- Gives approach-first answer — "Yeah so this is a sliding window problem…"
-
-**Resume Narrator mode** (behavioral, project questions):
-- Grounds answer in YOUR resume — names your actual projects
-- STAR format for behavioral: situation → your decision → measurable result
-- Never invents facts not in your resume
+- **DSA / Algorithm** → pattern name (Sliding Window, BFS, DP…) + approach + time/space complexity
+- **System Design** → requirements → scale estimate → components → key trade-off
+- **Behavioral** → STAR format grounded in your resume — names your actual projects
+- **Resume questions** → pulls exact achievements from your resume
+- **Technical concepts** → definition + real-world analogy + common interview mistake
+- **Company questions** → live web search for current company/product context
 
 Every answer includes:
-- **🟢 FROM YOUR RESUME** or **🟡 GENERAL** confidence badge
-- Buy-time phrase shown instantly while LLM generates: *"Yeah so, let me think of a good example…"*
-- Word-by-word streaming so you can read as it arrives
+- **🟢 FROM YOUR RESUME** — grounded in your actual experience
+- **🟡 GENERAL KNOWLEDGE** — standard technical knowledge
+- **Buy-time phrase** — shown instantly while answer loads ("Yeah so, let me think...")
+- **Watch out** — one specific mistake to avoid for this question type
 
----
+## API Keys
 
-## Architecture
+| Key | Purpose | Free? | Link |
+|---|---|---|---|
+| `OPENAI_API_KEY` | GPT-4o answers + screen vision | Pay per use | [platform.openai.com](https://platform.openai.com/api-keys) |
+| `GROQ_API_KEY` | Fast AI answers | ✅ Free | [console.groq.com](https://console.groq.com/keys) |
+| `GEMINI_API_KEY` | AI answers + vision alternative | ✅ Free | [aistudio.google.com](https://aistudio.google.com/apikey) |
+| `DEEPGRAM_API_KEY` | Live audio transcription | ✅ $200 credits | [console.deepgram.com](https://console.deepgram.com) |
+| `TAVILY_API_KEY` | Web search for company questions | ✅ Free | [tavily.com](https://tavily.com) |
 
-```
-Electron main process
-  ├── Main window (alwaysOnTop, setContentProtection)
-  │     └── Vite React app (localhost:5174)
-  ├── Co-pilot window (alwaysOnTop, setContentProtection, frame:false)
-  │     └── copilot.html — protected hint display
-  └── Global shortcut: Ctrl+Shift+U → desktopCapturer → vision API
+**Minimum to run:** one LLM key + Deepgram key.
 
-Express API server (port 3002)
-  ├── POST /api/hint        — audio question → structured hint (Groq/Gemini)
-  ├── POST /api/analyze-screen — screenshot → vision analysis (Gemini)
-  ├── POST /api/interview   — Solo mode AI interviewer turn
-  ├── POST /api/evaluate    — Solo mode scoring
-  └── POST /api/deepgram-token — short-lived STT token
+**Auto-fallback:** if one LLM provider is rate-limited, MockMate automatically switches to the next configured provider — no interruption.
 
-Audio pipeline (Live Companion)
-  desktopCapturer (system audio) → AudioContext → PCM16 → Deepgram WebSocket → onFinal → /api/hint
-```
+## Keyboard Shortcuts
 
----
-
-## API Keys Summary
-
-| Key | Used for | Free tier |
-|---|---|---|
-| `GROQ_API_KEY` | AI answers (text) | ✅ Generous free tier |
-| `GEMINI_API_KEY` | AI answers + screen vision | ✅ Free at aistudio.google.com |
-| `DEEPGRAM_API_KEY` | Live audio transcription | ✅ $200 free credits |
-
-Minimum to run: **one LLM key + Deepgram key**.  
-Screen analysis (`Ctrl+Shift+U`) requires **Gemini API key** specifically (vision model).
-
----
+| Shortcut | Action |
+|---|---|
+| `Alt+H` | Hide / restore window completely |
+| `Ctrl+Shift+H` | Same as Alt+H |
+| `Ctrl+Shift+U` | Capture screen → instant AI vision analysis |
+| Drag title bar | Move overlay anywhere on screen |
+| ◢ corner drag | Resize overlay |
+| `click-thru` button | Click through the panel to interact with apps behind it |
 
 ## Scripts
 
 ```bash
-npm run dev          # Start everything: API server + Vite + Electron overlay
-npm run dev:browser  # Start without Electron (browser only — limited)
-npm run build        # Build Vite for production
+npm run dev                  # Launch Electron overlay (recommended)
+npm run dev:browser          # Browser only — no screen protection
+npm run electron:build       # Build installer for current platform
+npm run electron:build:win   # Windows .exe
+npm run electron:build:mac   # macOS .dmg
+npm run electron:build:linux # Linux .AppImage
 ```
 
----
+## Supported Languages
+
+English, Spanish, French, German, Portuguese, Hindi, Japanese, Chinese, Korean, Arabic, Italian, Dutch
+
+## Architecture
+
+```
+Electron main window (alwaysOnTop, setContentProtection, skipTaskbar)
+  └── React app (Vite)
+        ├── Home screen — mode picker + keyboard shortcuts
+        ├── Live Companion — audio capture + AI answers + Document PiP
+        └── Solo Practice — AI interviewer + scoring report
+
+API server (Express, port 3002)
+  ├── POST /api/hint          — question → structured answer (auto-provider fallback)
+  ├── POST /api/analyze-screen — screenshot → GPT-4o vision analysis
+  ├── POST /api/interview     — Solo mode AI interviewer turn
+  ├── POST /api/evaluate      — Solo mode end-of-session scoring
+  └── POST /api/deepgram-token — short-lived STT token
+
+Audio pipeline
+  desktopCapturer (system audio) → AudioContext → PCM16 → Deepgram WebSocket → LLM
+```
 
 ## Privacy
 
-- Audio is streamed to **Deepgram** for transcription
-- Screenshots (when you press Ctrl+Shift+U) are sent to **Google Gemini** for analysis
-- Your resume text is sent to **Groq or Gemini** as context for answers
-- Nothing is stored — all processing is per-session
+- Audio streamed to **Deepgram** for transcription (per-session, not stored)
+- Screenshots sent to **OpenAI / Gemini** only when you press `Ctrl+Shift+U`
+- Resume text sent to LLM as context — never stored server-side
+- No user accounts, no analytics, no data retention

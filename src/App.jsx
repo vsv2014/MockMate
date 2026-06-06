@@ -5,18 +5,11 @@ import Report from './Report'
 
 const inElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
 
-// ── Not in Electron ───────────────────────────────────────────────────────────
+// ── Not in Electron — show landing page ──────────────────────────────────────
 function BrowserGate() {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#08090e', fontFamily: 'system-ui', textAlign: 'center', padding: 40 }}>
-      <div>
-        <div style={{ fontSize: 28, fontWeight: 800, color: '#6d28d9', marginBottom: 12, letterSpacing: '-0.02em' }}>MockMate</div>
-        <div style={{ fontSize: 13, color: '#334155', marginBottom: 20 }}>This is a desktop app. Open it from your terminal:</div>
-        <code style={{ background: '#12131e', border: '1px solid #1e2030', padding: '8px 16px', borderRadius: 6, fontSize: 13, color: '#a5b4fc' }}>npm run dev</code>
-        <div style={{ fontSize: 11, color: '#1e293b', marginTop: 16 }}>The app will open as a floating window over your screen.</div>
-      </div>
-    </div>
-  )
+  // Redirect to the landing page served from public/
+  window.location.replace('/landing.html')
+  return null
 }
 
 // ── Electron shell — wraps every screen in the floating overlay ───────────────
@@ -26,7 +19,7 @@ function ElectronShell() {
   const [panelSize, setPanelSize] = useState({ w: 420, h: 560 })
   const [opacity, setOpacity] = useState(0.95)
   const [stealth, setStealth] = useState(false)
-  const [stealthConfirm, setStealthConfirm] = useState(false)
+  const [clickThrough, setClickThrough] = useState(false)
   const [minimized, setMinimized] = useState(false)
   const [screenAnalysis, setScreenAnalysis] = useState(null)   // vision analysis result
   const [screenAnalyzing, setScreenAnalyzing] = useState(false)
@@ -35,9 +28,29 @@ function ElectronShell() {
   const resizeStart = useRef({})
 
   useEffect(() => {
-    document.documentElement.style.background = '#08090e'
-    document.body.style.background = '#08090e'
+    // Transparent body — no dark rectangle if panel is hidden
+    document.documentElement.style.background = 'transparent'
+    document.body.style.background = 'transparent'
   }, [])
+
+  const [noProviders, setNoProviders] = useState(false)
+  const [meetingActive, setMeetingActive] = useState(false)
+  const [browserShareWarning, setBrowserShareWarning] = useState(false)
+  useEffect(() => {
+    fetch('/api/providers').then(r => r.json()).then(d => {
+      if (!d.providers?.length) setNoProviders(true)
+    }).catch(() => {})
+  }, [])
+
+  // Auto-detect meeting apps (Zoom, Teams, Meet)
+  useEffect(() => {
+    window.electronAPI?.onMeetingDetected(active => setMeetingActive(active))
+    window.electronAPI?.onShortcutStealth?.(() => setStealth(s => !s))
+    // Browser mode: warn if screen capture is likely active (getDisplayMedia check)
+    if (!window.electronAPI?.isElectron) {
+      navigator.mediaDevices?.addEventListener?.('devicechange', () => setBrowserShareWarning(true))
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for Ctrl+Shift+U screen captures from Electron
   useEffect(() => {
@@ -68,7 +81,8 @@ function ElectronShell() {
       })
     }
     const onUp = () => { resizing.current = false }
-    const onKey = e => { if (e.altKey && e.key === 'h') handleStealthToggle() }
+    // Alt+H in browser only (Electron handles it via global shortcut in main.cjs)
+    const onKey = e => { if (e.altKey && e.key === 'h' && !inElectron) handleStealthToggle() }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
     document.addEventListener('keydown', onKey)
@@ -80,12 +94,13 @@ function ElectronShell() {
   }, [])
 
   function handleStealthToggle() {
-    if (!stealth) {
-      // Going INTO stealth — show confirmation first
-      setStealthConfirm(true)
+    if (inElectron) {
+      // Electron: hide the entire OS window — completely gone from screen and screen share
+      // Press Alt+H again to restore (global shortcut registered in main.cjs)
+      window.electronAPI.hideWindow()
     } else {
-      // Coming OUT of stealth — always allow immediately
-      setStealth(false)
+      // Browser: just dim (can't fully protect without Electron)
+      setStealth(s => !s)
     }
   }
 
@@ -113,7 +128,7 @@ function ElectronShell() {
   if (view === 'solo') return (
     <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
       onDrag={startDrag} onResize={startResize}
-      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)}
+      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
       onClose={goHome} title="Solo Practice">
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <Solo onHome={goHome} overlay />
@@ -123,15 +138,16 @@ function ElectronShell() {
 
   if (view === 'companion') return (
     <LiveCompanion onHome={goHome} panelSize={panelSize} stealth={stealth} opacity={opacity} onOpacity={setOpacity}
-      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)}
+      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
       onResize={startResize} onDrag={startDrag}
-      screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} onDismissScreen={() => setScreenAnalysis(null)} />
+      screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} onDismissScreen={() => setScreenAnalysis(null)}
+      onPipActive={active => setStealth(active)} />
   )
 
   if (view === 'report') return (
     <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
       onDrag={startDrag} onResize={startResize}
-      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)}
+      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
       onClose={goHome} title="Feedback">
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
         <Report report={report} onAgain={goHome} overlay />
@@ -142,68 +158,66 @@ function ElectronShell() {
   // ── Home screen ──
   return (
     <>
-    {stealthConfirm && (
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'all' }}>
-        <div style={{ background: '#12131e', border: '1px solid #334155', borderRadius: 12, padding: '20px 24px', maxWidth: 320, fontFamily: 'system-ui', color: '#e2e8f0' }}>
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Enable stealth mode?</div>
-          <div style={{ fontSize: 13, color: '#64748b', marginBottom: 16, lineHeight: 1.5 }}>
-            The panel will fade to nearly invisible. Press <kbd style={{ background: '#1e2030', padding: '1px 5px', borderRadius: 3, fontSize: 11 }}>Alt+H</kbd> or click 🛡 again to restore it.
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => { setStealth(true); setStealthConfirm(false) }}
-              style={{ flex: 1, padding: '8px', background: '#6d28d9', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-              Yes, go stealth
-            </button>
-            <button onClick={() => setStealthConfirm(false)}
-              style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.06)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, fontSize: 13, cursor: 'pointer' }}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
     <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
       onDrag={startDrag} onResize={startResize}
-      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)}
+      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
       onClose={() => window.close?.()}
-      title="MockMate">
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 10px' }}>
+      title="MockMate" autoHeight>
+      <div style={{ padding: '12px 14px 14px' }}>
 
-        {/* Solo Practice card */}
-        <div onClick={() => setView('solo')} style={{
-          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 10, padding: '14px 16px', marginBottom: 10, cursor: 'pointer',
-          transition: 'border-color 0.15s'
-        }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(109,40,217,0.5)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}
-        >
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>🤖 Solo Practice</div>
-          <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-            AI interviewer asks questions tailored to your role and resume. You speak — it listens, probes, and scores you.
+        {!inElectron && (
+          <div style={{ background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 7, padding: '8px 10px', marginBottom: 8, fontSize: 11, color: '#fca5a5', lineHeight: 1.5 }}>
+            ⚠ <strong>Browser mode</strong> — this overlay IS visible during screen share. Run <code style={{ background: '#1c0505', padding: '0 3px', borderRadius: 2 }}>npm run dev</code> to launch the protected Electron app instead.
           </div>
-        </div>
-
-        {/* Live Companion card */}
-        <div onClick={() => setView('companion')} style={{
-          background: 'rgba(109,40,217,0.12)', border: '1px solid rgba(109,40,217,0.25)',
-          borderRadius: 10, padding: '14px 16px', cursor: 'pointer',
-          transition: 'border-color 0.15s'
-        }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(109,40,217,0.6)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(109,40,217,0.25)'}
-        >
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>🎯 Live Interview Companion</div>
-          <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-            Floats over your Zoom / Teams / Meet call. Captures what you hear, generates answers instantly — invisible to all screen capture.
+        )}
+        {meetingActive && (
+          <div onClick={() => setView('companion')}
+            style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 7, padding: '8px 10px', marginBottom: 8, fontSize: 11, color: '#4ade80', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e', flexShrink: 0 }} />
+            <span><strong>Meeting detected</strong> — tap to start Live Companion</span>
           </div>
-          <div style={{ fontSize: 11, color: '#4ade80', marginTop: 8 }}>🛡 Protected — excluded from screen recording</div>
-        </div>
+        )}
+        {noProviders && (
+          <div style={{ background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 7, padding: '7px 10px', marginBottom: 8, fontSize: 11, color: '#fca5a5' }}>
+            ⚠ No API keys. Add to <code style={{ background: '#1c0505', padding: '0 3px', borderRadius: 2 }}>.env</code> and restart.
+          </div>
+        )}
 
-        <div style={{ marginTop: 14, fontSize: 10, color: '#1e293b', textAlign: 'center', lineHeight: 1.8 }}>
-          Drag title bar to move  ·  ◢ to resize  ·  Alt+H to hide  ·  🛡 to stealth
-        </div>
         <ScreenAnalysisPanel analysis={screenAnalysis} analyzing={screenAnalyzing} onDismiss={() => setScreenAnalysis(null)} />
+
+        <div onClick={() => setView('solo')} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '12px 14px', marginBottom: 8, cursor: 'pointer' }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(109,40,217,0.5)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>🤖 Solo Practice</div>
+          <div style={{ fontSize: 11, color: '#475569' }}>AI interviewer · follow-up probes · scored report</div>
+        </div>
+
+        <div onClick={() => setView('companion')} style={{ background: 'rgba(109,40,217,0.12)', border: '1px solid rgba(109,40,217,0.3)', borderRadius: 10, padding: '12px 14px', cursor: 'pointer' }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(109,40,217,0.7)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(109,40,217,0.3)'}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>🎯 Live Interview Companion</div>
+          <div style={{ fontSize: 11, color: '#475569', marginBottom: 5 }}>Floats over Zoom / Teams / Meet · real-time AI answers</div>
+          <div style={{ fontSize: 10, color: '#4ade80' }}>🛡 Invisible to all screen capture</div>
+        </div>
+
+        {/* Keyboard shortcuts */}
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 9, color: '#334155', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 6 }}>KEYBOARD SHORTCUTS</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {[
+              ['Ctrl+Shift+U', 'Screen capture + AI analysis'],
+              ['Ctrl+Shift+H', 'Stealth — fade panel invisible'],
+              ['Alt+H', 'Stealth (keyboard alt)'],
+              ['⠿ Drag', 'Move overlay anywhere'],
+              ['◢ Corner', 'Resize panel'],
+            ].map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 7px', background: 'rgba(255,255,255,0.02)', borderRadius: 5 }}>
+                <code style={{ fontSize: 9, color: '#6d28d9', background: 'rgba(109,40,217,0.12)', padding: '1px 5px', borderRadius: 3, fontFamily: 'monospace' }}>{k}</code>
+                <span style={{ fontSize: 9, color: '#334155' }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </OverlayPanel>
     </>
@@ -244,13 +258,13 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss }) {
   )
 }
 
-export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, onResize, onStealth, onMinimize, onClose, title, extra, opacity = 0.95, onOpacity }) {
+export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, onResize, onStealth, onMinimize, onClose, title, extra, opacity = 0.95, onOpacity, autoHeight, clickThrough, onClickThrough }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }}>
+    <div id="mockmate-overlay" style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }}>
       <div style={{
         position: 'absolute', left: 0, top: 0,
         width: panelSize.w,
-        height: minimized ? 'auto' : panelSize.h,
+        height: (minimized || autoHeight) ? 'auto' : panelSize.h,
         background: 'rgba(8,9,14,0.93)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: 12,
@@ -259,9 +273,9 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         WebkitBackdropFilter: 'blur(24px)',
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
-        opacity: stealth ? 0.06 : opacity,
-        transition: 'opacity 0.2s',
-        pointerEvents: 'all',
+        opacity: stealth ? 0.2 : opacity,
+        transition: 'opacity 0.1s',
+        pointerEvents: clickThrough ? 'none' : 'all',
         fontFamily: 'system-ui, sans-serif',
         color: '#e2e8f0',
         userSelect: 'none'
@@ -285,9 +299,12 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
                   style={{ width: 52, accentColor: '#6d28d9', cursor: 'pointer' }} />
               </div>
             )}
-            <Btn onClick={onStealth} active={stealth} title="Stealth (Alt+H) — fade panel nearly invisible">🛡</Btn>
-            <Btn onClick={onMinimize}>{minimized ? '⬜' : '⬛'}</Btn>
-            <Btn onClick={onClose} danger>✕</Btn>
+            <Btn onClick={onStealth} title={inElectron ? 'Hide (Alt+H) — restore with Alt+H' : 'Dim (Alt+H)'}>
+              {inElectron ? 'hide' : 'dim'}
+            </Btn>
+            <Btn onClick={onClickThrough} active={clickThrough} title="Click-through mode — interact with things behind">click-thru</Btn>
+            <Btn onClick={onMinimize} title="Compact">{minimized ? '▲' : '▼'}</Btn>
+            <Btn onClick={onClose} danger title="Close">✕</Btn>
           </div>
         </div>
 

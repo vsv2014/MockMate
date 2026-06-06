@@ -99,7 +99,7 @@ export default function Solo({ onHome }) {
     try {
       const res = await fetch('/api/interview', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config, transcript: current, profile, provider })
+        body: JSON.stringify({ config, transcript: current, profile, provider, language: profile.language || 'English' })
       }).then(r => r.json())
       setThinking(false)
       if (res.error) { setError(res.error); return }
@@ -181,9 +181,16 @@ export default function Solo({ onHome }) {
             <select value={provider} onChange={e => setProvider(e.target.value)} style={{ maxWidth: 360 }}>
               {providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
-            <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 6 }}>Groq is fastest with the highest free limits; Gemini is an alternative.</p>
+            <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 6 }}>Groq is fastest with the highest free limits; GPT-4o is the most capable.</p>
           </div>
         )}
+        <div className="field">
+          <label className="label">Interview language</label>
+          <select value={profile.language || 'English'} onChange={e => saveProfile({ ...profile, language: e.target.value })} style={{ maxWidth: 360 }}>
+            {['English','Spanish','French','German','Portuguese','Hindi','Japanese','Chinese','Korean','Arabic','Italian','Dutch'].map(l =>
+              <option key={l} value={l}>{l}</option>)}
+          </select>
+        </div>
         <div className="row" style={{ alignItems: 'center', marginTop: 4 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input type="checkbox" checked={relentless} onChange={() => setRelentless(v => !v)} /> 🔥 Beat-the-copilot (challenge canned answers)
