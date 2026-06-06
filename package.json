@@ -1,0 +1,36 @@
+{
+  "name": "interview-coach",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "description": "Speech-first AI interview practice — solo (vs AI) and consented peer mocks (LiveKit), with shared AI feedback",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "dev": "concurrently -k \"PORT=3002 node server.js\" \"vite\" \"npm run electron:launch\"",
+    "electron:launch": "wait-on http://localhost:5174 && ./node_modules/.bin/electron .",
+    "dev:browser": "concurrently \"PORT=3002 node server.js\" \"vite\"",
+    "server": "node server.js",
+    "vite": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.3",
+    "@livekit/components-react": "^2.9.9",
+    "@livekit/components-styles": "^1.1.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "livekit-client": "^2.9.9",
+    "livekit-server-sdk": "^2.9.0",
+    "openai": "^6.25.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^32.0.0",
+    "vite": "^6.0.7",
+    "wait-on": "^8.0.0"
+  }
+}

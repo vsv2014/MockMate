@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Co-pilot</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0d0d1a;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid #2d2d4e;
+      border-radius: 10px;
+    }
+
+    /* Drag handle — the header bar moves the window */
+    .titlebar {
+      -webkit-app-region: drag;
+      background: #12122a;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #2d2d4e;
+      flex-shrink: 0;
+    }
+    .titlebar-title {
+      font-weight: 700;
+      font-size: 13px;
+      color: #a78bfa;
+      flex: 1;
+    }
+    .titlebar-badge {
+      font-size: 10px;
+      color: #4ade80;
+      background: #14532d;
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    .titlebar-close {
+      -webkit-app-region: no-drag;
+      background: none;
+      border: none;
+      color: #475569;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+    .titlebar-close:hover { background: #1e1e3a; color: #e2e8f0; }
+
+    .body {
+      flex: 1;
+      padding: 12px 14px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #2d2d4e transparent;
+    }
+
+    .question {
+      color: #94a3b8;
+      font-size: 11px;
+      border-left: 2px solid #334155;
+      padding-left: 8px;
+      font-style: italic;
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #14532d;
+      color: #4ade80;
+      border-radius: 4px;
+      padding: 2px 7px;
+      font-size: 11px;
+      margin-bottom: 10px;
+    }
+
+    .section-title {
+      font-weight: 600;
+      font-size: 12px;
+      color: #cbd5e1;
+      margin: 0 0 5px;
+    }
+
+    ul {
+      padding-left: 18px;
+      margin-bottom: 10px;
+    }
+    li {
+      font-size: 13px;
+      margin-bottom: 4px;
+      line-height: 1.45;
+      color: #e2e8f0;
+    }
+
+    .watch-out {
+      font-size: 12px;
+      color: #f59e0b;
+      line-height: 1.4;
+    }
+
+    .muted {
+      font-size: 13px;
+      color: #475569;
+    }
+  </style>
+</head>
+<body>
+  <div class="titlebar">
+    <span class="titlebar-title">🤖 AI Co-pilot</span>
+    <span class="titlebar-badge">🛡️ capture-protected</span>
+    <button class="titlebar-close" onclick="window.close()" title="Close">×</button>
+  </div>
+  <div class="body" id="content">
+    <p class="muted">Waiting for the interviewer's first question…</p>
+  </div>
+
+  <script>
+    function escape(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+    }
+
+    const TYPE_LABEL = {
+      behavioral: '🧩 Behavioral',
+      technical: '⚙️ Technical',
+      system_design: '🏗️ System Design',
+      resume: '📄 Resume',
+      culture: '🤝 Culture / Fit',
+      other: '💬 General'
+    }
+
+    window.electronAPI.onHintData(({ hint, hintLoading, question }) => {
+      const content = document.getElementById('content')
+
+      if (hintLoading) {
+        content.innerHTML = `
+          ${question ? `<div class="question">${escape(question)}</div>` : ''}
+          <p class="muted">Generating hint…</p>`
+        return
+      }
+
+      if (!hint) {
+        content.innerHTML = '<p class="muted">Waiting for next question…</p>'
+        return
+      }
+
+      content.innerHTML = `
+        ${question ? `<div class="question">${escape(question)}</div>` : ''}
+
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+          ${hint.questionType ? `<span class="badge" style="background:#1e1b4b;color:#a5b4fc">${escape(TYPE_LABEL[hint.questionType] || hint.questionType)}</span>` : ''}
+          ${hint.resumeStory ? '<span class="badge">✓ Resume match</span>' : ''}
+        </div>
+
+        ${hint.pattern ? `
+          <div style="background:#1e1b4b;border-left:3px solid #818cf8;padding:7px 10px;border-radius:4px;margin-bottom:10px">
+            <div style="font-size:10px;color:#818cf8;font-weight:700;margin-bottom:2px;letter-spacing:0.05em">PATTERN</div>
+            <div style="font-size:15px;color:#e0e7ff;font-weight:700">${escape(hint.pattern)}</div>
+            ${hint.complexity ? `<div style="font-size:11px;color:#a5b4fc;margin-top:3px">${escape(hint.complexity)}</div>` : ''}
+          </div>` : ''}
+        ${hint.resumeStory ? `
+          <div style="background:#0f2a1a;border-left:2px solid #4ade80;padding:6px 8px;border-radius:4px;font-size:12px;color:#86efac;margin-bottom:10px">
+            ${escape(hint.resumeStory)}
+          </div>` : ''}
+
+        ${hint.sampleAnswer ? `
+          <div style="background:#0d1f0d;border:1px solid #166534;border-radius:6px;padding:8px 10px;margin-bottom:10px">
+            <div style="font-weight:700;font-size:10px;color:#4ade80;margin-bottom:5px;letter-spacing:0.05em">🎤 SOUNDS LIKE — say it YOUR way</div>
+            <div style="font-size:12px;color:#bbf7d0;line-height:1.6;font-style:italic">"${escape(hint.sampleAnswer)}"</div>
+          </div>` : hint.opener ? `
+          <div style="margin-bottom:10px">
+            <div class="section-title">💬 Start with:</div>
+            <div style="font-style:italic;color:#cbd5e1;font-size:12px;line-height:1.5">"${escape(hint.opener)}"</div>
+          </div>` : ''}
+
+        <div class="section-title">Hit these points:</div>
+        <ul>${(hint.keyPoints || []).map(p => `<li>${escape(p)}</li>`).join('')}</ul>
+
+        ${hint.watchOut ? `<div class="watch-out">⚠ ${escape(hint.watchOut)}</div>` : ''}
+      `
+    })
+  </script>
+</body>
+</html>
