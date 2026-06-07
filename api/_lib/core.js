@@ -167,7 +167,7 @@ export async function deepgramToken({ allowRawKey = false } = {}) {
   const r = await fetch('https://api.deepgram.com/v1/auth/grant', {
     method: 'POST',
     headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ttl_seconds: 60 })
+    body: JSON.stringify({ ttl_seconds: 300 })   // 5 min — long enough to (re)establish the stream on reconnects
   })
   if (r.ok) return await r.json()   // { access_token, expires_in }
   if (allowRawKey) return { access_token: process.env.DEEPGRAM_API_KEY, _raw: true }   // localhost only

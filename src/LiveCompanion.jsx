@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useSystemAudio } from './useSystemAudio'
 import Report from './Report'
-import { OverlayPanel, ScreenAnalysisPanel } from './App'
+import { OverlayPanel, ScreenAnalysisPanel, IconBtn } from './App'
 
 const PROFILE_KEY = 'peerMockProfile'
 function loadProfile() { try { return JSON.parse(localStorage.getItem(PROFILE_KEY)) || {} } catch { return {} } }
@@ -78,6 +78,16 @@ function inlineMd(text) {
 }
 
 function stopSpeaking() { window.speechSynthesis?.cancel() }
+
+// Normalize a question for dedup (lowercase, strip punctuation/extra spaces).
+function normalizeQ(s) { return (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim() }
+// True if two transcripts are the "same question" — one contains the other.
+// Used to avoid a 2nd LLM call when the early-trigger already answered (P0-C).
+function sameQuestion(a, b) {
+  const x = normalizeQ(a), y = normalizeQ(b)
+  if (!x || !y) return false
+  return x === y || x.includes(y) || y.includes(x)
+}
 
 function escHtml(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -248,6 +258,11 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
         <Field label="Job description (optional — sharpens answers to this role)">
           <textarea rows={2} style={{ ...inp, resize: 'vertical' }} value={profile.jobDescription || ''} placeholder="Paste job description…" onChange={e => patch({ jobDescription: e.target.value })} />
         </Field>
+        <Field label="Your voice & instructions (optional — shapes every answer)">
+          <textarea rows={2} style={{ ...inp, resize: 'vertical' }} value={profile.customPrompt || ''}
+            placeholder="e.g. 'Senior eng, talk like I'm chatting with a peer — casual, confident, short. Lean on my fintech work. Avoid buzzwords.'"
+            onChange={e => patch({ customPrompt: e.target.value })} />
+        </Field>
         <Field label="Audio capture mode">
           <div style={{ display: 'flex', gap: 6 }}>
             {[
@@ -276,6 +291,12 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
           </select>
         </Field>
 
+        <Field label="Coding language (for screen-capture solutions)">
+          <select style={inp} value={profile.codingLanguage || 'Python'} onChange={e => patch({ codingLanguage: e.target.value })}>
+            {['Python', 'Java', 'C++', 'JavaScript', 'TypeScript', 'Go', 'C#', 'Ruby'].map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </Field>
+
         <button disabled={!dgAvailable} onClick={() => onStart({ profile, sourceId, provider })}
           style={{ marginTop: 4, padding: '8px', background: dgAvailable ? '#6d28d9' : '#1e1b4b', color: dgAvailable ? '#fff' : '#475569', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: dgAvailable ? 'pointer' : 'default' }}>
           Start listening →
@@ -295,13 +316,12 @@ function Field({ label, children }) {
 }
 
 // ── Live overlay ──────────────────────────────────────────────────────────────
-function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, onStealth, onMinimize, onResize, onDrag, screenAnalysis, screenAnalyzing, onDismissScreen, pip: initialPip }) {
+function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, onStealth, onMinimize, onResize, onDrag, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, pip: initialPip }) {
   const [transcript, setTranscript] = useState([])
   const [conversationHistory, setConversationHistory] = useState([])
   const [hint, setHint] = useState(null)
   const [hintLoading, setHintLoading] = useState(false)
   const [buyTimePhrase, setBuyTimePhrase] = useState('')
-  const [answerMode, setAnswerMode] = useState('speak')
   const [pipWindow, setPipWindow] = useState(initialPip || null)
   const [pipProtected, setPipProtected] = useState(true)  // false → show warning banner
   const pipSupported = typeof window !== 'undefined' && !!window.documentPictureInPicture
@@ -316,6 +336,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   const lastHintText = useRef('')
   const hintInFlight = useRef(false)  // prevent double API calls
+  const hintAbortRef = useRef(null)   // aborts the in-flight /api/hint when a new question arrives
+  const lockTimerRef = useRef(null)   // replaces the window._mockmateLockTimeout global
   const profileRef = useRef(profile)
   const providerRef = useRef(initialProvider)
   const conversationHistoryRef = useRef([])
@@ -382,15 +404,18 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     if (!question || question === lastHintText.current) return
     // Same question already in flight — skip
     if (hintInFlight.current && question === lastHintText.current) return
-    // Different question — cancel previous in-flight and start fresh
+    // Different question — cancel previous in-flight request and timer, start fresh
     if (hintInFlight.current) {
       hintInFlight.current = false
-      clearTimeout(window._mockmateLockTimeout)
+      clearTimeout(lockTimerRef.current)
     }
+    hintAbortRef.current?.abort()                 // P0-B: kill the previous /api/hint so its stale answer never lands
+    const abort = new AbortController()
+    hintAbortRef.current = abort
     lastHintText.current = question
     hintInFlight.current = true
     const lockTimeout = setTimeout(() => { hintInFlight.current = false }, 30000)
-    window._mockmateLockTimeout = lockTimeout
+    lockTimerRef.current = lockTimeout
     setBuyTimePhrase(getBuyTimePhrase(question, profileRef.current?.language))
     setHint(null)
     setStreamedAnswer('')
@@ -399,11 +424,13 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     setHintLoading(true)
     try {
       const res = await fetch('/api/hint', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: abort.signal,
         body: JSON.stringify({ question, profile: profileRef.current, conversationHistory: conversationHistoryRef.current.slice(-6), provider: providerRef.current, language: profileRef.current?.language || 'English', extraContext: extraContextRef.current || undefined })
       })
       const d = await res.json()
-      if (d.error) throw new Error(d.error)   // P0 fix: surface server errors properly
+      // P0-B: a newer question superseded this one while we awaited — drop this response.
+      if (question !== lastHintText.current) return
+      if (d.error) throw new Error(d.error)   // surface server errors properly
       const h = d.hint || null
       // LLM said skip — restore state, reset so next question works
       clearTimeout(lockTimeout)
@@ -441,6 +468,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         }, WORD_DELAY)
       }
     } catch (e) {
+      if (e.name === 'AbortError') return   // superseded by a newer question — not an error
       clearTimeout(lockTimeout)
       setHintLoading(false)
       hintInFlight.current = false
@@ -460,7 +488,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     const words = trimmed.split(/\s+/).length
     if (!trimmed || words < 4) return
     setTranscript(t => [...t, { text: trimmed, ts: Date.now(), isQuestion: false }])
-    if (trimmed !== lastHintText.current) generateHint(trimmed)
+    // If the early-trigger already fired the LLM for this same question, don't pay
+    // for a 2nd call — the early answer already covers it (P0-C token saver).
+    if (sameQuestion(trimmed, lastHintText.current)) return
+    generateHint(trimmed)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const audio = useSystemAudio(onFinal, reason => setError(`Transcription stopped: ${reason}`), onEarlyQuestion)
@@ -520,28 +551,28 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const badge = (bg, color) => ({ fontSize: 9, padding: '1px 7px', background: bg, color, borderRadius: 10, fontWeight: 700, whiteSpace: 'nowrap' })
   const btn = (bg, color) => ({ fontSize: 10, padding: '2px 9px', background: bg, color, border: 'none', borderRadius: 4, cursor: 'pointer' })
 
+  // Clean status pill (left of header): one dot + one word + the timer. Nothing else.
+  const statusColor = audio.active ? '#22c55e' : audio.reconnecting ? '#f59e0b' : '#ef4444'
+  const statusLabel = audio.active ? 'Listening' : audio.reconnecting ? 'Reconnecting' : 'Paused'
   const titleExtra = (
-    <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: audio.active ? '#22c55e' : '#ef4444', boxShadow: audio.active ? '0 0 4px #22c55e' : 'none' }} />
-      <span style={{ fontSize: 10, color: '#334155', fontFamily: 'monospace' }}>{fmtClock(clock)}</span>
-      <button onClick={() => { setAnswerMode(m => m === 'speak' ? 'hints' : 'speak'); stopSpeaking() }}
-        style={btn(answerMode === 'speak' ? '#6d28d9' : '#1e3a5f', '#fff')}>
-        {answerMode === 'speak' ? '📝' : '💡'}
-      </button>
-      {pipSupported && (
-        <button onClick={pipWindow ? () => { pipWindow.close(); setPipWindow(null) } : openProtectedPip}
-          title={pipWindow ? 'Close protected window' : 'Open protected window — invisible to all screen capture'}
-          style={btn(pipWindow ? '#14532d' : 'rgba(255,255,255,0.06)', pipWindow ? '#4ade80' : '#475569')}>
-          {pipWindow ? '🛡 on' : '🛡 pip'}
-        </button>
-      )}
+    <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: statusColor, boxShadow: `0 0 6px ${statusColor}`, animation: audio.active ? 'pulse 1.6s ease-in-out infinite' : 'none' }} />
+      <span style={{ fontSize: 11, fontWeight: 600, color: statusColor }}>{statusLabel}</span>
+      <span style={{ fontSize: 11, color: '#475569', fontFamily: 'monospace' }}>{fmtClock(clock)}</span>
     </div>
   )
 
+  // The only Live-specific action: the screen-share-safe protected window.
+  const liveActions = pipSupported ? (
+    <IconBtn icon="🛡" active={!!pipWindow}
+      onClick={pipWindow ? () => { pipWindow.close(); setPipWindow(null) } : openProtectedPip}
+      title={pipWindow ? 'Protected window ON — answers hidden from screen share' : 'Open protected window (hidden from screen share)'} />
+  ) : null
+
   return (
-    <OverlayPanel panelSize={panelSize} stealth={stealth} onStealth={onStealth}
+    <OverlayPanel panelSize={panelSize} stealth={stealth} onStealth={onStealth} actions={liveActions} confirmClose
       onMinimize={onMinimize} onResize={onResize} onDrag={onDrag}
-      onClose={endSession} title="Live" extra={titleExtra}>
+      onClose={endSession} extra={titleExtra}>
       {/* ── Single scrollable chat feed ── */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column' }}>
         {error && (
@@ -552,7 +583,20 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           </div>
         )}
 
-        <ScreenAnalysisPanel analysis={screenAnalysis} analyzing={screenAnalyzing} onDismiss={onDismissScreen} />
+        {/* Coding platform auto-detected → one tap to capture + solve (no surprise auto-captures) */}
+        {codingDetected && !screenAnalyzing && !screenAnalysis && (
+          <div onClick={() => onCaptureScreen?.()}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: 8, padding: '9px 11px', marginBottom: 8, cursor: 'pointer' }}>
+            <span style={{ fontSize: 15 }}>💻</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, color: '#4ade80', fontWeight: 700 }}>Coding question detected</div>
+              <div style={{ fontSize: 10, color: '#64748b' }}>Tap to read the screen and get a solution · or press Ctrl+Shift+U</div>
+            </div>
+            <span style={{ fontSize: 11, color: '#4ade80', fontWeight: 700, background: 'rgba(34,197,94,0.15)', padding: '4px 10px', borderRadius: 6 }}>Solve it →</span>
+          </div>
+        )}
+
+        <ScreenAnalysisPanel analysis={screenAnalysis} analyzing={screenAnalyzing} onDismiss={onDismissScreen} onReanalyze={onReanalyze} onRecapture={onCaptureScreen} />
 
         {/* PiP active banner */}
         {pipWindow && !pipWindow.closed && pipProtected && (
@@ -577,12 +621,6 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           </div>
         )}
 
-        {error && (
-          <div style={{ background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 5, padding: '5px 8px', fontSize: 10, color: '#fca5a5', marginBottom: 6 }}>
-            ⚠ {error} <button onClick={() => { setError(''); hintInFlight.current = false; lastHintText.current = '' }} style={{ float: 'right', background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer' }}>✕</button>
-          </div>
-        )}
-
         {/* Empty state with status + keyboard shortcuts */}
         {transcript.length === 0 && !hintLoading && !audio.interim && (
           <div style={{ padding: '16px 4px' }}>
@@ -590,24 +628,23 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, padding: '8px 12px', background: audio.active ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${audio.active ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`, borderRadius: 8 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: audio.active ? '#22c55e' : '#ef4444', boxShadow: audio.active ? '0 0 8px #22c55e' : 'none', flexShrink: 0, animation: audio.active ? 'pulse 1.5s ease-in-out infinite' : 'none' }} />
               <div>
-                <div style={{ fontSize: 12, color: audio.active ? '#4ade80' : '#f87171', fontWeight: 700 }}>{audio.active ? 'Listening' : 'Not capturing'}</div>
-                <div style={{ fontSize: 10, color: '#475569' }}>{audio.active ? 'Speak — answers appear automatically' : 'Check DEEPGRAM_API_KEY in .env'}</div>
+                <div style={{ fontSize: 12, color: audio.active ? '#4ade80' : audio.reconnecting ? '#f59e0b' : '#f87171', fontWeight: 700 }}>{audio.active ? 'Listening' : audio.reconnecting ? 'Reconnecting…' : 'Not capturing'}</div>
+                <div style={{ fontSize: 10, color: '#475569' }}>{audio.active ? 'Speak — answers appear automatically' : audio.reconnecting ? 'Connection dropped — restoring automatically' : 'Check DEEPGRAM_API_KEY in .env'}</div>
               </div>
             </div>
 
-            {/* Keyboard shortcuts */}
-            <div style={{ fontSize: 9, color: '#334155', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 8 }}>KEYBOARD SHORTCUTS</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {/* Calm guidance — answers stream in on their own. Two shortcuts that matter. */}
+            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6, marginBottom: 14 }}>
+              Answers appear here the moment the interviewer speaks. Just read and respond in your own words.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[
-                ['Ctrl+Shift+U', 'Capture screen → instant analysis'],
-                ['Alt+H', 'Stealth mode (fade nearly invisible)'],
-                ['Drag title bar', 'Move overlay anywhere'],
-                ['◢ corner drag', 'Resize overlay'],
-                ['📝 / 💡 button', 'Toggle Answer ↔ Hints mode'],
+                ['Ctrl+Shift+U', 'Capture a coding question on screen'],
+                ['Alt+H', 'Instantly hide the overlay'],
               ].map(([key, desc]) => (
-                <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: 5 }}>
-                  <span style={{ fontSize: 10, color: '#6d28d9', background: 'rgba(109,40,217,0.15)', padding: '1px 6px', borderRadius: 4, fontFamily: 'monospace', fontWeight: 600 }}>{key}</span>
-                  <span style={{ fontSize: 10, color: '#475569' }}>{desc}</span>
+                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 10, color: '#a78bfa', background: 'rgba(124,58,237,0.15)', padding: '2px 7px', borderRadius: 5, fontFamily: 'monospace', fontWeight: 600, minWidth: 92, textAlign: 'center' }}>{key}</span>
+                  <span style={{ fontSize: 11, color: '#64748b' }}>{desc}</span>
                 </div>
               ))}
             </div>
@@ -681,7 +718,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export default function LiveCompanion({ onHome, panelSize, stealth, onStealth, onMinimize, onResize, onDrag, screenAnalysis, screenAnalyzing, onDismissScreen, onPipActive }) {
+export default function LiveCompanion({ onHome, panelSize, stealth, onStealth, onMinimize, onResize, onDrag, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive }) {
   const [phase, setPhase] = useState('setup')
   const [sessionConfig, setSessionConfig] = useState(null)
   const [sessionNotes, setSessionNotes] = useState(null)
@@ -758,6 +795,8 @@ export default function LiveCompanion({ onHome, panelSize, stealth, onStealth, o
       onResize={onResize} onDrag={onDrag}
       onEnd={data => { setSessionNotes(data); setPhase('notes') }}
       screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} onDismissScreen={onDismissScreen}
+      codingDetected={codingDetected} onCaptureScreen={onCaptureScreen} onReanalyze={onReanalyze}
+      onPipActive={onPipActive}
     />
   )
 }

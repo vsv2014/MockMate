@@ -112,15 +112,30 @@ function launchTrayAndShortcuts() {
     }
   } catch {}
 
-  globalShortcut.register('CommandOrControl+Shift+U', async () => {
-    try {
-      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } })
-      if (!sources.length) return
-      const base64 = sources[0].thumbnail.toPNG().toString('base64')
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('screen-captured', base64)
-    } catch (e) { console.error('Screen capture failed:', e.message) }
-  })
+  globalShortcut.register('CommandOrControl+Shift+U', captureScreen)
 }
+
+// Capture the primary screen and hand the PNG to the renderer for vision analysis.
+// Called by the Ctrl+Shift+U shortcut AND by the in-app "Solve it" button (ipc).
+async function captureScreen() {
+  try {
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } })
+    if (!sources.length) return
+    // Multi-monitor: pick the source for the PRIMARY display (where the call/problem
+    // usually is), not an arbitrary sources[0]. Fall back to the first source.
+    const primaryId = String(screen.getPrimaryDisplay().id)
+    const chosen = sources.find(s => s.display_id === primaryId) || sources[0]
+    const base64 = chosen.thumbnail.toPNG().toString('base64')
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('screen-captured', base64)
+  } catch (e) { console.error('Screen capture failed:', e.message) }
+}
+
+// Protect EVERY window from screen capture — including the Document Picture-in-
+// Picture "hints" window the renderer opens during a session (it's a separate
+// top-level window that doesn't inherit the main window's affinity). No-op on Linux.
+app.on('browser-window-created', (_, win) => {
+  try { win.setContentProtection(process.platform !== 'linux') } catch {}
+})
 
 app.whenReady().then(() => {
   loadEnv()
@@ -134,13 +149,19 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => { globalShortcut.unregisterAll(); apiServer?.kill() })
 
-let meetingWasActive = false
+// Auto-detect, by open window/tab titles: (1) a video meeting, (2) a coding platform.
+const MEETING_RE = /zoom meeting|google meet|microsoft teams|webex|whereby/i
+const CODING_RE  = /leetcode|hackerrank|coderpad|codesignal|hackerearth|codility|codingame|geeksforgeeks|interviewbit|codewars|online assessment|codepair|byteboard|replit/i
+let meetingWasActive = false, codingWasActive = false
 setInterval(async () => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   try {
     const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } })
-    const active = sources.some(s => /zoom meeting|google meet|microsoft teams|webex|whereby/i.test(s.name))
-    if (active !== meetingWasActive) { meetingWasActive = active; mainWindow.webContents.send('meeting-detected', active) }
+    const names = sources.map(s => s.name)
+    const meeting = names.some(n => MEETING_RE.test(n))
+    if (meeting !== meetingWasActive) { meetingWasActive = meeting; mainWindow.webContents.send('meeting-detected', meeting) }
+    const coding = names.some(n => CODING_RE.test(n))
+    if (coding !== codingWasActive) { codingWasActive = coding; mainWindow.webContents.send('coding-detected', coding) }
   } catch {}
 }, 3000)
 
@@ -150,6 +171,10 @@ ipcMain.handle('get-audio-sources', async () => {
   const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } })
   return sources.map(s => ({ id: s.id, name: s.name }))
 })
+ipcMain.handle('capture-screen', () => captureScreen())   // "Solve it" button trigger
+// PiP windows are auto-protected by the browser-window-created listener above.
+// This confirms it to the renderer so it can warn honestly on Linux (no protection).
+ipcMain.handle('exclude-from-capture', () => ({ ok: process.platform !== 'linux', id: 'pip' }))
 ipcMain.on('get-userdata-path', e => { e.returnValue = app.getPath('userData') })
 ipcMain.on('hide-window', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide() })
 ipcMain.on('window-drag', (_, { dx, dy }) => {
