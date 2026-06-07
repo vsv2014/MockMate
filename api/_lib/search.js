@@ -1,4 +1,4 @@
-// Web search for live context — Tavily (AI-optimised) or Serper (Google).
+a// Web search for live context — Tavily (AI-optimised) or Serper (Google).
 // Tavily returns clean AI-ready snippets; Serper returns raw Google results.
 // Whichever key is set gets used; Tavily is preferred.
 
