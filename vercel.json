@@ -5,5 +5,13 @@
   "outputDirectory": "dist",
   "functions": {
     "api/*.js": { "maxDuration": 30 }
+  },
+  "env": {
+    "ELECTRON_SKIP_BINARY_DOWNLOAD": "1"
+  },
+  "build": {
+    "env": {
+      "ELECTRON_SKIP_BINARY_DOWNLOAD": "1"
+    }
   }
 }
