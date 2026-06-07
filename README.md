@@ -3,15 +3,28 @@
 A desktop overlay app that floats over your screen during live interviews.  
 Generates AI answers in real time. **Invisible to all screen recording software.**
 
-## Quick Start
+## Download (no setup)
+
+Grab the latest build from the [**Releases page**](https://github.com/vsv2014/MockMate/releases/latest):
+
+| Platform | File | Run |
+|---|---|---|
+| **Windows** | `MockMate-1.0.0-Windows.zip` | Extract → run `MockMate.exe` |
+| **Linux** | `MockMate-1.0.0.AppImage` | `chmod +x` → run it |
+| **macOS** | `MockMate-1.0.0-arm64.dmg` (Apple Silicon) / `-x64.dmg` (Intel) | Open the dmg → drag to Applications |
+
+On first launch, MockMate opens a **setup screen** where you paste your API keys — no manual file editing. Keys are saved locally and the app restarts ready to use.
+
+## Run from source (developers)
 
 ```bash
 git clone https://github.com/vsv2014/MockMate
 cd MockMate
 npm install
-cp .env.example .env   # add your API keys
-npm run dev            # Electron overlay launches automatically
+npm run electron:dev   # launches the Electron overlay + API server + Vite
 ```
+
+No `.env` file is required to start — the app shows the setup screen if no keys are found. To preconfigure keys, create a `.env` in the project root (or next to the built executable) with the keys listed below.
 
 ## Modes
 
@@ -34,11 +47,13 @@ npm run dev            # Electron overlay launches automatically
 
 | Platform | Mechanism | Protection |
 |---|---|---|
-| **Windows** | `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` | Invisible to all capture tools |
-| **macOS** | `NSWindow.sharingType = NSWindowSharingNone` | Invisible to all capture tools |
-| **Linux** | Document Picture-in-Picture (`getDisplayMedia` exclusion) | Invisible to Google Meet / Zoom |
+| **Windows** | `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` | ✅ Invisible to all capture tools |
+| **macOS** | `NSWindow.sharingType = NSWindowSharingNone` | ✅ Invisible to all capture tools |
+| **Linux** | — | ⚠️ **Not supported** — overlay is visible in screen share |
 
-**Hide shortcut:** Press `Alt+H` or `Ctrl+Shift+H` to completely hide the window — restore with the same shortcut. Works even when the window is not visible.
+> **Linux note:** Electron has no OS-level content-protection API on Linux, so the overlay **will appear** in Zoom / Meet / Teams screen shares and recordings. The app runs fully on Linux, but for an overlay hidden from the interviewer, use **Windows or macOS**.
+
+**Hide shortcut (all platforms):** Press `Alt+H` or `Ctrl+Shift+H` to completely hide the window — restore with the same shortcut. Works even when the window is not visible.
 
 ## Answer Intelligence
 
@@ -85,13 +100,16 @@ Every answer includes:
 ## Scripts
 
 ```bash
-npm run dev                  # Launch Electron overlay (recommended)
-npm run dev:browser          # Browser only — no screen protection
-npm run electron:build       # Build installer for current platform
-npm run electron:build:win   # Windows .exe
-npm run electron:build:mac   # macOS .dmg
-npm run electron:build:linux # Linux .AppImage
+npm run electron:dev         # Launch Electron overlay + API + Vite (recommended)
+npm run dev                  # API server + Vite only (browser, no screen protection)
+npm run build                # Build the frontend (Vite → dist/)
+npm run electron:build       # Build installer for the current platform
+npm run electron:build:win   # Windows .zip
 ```
+
+**Cross-platform builds** (Windows + Linux + macOS) are produced by GitHub Actions —
+see `.github/workflows/release.yml`. Trigger it from the **Actions** tab
+("Build & Release MockMate" → *Run workflow*) or by pushing a `v*.*.*` tag.
 
 ## Supported Languages
 
@@ -101,12 +119,14 @@ English, Spanish, French, German, Portuguese, Hindi, Japanese, Chinese, Korean, 
 
 ```
 Electron main window (alwaysOnTop, setContentProtection, skipTaskbar)
-  └── React app (Vite)
+  └── loads the React UI over http://localhost:3002 (served by the API server)
+        ├── Setup screen — first-run API-key entry (shown when no keys configured)
         ├── Home screen — mode picker + keyboard shortcuts
         ├── Live Companion — audio capture + AI answers + Document PiP
         └── Solo Practice — AI interviewer + scoring report
 
-API server (Express, port 3002)
+API server (Express, port 3002) — serves BOTH the built UI (dist/) and the API,
+so /assets and /api are same-origin (loading via file:// would break both)
   ├── POST /api/hint          — question → structured answer (auto-provider fallback)
   ├── POST /api/analyze-screen — screenshot → GPT-4o vision analysis
   ├── POST /api/interview     — Solo mode AI interviewer turn
