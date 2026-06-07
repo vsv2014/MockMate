@@ -10,16 +10,14 @@
     "node": ">=18"
   },
   "scripts": {
-    "dev": "concurrently -k \"PORT=3002 node server.js\" \"vite\" \"npm run electron:launch\"",
-    "electron:launch": "wait-on http://localhost:5174 && ./node_modules/.bin/electron .",
-    "dev:browser": "concurrently \"PORT=3002 node server.js\" \"vite\"",
-    "server": "node server.js",
-    "vite": "vite",
+    "dev": "concurrently \"PORT=3002 node server.js\" \"vite\"",
     "build": "vite build",
+    "electron:dev": "concurrently -k \"PORT=3002 node server.js\" \"vite\" \"wait-on http://localhost:5174 && electron .\"",
+    "electron:win": "vite build && electron-builder --win",
     "electron:build": "vite build && electron-builder",
     "electron:build:win": "vite build && electron-builder --win",
-    "electron:build:mac": "vite build && electron-builder --mac",
-    "electron:build:linux": "vite build && electron-builder --linux"
+    "server": "node server.js",
+    "vite": "vite"
   },
   "build": {
     "appId": "com.mockmate.app",
@@ -35,6 +33,7 @@
       "server.js",
       "server-entry.cjs",
       "package.json",
+      ".env",
       "node_modules/**/*",
       "!node_modules/electron/**/*",
       "!node_modules/.cache/**/*"
@@ -57,38 +56,14 @@
           ]
         }
       ],
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "artifactName": "MockMate-Setup-${version}.exe"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "MockMate"
-    },
-    "mac": {
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
-      ],
-      "icon": "assets/icon.png",
-      "category": "public.app-category.productivity"
-    },
-    "linux": {
-      "target": [
-        {
-          "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "assets/icon.png",
-      "category": "Utility"
     }
   },
   "dependencies": {
@@ -102,7 +77,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
-    "electron": "^32.0.0",
+    "electron": "^32.3.3",
     "electron-builder": "^24.0.0",
     "vite": "^6.0.7",
     "wait-on": "^8.0.0"

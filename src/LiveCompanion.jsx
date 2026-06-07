@@ -84,8 +84,10 @@ function escHtml(s) {
 }
 
 // Self-contained HTML for the Document PiP window — receives state via BroadcastChannel.
-// Chrome marks PiP windows with WDA_EXCLUDEFROMCAPTURE (Windows) and NSWindow.sharingType=.none (macOS)
-// making them invisible to Zoom, Teams, Meet, and all screen capture tools.
+// Screen-capture exclusion is applied by the Electron main process via the
+// 'exclude-pip-window' IPC handler (electron/main.cjs), which calls setContentProtection(true)
+// on the window handle — mapping to WDA_EXCLUDEFROMCAPTURE (Windows) and
+// NSWindowSharingNone (macOS). Chrome does NOT apply this automatically.
 function getPipHTML() {
   return `
 <style>
@@ -301,6 +303,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const [buyTimePhrase, setBuyTimePhrase] = useState('')
   const [answerMode, setAnswerMode] = useState('speak')
   const [pipWindow, setPipWindow] = useState(initialPip || null)
+  const [pipProtected, setPipProtected] = useState(true)  // false → show warning banner
   const pipSupported = typeof window !== 'undefined' && !!window.documentPictureInPicture
   const bcRef = useRef(null)   // BroadcastChannel to sync state to PiP window
   const [streamedAnswer, setStreamedAnswer] = useState('')
@@ -344,6 +347,20 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       setPipWindow(pip)
       // Sync current state immediately
       bcRef.current?.postMessage({ type: 'init', transcript, hint, hintLoading, buyTimePhrase })
+      // Ask the Electron main process to apply setContentProtection(true) to the new window.
+      // The browser-window-created listener in main.cjs is the primary safety net, but we
+      // invoke this handler as belt-and-suspenders and to surface a warning if it fails.
+      if (window.electronAPI?.excludeFromCapture) {
+        await new Promise(r => setTimeout(r, 100))  // let the OS register the window
+        const result = await window.electronAPI.excludeFromCapture()
+        if (!result?.ok) {
+          setPipProtected(false)
+          console.warn('[MockMate] Screen protection failed for PiP window:', result?.error)
+        } else {
+          setPipProtected(true)
+          console.log('[MockMate] Screen protection confirmed on hints window', result.id)
+        }
+      }
     } catch (e) { console.warn('PiP failed:', e.message) }
   }
 
@@ -450,12 +467,26 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   useEffect(() => {
     audio.start(sourceId)
-    // Set up pipWindow cleanup handler if pip was opened during setup
     if (initialPip && !initialPip.closed) {
       initialPip.addEventListener('pagehide', () => {
         setPipWindow(null)
-        onPipActive?.(false)   // restore main panel when PiP closes
+        onPipActive?.(false)
       })
+      // The PiP was created in the Setup screen before LiveOverlay mounted. The
+      // browser-window-created listener in main.cjs already applied protection, but
+      // we confirm here and surface a warning if it somehow was not applied.
+      if (window.electronAPI?.excludeFromCapture) {
+        setTimeout(async () => {
+          const result = await window.electronAPI.excludeFromCapture()
+          if (!result?.ok) {
+            setPipProtected(false)
+            console.warn('[MockMate] Screen protection failed for pre-opened PiP:', result?.error)
+          } else {
+            setPipProtected(true)
+            console.log('[MockMate] Screen protection confirmed on hints window', result.id)
+          }
+        }, 100)
+      }
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -524,7 +555,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         <ScreenAnalysisPanel analysis={screenAnalysis} analyzing={screenAnalyzing} onDismiss={onDismissScreen} />
 
         {/* PiP active banner */}
-        {pipWindow && !pipWindow.closed && (
+        {pipWindow && !pipWindow.closed && pipProtected && (
           <div style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, padding: '10px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 16 }}>🛡️</span>
             <div>
@@ -532,6 +563,17 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
               <div style={{ fontSize: 10, color: '#475569' }}>Answers appear in floating window — invisible to all screen capture</div>
             </div>
             <button onClick={() => { pipWindow.close(); setPipWindow(null) }} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 12 }}>✕</button>
+          </div>
+        )}
+
+        {/* Warning: screen protection could not be applied — user must know */}
+        {pipWindow && !pipWindow.closed && !pipProtected && (
+          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 8, padding: '10px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16 }}>⚠️</span>
+            <div>
+              <div style={{ fontSize: 12, color: '#f87171', fontWeight: 700 }}>Screen protection unavailable — hints may be visible</div>
+              <div style={{ fontSize: 10, color: '#475569' }}>The hints window could not be hidden from screen share. Restart MockMate and try again.</div>
+            </div>
           </div>
         )}
 

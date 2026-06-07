@@ -16,9 +16,21 @@ let mainWindow, apiServer
 function startApiServer() {
   if (!isProd) return   // dev: server is started separately via npm run dev
   const serverEntry = path.join(app.getAppPath(), 'server-entry.cjs')
-  // Load .env from userData so keys survive app updates
-  const envPath = path.join(app.getPath('userData'), '.env')
-  require('dotenv').config({ path: envPath })
+
+  // Load keys in two passes so the app works out of the box on any machine:
+  //
+  //   Pass 1 — user override: AppData\Roaming\MockMate\.env (optional)
+  //            Power users can place their own keys here to override the defaults.
+  //            dotenv skips keys that are already set in process.env, so pass 1
+  //            wins over pass 2 for any key present in both files.
+  //
+  //   Pass 2 — bundled defaults: the .env baked into the installer.
+  //            Provides GROQ_API_KEY + DEEPGRAM_API_KEY for every fresh install
+  //            without any manual configuration.
+  const userEnvPath = path.join(app.getPath('userData'), '.env')
+  const bundledEnvPath = path.join(app.getAppPath(), '.env')
+  require('dotenv').config({ path: userEnvPath })      // user overrides (if file exists)
+  require('dotenv').config({ path: bundledEnvPath })   // bundled defaults (always present)
 
   apiServer = fork(serverEntry, [], {
     env: { ...process.env, PORT: '3002', NODE_ENV: 'production' },
@@ -52,8 +64,20 @@ function createMainWindow() {
     }
   })
 
-  // Main window is the only window — protect it from all screen capture
+  // Exclude the main window from all screen capture.
+  // Windows → SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE = 0x11)
+  //           window appears as a black/blank rectangle in Zoom, Teams, Meet, OBS,
+  //           getDisplayMedia — while remaining fully visible on the host monitor.
+  // macOS   → [nsWindow setSharingType:NSWindowSharingNone]
+  //
+  // How to verify on Windows (Step 5 checklist):
+  //   1. Launch MockMate (dev: npm run electron:dev, or install: MockMate-Setup-x.x.x.exe)
+  //   2. Start a Google Meet / Zoom call and share "Entire screen"
+  //   3. On a SECOND device, join the call and watch the shared screen preview
+  //   4. MockMate must NOT appear in the share — while visible on the host monitor
+  //   5. Confirm "[MockMate] Content protection enabled" appears in this console
   mainWindow.setContentProtection(true)
+  console.log('[MockMate] Content protection enabled')
 
   if (isProd) {
     // Production: load built Vite app, wait for API server to be ready
@@ -77,6 +101,25 @@ function createMainWindow() {
 app.whenReady().then(() => {
   startApiServer()
   createMainWindow()
+
+  // Safety net: apply screen-capture exclusion to ANY new BrowserWindow the moment
+  // it is created. The Document Picture-in-Picture window is opened by the renderer
+  // via documentPictureInPicture.requestWindow() — Electron creates a real OS window
+  // for it but the main process never explicitly calls new BrowserWindow(), so this
+  // event is the only reliable hook to get its handle before it is ever painted.
+  //
+  // Verification:
+  //   1. Start a Zoom/Teams/Meet screen share of the entire screen.
+  //   2. Click "Start listening →" in MockMate to open the hints window.
+  //   3. On a second device or via the screen share preview, confirm the hints
+  //      window is NOT visible.
+  //   4. In this console, confirm "Screen protection applied to hints window [id]"
+  //      appears without errors.
+  app.on('browser-window-created', (_, win) => {
+    if (win === mainWindow) return  // main window is already protected in createMainWindow()
+    win.setContentProtection(true)
+    console.log(`[MockMate] Screen protection applied to hints window ${win.id}`)
+  })
 
   // Alt+H / Ctrl+Shift+H — toggle window visibility at OS level
   // Works even when window is hidden (global shortcut fires regardless)
@@ -164,6 +207,34 @@ ipcMain.on('get-userdata-path', e => { e.returnValue = app.getPath('userData') }
 
 ipcMain.on('hide-window', () => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide()
+})
+
+// Renderer calls this immediately after documentPictureInPicture.requestWindow() resolves.
+// Finds the PiP window (any BrowserWindow that is not mainWindow) and applies
+// setContentProtection(true), which calls:
+//   Windows → SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE = 0x11)
+//   macOS   → [nsWindow setSharingType:NSWindowSharingNone]
+// The browser-window-created listener above is the primary safety net; this handler
+// is a belt-and-suspenders confirmation that lets the renderer surface a warning if
+// protection was somehow not applied.
+ipcMain.handle('exclude-pip-window', () => {
+  const wins = BrowserWindow.getAllWindows()
+  const pip = wins.find(w => w !== mainWindow && !w.isDestroyed())
+  if (!pip) {
+    console.warn('[MockMate] exclude-pip-window: no PiP window found')
+    return { ok: false, error: 'PiP window not found' }
+  }
+  pip.setContentProtection(true)
+  console.log(`[MockMate] Screen protection confirmed on hints window ${pip.id}`)
+  return { ok: true, id: pip.id }
+})
+
+// Returns the webContents ID of the most recently created non-main BrowserWindow,
+// so the renderer can confirm the main process found the right window.
+ipcMain.handle('get-pip-window-id', () => {
+  const wins = BrowserWindow.getAllWindows()
+  const pip = wins.find(w => w !== mainWindow && !w.isDestroyed())
+  return pip ? pip.id : null
 })
 
 

@@ -238,7 +238,7 @@
     <a href="#features">Features</a>
     <a href="#setup">Setup</a>
   </div>
-  <a href="https://github.com/vsv2014/MockMate" class="nav-cta" target="_blank">Download Free →</a>
+  <a href="https://github.com/vsv2014/MockMate/releases/latest" class="nav-cta" id="nav-download" target="_blank">Download Free →</a>
 </nav>
 
 <!-- HERO -->
@@ -252,7 +252,7 @@
     A floating overlay that listens to your interviewer, generates natural answers in seconds, and is completely invisible to Zoom, Teams, Meet, and all screen recording software.
   </p>
   <div class="hero-ctas">
-    <a href="https://github.com/vsv2014/MockMate" class="btn-hero" target="_blank">
+    <a href="https://github.com/vsv2014/MockMate/releases/latest" class="btn-hero" id="hero-download" target="_blank">
       ↓ Download for Free
     </a>
     <a href="#how" class="btn-secondary">See how it works</a>
@@ -493,7 +493,7 @@
   <h2>Ready for your<br />next interview?</h2>
   <p>Free and open source. No account. No subscription.</p>
   <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
-    <a href="https://github.com/vsv2014/MockMate" class="btn-hero" target="_blank">↓ Download for Free</a>
+    <a href="https://github.com/vsv2014/MockMate/releases/latest" class="btn-hero" id="cta-download" target="_blank">↓ Download for Free</a>
     <a href="https://github.com/vsv2014/MockMate" class="btn-secondary" target="_blank">★ Star on GitHub</a>
   </div>
 </section>
@@ -507,5 +507,38 @@
   <span>© 2025 MockMate</span>
 </footer>
 
+<script>
+  // Detect Windows and upgrade download buttons to a direct .exe link.
+  // On any other OS, buttons already point to /releases/latest (shows all assets).
+  const EXE_URL = 'https://github.com/vsv2014/MockMate/releases/latest/download/MockMate-Setup-1.0.0.exe'
+  const isWindows = navigator.userAgent.includes('Windows')
+
+  if (isWindows) {
+    const ids = ['nav-download', 'hero-download', 'cta-download']
+    ids.forEach(id => {
+      const el = document.getElementById(id)
+      if (!el) return
+      el.href = EXE_URL
+      el.removeAttribute('target')   // download in same tab so browser triggers Save dialog
+      el.download = 'MockMate-Setup-1.0.0.exe'
+    })
+
+    // Update hero button label to be explicit about Windows
+    const hero = document.getElementById('hero-download')
+    if (hero) hero.innerHTML = '↓ Download for Windows (.exe)'
+
+    const nav = document.getElementById('nav-download')
+    if (nav) nav.textContent = 'Download for Windows →'
+
+    // Show a small Windows badge under the hero button
+    const ctas = document.querySelector('.hero-ctas')
+    if (ctas) {
+      const badge = document.createElement('div')
+      badge.style.cssText = 'width:100%;text-align:center;font-size:12px;color:#475569;margin-top:-8px'
+      badge.textContent = 'Windows 10/11 · 64-bit · ~120 MB'
+      ctas.appendChild(badge)
+    }
+  }
+</script>
 </body>
 </html>

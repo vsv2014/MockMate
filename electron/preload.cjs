@@ -12,5 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onMeetingDetected: cb => ipcRenderer.on('meeting-detected', (_, active) => cb(active)),
   onShortcutStealth: cb => ipcRenderer.on('shortcut-stealth', () => cb()),
   hideWindow: () => ipcRenderer.send('hide-window'),
-  getUserDataPath: () => ipcRenderer.sendSync('get-userdata-path')
+  getUserDataPath: () => ipcRenderer.sendSync('get-userdata-path'),
+  excludeFromCapture: () => ipcRenderer.invoke('exclude-pip-window'),
+  getPipWindowId: () => ipcRenderer.invoke('get-pip-window-id')
 })
