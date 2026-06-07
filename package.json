@@ -1,6 +1,6 @@
 {
   "name": "mockmate",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "main": "electron/main.cjs",
   "description": "Real-Time AI Interview Companion — floats over Zoom/Teams/Meet, invisible to screen capture",

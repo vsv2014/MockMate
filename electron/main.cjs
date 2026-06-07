@@ -17,11 +17,35 @@ function assetsPath(...parts) {
   return path.join(path.dirname(app.getPath('exe')), 'assets', ...parts)
 }
 
+// The window/dock icon. In a packaged build it sits beside the exe (extraFiles);
+// in dev that path doesn't exist (exe is the Electron binary), so the icon shows
+// blank — fall back to the repo's assets/icon.png there.
+function iconPath() {
+  const shipped = assetsPath('icon.png')
+  if (fs.existsSync(shipped)) return shipped
+  return path.join(app.getAppPath(), 'assets', 'icon.png')
+}
+
+// Load .env from every place it might live, in PRIORITY order. dotenv does NOT
+// override an already-set key, so the first file that defines a key wins:
+//   1. userData/.env  — keys a user typed into the in-app setup (their override)
+//   2. exe-dir/.env   — shipped beside the packaged binary (prod), if present
+//   3. appPath/.env   — the BUNDLED .env (dev: project root; prod: resources/app)
+// DELIBERATE PRODUCT DECISION: the bundled .env (3) ships with our keys so every
+// user works out-of-box with no setup — see .env for the security caveat. A user
+// who enters their OWN key (1) overrides ours because userData is read first.
+// Both dev and prod read the same bundled file, so hasApiKeys() in the main
+// process now matches what the server actually sees (that mismatch was the whole
+// dev/prod confusion + the "still says no keys" bug).
 function loadEnv() {
-  const exeEnv  = path.join(path.dirname(app.getPath('exe')), '.env')
-  const userEnv = path.join(app.getPath('userData'), '.env')
-  const envPath = fs.existsSync(exeEnv) ? exeEnv : userEnv
-  require('dotenv').config({ path: envPath })
+  const candidates = [
+    path.join(app.getPath('userData'), '.env'),
+    path.join(path.dirname(app.getPath('exe')), '.env'),
+    path.join(app.getAppPath(), '.env'),
+  ]
+  for (const envPath of candidates) {
+    if (fs.existsSync(envPath)) require('dotenv').config({ path: envPath })
+  }
 }
 
 function hasApiKeys() {
@@ -45,10 +69,16 @@ function startApiServer(onReady) {
 }
 
 function createSetupWindow() {
+  // When the overlay is already up (user clicked "Add / manage API keys"), open
+  // the key window as a MODAL CHILD of it — one taskbar entry, not two apps.
+  const asChild = !!(mainWindow && !mainWindow.isDestroyed())
   setupWindow = new BrowserWindow({
     width: 520, height: 700, resizable: false, center: true,
     title: 'MockMate — Setup',
-    icon: assetsPath('icon.png'),
+    icon: iconPath(),
+    parent: asChild ? mainWindow : undefined,
+    modal: asChild,
+    skipTaskbar: asChild,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false }
   })
   setupWindow.setMenuBarVisibility(false)
@@ -62,17 +92,28 @@ function createSetupWindow() {
 
 function createMainWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize
+  // Linux compositors often render transparent frameless windows as fully invisible,
+  // and Linux has no screen-protection benefit from transparency anyway — so use an
+  // opaque, framed window there. Windows/macOS keep the transparent floating overlay.
+  const isLinux = process.platform === 'linux'
   mainWindow = new BrowserWindow({
     width: 460, height: 680, x: width - 480, y: 20,
-    alwaysOnTop: true, frame: false, transparent: true, backgroundColor: '#00000000',
-    resizable: true, skipTaskbar: process.platform !== 'linux',
-    icon: assetsPath('icon.png'),
+    alwaysOnTop: true,
+    frame: isLinux,                                   // Linux: normal window chrome so it's visible + movable
+    transparent: !isLinux,                            // transparent overlay only on Win/macOS
+    backgroundColor: isLinux ? '#08090e' : '#00000000',
+    resizable: true, skipTaskbar: !isLinux,
+    icon: iconPath(),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false }
   })
   mainWindow.setContentProtection(true)
 
-  mainWindow.webContents.on('did-fail-load', () => {
-    setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(PROD_URL) }, 800)
+  mainWindow.webContents.on('did-fail-load', (_e, code) => {
+    if (code === -3) return   // ERR_ABORTED — normal during reloads, not a real failure
+    // Retry the URL for THIS environment (dev = Vite, prod = bundled server).
+    // Previously this always reloaded PROD_URL, which in dev pointed at the wrong
+    // server and left the window stuck/black after a reload.
+    setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(isProd ? PROD_URL : DEV_URL) }, 800)
   })
 
   if (isProd) {
@@ -94,7 +135,7 @@ function launchTrayAndShortcuts() {
   globalShortcut.register('CommandOrControl+Shift+H', toggleVisibility)
 
   const { Tray, Menu, nativeImage } = require('electron')
-  const trayIcon = (() => { try { return nativeImage.createFromPath(assetsPath('icon.png')) } catch { return nativeImage.createEmpty() } })()
+  const trayIcon = (() => { try { return nativeImage.createFromPath(iconPath()) } catch { return nativeImage.createEmpty() } })()
   try {
     const tray = new Tray(trayIcon)
     tray.setToolTip('MockMate — Click to show/hide')
@@ -154,16 +195,32 @@ function setupAutoUpdate() {
   } catch (e) { console.error('[updater] unavailable:', e?.message) }
 }
 
-app.whenReady().then(() => {
-  loadEnv()
-  if (!hasApiKeys()) {
-    createSetupWindow()
-  } else {
+// Single-instance lock — a second `MockMate` launch (double-click, stale dev
+// process, relaunch race) must NOT open a second overlay. The second process
+// exits immediately and just focuses the window that's already running. Without
+// this you can end up with two overlays / two taskbar entries at once.
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    const win = mainWindow || setupWindow
+    if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore()
+      win.show(); win.focus()
+    }
+  })
+
+  app.whenReady().then(() => {
+    loadEnv()
+    // ALWAYS open the single overlay window — no separate setup window. With the
+    // bundled .env keys present it goes straight to work; if no keys are found the
+    // overlay shows its inline "Add your API keys" form. One window, never two.
     createMainWindow()
     launchTrayAndShortcuts()
     setupAutoUpdate()
-  }
-})
+  })
+}
 
 app.on('will-quit', () => { globalShortcut.unregisterAll(); apiServer?.kill() })
 
@@ -203,12 +260,51 @@ ipcMain.on('window-resize', (_, { w, h }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   mainWindow.setSize(Math.max(320, w), Math.max(200, h))
 })
+// MERGE the submitted keys into the existing .env (so adding one key never wipes
+// the others). Only non-empty incoming values overwrite; everything else is kept.
 ipcMain.handle('write-env', (_, content) => {
   try {
+    // Always write userData/.env (loadEnv reads it first, as the user's override).
+    // We deliberately do NOT write the project-root .env in dev: Vite watches it and
+    // would restart the dev server mid-session, blanking the window. In dev the
+    // bundled keys belong in the root .env you edit by hand (the source of truth).
     const envPath = path.join(app.getPath('userData'), '.env')
     fs.mkdirSync(path.dirname(envPath), { recursive: true })
-    fs.writeFileSync(envPath, content, 'utf8')
+    const parse = txt => Object.fromEntries((txt || '').split('\n')
+      .map(l => l.trim()).filter(l => l && !l.startsWith('#') && l.includes('='))
+      .map(l => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()] }))
+    const existing = fs.existsSync(envPath) ? parse(fs.readFileSync(envPath, 'utf8')) : {}
+    const incoming = parse(content)
+    for (const [k, v] of Object.entries(incoming)) if (v) { existing[k] = v; process.env[k] = v }  // set non-empty + go live now
+    const merged = Object.entries(existing).map(([k, v]) => `${k}=${v}`).join('\n') + '\n'
+    fs.writeFileSync(envPath, merged, 'utf8')
     return { ok: true }
   } catch (e) { return { ok: false, error: e.message } }
 })
+// Apply freshly-saved keys WITHOUT relaunching the app. Relaunch was the old way
+// (app.relaunch + app.exit), but in dev `concurrently -k` kills Vite the instant
+// Electron exits, so the relaunched window loaded a dead :5174 → blank screen.
+// It also races the single-instance lock in prod. Instead we transition live:
+// writeEnv already pushed the keys into process.env, so we just open the overlay
+// (first run) or restart the API server (keys changed while running).
+ipcMain.handle('apply-keys', () => {
+  loadEnv()   // safety net: make sure file values are in process.env
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindow()
+    launchTrayAndShortcuts()
+    setupAutoUpdate()
+  } else if (apiServer) {
+    // Prod: forked server read its env at fork time — restart it to pick up new keys.
+    try { apiServer.kill() } catch {}
+    apiServer = null
+    startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(PROD_URL) })
+  } else {
+    mainWindow.webContents.reload()   // dev: server is separate; just refresh providers
+  }
+  if (setupWindow && !setupWindow.isDestroyed()) setupWindow.close()
+  return { ok: true }
+})
+// Kept for compatibility; no longer used by the setup flow.
 ipcMain.handle('relaunch-app', () => { app.relaunch(); app.exit(0) })
+// Open the API-key setup window on demand (e.g. "Add API keys" from the overlay).
+ipcMain.handle('open-key-setup', () => { if (!setupWindow) createSetupWindow(); else setupWindow.focus(); return { ok: true } })

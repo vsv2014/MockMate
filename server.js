@@ -7,7 +7,7 @@ import express from 'express'
 import cors from 'cors'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { makeReport, availableProviders, deepgramConfigured, deepgramToken, searchConfigured } from './api/_lib/core.js'
+import { makeReport, availableProviders, allProviders, deepgramConfigured, deepgramToken, searchConfigured } from './api/_lib/core.js'
 import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen } from './api/_lib/interview.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -17,7 +17,7 @@ const app = express()
 app.use(cors())
 app.use(express.json({ limit: '2mb' }))
 
-app.get('/api/providers', (req, res) => res.json({ providers: availableProviders(), deepgram: deepgramConfigured(), search: searchConfigured() }))
+app.get('/api/providers', (req, res) => res.json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured() }))
 
 app.post('/api/deepgram-token', async (req, res) => {
   const host = req.headers.host || ''

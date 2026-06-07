@@ -94,7 +94,10 @@ async function save() {
   try {
     const result = await window.electronAPI.writeEnv(lines)
     if (!result.ok) throw new Error(result.error || 'Write failed')
-    await window.electronAPI.relaunchApp()
+    // Open the overlay in-process (no relaunch — relaunch blanked the window in dev
+    // and raced the single-instance lock). Fall back to relaunch on older builds.
+    if (window.electronAPI.applyKeys) await window.electronAPI.applyKeys()
+    else await window.electronAPI.relaunchApp()
   } catch(e) {
     document.getElementById('err').textContent = '⚠ ' + e.message
     document.getElementById('err').style.display = 'block'

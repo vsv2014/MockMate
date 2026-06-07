@@ -34,5 +34,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   hideWindow: () => ipcRenderer.send('hide-window'),
   getUserDataPath: () => ipcRenderer.sendSync('get-userdata-path'),
   writeEnv: content => ipcRenderer.invoke('write-env', content),
-  relaunchApp: () => ipcRenderer.invoke('relaunch-app')
+  relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
+  applyKeys: () => ipcRenderer.invoke('apply-keys'),
+  openKeySetup: () => ipcRenderer.invoke('open-key-setup')
 })
