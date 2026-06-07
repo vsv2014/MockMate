@@ -4,6 +4,7 @@ import LiveCompanion from './LiveCompanion'
 import Report from './Report'
 
 const inElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
+const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
 
 // ── Not in Electron — show landing page ──────────────────────────────────────
 function BrowserGate() {
@@ -168,6 +169,11 @@ function ElectronShell() {
         {!inElectron && (
           <div style={{ background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 7, padding: '8px 10px', marginBottom: 8, fontSize: 11, color: '#fca5a5', lineHeight: 1.5 }}>
             ⚠ <strong>Browser mode</strong> — this overlay IS visible during screen share. Run <code style={{ background: '#1c0505', padding: '0 3px', borderRadius: 2 }}>npm run dev</code> to launch the protected Electron app instead.
+          </div>
+        )}
+        {isLinux && (
+          <div style={{ background: '#431407', border: '1px solid #7c2d12', borderRadius: 7, padding: '7px 10px', marginBottom: 8, fontSize: 11, color: '#fdba74', lineHeight: 1.6 }}>
+            ⚠ <strong>Screen protection unavailable on Linux.</strong> This overlay will be visible in Zoom, Teams, and screen recordings. Use Windows or macOS for full invisibility.
           </div>
         )}
         {meetingActive && (

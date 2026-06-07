@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MockMate — Setup</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0f;color:#e2e8f0;font-family:system-ui,sans-serif;padding:24px;font-size:13px}
+h1{font-size:18px;font-weight:800;color:#7c3aed;margin-bottom:4px}
+.sub{font-size:12px;color:#475569;margin-bottom:20px}
+.section{font-size:10px;font-weight:700;letter-spacing:.08em;color:#4ade80;margin:16px 0 8px}
+.section.opt{color:#475569}
+.row{margin-bottom:10px}
+.row label{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.row label span{font-size:11px;color:#94a3b8;font-weight:600}
+.row label a{font-size:10px;color:#7c3aed;text-decoration:none}
+.row label a:hover{text-decoration:underline}
+input{width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;padding:7px 10px;border-radius:6px;font-size:12px;outline:none;font-family:monospace}
+input:focus{border-color:rgba(124,58,237,0.6)}
+.hint{font-size:10px;color:#475569;margin-top:3px}
+.req{font-size:10px;color:#64748b;margin:12px 0 4px;line-height:1.5}
+.err{color:#f87171;font-size:11px;margin-bottom:8px;display:none}
+button{width:100%;padding:10px;background:#6d28d9;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-top:16px}
+button:disabled{background:#1e1b4b;color:#475569;cursor:default}
+button:not(:disabled):hover{background:#7c3aed}
+.saving{text-align:center;display:none;color:#a78bfa;font-size:12px;margin-top:10px}
+</style>
+</head>
+<body>
+<h1>MockMate</h1>
+<p class="sub">Enter your API keys to get started. Saved locally — never shared.</p>
+
+<div class="section">REQUIRED — LLM (at least one)</div>
+<div class="row">
+  <label><span>GROQ API KEY</span><a href="https://console.groq.com/keys" target="_blank">Get free key →</a></label>
+  <input id="GROQ_API_KEY" placeholder="gsk_..." />
+  <div class="hint">Free & fastest — recommended</div>
+</div>
+<div class="row">
+  <label><span>GEMINI API KEY</span><a href="https://aistudio.google.com/apikey" target="_blank">Get free key →</a></label>
+  <input id="GEMINI_API_KEY" placeholder="AIza..." />
+</div>
+<div class="row">
+  <label><span>OPENAI API KEY</span><a href="https://platform.openai.com/api-keys" target="_blank">Get key →</a></label>
+  <input id="OPENAI_API_KEY" placeholder="sk-..." />
+  <div class="hint">Required for screen analysis (GPT-4o vision)</div>
+</div>
+
+<div class="section">REQUIRED — Live transcription</div>
+<div class="row">
+  <label><span>DEEPGRAM API KEY</span><a href="https://console.deepgram.com" target="_blank">Get $200 free →</a></label>
+  <input id="DEEPGRAM_API_KEY" placeholder="Token ..." />
+</div>
+
+<div class="section opt">OPTIONAL — Web search</div>
+<div class="row">
+  <label><span>TAVILY API KEY</span><a href="https://tavily.com" target="_blank">Get free key →</a></label>
+  <input id="TAVILY_API_KEY" placeholder="tvly-..." />
+  <div class="hint">Lets MockMate search for company info in real time</div>
+</div>
+
+<div class="err" id="err"></div>
+<div class="req" id="req">Add at least one LLM key + DEEPGRAM_API_KEY to continue.</div>
+<button id="btn" disabled onclick="save()">Save &amp; Start MockMate →</button>
+<div class="saving" id="saving">Saving and restarting…</div>
+
+<script>
+const KEYS = ['GROQ_API_KEY','GEMINI_API_KEY','OPENAI_API_KEY','DEEPGRAM_API_KEY','TAVILY_API_KEY']
+const LLM  = ['GROQ_API_KEY','GEMINI_API_KEY','OPENAI_API_KEY']
+
+function vals() {
+  const v = {}
+  KEYS.forEach(k => { v[k] = document.getElementById(k).value.trim() })
+  return v
+}
+
+function check() {
+  const v = vals()
+  const hasLLM = LLM.some(k => v[k])
+  const hasDG  = !!v.DEEPGRAM_API_KEY
+  document.getElementById('btn').disabled = !(hasLLM && hasDG)
+  document.getElementById('req').style.display = (hasLLM && hasDG) ? 'none' : 'block'
+}
+
+KEYS.forEach(k => document.getElementById(k).addEventListener('input', check))
+
+async function save() {
+  const v = vals()
+  const lines = KEYS.filter(k => v[k]).map(k => `${k}=${v[k]}`).concat(['PORT=3002']).join('\n') + '\n'
+  document.getElementById('btn').disabled = true
+  document.getElementById('saving').style.display = 'block'
+  document.getElementById('err').style.display = 'none'
+  try {
+    const result = await window.electronAPI.writeEnv(lines)
+    if (!result.ok) throw new Error(result.error || 'Write failed')
+    await window.electronAPI.relaunchApp()
+  } catch(e) {
+    document.getElementById('err').textContent = '⚠ ' + e.message
+    document.getElementById('err').style.display = 'block'
+    document.getElementById('btn').disabled = false
+    document.getElementById('saving').style.display = 'none'
+  }
+}
+</script>
+</body>
+</html>

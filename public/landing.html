@@ -558,6 +558,9 @@
       }
 
     } else if (isMac) {
+      // Send macOS users to the releases page rather than a direct .dmg link.
+      // The releases page always resolves (never 404s) whether or not the .dmg
+      // has been built yet, and lists both Apple Silicon (arm64) and Intel (x64).
       ids.forEach(id => {
         const el = document.getElementById(id)
         if (!el) return
@@ -571,7 +574,7 @@
       if (ctas) {
         const badge = document.createElement('div')
         badge.style.cssText = 'width:100%;text-align:center;font-size:12px;color:#475569;margin-top:-8px'
-        badge.textContent = 'macOS 12+ · See Releases page'
+        badge.textContent = 'macOS 12+ · Apple Silicon & Intel .dmg on the releases page'
         ctas.appendChild(badge)
       }
     }

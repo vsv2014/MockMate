@@ -134,7 +134,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
       }
 
       sock.onerror = () => fail('connection error')
-      sock.onclose = ev => { if (!userStop.current) fail(ev?.reason || `closed (${ev?.code})`) }
+      sock.onclose = ev => { if (!userStop.current) fail(ev?.reason || `closed (${ev?.code || '?'})`) }
     } catch (e) {
       fail(e.message)
     }

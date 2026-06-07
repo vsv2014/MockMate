@@ -25,6 +25,7 @@
     "directories": {
       "output": "release"
     },
+    "asar": false,
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -32,14 +33,12 @@
       "src/delivery.js",
       "server.js",
       "server-entry.cjs",
+      "setup.html",
       "package.json",
       ".env",
       "node_modules/**/*",
       "!node_modules/electron/**/*",
       "!node_modules/.cache/**/*"
-    ],
-    "asarUnpack": [
-      "node_modules/**/*.node"
     ],
     "extraFiles": [
       {
@@ -50,20 +49,44 @@
     "win": {
       "target": [
         {
-          "target": "nsis",
+          "target": "zip",
           "arch": [
             "x64"
           ]
         }
       ],
       "icon": "assets/icon.png",
-      "artifactName": "MockMate-Setup-${version}.exe"
+      "artifactName": "MockMate-${version}-Windows.${ext}"
     },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "shortcutName": "MockMate"
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "public.app-category.productivity",
+      "artifactName": "MockMate-${version}-${arch}.${ext}"
+    },
+    "dmg": {
+      "writeUpdateInfo": false
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Utility",
+      "artifactName": "MockMate-${version}.${ext}"
     }
   },
   "dependencies": {
