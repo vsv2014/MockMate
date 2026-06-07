@@ -515,9 +515,10 @@
     const isMac = ua.includes('Macintosh') || ua.includes('Mac OS')
     const isLinux = ua.includes('Linux') && !ua.includes('Android')
 
-    const WINDOWS_URL = 'https://github.com/vsv2014/MockMate/releases/latest/download/MockMate-1.0.0-Windows.zip'
-    const LINUX_URL   = 'https://github.com/vsv2014/MockMate/releases/latest/download/MockMate-1.0.0.AppImage'
-    const ALL_URL     = 'https://github.com/vsv2014/MockMate/releases/latest'
+    // All buttons point to the Releases PAGE (never a direct filename) so a download
+    // link can never 404 — the page always loads and lists whatever build is there,
+    // regardless of version or which artifacts have been uploaded yet.
+    const ALL_URL = 'https://github.com/vsv2014/MockMate/releases/latest'
 
     const ids = ['nav-download', 'hero-download', 'cta-download']
 
@@ -525,8 +526,8 @@
       ids.forEach(id => {
         const el = document.getElementById(id)
         if (!el) return
-        el.href = WINDOWS_URL
-        el.removeAttribute('target')
+        el.href = ALL_URL
+        el.target = '_blank'
       })
       document.getElementById('hero-download').innerHTML = '↓ Download for Windows'
       document.getElementById('nav-download').textContent = 'Download for Windows →'
@@ -535,7 +536,7 @@
       if (ctas) {
         const badge = document.createElement('div')
         badge.style.cssText = 'width:100%;text-align:center;font-size:12px;color:#475569;margin-top:-8px'
-        badge.textContent = 'Windows 10/11 · 64-bit · Extract zip → run MockMate.exe'
+        badge.textContent = 'Windows 10/11 · 64-bit · Run the installer · auto-updates'
         ctas.appendChild(badge)
       }
 
@@ -543,8 +544,8 @@
       ids.forEach(id => {
         const el = document.getElementById(id)
         if (!el) return
-        el.href = LINUX_URL
-        el.removeAttribute('target')
+        el.href = ALL_URL
+        el.target = '_blank'
       })
       document.getElementById('hero-download').innerHTML = '↓ Download for Linux'
       document.getElementById('nav-download').textContent = 'Download for Linux →'

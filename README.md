@@ -12,12 +12,16 @@ Grab the latest build from the [**Releases page**](https://github.com/vsv2014/Mo
 
 | Platform | File | Run |
 |---|---|---|
-| **Windows** | `MockMate-1.0.0-Windows.zip` | Extract → run `MockMate.exe` |
+| **Windows** | `MockMate-Setup-1.0.0.exe` | Run the installer |
 | **Linux** | `MockMate-1.0.0.AppImage` | `chmod +x` → run it |
 | **macOS** | `MockMate-1.0.0-arm64.dmg` (Apple Silicon) / `-x64.dmg` (Intel) | Open the dmg → drag to Applications |
 
 On first launch, MockMate opens a **setup screen** where you paste your API keys — no manual
 file editing. Keys are saved locally and the app restarts ready to use.
+
+**Auto-update (Windows & Linux):** new versions download silently in the background and install
+the next time you reopen MockMate — no re-download needed. (macOS auto-update is pending code
+signing.)
 
 > **Launch MockMate _before_ you join the call.** It appears in the top-right corner; press `Alt+H` to hide/show.
 
@@ -208,7 +212,8 @@ are **never** stored here — they stay on the user's machine.
 ## Roadmap
 
 **Now**
-- Auto-update (`electron-updater`) + signed/notarized installers
+- ✅ Auto-update via `electron-updater` (Windows + Linux) — silent background install on restart
+- macOS code signing + notarization (unlocks macOS auto-update)
 - Accounts + billing rails (Stripe) — foundation of the managed subscription
 
 **Next**
@@ -231,7 +236,7 @@ npm run electron:dev         # Launch Electron overlay + API + Vite (recommended
 npm run dev                  # API server + Vite only (browser, no screen protection)
 npm run build                # Build the frontend (Vite → dist/)
 npm run electron:build       # Build installer for the current platform
-npm run electron:build:win   # Windows .zip
+npm run electron:build:win   # Windows installer (.exe, nsis)
 ```
 
 **Cross-platform builds** (Windows + Linux + macOS) are produced by GitHub Actions —
