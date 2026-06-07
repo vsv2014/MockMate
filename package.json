@@ -49,15 +49,28 @@
     "win": {
       "target": [
         {
-          "target": "zip",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
         }
       ],
       "icon": "assets/icon.png",
-      "artifactName": "MockMate-${version}-Windows.${ext}"
+      "artifactName": "MockMate-Setup-${version}.${ext}"
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "MockMate"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "vsv2014",
+        "repo": "MockMate"
+      }
+    ],
     "mac": {
       "target": [
         {

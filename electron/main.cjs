@@ -137,6 +137,23 @@ app.on('browser-window-created', (_, win) => {
   try { win.setContentProtection(process.platform !== 'linux') } catch {}
 })
 
+// Silent auto-update: download new releases in the background and install on the
+// NEXT quit. No prompt/notification on purpose — a toast during a screen share
+// would expose the app. The user just gets the new version next time they reopen.
+function setupAutoUpdate() {
+  if (!isProd) return
+  try {
+    const { autoUpdater } = require('electron-updater')
+    autoUpdater.autoDownload = true
+    autoUpdater.autoInstallOnAppQuit = true
+    autoUpdater.on('error', e => console.error('[updater]', e?.message))
+    autoUpdater.on('update-downloaded', i => console.log('[updater] ready, installs on quit:', i?.version))
+    autoUpdater.checkForUpdates().catch(e => console.error('[updater] check failed:', e?.message))
+    // Re-check every 6h for long-running sessions
+    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000)
+  } catch (e) { console.error('[updater] unavailable:', e?.message) }
+}
+
 app.whenReady().then(() => {
   loadEnv()
   if (!hasApiKeys()) {
@@ -144,6 +161,7 @@ app.whenReady().then(() => {
   } else {
     createMainWindow()
     launchTrayAndShortcuts()
+    setupAutoUpdate()
   }
 })
 
