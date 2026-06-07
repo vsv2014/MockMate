@@ -213,24 +213,55 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
   const [profile, setProfile] = useState(loadProfile)
   const [audioSources, setAudioSources] = useState([])
   const [sourceId, setSourceId] = useState('microphone')
-  const [providers, setProviders] = useState([])
+  const [providers, setProviders] = useState([])       // configured only (for default + validation)
+  const [allProviders, setAllProviders] = useState([]) // every model (for the dropdown)
   const [provider, setProvider] = useState(() => { try { return localStorage.getItem('llmProvider') || '' } catch { return '' } })
   const [dgAvailable, setDgAvailable] = useState(false)
+  // Inline API-key entry (replaces the old separate setup.html window).
+  const [showKeys, setShowKeys] = useState(false)
+  const [keyVals, setKeyVals] = useState({ GROQ_API_KEY: '', GEMINI_API_KEY: '', OPENAI_API_KEY: '', DEEPGRAM_API_KEY: '' })
+  const [savingKeys, setSavingKeys] = useState(false)
+  const [keyMsg, setKeyMsg] = useState('')
 
-  useEffect(() => {
-    fetch('/api/providers').then(r => r.json()).then(d => {
+  function refetchProviders() {
+    return fetch('/api/providers').then(r => r.json()).then(d => {
       const list = d.providers || []
       setProviders(list)
+      setAllProviders(d.allProviders || list.map(p => ({ ...p, configured: true })))
+      // Default selection must be a CONFIGURED provider (never auto-pick a locked one)
       setProvider(p => (p && list.some(x => x.id === p)) ? p : (list[0]?.id || ''))
       setDgAvailable(!!d.deepgram)
     }).catch(() => {})
+  }
+
+  async function saveKeys() {
+    const lines = Object.entries(keyVals).filter(([, v]) => v.trim()).map(([k, v]) => `${k}=${v.trim()}`).join('\n')
+    if (!lines) { setKeyMsg('Enter at least one key'); return }
+    setSavingKeys(true); setKeyMsg('')
+    try {
+      const r = await window.electronAPI?.writeEnv?.(lines + '\n')
+      if (!r?.ok) throw new Error(r?.error || 'Save failed')
+      await window.electronAPI?.applyKeys?.()      // restarts the API server (prod) so it picks up the keys
+      await new Promise(res => setTimeout(res, 1200))
+      await refetchProviders()
+      setKeyVals({ GROQ_API_KEY: '', GEMINI_API_KEY: '', OPENAI_API_KEY: '', DEEPGRAM_API_KEY: '' })
+      setShowKeys(false); setKeyMsg('✓ Saved')
+    } catch (e) { setKeyMsg('⚠ ' + e.message) }
+    setSavingKeys(false)
+  }
+
+  useEffect(() => {
+    refetchProviders()
     window.electronAPI?.getAudioSources?.().then(srcs => {
       setAudioSources(srcs || [])
-      // Auto-select system audio (screen source) as default — best for capturing interviewer
-      const screen = (srcs || []).find(s => /screen|entire|display/i.test(s.name))
-      if (screen) setSourceId(screen.id)
+      // Auto-select system audio (best for hearing the interviewer) — but NOT on
+      // Linux, where Chromium can't capture desktop/loopback audio. There the
+      // microphone is the only source that actually produces audio.
+      if (window.electronAPI?.platform !== 'linux') {
+        const screen = (srcs || []).find(s => /screen|entire|display/i.test(s.name))
+        if (screen) setSourceId(screen.id)
+      }
     })
-    // Default to system audio automatically — no user decision needed
   }, [])
 
   useEffect(() => { if (provider) { try { localStorage.setItem('llmProvider', provider) } catch {} } }, [provider])
@@ -252,6 +283,7 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
 
         <Field label="Your name"><input style={inp} value={profile.name || ''} placeholder="e.g. Charan" onChange={e => patch({ name: e.target.value })} /></Field>
         <Field label="Target role"><input style={inp} value={profile.targetRole || ''} placeholder="e.g. Senior AI Engineer" onChange={e => patch({ targetRole: e.target.value })} /></Field>
+        <Field label="Target company (sharpens 'why us' answers + web search)"><input style={inp} value={profile.targetCompany || ''} placeholder="e.g. Stripe" onChange={e => patch({ targetCompany: e.target.value })} /></Field>
         <Field label="Resume (optional — answers reference your projects)">
           <textarea rows={3} style={{ ...inp, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste resume text…" onChange={e => patch({ resume: e.target.value })} />
         </Field>
@@ -263,27 +295,56 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
             placeholder="e.g. 'Senior eng, talk like I'm chatting with a peer — casual, confident, short. Lean on my fintech work. Avoid buzzwords.'"
             onChange={e => patch({ customPrompt: e.target.value })} />
         </Field>
-        <Field label="Audio capture mode">
-          <div style={{ display: 'flex', gap: 6 }}>
-            {[
-              { id: audioSources.find(s => /screen|entire|display/i.test(s.name))?.id || 'microphone', label: '🖥️ System Audio', desc: 'Captures interviewer\'s voice from Zoom/Teams/Meet (recommended)' },
-              { id: 'microphone', label: '🎤 Microphone', desc: 'Use if system audio doesn\'t work on your setup' }
-            ].map(opt => (
-              <button key={opt.id} onClick={() => setSourceId(opt.id)}
-                style={{ flex: 1, padding: '8px', background: sourceId === opt.id ? 'rgba(109,40,217,0.3)' : 'rgba(255,255,255,0.04)', border: `1px solid ${sourceId === opt.id ? 'rgba(109,40,217,0.5)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 6, color: sourceId === opt.id ? '#c4b5fd' : '#64748b', cursor: 'pointer', fontSize: 12, textAlign: 'left' }}>
-                <div style={{ fontWeight: 600, marginBottom: 2 }}>{opt.label}</div>
-                <div style={{ fontSize: 10, opacity: 0.7, lineHeight: 1.3 }}>{opt.desc}</div>
-              </button>
-            ))}
-          </div>
+        <Field label="Audio source">
+          {(() => {
+            const systemId = audioSources.find(s => /screen|entire|display/i.test(s.name))?.id || 'microphone'
+            const onMic = sourceId === 'microphone'
+            return (
+              <div style={{ fontSize: 11, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>{onMic ? '🎤 Microphone' : '🖥️ System Audio'} <span style={{ color: '#475569' }}>· {onMic ? 'picks up your own voice too' : 'hears the interviewer (recommended)'}</span></span>
+                <button onClick={() => setSourceId(onMic ? systemId : 'microphone')}
+                  style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontSize: 11, textDecoration: 'underline', padding: 0 }}>
+                  {onMic ? 'Use System Audio' : 'Use microphone instead'}
+                </button>
+              </div>
+            )
+          })()}
         </Field>
-        {providers.length > 0 && (
-          <Field label="AI model">
-            <select style={inp} value={provider} onChange={e => setProvider(e.target.value)}>
-              {providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
-          </Field>
-        )}
+        <Field label="AI model">
+          {/* Only CONFIGURED providers — no locked/greyed clutter. Add keys below. */}
+          <select style={inp} value={provider} onChange={e => setProvider(e.target.value)} disabled={!providers.length}>
+            {!providers.length && <option value="">No models yet — add an API key below</option>}
+            {providers.map(p => (
+              <option key={p.id} value={p.id}>{p.label}</option>
+            ))}
+          </select>
+          <button onClick={() => { setShowKeys(s => !s); setKeyMsg('') }}
+            style={{ marginTop: 6, width: '100%', padding: '7px', background: providers.length ? 'rgba(255,255,255,0.05)' : 'rgba(124,58,237,0.25)', color: providers.length ? '#a5b4fc' : '#c4b5fd', border: '1px solid rgba(124,58,237,0.4)', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+            {providers.length ? (showKeys ? '× Close key entry' : '⚙ Add / manage API keys') : (showKeys ? '× Close' : '🔑 Add your API keys to get started')}
+          </button>
+          {showKeys && (
+            <div style={{ marginTop: 8, padding: 10, background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.4 }}>Paste a key to enable that provider. Leave others blank. Stored only on this machine.</div>
+              {[
+                { k: 'GROQ_API_KEY', label: 'Groq (free, fast)' },
+                { k: 'GEMINI_API_KEY', label: 'Google Gemini' },
+                { k: 'OPENAI_API_KEY', label: 'OpenAI' },
+                { k: 'DEEPGRAM_API_KEY', label: 'Deepgram (live transcription)' },
+              ].map(({ k, label }) => (
+                <input key={k} type="password" placeholder={label} value={keyVals[k]} autoComplete="off"
+                  onChange={e => setKeyVals(v => ({ ...v, [k]: e.target.value }))}
+                  style={{ ...inp, fontSize: 11 }} />
+              ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button onClick={saveKeys} disabled={savingKeys}
+                  style={{ flex: 1, padding: '7px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: savingKeys ? 'default' : 'pointer', opacity: savingKeys ? 0.6 : 1 }}>
+                  {savingKeys ? 'Saving…' : 'Save keys'}
+                </button>
+                {keyMsg && <span style={{ fontSize: 10, color: keyMsg.startsWith('⚠') ? '#fca5a5' : '#86efac' }}>{keyMsg}</span>}
+              </div>
+            </div>
+          )}
+        </Field>
 
         <Field label="Interview language">
           <select style={inp} value={profile.language || 'English'} onChange={e => patch({ language: e.target.value })}>
@@ -448,8 +509,12 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       clearInterval(streamTimer.current)
       hintInFlight.current = false
       const answerText = h.fullAnswer || h.sampleAnswer || ''
-      // Mark question confirmed AND attach answer to it
-      setTranscript(t => t.map(s => s.text === question ? { ...s, isQuestion: true, answer: '', hint: h } : s))
+      // Mark question confirmed AND attach answer. UPSERT — if it isn't in the feed
+      // yet (e.g. answered via the early-trigger before onFinal added it), add it now.
+      // This guarantees every answered question shows in the feed (fixes vanishing Qs).
+      setTranscript(t => t.some(s => s.text === question)
+        ? t.map(s => s.text === question ? { ...s, isQuestion: true, answer: '', hint: h } : s)
+        : [...t, { text: question, ts: Date.now(), isQuestion: true, answer: '', hint: h }])
       // Stream words — update both streamedAnswer and the transcript entry live
       if (answerText) {
         const words = answerText.split(' ')
@@ -486,10 +551,9 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const onFinal = useCallback(text => {
     const trimmed = text.trim()
     const words = trimmed.split(/\s+/).length
-    if (!trimmed || words < 4) return
-    setTranscript(t => [...t, { text: trimmed, ts: Date.now(), isQuestion: false }])
-    // If the early-trigger already fired the LLM for this same question, don't pay
-    // for a 2nd call — the early answer already covers it (P0-C token saver).
+    if (!trimmed || words < 3) return   // lower gate — catch short Qs ("why this approach?")
+    // If the early-trigger already answered this same question, it's already in the
+    // feed — don't pay for a 2nd call. Otherwise answer it (generateHint adds it).
     if (sameQuestion(trimmed, lastHintText.current)) return
     generateHint(trimmed)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -564,7 +628,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   // The only Live-specific action: the screen-share-safe protected window.
   const liveActions = pipSupported ? (
-    <IconBtn icon="🛡" active={!!pipWindow}
+    <IconBtn icon="shield" active={!!pipWindow}
       onClick={pipWindow ? () => { pipWindow.close(); setPipWindow(null) } : openProtectedPip}
       title={pipWindow ? 'Protected window ON — answers hidden from screen share' : 'Open protected window (hidden from screen share)'} />
   ) : null

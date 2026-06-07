@@ -176,14 +176,17 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
   }, [fail]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reconnect with capped exponential backoff; the mic/AudioContext stay alive.
+  // A live interview must NEVER permanently give up on a transient drop — Deepgram
+  // closes idle/long streams routinely, and the network blips. So we retry forever
+  // with a capped backoff, just staying in the "Reconnecting" state. The only hard
+  // stops are an explicit Deepgram auth/quota Error frame or a missing token (a bad
+  // key) — both handled in connectSocket via fail(), not here.
   function scheduleReconnect(reason) {
     if (userStop.current) return
     reconnectAttempts.current += 1
-    if (reconnectAttempts.current > MAX_RECONNECTS) {
-      return fail(`${reason} — could not reconnect after ${MAX_RECONNECTS} tries`)
-    }
     setActive(false); setReconnecting(true)
-    const delay = Math.min(8000, 500 * 2 ** (reconnectAttempts.current - 1))
+    // Backoff grows to 8s then holds there — keep trying indefinitely.
+    const delay = Math.min(8000, 500 * 2 ** Math.min(reconnectAttempts.current - 1, 4))
     clearTimeout(reconnectTimer.current)
     reconnectTimer.current = setTimeout(() => { connectSocket() }, delay)
   }
@@ -193,6 +196,16 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
     reconnectAttempts.current = 0
     try {
       const audioStream = await getStream(sourceId)
+      // No audio track = nothing to transcribe. On Linux, picking a screen/system
+      // source yields exactly this — Chromium can't capture desktop/loopback audio
+      // there — so we'd "connect" but hear silence forever. Fail loudly instead.
+      if (!audioStream.getAudioTracks().length) {
+        audioStream.getTracks().forEach(t => t.stop())
+        const linux = (typeof navigator !== 'undefined' && /Linux/.test(navigator.userAgent))
+        throw new Error(linux
+          ? 'No audio from System Audio (not supported on Linux). Switch to Microphone.'
+          : 'No audio track from the selected source. Try Microphone.')
+      }
       stream.current = audioStream
       await buildAudioGraph(audioStream)
       await connectSocket()

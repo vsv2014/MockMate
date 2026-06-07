@@ -26,6 +26,22 @@ const CATALOG = {
     label: 'Gemini 2.5 Flash', envKey: 'GEMINI_API_KEY',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
     model: () => process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+  },
+  // Anthropic via its OpenAI-compatible endpoint (works with the openai client).
+  claude_opus: {
+    label: 'Claude Opus 4.8', envKey: 'ANTHROPIC_API_KEY',
+    baseURL: 'https://api.anthropic.com/v1/',
+    model: () => 'claude-opus-4-8'
+  },
+  claude_sonnet: {
+    label: 'Claude Sonnet 4.6', envKey: 'ANTHROPIC_API_KEY',
+    baseURL: 'https://api.anthropic.com/v1/',
+    model: () => 'claude-sonnet-4-6'
+  },
+  claude_haiku: {
+    label: 'Claude Haiku 4.5 (fast)', envKey: 'ANTHROPIC_API_KEY',
+    baseURL: 'https://api.anthropic.com/v1/',
+    model: () => 'claude-haiku-4-5'
   }
 }
 
@@ -33,13 +49,21 @@ export function searchConfigured() {
   return !!(process.env.TAVILY_API_KEY || process.env.SERPER_API_KEY)
 }
 
-// Which providers are actually configured (have a key) — for the UI picker.
+// Which providers are actually configured (have a key) — used for default selection + fallback.
 export function availableProviders() {
   const list = Object.entries(CATALOG)
     .filter(([, p]) => process.env[p.envKey])
     .map(([id, p]) => ({ id, label: p.label }))
   if (process.env.LLM_API_KEY) list.push({ id: 'custom', label: process.env.LLM_MODEL || 'Custom model' })
   return list
+}
+
+// EVERY model in the catalog, each flagged whether it has a key — for the UI dropdown.
+// Configured ones are selectable; the rest are shown disabled with a "needs key" hint.
+export function allProviders() {
+  return Object.entries(CATALOG).map(([id, p]) => ({
+    id, label: p.label, envKey: p.envKey, configured: !!process.env[p.envKey]
+  }))
 }
 
 // Vision-capable provider — GPT-4o preferred, Gemini as fallback.
@@ -114,10 +138,17 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
     try { prov = resolveProvider(provId) } catch { continue }
     const llm = clientFor(prov), model = prov.model
 
+    // Gemini 2.5 models THINK by default — reasoning silently eats the token
+    // budget, so the actual answer gets truncated into invalid JSON. Disable it
+    // and force a clean JSON object (no ```json fences). Scoped to Gemini so
+    // Groq/OpenAI requests are unchanged.
+    const isGemini = /gemini/i.test(model)
     const ask = async msgs => {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const r = await llm.chat.completions.create({ model, max_tokens: maxTokens, messages: msgs })
+          const params = { model, max_tokens: maxTokens, messages: msgs }
+          if (isGemini) { params.reasoning_effort = 'none'; params.response_format = { type: 'json_object' } }
+          const r = await llm.chat.completions.create(params)
           return r.choices[0].message.content
         } catch (e) {
           if (!isRateLimit(e) || attempt === 1) throw e

@@ -190,7 +190,7 @@ function ElectronShell() {
         )}
         {isLinux && (
           <div style={{ background: '#431407', border: '1px solid #7c2d12', borderRadius: 7, padding: '7px 10px', marginBottom: 8, fontSize: 11, color: '#fdba74', lineHeight: 1.6 }}>
-            ⚠ <strong>Screen protection unavailable on Linux.</strong> This overlay will be visible in Zoom, Teams, and screen recordings. Use Windows or macOS for full invisibility.
+            ⚠ <strong>Linux can't hide this overlay from screen share</strong> (no OS support). For practice & coaching this doesn't matter. For a live call, put MockMate on a <strong>second monitor you don't share</strong> — or use Windows/macOS for a fully hidden overlay.
           </div>
         )}
         {meetingActive && (
@@ -382,6 +382,21 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
 
 // Clean, evenly-sized icon button with a tooltip (shows the shortcut). Big enough
 // to hit under interview pressure; no cryptic text labels.
+// Inline SVG icons — emoji glyphs render as empty boxes on Linux (no color-emoji
+// font is guaranteed), so every header icon is a real vector that draws on any OS.
+function Glyph({ name }) {
+  const p = { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }
+  switch (name) {
+    case 'eye':      return <svg {...p}><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3" /></svg>
+    case 'minimize': return <svg {...p}><line x1="5" y1="12" x2="19" y2="12" /></svg>
+    case 'expand':   return <svg {...p}><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
+    case 'stop':     return <svg {...p}><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+    case 'close':    return <svg {...p}><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+    case 'shield':   return <svg {...p}><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" /></svg>
+    default:         return <span style={{ fontSize: 14 }}>{name}</span>
+  }
+}
+
 export function IconBtn({ icon, title, onClick, active, danger }) {
   const [hover, setHover] = useState(false)
   const base = danger ? '#f87171' : active ? '#4ade80' : '#94a3b8'
@@ -394,7 +409,7 @@ export function IconBtn({ icon, title, onClick, active, danger }) {
         width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: bg, color: base, border: 'none', borderRadius: 7, cursor: 'pointer',
         fontSize: 14, lineHeight: 1, transition: 'background 0.12s', flexShrink: 0
-      }}>{icon}</button>
+      }}><Glyph name={icon} /></button>
   )
 }
 
@@ -439,12 +454,12 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
             : <span style={{ fontSize: 12, color: '#a78bfa', fontWeight: 700 }}>{title || 'MockMate'}</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }} onMouseDown={e => e.stopPropagation()}>
             {actions}
-            <IconBtn icon="👁" onClick={onStealth} title={inElectron ? 'Hide overlay  (Alt+H)' : 'Dim  (Alt+H)'} />
-            <IconBtn icon={minimized ? '▢' : '—'} onClick={onMinimize} title={minimized ? 'Expand' : 'Minimize'} />
+            <IconBtn icon="eye" onClick={onStealth} title={inElectron ? 'Hide overlay  (Alt+H)' : 'Dim  (Alt+H)'} />
+            <IconBtn icon={minimized ? 'expand' : 'minimize'} onClick={onMinimize} title={minimized ? 'Expand' : 'Minimize'} />
             {confirming
               ? <button onClick={handleClose} onMouseDown={e => e.stopPropagation()} title="Confirm end"
                   style={{ height: 28, padding: '0 10px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>End?</button>
-              : <IconBtn icon={confirmClose ? '⏹' : '✕'} onClick={handleClose} danger title={confirmClose ? 'End interview' : 'Close'} />}
+              : <IconBtn icon={confirmClose ? 'stop' : 'close'} onClick={handleClose} danger title={confirmClose ? 'End interview' : 'Close'} />}
           </div>
         </div>
 
@@ -461,7 +476,13 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         )}
       </div>
 
-      <style>{`@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}`}</style>
+      <style>{`@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+        #mockmate-overlay *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.18) transparent}
+        #mockmate-overlay ::-webkit-scrollbar{width:6px;height:6px}
+        #mockmate-overlay ::-webkit-scrollbar-track{background:transparent}
+        #mockmate-overlay ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.16);border-radius:3px}
+        #mockmate-overlay ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.3)}
+        #mockmate-overlay ::-webkit-scrollbar-corner{background:transparent}`}</style>
     </div>
   )
 }
