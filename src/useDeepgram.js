@@ -58,7 +58,9 @@ export function useDeepgram(onFinal, onFail) {
   }, [teardown])
 
   const start = useCallback(async () => {
+    if (ws.current) return  // already running — guard against concurrent calls
     userStop.current = false
+    try {
     const res = await fetch('/api/deepgram-token', { method: 'POST' }).then(r => r.json())
     if (!res.access_token) throw new Error(res.error || 'No Deepgram token')
     const mic = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } })
@@ -90,6 +92,9 @@ export function useDeepgram(onFinal, onFail) {
     }
     sock.onerror = () => fail('connection error')
     sock.onclose = ev => { if (!userStop.current) fail(ev?.reason || `closed (${ev?.code || '?'})`) }
+    } catch (e) {
+      fail(e.message)
+    }
   }, [fail])
 
   useEffect(() => () => { userStop.current = true; teardown() }, [teardown])
