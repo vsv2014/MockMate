@@ -36,6 +36,7 @@ function ElectronShell() {
 
   const [noProviders, setNoProviders] = useState(false)
   const [meetingActive, setMeetingActive] = useState(false)
+  const [codingDetected, setCodingDetected] = useState(false)
   const [browserShareWarning, setBrowserShareWarning] = useState(false)
   useEffect(() => {
     fetch('/api/providers').then(r => r.json()).then(d => {
@@ -43,34 +44,48 @@ function ElectronShell() {
     }).catch(() => {})
   }, [])
 
-  // Auto-detect meeting apps (Zoom, Teams, Meet)
+  // Auto-detect meeting apps (Zoom, Teams, Meet) + coding platforms (LeetCode, etc.)
   useEffect(() => {
-    window.electronAPI?.onMeetingDetected(active => setMeetingActive(active))
-    window.electronAPI?.onShortcutStealth?.(() => setStealth(s => !s))
+    const cleanups = []
+    cleanups.push(window.electronAPI?.onMeetingDetected(active => setMeetingActive(active)))
+    cleanups.push(window.electronAPI?.onCodingDetected?.(active => setCodingDetected(active)))
+    cleanups.push(window.electronAPI?.onShortcutStealth?.(() => setStealth(s => !s)))
     // Browser mode: warn if screen capture is likely active (getDisplayMedia check)
     if (!window.electronAPI?.isElectron) {
       navigator.mediaDevices?.addEventListener?.('devicechange', () => setBrowserShareWarning(true))
     }
+    return () => cleanups.forEach(c => c?.())
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Listen for Ctrl+Shift+U screen captures from Electron
+  // Run vision analysis on a screenshot (optionally in a chosen coding language).
+  const lastShotRef = useRef(null)
+  const runAnalysis = useCallback(async (base64, language) => {
+    if (!base64) return
+    setScreenAnalyzing(true)
+    setScreenAnalysis(null)
+    try {
+      const d = await fetch('/api/analyze-screen', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64, profile: profileRef.current, language })
+      }).then(r => r.json())
+      setScreenAnalysis(d.analysis || { error: d.error })
+    } catch (e) {
+      setScreenAnalysis({ error: e.message })
+    }
+    setScreenAnalyzing(false)
+  }, [])
+
+  // Re-solve the SAME captured screen in a different language (no re-capture).
+  const reanalyze = useCallback((language) => { if (lastShotRef.current) runAnalysis(lastShotRef.current, language) }, [runAnalysis])
+
+  // Listen for screen captures (Ctrl+Shift+U or "Solve it" button) from Electron
   useEffect(() => {
-    window.electronAPI?.onScreenCaptured(async (base64) => {
-      setScreenAnalyzing(true)
-      setScreenAnalysis(null)
-      // Switch to home if needed so panel is visible
-      try {
-        const d = await fetch('/api/analyze-screen', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: base64, profile: profileRef.current })
-        }).then(r => r.json())
-        setScreenAnalysis(d.analysis || { error: d.error })
-      } catch (e) {
-        setScreenAnalysis({ error: e.message })
-      }
-      setScreenAnalyzing(false)
+    const cleanup = window.electronAPI?.onScreenCaptured((base64) => {
+      lastShotRef.current = base64       // remember it so language switching can re-solve
+      runAnalysis(base64)
     })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    return () => cleanup?.()
+  }, [runAnalysis])
 
   // Resize + stealth keyboard shortcut
   useEffect(() => {
@@ -142,6 +157,8 @@ function ElectronShell() {
       onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
       onResize={startResize} onDrag={startDrag}
       screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} onDismissScreen={() => setScreenAnalysis(null)}
+      codingDetected={codingDetected} onCaptureScreen={() => window.electronAPI?.captureScreen?.()}
+      onReanalyze={reanalyze}
       onPipActive={active => setStealth(active)} />
   )
 
@@ -230,50 +247,175 @@ function ElectronShell() {
   )
 }
 
-// ── Reusable floating panel shell ─────────────────────────────────────────────
+// Lightweight, dependency-free syntax highlighter — generic across Python/JS/
+// Java/C++/Go/TS. Tokenizes comments, strings, numbers, and common keywords;
+// good enough for a read-at-a-glance hint, no heavy library in the bundle.
+const CODE_KEYWORDS = new Set([
+  'function','def','return','if','else','elif','for','while','class','const','let','var',
+  'int','long','float','double','void','bool','boolean','char','string','str','public','private',
+  'protected','static','new','import','from','export','async','await','try','catch','except',
+  'finally','throw','throws','raise','break','continue','in','of','is','not','and','or','None',
+  'null','nil','true','false','True','False','this','self','super','struct','func','fn','package',
+  'interface','type','enum','switch','case','default','do','lambda','yield','with','as','typeof',
+  'instanceof','extends','implements','abstract','final','override','val','var','print','println','echo'
+])
+function highlightCode(code) {
+  const re = /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_$][A-Za-z0-9_$]*)|(\s+)|([^\sA-Za-z0-9_$]+)/g
+  const out = []
+  let m, i = 0
+  while ((m = re.exec(code)) !== null) {
+    let color = '#e6edf3'
+    if (m[1]) color = '#8b949e'                              // comment
+    else if (m[2]) color = '#a5d6ff'                         // string
+    else if (m[3]) color = '#79c0ff'                         // number
+    else if (m[4]) color = CODE_KEYWORDS.has(m[4]) ? '#ff7b72' : '#e6edf3'  // keyword / identifier
+    out.push(<span key={i++} style={{ color }}>{m[0]}</span>)
+  }
+  return out
+}
+
+// ── Code block with one-tap copy + syntax highlighting — the core of Coding mode ──
+export function CodeBlock({ code, language }) {
+  const [copied, setCopied] = useState(false)
+  function copy() {
+    navigator.clipboard?.writeText(code || '')
+    setCopied(true); setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <div style={{ background: '#0d1117', border: '1px solid #1f2733', borderRadius: 8, marginBottom: 8, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderBottom: '1px solid #1f2733', background: 'rgba(255,255,255,0.02)' }}>
+        <span style={{ fontSize: 10, color: '#7d8590', fontFamily: 'monospace' }}>{language || 'code'}</span>
+        <button onClick={copy} style={{ marginLeft: 'auto', background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copied ? '#4ade80' : '#94a3b8', border: 'none', borderRadius: 5, padding: '2px 9px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+          {copied ? '✓ Copied' : '⧉ Copy'}
+        </button>
+      </div>
+      <pre style={{ margin: 0, padding: '10px 12px', overflowX: 'auto', maxHeight: 260 }}>
+        <code style={{ fontFamily: "'Menlo','Consolas',monospace", fontSize: 12, lineHeight: 1.6, color: '#e6edf3', whiteSpace: 'pre' }}>{highlightCode(code || '')}</code>
+      </pre>
+    </div>
+  )
+}
+
+const CODE_LANGS = ['Python', 'Java', 'C++', 'JavaScript', 'Go', 'TypeScript']
+
 // ── Screen Analysis Panel — shown when Ctrl+Shift+U is pressed ───────────────
-export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss }) {
+export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyze, onRecapture }) {
   const TYPE_LABEL = { coding: '💻 Coding', system_design: '🏗️ System Design', behavioral: '🧩 Behavioral', slide: '📊 Slide', other: '💬 General' }
   if (!analyzing && !analysis) return null
+  const isCoding = analysis?.contentType === 'coding'
+  // Coding mode uses a green/dev accent; everything else keeps the amber capture accent.
+  const accent = isCoding ? 'rgba(34,197,94,0.25)' : 'rgba(234,179,8,0.25)'
+  const accentBg = isCoding ? 'rgba(34,197,94,0.06)' : 'rgba(234,179,8,0.08)'
   return (
-    <div style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.25)', borderRadius: 10, padding: '12px', marginBottom: 10 }}>
+    <div style={{ background: accentBg, border: `1px solid ${accent}`, borderRadius: 10, padding: '12px', marginBottom: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#fbbf24' }}>📸 Screen Analysis</span>
-        <span style={{ fontSize: 9, color: '#92400e', background: 'rgba(234,179,8,0.15)', padding: '1px 6px', borderRadius: 8 }}>Ctrl+Shift+U</span>
-        <button onClick={onDismiss} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 13 }}>✕</button>
+        <span style={{ fontSize: 12, fontWeight: 700, color: isCoding ? '#4ade80' : '#fbbf24' }}>{isCoding ? '💻 Coding Solution' : '📸 Screen Analysis'}</span>
+        <span style={{ fontSize: 9, color: '#64748b', background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 8 }}>Ctrl+Shift+U</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          {onRecapture && <button onClick={onRecapture} title="Re-capture the screen" style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13 }}>↻</button>}
+          <button onClick={onDismiss} title="Dismiss" style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 13 }}>✕</button>
+        </div>
       </div>
       {analyzing
         ? <div style={{ fontSize: 12, color: '#92400e' }}>Analyzing screen…</div>
         : analysis?.error
           ? <div style={{ fontSize: 12, color: '#f87171' }}>⚠ {analysis.error}</div>
-          : analysis && (
-            <>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
-                <span style={{ fontSize: 9, padding: '1px 7px', background: 'rgba(234,179,8,0.15)', color: '#fbbf24', borderRadius: 10, fontWeight: 700 }}>{TYPE_LABEL[analysis.contentType] || analysis.contentType}</span>
-                {analysis.pattern && <span style={{ fontSize: 9, padding: '1px 7px', background: 'rgba(109,40,217,0.3)', color: '#c7d2fe', borderRadius: 10, fontWeight: 700 }}>⚡ {analysis.pattern}</span>}
-                {analysis.complexity && <span style={{ fontSize: 9, padding: '1px 7px', background: 'rgba(28,25,23,0.8)', color: '#a8a29e', borderRadius: 10, fontFamily: 'monospace' }}>{analysis.complexity}</span>}
-              </div>
-              {analysis.detectedText && <div style={{ fontSize: 11, color: '#a16207', fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(234,179,8,0.3)', paddingLeft: 7 }}>{analysis.detectedText}</div>}
-              {analysis.resumeStory && <div style={{ fontSize: 11, color: '#86efac', borderLeft: '2px solid #4ade80', paddingLeft: 7, marginBottom: 8 }}>{analysis.resumeStory}</div>}
-              <div style={{ fontSize: 14, color: '#fef3c7', lineHeight: 1.7, marginBottom: 8 }}>{analysis.fullAnswer}</div>
-              {analysis.watchOut && <div style={{ fontSize: 11, color: '#f59e0b' }}>⚠ {analysis.watchOut}</div>}
-            </>
-          )
+          : isCoding
+            ? (
+              <>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                  {analysis.pattern && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(109,40,217,0.3)', color: '#c7d2fe', borderRadius: 10, fontWeight: 700 }}>⚡ {analysis.pattern}</span>}
+                  {analysis.complexity && <span style={{ fontSize: 9, padding: '2px 8px', background: '#0d1117', color: '#7ee787', borderRadius: 10, fontFamily: 'monospace' }}>{analysis.complexity}</span>}
+                  {analysis.language && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(255,255,255,0.06)', color: '#94a3b8', borderRadius: 10 }}>{analysis.language}</span>}
+                </div>
+                {analysis.detectedText && <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(34,197,94,0.3)', paddingLeft: 7 }}>{analysis.detectedText}</div>}
+                {/* Language switcher — re-solve the same screen in another language, no re-capture */}
+                {onReanalyze && (
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                    {CODE_LANGS.map(lang => {
+                      const on = (analysis.language || '').toLowerCase() === lang.toLowerCase()
+                      return (
+                        <button key={lang} onClick={() => onReanalyze(lang)} title={`Solve in ${lang}`}
+                          style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer', border: 'none', fontWeight: 600,
+                            background: on ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.05)', color: on ? '#4ade80' : '#64748b' }}>{lang}</button>
+                      )
+                    })}
+                  </div>
+                )}
+                {Array.isArray(analysis.approach) && analysis.approach.length > 0 && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 9, color: '#475569', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>APPROACH</div>
+                    {analysis.approach.map((step, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 3, fontSize: 12, color: '#cbd5e1' }}>
+                        <span style={{ color: '#4ade80', flexShrink: 0 }}>{i + 1}.</span><span>{step}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {analysis.code && <CodeBlock code={analysis.code} language={analysis.language} />}
+                {Array.isArray(analysis.edgeCases) && analysis.edgeCases.length > 0 && (
+                  <div style={{ marginBottom: 6 }}>
+                    <div style={{ fontSize: 9, color: '#475569', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>EDGE CASES</div>
+                    {analysis.edgeCases.map((ec, i) => (
+                      <div key={i} style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>• {ec}</div>
+                    ))}
+                  </div>
+                )}
+                {analysis.watchOut && <div style={{ fontSize: 11, color: '#f59e0b' }}>⚠ {analysis.watchOut}</div>}
+              </>
+            )
+            : analysis && (
+              <>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                  <span style={{ fontSize: 9, padding: '1px 7px', background: 'rgba(234,179,8,0.15)', color: '#fbbf24', borderRadius: 10, fontWeight: 700 }}>{TYPE_LABEL[analysis.contentType] || analysis.contentType}</span>
+                </div>
+                {analysis.detectedText && <div style={{ fontSize: 11, color: '#a16207', fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(234,179,8,0.3)', paddingLeft: 7 }}>{analysis.detectedText}</div>}
+                {analysis.resumeStory && <div style={{ fontSize: 11, color: '#86efac', borderLeft: '2px solid #4ade80', paddingLeft: 7, marginBottom: 8 }}>{analysis.resumeStory}</div>}
+                <div style={{ fontSize: 14, color: '#fef3c7', lineHeight: 1.7, marginBottom: 8 }}>{analysis.fullAnswer}</div>
+                {analysis.watchOut && <div style={{ fontSize: 11, color: '#f59e0b' }}>⚠ {analysis.watchOut}</div>}
+              </>
+            )
       }
     </div>
   )
 }
 
-export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, onResize, onStealth, onMinimize, onClose, title, extra, opacity = 0.95, onOpacity, autoHeight, clickThrough, onClickThrough }) {
+// Clean, evenly-sized icon button with a tooltip (shows the shortcut). Big enough
+// to hit under interview pressure; no cryptic text labels.
+export function IconBtn({ icon, title, onClick, active, danger }) {
+  const [hover, setHover] = useState(false)
+  const base = danger ? '#f87171' : active ? '#4ade80' : '#94a3b8'
+  const bg = hover ? (danger ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.1)')
+    : active ? 'rgba(34,197,94,0.14)' : 'transparent'
+  return (
+    <button onClick={onClick} title={title}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: bg, color: base, border: 'none', borderRadius: 7, cursor: 'pointer',
+        fontSize: 14, lineHeight: 1, transition: 'background 0.12s', flexShrink: 0
+      }}>{icon}</button>
+  )
+}
+
+export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, onResize, onStealth, onMinimize, onClose, title, extra, actions, opacity = 0.95, autoHeight, clickThrough, confirmClose }) {
+  const [confirming, setConfirming] = useState(false)
+  const confirmTimer = useRef(null)
+  function handleClose() {
+    if (!confirmClose) return onClose?.()
+    if (confirming) { clearTimeout(confirmTimer.current); onClose?.(); return }
+    setConfirming(true)
+    confirmTimer.current = setTimeout(() => setConfirming(false), 3000)
+  }
   return (
     <div id="mockmate-overlay" style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }}>
       <div style={{
         position: 'absolute', left: 0, top: 0,
         width: panelSize.w,
         height: (minimized || autoHeight) ? 'auto' : panelSize.h,
-        background: 'rgba(8,9,14,0.93)',
+        background: 'rgba(8,9,14,0.94)',
         border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 12,
+        borderRadius: 14,
         boxShadow: '0 16px 64px rgba(0,0,0,0.85)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
@@ -286,31 +428,23 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         color: '#e2e8f0',
         userSelect: 'none'
       }}>
-        {/* Title bar */}
+        {/* Header — status/title on the left, a tidy icon toolbar on the right */}
         <div onMouseDown={onDrag} style={{
-          display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+          display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px 7px 12px',
           borderBottom: '1px solid rgba(255,255,255,0.06)',
           background: 'rgba(0,0,0,0.25)', cursor: 'grab', flexShrink: 0
         }}>
-          <span style={{ fontSize: 11, color: '#7c3aed', fontWeight: 800 }}>M</span>
-          <span style={{ fontSize: 11, color: '#6d28d9', fontWeight: 700 }}>{title || 'MockMate'}</span>
-          {extra && <div onMouseDown={e => e.stopPropagation()}>{extra}</div>}
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }} onMouseDown={e => e.stopPropagation()}>
-            {/* Transparency slider */}
-            {onOpacity && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="Transparency">
-                <span style={{ fontSize: 9, color: '#334155' }}>◑</span>
-                <input type="range" min="0.2" max="1" step="0.05" value={opacity}
-                  onChange={e => onOpacity(parseFloat(e.target.value))}
-                  style={{ width: 52, accentColor: '#6d28d9', cursor: 'pointer' }} />
-              </div>
-            )}
-            <Btn onClick={onStealth} title={inElectron ? 'Hide (Alt+H) — restore with Alt+H' : 'Dim (Alt+H)'}>
-              {inElectron ? 'hide' : 'dim'}
-            </Btn>
-            <Btn onClick={onClickThrough} active={clickThrough} title="Click-through mode — interact with things behind">click-thru</Btn>
-            <Btn onClick={onMinimize} title="Compact">{minimized ? '▲' : '▼'}</Btn>
-            <Btn onClick={onClose} danger title="Close">✕</Btn>
+          {extra
+            ? <div onMouseDown={e => e.stopPropagation()}>{extra}</div>
+            : <span style={{ fontSize: 12, color: '#a78bfa', fontWeight: 700 }}>{title || 'MockMate'}</span>}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }} onMouseDown={e => e.stopPropagation()}>
+            {actions}
+            <IconBtn icon="👁" onClick={onStealth} title={inElectron ? 'Hide overlay  (Alt+H)' : 'Dim  (Alt+H)'} />
+            <IconBtn icon={minimized ? '▢' : '—'} onClick={onMinimize} title={minimized ? 'Expand' : 'Minimize'} />
+            {confirming
+              ? <button onClick={handleClose} onMouseDown={e => e.stopPropagation()} title="Confirm end"
+                  style={{ height: 28, padding: '0 10px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>End?</button>
+              : <IconBtn icon={confirmClose ? '⏹' : '✕'} onClick={handleClose} danger title={confirmClose ? 'End interview' : 'Close'} />}
           </div>
         </div>
 

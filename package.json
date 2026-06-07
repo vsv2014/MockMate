@@ -92,6 +92,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
+    "electron-updater": "^6.8.9",
     "express": "^4.21.2",
     "openai": "^6.25.0",
     "react": "^18.3.1",

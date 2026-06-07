@@ -10,8 +10,8 @@ function profileBlock(p = {}) {
   if (p.name) s += `\nCandidate name: ${p.name}`
   if (p.targetRole) s += `\nTarget role: ${p.targetRole}`
   if (p.targetCompany) s += `\nTarget company: ${p.targetCompany}`
-  if (p.resume) s += `\n\nResume:\n${String(p.resume).slice(0, 3000)}`
-  if (p.jobDescription) s += `\n\nJob description:\n${String(p.jobDescription).slice(0, 2000)}`
+  if (p.resume) s += `\n\nResume:\n${String(p.resume).slice(0, 1800)}`
+  if (p.jobDescription) s += `\n\nJob description:\n${String(p.jobDescription).slice(0, 1200)}`
   return s
 }
 
@@ -57,12 +57,29 @@ export async function generateHint({ question, profile = {}, conversationHistory
   const langInstruction = language && language !== 'English'
     ? `\n\nLANGUAGE: Respond ENTIRELY in ${language}. The fullAnswer, sampleAnswer, keyPoints, opener, resumeStory, and watchOut must ALL be written in ${language}. Do not mix languages.`
     : ''
+  // Candidate's own persona/style instructions — highest-priority steering (like a custom prompt).
+  const customBlock = profile.customPrompt?.trim()
+    ? `\n\nTHE CANDIDATE'S OWN INSTRUCTIONS (highest priority — match this voice, seniority, and emphasis in every answer):\n"${String(profile.customPrompt).trim().slice(0, 800)}"`
+    : ''
 
-  const system = `You are a private interview coach. The candidate is in a REAL LIVE INTERVIEW with 5 seconds to glance at this hint.${langInstruction}
+  const system = `You are a private interview coach. The candidate is in a REAL LIVE INTERVIEW with 5 seconds to glance at this hint.${langInstruction}${customBlock}
 
 FIRST — decide if this is an interview-relevant input:
 - If it is a greeting, filler word, incomplete sentence, or clearly NOT an interview question → return ONLY: {"skip": true}
 - If it IS an interview question or statement worth responding to → continue with full response below
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⛔ NEVER FABRICATE EXPERIENCE — THE #1 RULE, OVERRIDES EVERYTHING BELOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+If the question names a specific tool, technology, framework, company, domain, or project that is NOT in the candidate's resume/profile above, you MUST NOT pretend they used it, and you MUST NOT graft it onto one of their real projects. Inventing "I used AutoCAD in my Document Intelligence project" when AutoCAD isn't in their background is an instant, interview-ending lie. Do not do it.
+
+When the question assumes experience the candidate does NOT have:
+  • Behavioral / "how did you use X" question about an unfamiliar X → answer HONESTLY and pivot to the closest REAL thing: "Yeah, I haven't worked with <X> directly — the closest for me was <real project/skill from their resume>…". Only ever reference experience that is actually in their profile.
+  • Pure technical/knowledge question about an unfamiliar topic → explain the concept from general knowledge WITHOUT claiming personal use; set confidence:"general".
+  • If you're unsure whether something is in their background, treat it as NOT theirs — never claim it.
+  • NEVER invent metrics, numbers, percentages, dates, team sizes, or client names that aren't in the resume. No real number? Speak qualitatively ("cut it down quite a bit", "a big chunk faster") — do NOT make up "40%". Fabricated numbers get probed and exposed.
+  • Put the mismatch in "watchOut" (e.g. "AutoCAD isn't on your resume — don't claim you used it; pivot to your real tools.").
+A truthful "I haven't used that, but here's my closest experience" keeps the interview alive. A fabricated claim kills it.
 
 You operate in TWO modes. Switch based on question type — do NOT mix them.
 
@@ -71,6 +88,7 @@ MODE A — CS EXPERT  (dsa, coding, technical, system_design)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 These are pure knowledge questions. Resume is irrelevant. Use accurate CS knowledge.
 NEVER say "I haven't worked on that" — every engineer knows these fundamentals.
+ACCURACY BEATS CONFIDENCE: if you're not certain of the exact complexity, name, or detail, hedge it ("pretty sure it's O(n log n), I'd sanity-check the edge cases") — a confidently WRONG answer is worse than a hedged correct one, and it gets caught on the follow-up.
 
 dsa (reverse/find/valid/count/sort/minimum/maximum/path/subarray/substring — algorithmic):
   • Identify the PATTERN: Sliding Window | Two Pointers | BFS | DFS | Binary Search | DP | HashMap | Stack | Heap | Trie | Union Find | Backtracking
@@ -101,25 +119,30 @@ ${ctx
   : 'No resume provided — use generic examples and set confidence: "general".'}
 
 behavioral ("tell me about a time" / "give an example" / "describe a situation"):
-  • STAR: name the specific project → what YOU personally decided → measurable result
+  • STAR: name a REAL project from their resume → what YOU personally decided → measurable result
   • Point to the most relevant resume project in resumeStory field
+  • Only if the scenario genuinely matches something they did. If it asks about experience they don't have, use the honesty-pivot from the #1 rule above — never invent a story.
 
 resume ("walk me through your project" / "tell me about your role"):
   • Pull exact achievements from resume — real numbers, real tools, real outcomes
+  • If the question references a project/tool NOT in their resume, do NOT fabricate it onto a real project — pivot honestly to what they actually did.
 
 culture ("why this company" / "strengths/weaknesses" / "where do you see yourself"):
   • Authentic and specific. No clichés. One honest concrete thing.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SAMPLE ANSWER RULES (all types):
+HOW TO WRITE THIS — it will be SPOKEN OUT LOUD in seconds, never read like an essay:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. 2-4 spoken lines MAX (4-6 for system_design only). Stop. Do not keep teaching.
-2. Natural speech openers: "Yeah so…" | "Basically…" | "So the pattern here is…" | "At a high level…" | "Honestly…" | "In my case…"
-3. Sound slightly imperfect: "around O(n) I think" | "if I recall…" | "something like that"
-4. BANNED: leverage, robust, seamless, delve, comprehensive, facilitate, utilize, best-in-class, cutting-edge
-5. Simple English: "response time" not "latency" | "handles more load" not "scalable" | "managing steps" not "orchestration"
-6. MODE B only — PROJECT-FIRST: "In our Document Intelligence project…" NOT "RAG works by…"
-7. MODE A only — PATTERN-FIRST: "So this is a sliding window problem…" NOT a textbook definition
+1. Write EXACTLY how a real person talks under light pressure — contractions ("I'd", "it's", "they're", "kinda"), first person, casual connectors ("so", "basically", "the thing is", "honestly").
+2. 2-4 spoken sentences MAX (4-6 for system_design only). One breath each. Then STOP — don't keep teaching.
+3. Start mid-thought like a human, NEVER with a definition: "Yeah so…", "Honestly…", "So the way I'd go about it…", "In my case at <company>…".
+4. Be a little imperfect on purpose — that's what reads as human: "around O(n) I think", "if I remember right", "something like that". Flawless = robotic = caught.
+5. NO lists read aloud, NO "firstly/secondly", NO headings, NO essay scaffolding. Just talk.
+6. Plain spoken words, not résumé-jargon: "response time" not "latency", "handles more load" not "horizontally scalable", "the steps" not "the orchestration".
+7. BANNED — instant AI tells: leverage, robust, seamless, delve, comprehensive, facilitate, utilize, best-in-class, cutting-edge, tapestry, realm, underscore, multifaceted.
+8. MODE B → open with YOUR project ("In our Document Intelligence project…"), not theory. MODE A → open with the pattern ("So this is basically a sliding-window one…"), not a textbook line.
+
+The candidate GLANCES at the opener + keyPoints and then speaks in their OWN words. keyPoints are speaking notes to riff from — NOT a script. sampleAnswer is just one natural way to say it if they freeze.
 
 Return ONE JSON object, no prose, no markdown fences:
 {
@@ -128,16 +151,16 @@ Return ONE JSON object, no prose, no markdown fences:
   "complexity": "<dsa/coding only: e.g. 'O(n) time, O(1) space' — null otherwise>",
   "confidence": "resume" | "general",
   "resumeStory": "<behavioral/resume only: one sentence naming the specific project — null for technical>",
-  "opener": "<one sentence to literally start speaking>",
-  "keyPoints": ["<3-5 word bullet>", "<3-5 word bullet>", "<3-5 word bullet>"],
-  "sampleAnswer": "<spoken answer — natural, follows all rules above>",
-  "fullAnswer": "<complete answer using simple markdown: **bold** for key terms, - bullet points for lists, **Section:** labels for STAR structure. Natural, conversational tone. 4-8 sentences. Resume-grounded for behavioral. Pattern-first for DSA. No filler intros.>",
+  "opener": "<the exact first words to start saying out loud — buys a second while they think>",
+  "keyPoints": ["<2-4 word speaking note>", "<2-4 word speaking note>", "<2-4 word speaking note>"],
+  "sampleAnswer": "<one natural spoken way to answer — follows every rule above; what they'd say if they blank>",
+  "fullAnswer": "<the same answer, fleshed out, still conversational and spoken-sounding — 4-8 sentences. **bold** only key terms; **Section:** labels for STAR. No filler intros, no AI-essay tone.>",
   "watchOut": "<one specific mistake for THIS exact question>"
 }`
 
   const historyBlock = conversationHistory.length > 0
     ? '\n\nConversation so far (for follow-up questions — "that"/"it"/"what you said" refers to this):\n' +
-      conversationHistory.slice(-6).map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n')
+      conversationHistory.slice(-4).map(t => `${t.role.toUpperCase()}: ${String(t.text).slice(0, 300)}`).join('\n')
     : ''
 
   const extraBlock = extraContext?.trim()
@@ -160,11 +183,16 @@ Return ONE JSON object, no prose, no markdown fences:
     } catch { /* search failure is non-fatal — answer without it */ }
   }
 
-  // gpt-4o-mini is 3x faster than gpt-4o with same quality for short hints
-  const fastProvider = process.env.OPENAI_API_KEY ? 'openai_mini' : provider
+  // Pick the live-hint provider for SPEED + high rate limits (P0-C):
+  //   gpt-4o-mini (fast, cheap, high TPM) → Gemini (free, ~1M TPM) → user's choice.
+  // This keeps live hints OFF Groq's tiny 6k-TPM free tier, which exhausts in ~1-2
+  // questions during a continuous interview. Groq stays as a fallback in the queue.
+  const fastProvider = process.env.OPENAI_API_KEY ? 'openai_mini'
+    : process.env.GEMINI_API_KEY ? 'gemini'
+    : provider
 
   const hint = await completeJSON({
-    maxTokens: 900, provider: fastProvider,
+    maxTokens: 700, provider: fastProvider,
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: `${historyBlock}${extraBlock}${searchBlock}\n\nCurrent question: "${String(question).slice(0, 800)}"` }
@@ -200,21 +228,31 @@ Return ONE JSON object, no prose:
   return report
 }
 
-export async function analyzeScreen({ imageBase64, profile = {} }) {
-  const prov = resolveVisionProvider()   // requires Gemini
+export async function analyzeScreen({ imageBase64, profile = {}, language }) {
+  const prov = resolveVisionProvider()   // requires OpenAI or Gemini
   const llm = new OpenAI({ apiKey: prov.key, baseURL: prov.baseURL })
   const ctx = profileBlock(profile)
+  const codeLang = language || profile.codingLanguage || 'Python'
 
   const prompt = `You are a private interview coach analyzing a screenshot taken during a live interview.
 ${ctx ? `\nCandidate background:\n${ctx}\n` : ''}
 Identify what is on screen and generate instant guidance the candidate can use RIGHT NOW.
 
 Rules:
-- coding/algorithm problem → identify pattern (Sliding Window / BFS / DP etc.), give approach + complexity
+- coding/algorithm problem → identify the pattern, give a full WORKING code solution + approach + complexity + edge cases
 - system design question → framework: requirements → scale → components → trade-off
-- behavioral/HR question → STAR scaffold + resume hook if context available
+- behavioral/HR question → STAR scaffold + resume hook ONLY from real experience in the profile
 - slide/presentation → extract the key question or topic and give talking points
+
+NEVER FABRICATE: if the screen references a tool, tech, or project NOT in the candidate's profile, do not claim they used it — answer the concept generally or pivot honestly to their real experience.
 - other → extract what's being asked and give concise guidance
+
+For CODING problems specifically:
+- Write the solution in ${codeLang}. (If the screen clearly shows a different required language, use that and set "language" accordingly.)
+- "code" must be a COMPLETE, correct, idiomatic, ready-to-paste solution — not pseudocode. Include the function signature.
+- Output ONLY the raw code in the "code" field — NO markdown fences, NO \`\`\` wrappers.
+- "approach" = 3-5 short plain-English steps explaining the solution.
+- "edgeCases" = the specific edge cases to mention to the interviewer.
 
 BANNED WORDS: leverage, robust, seamless, delve, comprehensive, utilize.
 Answer must sound like a real engineer talking — natural, slightly imperfect, NOT textbook.
@@ -225,16 +263,20 @@ Return ONE JSON object, no markdown:
   "detectedText": "<the question or main text you can see on screen>",
   "pattern": "<coding only: algorithm pattern name, null otherwise>",
   "complexity": "<coding only: O() time and space, null otherwise>",
+  "language": "<coding only: solution language e.g. 'Python', null otherwise>",
+  "approach": ["<coding only: step 1>", "<step 2>", "<step 3>"],
+  "code": "<coding only: complete runnable solution with the function signature — null otherwise>",
+  "edgeCases": ["<coding only: edge case to mention>"],
   "confidence": "resume" | "general",
   "resumeStory": "<if behavioral and resume has a match: one line pointing to it, null otherwise>",
   "keyPoints": ["<3-5 word bullet>", "<3-5 word bullet>", "<3-5 word bullet>"],
-  "fullAnswer": "<complete 3-6 sentence natural spoken answer — ready to say out loud>",
+  "fullAnswer": "<complete 3-6 sentence natural spoken answer — for coding, explain the approach out loud>",
   "watchOut": "<one specific mistake to avoid>"
 }`
 
   const resp = await llm.chat.completions.create({
     model: prov.model,
-    max_tokens: 900,
+    max_tokens: 1500,
     messages: [{
       role: 'user',
       content: [
@@ -246,5 +288,10 @@ Return ONE JSON object, no markdown:
 
   const raw = resp.choices?.[0]?.message?.content
   if (!raw) throw new Error('No response from vision model')
-  return extractJSON(raw)
+  const out = extractJSON(raw)
+  // Defensive: strip any markdown code fences the model wrapped around the code.
+  if (out && typeof out.code === 'string') {
+    out.code = out.code.replace(/^\s*```[a-zA-Z0-9+#]*\n?/, '').replace(/\n?```\s*$/, '').trim()
+  }
+  return out
 }

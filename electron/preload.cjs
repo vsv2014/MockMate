@@ -19,6 +19,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('meeting-detected', handler)
     return () => ipcRenderer.removeListener('meeting-detected', handler)
   },
+  onCodingDetected: cb => {
+    const handler = (_, active) => cb(active)
+    ipcRenderer.on('coding-detected', handler)
+    return () => ipcRenderer.removeListener('coding-detected', handler)
+  },
+  captureScreen: () => ipcRenderer.invoke('capture-screen'),
+  excludeFromCapture: () => ipcRenderer.invoke('exclude-from-capture'),
   onShortcutStealth: cb => {
     const handler = () => cb()
     ipcRenderer.on('shortcut-stealth', handler)
