@@ -4,8 +4,6 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
   platform: process.platform,
-  sendHint: data => ipcRenderer.send('hint-update', data),
-  setRoomActive: active => ipcRenderer.send('room-state', { active }),
   getAudioSources: () => ipcRenderer.invoke('get-audio-sources'),
   windowDrag: (dx, dy) => ipcRenderer.send('window-drag', { dx, dy }),
   windowResize: (w, h) => ipcRenderer.send('window-resize', { w, h }),

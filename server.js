@@ -59,7 +59,16 @@ app.use((req, res, next) => {
 })
 
 const PORT = process.env.PORT || 3002
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   if (process.send) process.send({ type: 'ready' })   // tell Electron main the server is up
   console.log(`MockMate server on :${PORT} (UI + /api/*)`)
+})
+// Without this, a busy port (e.g. a stale process left after a force-kill) throws an
+// unhandled EADDRINUSE, the fork dies before sending 'ready', and Electron's main
+// process falls back to loading a dead URL → a blank window with no explanation.
+// Surface it to the parent so it can show a real error instead.
+server.on('error', err => {
+  console.error(`MockMate server failed to start on :${PORT} — ${err.code || err.message}`)
+  if (process.send) process.send({ type: 'server-error', code: err.code, message: err.message })
+  process.exit(1)
 })

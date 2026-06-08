@@ -415,6 +415,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       bcRef.current?.close()
       try { pipWindow?.close() } catch {}
       clearInterval(streamTimer.current)
+      // Abort any in-flight /api/hint so its .then() can't setState after unmount
+      // (e.g. ending the session while an answer is still streaming/loading).
+      try { hintAbortRef.current?.abort() } catch {}
+      clearTimeout(lockTimerRef.current)
       stopSpeaking()
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -453,12 +457,6 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   }, [])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [transcript, streamedAnswer])
-
-  // Sync all state to PiP window whenever anything changes
-  useEffect(() => {
-    if (!pipWindow || pipWindow.closed) return
-    bcRef.current?.postMessage({ type: 'update', transcript, hint, hintLoading, buyTimePhrase, lastQ: lastHintText.current, active: audio.active })
-  }, [transcript, hint, hintLoading, buyTimePhrase, pipWindow]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Hint generation
   async function generateHint(question) {
@@ -559,6 +557,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const audio = useSystemAudio(onFinal, reason => setError(`Transcription stopped: ${reason}`), onEarlyQuestion)
+
+  // Sync all state to the PiP window whenever anything changes. Declared AFTER
+  // `audio` so audio.active is in scope and can be a real dependency — otherwise
+  // the PiP "Listening / Not capturing" indicator goes stale on reconnect/stop.
+  useEffect(() => {
+    if (!pipWindow || pipWindow.closed) return
+    bcRef.current?.postMessage({ type: 'update', transcript, hint, hintLoading, buyTimePhrase, lastQ: lastHintText.current, active: audio.active })
+  }, [transcript, hint, hintLoading, buyTimePhrase, pipWindow, audio.active]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     audio.start(sourceId)
