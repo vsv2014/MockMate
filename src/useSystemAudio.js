@@ -46,8 +46,10 @@ function looksLikeQuestion(text) {
 }
 
 const DG_URL = 'wss://api.deepgram.com/v1/listen?model=nova-2&encoding=linear16&sample_rate=16000&channels=1&interim_results=true&smart_format=true&punctuate=true&utterance_end_ms=1200'
-const MAX_RECONNECTS = 8        // give up after this many consecutive failures
+const MAX_RECONNECTS = 8        // give up after this many CONSECUTIVE failures (counter resets on a successful open)
 const KEEPALIVE_MS = 4000       // Deepgram closes after 10s of no data — ping well within that
+// WebSocket close codes that are fatal (auth / quota / policy) — never worth retrying.
+const FATAL_CLOSE = new Set([1008, 4001, 4003, 4008])
 
 // Live transcription via Deepgram with auto-reconnect + KeepAlive (P0-A).
 // The mic stream + AudioContext + audio graph are built ONCE and survive socket
@@ -95,7 +97,13 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
   // never starved by React renders / answer streaming (durable for 1h+ sessions).
   // Fallback: deprecated ScriptProcessorNode for runtimes without AudioWorklet.
   const buildAudioGraph = useCallback(async (audioStream) => {
-    const ac = new (window.AudioContext || window.webkitAudioContext)()
+    // Pin the context to 16 kHz so the PCM we send matches the sample_rate=16000
+    // we declare to Deepgram. If a browser can't honor the hint it falls back to
+    // its native rate, and the encoder still downsamples from there — correct either
+    // way, and never sends a rate below 16 kHz mislabelled as 16 kHz.
+    const AC = window.AudioContext || window.webkitAudioContext
+    let ac
+    try { ac = new AC({ sampleRate: 16000 }) } catch { ac = new AC() }
     ctx.current = ac
     const source = ac.createMediaStreamSource(audioStream)
     srcNode.current = source
@@ -168,30 +176,39 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
     }
 
     sock.onerror = () => { /* onclose will follow and trigger reconnect */ }
-    sock.onclose = () => {
+    sock.onclose = (ev) => {
       clearInterval(keepAlive.current); keepAlive.current = null
       if (userStop.current) return
+      // Auth/quota/policy failures can arrive as a WebSocket close code rather than
+      // an in-band Error frame — those won't fix themselves, so fail fast instead of
+      // looping "Reconnecting…" forever. Transient drops (1006/1011/network) still retry.
+      if (FATAL_CLOSE.has(ev?.code)) return fail(`Deepgram closed the stream (code ${ev.code})`)
       scheduleReconnect('connection dropped')
     }
   }, [fail]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reconnect with capped exponential backoff; the mic/AudioContext stay alive.
-  // A live interview must NEVER permanently give up on a transient drop — Deepgram
-  // closes idle/long streams routinely, and the network blips. So we retry forever
-  // with a capped backoff, just staying in the "Reconnecting" state. The only hard
-  // stops are an explicit Deepgram auth/quota Error frame or a missing token (a bad
-  // key) — both handled in connectSocket via fail(), not here.
+  // A live interview must not give up on a *transient* drop — Deepgram closes
+  // idle/long streams routinely and networks blip — so we retry (staying in the
+  // "Reconnecting" state) and reset the counter on every successful open, which
+  // means a healthy session reconnects indefinitely. Hard stops: a fatal close
+  // code (FATAL_CLOSE) or in-band Error frame, a missing token, or MAX_RECONNECTS
+  // consecutive failures with no success in between (a genuinely broken stream).
   function scheduleReconnect(reason) {
     if (userStop.current) return
     reconnectAttempts.current += 1
+    if (reconnectAttempts.current > MAX_RECONNECTS) {
+      return fail(`${reason} — gave up after ${MAX_RECONNECTS} consecutive reconnect attempts`)
+    }
     setActive(false); setReconnecting(true)
-    // Backoff grows to 8s then holds there — keep trying indefinitely.
+    // Backoff grows to 8s then holds there.
     const delay = Math.min(8000, 500 * 2 ** Math.min(reconnectAttempts.current - 1, 4))
     clearTimeout(reconnectTimer.current)
     reconnectTimer.current = setTimeout(() => { connectSocket() }, delay)
   }
 
   const start = useCallback(async (sourceId = 'microphone') => {
+    if (ws.current || stream.current) return  // already running — a 2nd start() would orphan the live mic/socket
     userStop.current = false
     reconnectAttempts.current = 0
     try {

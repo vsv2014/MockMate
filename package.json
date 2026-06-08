@@ -1,6 +1,6 @@
 {
   "name": "mockmate",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "main": "electron/main.cjs",
   "description": "Real-Time AI Interview Companion — floats over Zoom/Teams/Meet, invisible to screen capture",
@@ -13,6 +13,7 @@
     "dev": "concurrently \"PORT=3002 node server.js\" \"vite\"",
     "build": "vite build",
     "electron:dev": "concurrently -k \"PORT=3002 node server.js\" \"vite\" \"wait-on http://localhost:5174 && electron .\"",
+    "electron:dev:nosandbox": "concurrently -k \"PORT=3002 node server.js\" \"vite\" \"wait-on http://localhost:5174 && electron . --no-sandbox\"",
     "electron:win": "vite build && electron-builder --win",
     "electron:build": "vite build && electron-builder",
     "electron:build:win": "vite build && electron-builder --win",
@@ -79,11 +80,27 @@
             "x64",
             "arm64"
           ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "assets/icon.png",
       "category": "public.app-category.productivity",
-      "artifactName": "MockMate-${version}-${arch}.${ext}"
+      "artifactName": "MockMate-${version}-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "MockMate listens to interview audio to generate real-time answer suggestions.",
+        "NSCameraUsageDescription": "MockMate may capture screen content to analyze on-screen questions."
+      }
     },
     "dmg": {
       "writeUpdateInfo": false

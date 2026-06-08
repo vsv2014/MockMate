@@ -19,9 +19,16 @@ Grab the latest build from the [**Releases page**](https://github.com/vsv2014/Mo
 On first launch, MockMate opens a **setup screen** where you paste your API keys — no manual
 file editing. Keys are saved locally and the app restarts ready to use.
 
-**Auto-update (Windows & Linux):** new versions download silently in the background and install
-the next time you reopen MockMate — no re-download needed. (macOS auto-update is pending code
-signing.)
+**Auto-update (Windows, macOS & Linux):** new versions download silently in the background and
+install the next time you reopen MockMate — no re-download needed.
+
+> **macOS:** the DMG is signed with a Developer ID certificate and notarized by Apple, so it
+> opens with no Gatekeeper warning. (If you build an *unsigned* DMG yourself, macOS will block it
+> with _"Apple could not verify MockMate is free of malware"_ — clear it with
+> `xattr -dr com.apple.quarantine /Applications/MockMate.app`. See [`SIGNING.md`](SIGNING.md).)
+>
+> **Windows:** the installer is **not** code-signed, so Windows SmartScreen may show
+> _"Windows protected your PC"_ on first run — click **More info → Run anyway**.
 
 > **Launch MockMate _before_ you join the call.** It appears in the top-right corner; press `Alt+H` to hide/show.
 

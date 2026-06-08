@@ -1,7 +1,7 @@
 // Electron main — overlay window with setContentProtection(true):
 //   Windows → WDA_EXCLUDEFROMCAPTURE,  macOS → NSWindowSharingNone
 //   (Linux has no equivalent — overlay IS visible in screen share there.)
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut, Notification, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut, Notification, shell, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { fork } = require('child_process')
@@ -64,7 +64,18 @@ function startApiServer(onReady) {
 
   let done = false
   const fire = () => { if (!done) { done = true; onReady() } }
-  apiServer.on('message', msg => { if (msg?.type === 'ready') fire() })
+  apiServer.on('message', msg => {
+    if (msg?.type === 'ready') fire()
+    // The server couldn't bind the port (e.g. a stale process is holding it). Don't
+    // silently fall through to loading a dead URL — tell the user what happened.
+    else if (msg?.type === 'server-error') {
+      const hint = msg.code === 'EADDRINUSE'
+        ? 'Port 3002 is already in use — another MockMate may still be running. Quit it (or reboot) and reopen MockMate.'
+        : `The local server failed to start: ${msg.message || msg.code || 'unknown error'}`
+      dialog.showErrorBox('MockMate could not start', hint)
+      app.quit()
+    }
+  })
   setTimeout(fire, 6000)   // fallback if 'ready' never arrives
 }
 
