@@ -185,6 +185,35 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
   e.status = 429; throw e
 }
 
+// Streaming text completion — emits tokens via onToken as they arrive (true SSE).
+// Provider fallback only kicks in BEFORE the first token; once streaming has begun
+// we don't restart on another provider (that would duplicate output).
+export async function streamText({ messages, maxTokens = 700, provider, onToken }) {
+  const providerQueue = getFallbackProviders(provider)
+  let lastError, emitted = false
+  for (const provId of providerQueue) {
+    let prov
+    try { prov = resolveProvider(provId) } catch { continue }
+    const llm = clientFor(prov), model = prov.model
+    try {
+      const params = { model, max_tokens: maxTokens, messages, stream: true }
+      if (/gemini/i.test(model)) params.reasoning_effort = 'none'
+      const stream = await llm.chat.completions.create(params)
+      for await (const chunk of stream) {
+        const tok = chunk?.choices?.[0]?.delta?.content || ''
+        if (tok) { emitted = true; onToken?.(tok) }
+      }
+      lastWorkingProvider = provId
+      return
+    } catch (e) {
+      lastError = e
+      if (isRateLimit(e)) rateLimitedUntil[provId] = Date.now() + 5 * 60 * 1000
+      if (emitted) throw e   // already streamed partial output — don't restart elsewhere
+    }
+  }
+  throw lastError || new Error('No LLM provider could stream a response')
+}
+
 // ── Deepgram (accurate speech-to-text) ──────────────────────────────────────
 export function deepgramConfigured() { return !!process.env.DEEPGRAM_API_KEY }
 

@@ -58,13 +58,19 @@ Add all five:
 Push a version tag (or run the workflow manually):
 
 ```bash
-git tag v1.0.3
-git push origin v1.0.3
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 CI will build, **sign**, and **notarize** the macOS DMG. The notarization step adds a
 few minutes (Apple's service has to scan the build). Once done, the published DMG opens
 with no Gatekeeper warning.
+
+> **Signing is conditional.** If the `MAC_CSC_LINK` + `APPLE_ID` secrets are **not** set,
+> the macOS build still succeeds — it just ships **unsigned** (users clear it once with
+> `xattr -dr com.apple.quarantine /Applications/MockMate.app`). Signing + notarization
+> turn on automatically the moment the secrets exist. So a release never fails just
+> because Apple isn't set up yet.
 
 ## Verifying locally (optional, on a Mac)
 

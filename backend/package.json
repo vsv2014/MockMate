@@ -1,6 +1,6 @@
 {
   "name": "mockmate-backend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "MockMate auth + user data backend (Express + MongoDB)",
   "main": "server.js",

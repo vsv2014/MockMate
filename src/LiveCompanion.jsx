@@ -6,6 +6,25 @@ import { OverlayPanel, ScreenAnalysisPanel, IconBtn } from './App'
 const PROFILE_KEY = 'peerMockProfile'
 function loadProfile() { try { return JSON.parse(localStorage.getItem(PROFILE_KEY)) || {} } catch { return {} } }
 function saveProfile(p) { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)) } catch {} }
+
+// Pull boostable terms (tech, tools, acronyms, proper nouns) from the resume + target
+// role so Deepgram recognizes the candidate's domain jargon and names accurately.
+const KW_STOP = new Set('and the for with you your are was were our their from this that have has had will would over into per via team teams work working experience years year using used use built build led role responsibilities including based across also able strong excellent'.split(' '))
+function resumeKeyterms(profile = {}) {
+  const text = `${profile.targetRole || ''} ${profile.resume || ''}`
+  const freq = new Map()
+  for (const tok of text.match(/[A-Za-z][A-Za-z0-9+#.]{1,30}/g) || []) {
+    const low = tok.toLowerCase()
+    if (KW_STOP.has(low) || low.length < 2) continue
+    // Proper nouns / acronyms / tech tokens (caps, inner caps, digits, symbols) rank first.
+    const proper = /^[A-Z]/.test(tok) || /[A-Z0-9+#.]/.test(tok.slice(1))
+    const w = freq.get(tok) || { n: 0, proper }
+    w.n++; freq.set(tok, w)
+  }
+  return [...freq.entries()]
+    .sort((a, b) => (b[1].proper - a[1].proper) || (b[1].n - a[1].n))
+    .slice(0, 40).map(([t]) => t)
+}
 function fmtClock(ms) {
   const s = Math.max(0, Math.floor(ms / 1000))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
@@ -389,6 +408,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const bcRef = useRef(null)   // BroadcastChannel to sync state to PiP window
   const [streamedAnswer, setStreamedAnswer] = useState('')
   const [streaming, setStreaming] = useState(false)
+  const [coachMode, setCoachMode] = useState(false)   // 💬 Answer (full answer) ↔ 🎓 Coach (structure only)
+  const coachModeRef = useRef(false)
   const [clock, setClock] = useState(0)
   const [error, setError] = useState('')
   const [extraContext, setExtraContext] = useState('')
@@ -408,6 +429,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   useEffect(() => { conversationHistoryRef.current = conversationHistory }, [conversationHistory])
   useEffect(() => { extraContextRef.current = extraContext }, [extraContext])
+  useEffect(() => { coachModeRef.current = coachMode }, [coachMode])   // so generateHint (a [] useCallback closure) reads the live value
 
   useEffect(() => {
     bcRef.current = new BroadcastChannel('mockmate-live')
@@ -481,72 +503,111 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     setStreaming(false)
     clearInterval(streamTimer.current)
     setHintLoading(true)
-    try {
+
+    // Upsert the feed entry for this question (covers the early-trigger-then-onFinal case).
+    const upsert = patch => setTranscript(t => t.some(s => s.text === question)
+      ? t.map(s => s.text === question ? { ...s, ...patch } : s)
+      : [...t, { text: question, ts: Date.now(), isQuestion: true, answer: '', ...patch }])
+
+    const finalize = (answer, hintObj) => {
+      clearTimeout(lockTimeout)
+      setStreaming(false); setHintLoading(false); hintInFlight.current = false
+      const finalHint = { ...(hintObj || { confidence: 'general' }), fullAnswer: answer, sampleAnswer: answer }
+      setHint(finalHint)
+      upsert({ isQuestion: true, answer, hint: finalHint })
+    }
+    const resetSkip = () => { clearTimeout(lockTimeout); setHintLoading(false); setStreaming(false); hintInFlight.current = false; lastHintText.current = '' }
+
+    // SAFETY NET — the proven non-streaming endpoint. If streaming fails for ANY reason,
+    // we fall back to this, so the live answer can never be worse than the old behavior.
+    const runFallback = async () => {
       const res = await fetch('/api/hint', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: abort.signal,
         body: JSON.stringify({ question, profile: profileRef.current, conversationHistory: conversationHistoryRef.current.slice(-6), provider: providerRef.current, language: profileRef.current?.language || 'English', extraContext: extraContextRef.current || undefined })
       })
       const d = await res.json()
-      // P0-B: a newer question superseded this one while we awaited — drop this response.
-      if (question !== lastHintText.current) return
-      if (d.error) throw new Error(d.error)   // surface server errors properly
-      const h = d.hint || null
-      // LLM said skip — restore state, reset so next question works
-      clearTimeout(lockTimeout)
-      if (!h || h.skip) {
-        setHintLoading(false)
-        hintInFlight.current = false
-        lastHintText.current = ''
-        return
-      }
-      // Real question confirmed — replace previous answer
-      setHint(h)
-      setHintLoading(false)
-      setStreamedAnswer('')
-      setStreaming(false)
-      clearInterval(streamTimer.current)
-      hintInFlight.current = false
-      const answerText = h.fullAnswer || h.sampleAnswer || ''
-      // Mark question confirmed AND attach answer. UPSERT — if it isn't in the feed
-      // yet (e.g. answered via the early-trigger before onFinal added it), add it now.
-      // This guarantees every answered question shows in the feed (fixes vanishing Qs).
-      setTranscript(t => t.some(s => s.text === question)
-        ? t.map(s => s.text === question ? { ...s, isQuestion: true, answer: '', hint: h } : s)
-        : [...t, { text: question, ts: Date.now(), isQuestion: true, answer: '', hint: h }])
-      // Stream words — update both streamedAnswer and the transcript entry live
-      if (answerText) {
-        const words = answerText.split(' ')
-        let i = 0
-        setStreaming(true)
-        streamTimer.current = setInterval(() => {
-          i++
-          const partial = words.slice(0, i).join(' ')
-          setStreamedAnswer(partial)
-          setTranscript(t => t.map(s => s.text === question ? { ...s, answer: partial } : s))
-          if (i >= words.length) {
-            clearInterval(streamTimer.current)
-            setStreaming(false)
-            setTranscript(t => t.map(s => s.text === question ? { ...s, answer: answerText } : s))
+      if (question !== lastHintText.current) return        // superseded while awaiting
+      if (d.error) throw new Error(d.error)
+      const h = d.hint
+      if (!h || h.skip) { resetSkip(); return }
+      finalize(h.fullAnswer || h.sampleAnswer || '', h)
+    }
+
+    try {
+      const res = await fetch('/api/hint-stream', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: abort.signal,
+        body: JSON.stringify({ question, profile: profileRef.current, conversationHistory: conversationHistoryRef.current.slice(-6), provider: providerRef.current, language: profileRef.current?.language || 'English', extraContext: extraContextRef.current || undefined, mode: coachModeRef.current ? 'coach' : 'answer' })
+      })
+      if (!res.ok || !res.body) { await runFallback(); return }   // streaming unavailable → proven path
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let sseBuf = '', answer = '', hintObj = null, streamFailed = false
+
+      reading: while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        sseBuf += decoder.decode(value, { stream: true })
+        let nn
+        while ((nn = sseBuf.indexOf('\n\n')) !== -1) {
+          const raw = sseBuf.slice(0, nn); sseBuf = sseBuf.slice(nn + 2)
+          const ev = raw.match(/^event: (.*)$/m)?.[1]
+          let data; try { data = JSON.parse(raw.match(/^data: ([\s\S]*)$/m)?.[1] ?? 'null') } catch { data = null }
+          // A newer question superseded this one mid-stream — drop it.
+          if (question !== lastHintText.current) { try { await reader.cancel() } catch {} ; return }
+
+          if (ev === 'meta') {
+            clearTimeout(lockTimeout)
+            hintObj = {
+              confidence: data?.confidence === 'resume' ? 'resume' : 'general',
+              questionType: data?.type, pattern: data?.pattern || null,
+              complexity: data?.complexity || null, watchOut: data?.watch || null,
+              _searchSources: data?.searchSources, fullAnswer: '', sampleAnswer: ''
+            }
+            setHint(hintObj); setHintLoading(false); setStreaming(true); setStreamedAnswer('')
+            upsert({ isQuestion: true, answer: '', hint: hintObj })
+          } else if (ev === 'token') {
+            answer += typeof data === 'string' ? data : ''
+            setStreamedAnswer(answer)
+            upsert({ answer, hint: hintObj || { confidence: 'general', fullAnswer: '' } })
+          } else if (ev === 'skip') {
+            resetSkip()
+            try { await reader.cancel() } catch {} ; return
+          } else if (ev === 'error') {
+            streamFailed = true
+            try { await reader.cancel() } catch {}
+            break reading
           }
-        }, WORD_DELAY)
+        }
       }
+
+      // Stream errored or produced no answer → fall back to the proven endpoint.
+      if (streamFailed || !answer.trim()) { await runFallback(); return }
+      finalize(answer, hintObj)
     } catch (e) {
       if (e.name === 'AbortError') return   // superseded by a newer question — not an error
-      clearTimeout(lockTimeout)
-      setHintLoading(false)
-      hintInFlight.current = false
-      lastHintText.current = ''
-      setError(e.message)
+      // Streaming threw (network/parse). Try the proven path before surfacing an error.
+      try { await runFallback() }
+      catch (e2) {
+        if (e2.name === 'AbortError') return
+        clearTimeout(lockTimeout)
+        setHintLoading(false); setStreaming(false)
+        hintInFlight.current = false
+        lastHintText.current = ''
+        setError(e2.message || e.message)
+      }
     }
   }
 
-  const onEarlyQuestion = useCallback(text => {
+  const onEarlyQuestion = useCallback((text, meta) => {
+    if (meta?.isCandidate) return   // diarization: this was you speaking — don't answer your own voice
     const trimmed = text.trim()
     if (!trimmed || trimmed.split(/\s+/).length < 4) return
     generateHint(trimmed)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onFinal = useCallback(text => {
+  const onFinal = useCallback((text, meta) => {
+    if (meta?.isCandidate) return   // diarization: skip the candidate's own speech
     const trimmed = text.trim()
     const words = trimmed.split(/\s+/).length
     if (!trimmed || words < 3) return   // lower gate — catch short Qs ("why this approach?")
@@ -567,7 +628,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   }, [transcript, hint, hintLoading, buyTimePhrase, pipWindow, audio.active]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    audio.start(sourceId)
+    audio.start(sourceId, { keyterms: resumeKeyterms(profileRef.current) })
     if (initialPip && !initialPip.closed) {
       initialPip.addEventListener('pagehide', () => {
         setPipWindow(null)
@@ -773,9 +834,16 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
         {/* Extra context */}
         <div style={{ marginTop: 'auto', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-          <button onClick={() => setContextOpen(c => !c)} style={{ background: 'none', border: 'none', color: contextOpen ? '#a5b4fc' : '#2d3748', fontSize: 9, cursor: 'pointer', padding: 0, fontWeight: 700, letterSpacing: '0.07em' }}>
-            {contextOpen ? '▾' : '▸'} EXTRA CONTEXT {extraContext && <span style={{ background: 'rgba(109,40,217,0.25)', color: '#a5b4fc', borderRadius: 6, padding: '0 4px', fontSize: 8, marginLeft: 4 }}>on</span>}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <button onClick={() => setContextOpen(c => !c)} style={{ background: 'none', border: 'none', color: contextOpen ? '#a5b4fc' : '#2d3748', fontSize: 9, cursor: 'pointer', padding: 0, fontWeight: 700, letterSpacing: '0.07em' }}>
+              {contextOpen ? '▾' : '▸'} EXTRA CONTEXT {extraContext && <span style={{ background: 'rgba(109,40,217,0.25)', color: '#a5b4fc', borderRadius: 6, padding: '0 4px', fontSize: 8, marginLeft: 4 }}>on</span>}
+            </button>
+            <button onClick={() => setCoachMode(m => !m)}
+              title="Coach mode gives you the STRUCTURE to say — clarify, trade-offs, the 'why' — instead of a full answer, so you communicate like a strong engineer. Answer mode gives the spoken answer."
+              style={{ display: 'flex', alignItems: 'center', gap: 5, background: coachMode ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${coachMode ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.1)'}`, color: coachMode ? '#4ade80' : '#94a3b8', fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', borderRadius: 100, padding: '3px 9px', cursor: 'pointer' }}>
+              {coachMode ? '🎓 COACH' : '💬 ANSWER'}
+            </button>
+          </div>
           {contextOpen && (
             <textarea value={extraContext} onChange={e => setExtraContext(e.target.value)}
               placeholder="e.g. 'Focus on Python' · 'System design round' · 'Kore.ai work'"
