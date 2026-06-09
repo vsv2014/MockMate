@@ -12,9 +12,9 @@ Grab the latest build from the [**Releases page**](https://github.com/vsv2014/Mo
 
 | Platform | File | Run |
 |---|---|---|
-| **Windows** | `MockMate-Setup-1.0.0.exe` | Run the installer |
-| **Linux** | `MockMate-1.0.0.AppImage` | `chmod +x` → run it |
-| **macOS** | `MockMate-1.0.0-arm64.dmg` (Apple Silicon) / `-x64.dmg` (Intel) | Open the dmg → drag to Applications |
+| **Windows** | `MockMate-Setup-1.1.0.exe` | Run the installer |
+| **Linux** | `MockMate-1.1.0.AppImage` | `chmod +x` → run it |
+| **macOS** | `MockMate-1.1.0-arm64.dmg` (Apple Silicon) / `-x64.dmg` (Intel) | Open the dmg → drag to Applications |
 
 On first launch, MockMate opens a **setup screen** where you paste your API keys — no manual
 file editing. Keys are saved locally and the app restarts ready to use.
@@ -218,14 +218,18 @@ are **never** stored here — they stay on the user's machine.
 
 ## Roadmap
 
-**Now**
+**Done**
 - ✅ Auto-update via `electron-updater` (Windows + Linux) — silent background install on restart
+- ✅ **Real-time accuracy + speed core**: Deepgram **keyterm boosting** (resume/role jargon), **diarization** (answers the interviewer, not your own voice), and **true token streaming** (first words in <1s, replacing the cosmetic word-reveal)
+- ✅ **Matching Jobs** (live) — your resume ranked against real postings with reasons + gaps (keyless Remotive source)
 - macOS code signing + notarization (unlocks macOS auto-update)
-- Accounts + billing rails (Stripe) — foundation of the managed subscription
 
 **Next**
+- **Matching Jobs — geo-aware** *(planned)*: a `JobSource` provider abstraction with **location-first** ranking (same-city → same-country → remote), so an India-based user sees India roles, not Australia. First geo provider: **Adzuna** (`ADZUNA_APP_ID` / `ADZUNA_APP_KEY`); **JSearch** (RapidAPI) to legally surface LinkedIn/Indeed/Glassdoor listings. Keyless Remotive stays as the always-on fallback.
+- **Auth + opt-in cloud sync** *(planned)*: wire the existing `backend/` (Mongo + JWT + Google) into the desktop app — a small sign-in UI so users can **optionally** sync resume / saved jobs / session history across devices. **Local-first** by default; the resume only leaves the device if the user signs in. (Backend models + routes already exist; only desktop login wiring + a sync endpoint remain.)
+- **Model-escalation tier**: fast model for simple Qs, strong/reasoning model for DSA + system design (biggest answer-quality lever).
+- **Coach Mode** (alongside Answer Mode): instead of the full answer, prompt the *structure* top interviewers grade — clarify edge cases → brute-force + complexity → optimal + the "why" (e.g. BFS vs DFS) — plus a dedicated **System Design scaffold** (scalability → DB choice → components → trade-offs). Trains communication, not just recall.
 - Managed-key proxy — paid tier with zero key setup ("it just works")
-- Cloud profile / resume / session-history sync (via the accounts backend)
 - Full-session conversation memory (beyond the last few turns)
 - Coding-mode follow-ups: "optimize / explain / dry-run", capture-just-the-problem-pane
 

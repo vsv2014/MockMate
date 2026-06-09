@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import Solo from './Solo'
 import LiveCompanion from './LiveCompanion'
 import Report from './Report'
+import Jobs from './Jobs'
 
 const inElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
 const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
@@ -173,6 +174,17 @@ function ElectronShell() {
     </OverlayPanel>
   )
 
+  if (view === 'jobs') return (
+    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
+      onDrag={startDrag} onResize={startResize}
+      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
+      onClose={goHome} title="Matching Jobs">
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        <Jobs onHome={goHome} />
+      </div>
+    </OverlayPanel>
+  )
+
   // ── Home screen ──
   return (
     <>
@@ -221,6 +233,13 @@ function ElectronShell() {
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>🎯 Live Interview Companion</div>
           <div style={{ fontSize: 11, color: '#475569', marginBottom: 5 }}>Floats over Zoom / Teams / Meet · real-time AI answers</div>
           <div style={{ fontSize: 10, color: '#4ade80' }}>🛡 Invisible to all screen capture</div>
+        </div>
+
+        <div onClick={() => setView('jobs')} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '12px 14px', marginTop: 8, cursor: 'pointer' }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(109,40,217,0.5)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>💼 Matching Jobs</div>
+          <div style={{ fontSize: 11, color: '#475569' }}>Live roles ranked against your resume · why-it-fits + gaps</div>
         </div>
 
         {/* Keyboard shortcuts */}

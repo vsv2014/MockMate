@@ -8,7 +8,8 @@ import cors from 'cors'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { makeReport, availableProviders, allProviders, deepgramConfigured, deepgramToken, searchConfigured } from './api/_lib/core.js'
-import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen } from './api/_lib/interview.js'
+import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen, streamHint } from './api/_lib/interview.js'
+import { findJobs } from './api/_lib/jobs.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const distDir = path.join(__dirname, 'dist')
@@ -49,6 +50,34 @@ app.post('/api/hint', async (req, res) => {
 app.post('/api/analyze-screen', async (req, res) => {
   try { res.json({ analysis: await analyzeScreen(req.body || {}) }) }
   catch (e) { res.status(e.status || 500).json({ error: e.message }) }
+})
+
+app.post('/api/jobs', async (req, res) => {
+  try { res.json(await findJobs(req.body || {})) }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }) }
+})
+
+// Server-Sent Events: stream the spoken answer token-by-token for <1s time-to-first-word.
+app.post('/api/hint-stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache, no-transform')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders?.()
+  // Detect a real client disconnect on the RESPONSE/socket. (req's 'close' fires
+  // normally once the request body is read, which would wrongly suppress all writes.)
+  let closed = false
+  res.on('close', () => { closed = true })
+  const send = (event, data) => { if (!closed) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`) }
+  try {
+    const out = await streamHint(req.body || {}, {
+      onMeta: m => send('meta', m),
+      onToken: t => send('token', t)
+    })
+    send(out?.skipped ? 'skip' : 'done', {})
+  } catch (e) {
+    send('error', { error: e.message })
+  }
+  if (!closed) res.end()
 })
 
 // Serve the built React app (production) + SPA fallback for non-API routes

@@ -1,6 +1,6 @@
 // Solo (you-vs-AI) interview engine for the web app. Open-ended, speech-first,
 // no difficulty knob — the interviewer calibrates to the target role.
-import { completeJSON, resolveVisionProvider, extractJSON } from './core.js'
+import { completeJSON, resolveVisionProvider, extractJSON, streamText } from './core.js'
 import { analyze } from '../../src/delivery.js'
 import { searchWeb, needsWebSearch } from './search.js'
 import OpenAI from 'openai'
@@ -205,6 +205,161 @@ Return ONE JSON object, no prose, no markdown fences:
   // Attach search metadata so the UI can show sources
   if (searchSources.length) hint._searchSources = searchSources
   return hint
+}
+
+// ── Interview playbooks ──────────────────────────────────────────────────────
+// One "card" per question archetype: how to DETECT it (match), which model TIER it
+// deserves, and the type-specific structure for ANSWER mode and COACH mode. The
+// prompt builder injects ONLY the matched card — so each answer stays focused, rules
+// never collide, and adding new interview wisdom = adding one card here (not editing
+// a giant prompt). Order matters: first match wins; `general` is the catch-all last.
+const PLAYBOOKS = [
+  {
+    key: 'project_walkthrough', tier: 'strong',
+    match: /\b(walk me through|end.?to.?end|deep.?dive|project you (built|led|worked|shipped)|tell me about (a|your).{0,18}(project|system you built|service you built)|something you built|most (challenging|complex) project)\b/i,
+    answer: 'Narrate END-TO-END: context + scale (why it mattered) → what YOU owned (say "I", not "we") → the architecture and the 1-2 key technical decisions and WHY → the hardest trade-off/challenge and how you resolved it → measurable impact (numbers) + what you would do differently. Ground every detail in the resume. 5-7 spoken sentences.',
+    coach: '**Context:** the problem + scale in one line (why it mattered).\n**Your role:** what YOU owned — say "I", not "we".\n**Architecture:** the design + the 1-2 key technical decisions and why.\n**Trade-offs:** the hard call made and what was given up.\n**Challenge:** the toughest problem and how it was cracked.\n**Impact:** measurable result (numbers) + what you would do differently.'
+  },
+  {
+    key: 'system_design', tier: 'strong',
+    match: /\b(system design|design (a|an|the)|architect|scal|throughput|load.?balanc|shard|partition|replicat|distributed|micro.?service|\bcdn\b|consistency|cap theorem|\bsql\b|nosql|kafka|rabbitmq)\b/i,
+    answer: 'Spoken, 4-6 sentences. Talk through the scale assumptions, the data-store choice and WHY, the key components, and the MAIN trade-off — conversationally, not as a lecture.',
+    coach: '**Clarify:** scope questions to ask (QPS, read/write ratio, consistency vs availability).\n**Scale:** which of horizontal-vs-vertical, load balancing, caching, sharding apply here.\n**Data:** SQL vs NoSQL + why; indexing / partitioning / replication if relevant.\n**Components:** the queues / caches / CDN to mention + one concrete trade-off (e.g. Kafka vs RabbitMQ).\n**Trade-offs:** the 1-2 trade-offs to verbalize — this is what is actually graded.'
+  },
+  {
+    key: 'dsa', tier: 'strong',
+    match: /\b(algorithm|complexity|big[- ]?o|dynamic programming|\bdp\b|recursion|binary search|two pointers|sliding window|\bbfs\b|\bdfs\b|leetcode|subarray|substring|linked list|\bgraph\b|\btree\b|\bheap\b|\barray\b|hashmap|optimi[sz]e|time limit)\b/i,
+    answer: 'Spoken, 2-4 sentences. Name the pattern, give the approach + time/space complexity, and for a coding problem add a SHORT correct code sketch with clear variable names. Always say the WHY of the data-structure / algorithm choice.',
+    coach: '**Clarify:** 1-2 sharp questions to ask first (edge cases, constraints, input size).\n**Approach:** brute-force in one line + its complexity → then the optimal pattern + its complexity.\n**Why:** the key trade-off to say out loud (e.g. BFS vs DFS, HashMap vs Set) and the reason.\n**Clean code:** one cue — name things clearly, state the invariant while coding.'
+  },
+  {
+    key: 'company', tier: 'fast',
+    match: /\b(why (do you want to work|us\b|this company|here\b|join)|what do you know about (us|the company|our)|our (product|mission|company|team))\b/i,
+    answer: 'Ground in the LIVE WEB SEARCH facts. Tie 1-2 SPECIFIC, current facts about the company/product to your own experience or goals. Genuine and specific — never generic flattery. 2-4 sentences.',
+    coach: '**Hook:** one specific, current fact about the company/product (from the search results).\n**Fit:** connect that fact to YOUR experience or goal.\n**Why now:** a sincere, specific reason — not generic.'
+  },
+  {
+    key: 'behavioral', tier: 'fast',
+    match: /\b(tell me about a time|describe a (situation|time)|conflict|disagree|weakness|strength|failure|mistake|proud|gave feedback|leadership|missed a deadline|under pressure)\b/i,
+    answer: 'Open with a SPECIFIC project from the resume, light STAR shape, first person, conversational. Surface ownership — say "I", quantify the result. Set confidence:"resume" when grounded in the resume. 3-5 sentences.',
+    coach: '**STAR:** Situation / Task / Action / Result as four short bullets pulled from the resume — points to expand in their own words, never a script.\n**Signal:** the ownership/leadership trait to surface (say "I", quantify the result).'
+  },
+  {
+    key: 'general', tier: 'fast',
+    match: /.*/,
+    answer: 'Answer directly in 2-3 spoken sentences, grounded in the resume where relevant. State the reasoning behind your take.',
+    coach: '**Frame:** restate what they are really asking, in one line.\n**Point:** the 2-3 key things to say.\n**Why:** the reasoning behind your take.'
+  }
+]
+
+// First matching card wins (general is the catch-all). Zero added latency — pure regex.
+function pickPlaybook(question = '') {
+  for (const pb of PLAYBOOKS) if (pb.match.test(question)) return pb
+  return PLAYBOOKS[PLAYBOOKS.length - 1]
+}
+
+const BANNED_WORDS = 'leverage, robust, seamless, delve, comprehensive, utilize, best-in-class, cutting-edge, tapestry, realm, underscore'
+const META_LINE = '1) FIRST LINE ONLY: META: {"type":"dsa|coding|technical|system_design|behavioral|resume|culture|other","confidence":"resume|general","pattern":<pattern name or null>,"complexity":<e.g. "O(n) time, O(1) space" or null>,"watch":"<one specific mistake to avoid for THIS question, <=12 words>"}'
+
+// Answer mode: shared spoken-style rules + ONLY the matched card's structure.
+function buildAnswerSystem(language, guide) {
+  return `You are an elite real-time interview copilot. The candidate reads your answer ALOUD as you stream it. Language: ${language}.
+
+If the input is NOT a real interview question (greeting, filler, the candidate's own answer, background noise), output EXACTLY "[SKIP]" and nothing else.
+
+Otherwise output, in this exact order:
+${META_LINE}
+2) Then a newline, then the SPOKEN answer prose (no markdown headers).
+
+SPOKEN STYLE (it is said out loud, not read): real-person contractions and connectors ("so", "honestly", "basically"); start mid-thought, never with a textbook definition; ALWAYS state the WHY / the trade-off out loud, not just the what. Never use these AI-tell words: ${BANNED_WORDS}.
+
+FOR THIS EXACT QUESTION TYPE — follow this and nothing else:
+${guide}`
+}
+
+// Coach mode: shared coaching framing + ONLY the matched card's label structure.
+function buildCoachSystem(language, guide) {
+  return `You are an elite interview COACH (not an answer key). Google/Amazon/Microsoft grade HOW the candidate solves — structuring thoughts out loud, trade-offs over brute force, clear naming, staying calm, and explaining the WHY — not just the final answer. So DO NOT give a finished answer to read. Give a glanceable STRUCTURE the candidate speaks in their OWN words. Language: ${language}.
+
+If the input is NOT a real interview question, output EXACTLY "[SKIP]" and nothing else.
+
+Otherwise output, in this exact order:
+${META_LINE}
+2) Then a newline, then a SCANNABLE guide using **bold labels** and short lines (never prose, never a script), following EXACTLY this label set and order:
+${guide}
+
+Keep every line short. Calm, confident framing. Never use these AI-tell words: ${BANNED_WORDS}.`
+}
+
+// Streaming variant of generateHint — emits a one-line META header (badges/type/
+// complexity/watch) then streams the SPOKEN answer prose token-by-token, so the UI
+// shows words in <1s instead of waiting for a full JSON object. Outputs the sentinel
+// [SKIP] when the input isn't a real interview question.
+export async function streamHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', mode = 'answer' } = {}, { onMeta, onToken } = {}) {
+  if (!question || !String(question).trim()) return { skipped: true }
+
+  // Web-search grounding for company/product/current-events questions (same as generateHint).
+  let searchSources = [], searchBlock = ''
+  if (needsWebSearch(question)) {
+    try {
+      const results = await searchWeb(question)
+      if (results?.sources?.length) {
+        searchSources = results.sources
+        searchBlock = '\n\nLIVE WEB SEARCH RESULTS (ground the answer in these current facts):\n'
+          + (results.answer ? `Summary: ${results.answer}\n\n` : '')
+          + results.sources.map(s => `[${s.title}] ${s.snippet}`).join('\n\n')
+      }
+    } catch { /* search failure is non-fatal */ }
+  }
+
+  const resumeBlock = profile.resume ? `\n\nCANDIDATE RESUME (ground behavioral/resume answers in this):\n${String(profile.resume).slice(0, 4000)}` : ''
+  const historyBlock = conversationHistory.length
+    ? '\n\nConversation so far (resolve "that"/"it"/"what you said" against this):\n' + conversationHistory.slice(-4).map(t => `${t.role.toUpperCase()}: ${String(t.text).slice(0, 300)}`).join('\n') : ''
+  const extraBlock = extraContext?.trim() ? `\n\nEXTRA CONTEXT FROM CANDIDATE:\n${extraContext.trim()}` : ''
+
+  // Pick the ONE playbook for this question and inject only its structure — focused
+  // prompt = the model follows it far more reliably than one giant all-types prompt.
+  const pb = pickPlaybook(question)
+  const system = mode === 'coach' ? buildCoachSystem(language, pb.coach) : buildAnswerSystem(language, pb.answer)
+  const user = `${resumeBlock}${historyBlock}${extraBlock}${searchBlock}\n\nCurrent question: "${String(question).slice(0, 800)}"`
+
+  // Model-escalation tier comes from the matched playbook (zero added latency).
+  const fast = process.env.OPENAI_API_KEY ? 'openai_mini' : process.env.GEMINI_API_KEY ? 'gemini' : provider
+  const strong = process.env.OPENAI_API_KEY ? 'openai' : fast
+  const tier = pb.tier
+  const chosen = tier === 'strong' ? strong : fast
+
+  let buf = '', metaSent = false, skipped = false
+  await streamText({
+    provider: chosen, maxTokens: (tier === 'strong' || mode === 'coach') ? 900 : 700,
+    messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+    onToken: tok => {
+      if (skipped || metaSent === 'done') { if (metaSent === 'done') onToken?.(tok); return }
+      buf += tok
+      if (/^\s*\[SKIP\]/i.test(buf)) { skipped = true; return }
+      if (buf.length < 6) return                       // wait to rule out "[SKIP]"/"META:"
+      if (/^\s*META:/i.test(buf)) {
+        const nl = buf.indexOf('\n')
+        if (nl === -1) return                          // still buffering the META line
+        let meta = {}
+        const mm = buf.slice(0, nl).match(/\{[\s\S]*\}/)
+        if (mm) { try { meta = JSON.parse(mm[0]) } catch {} }
+        if (searchSources.length) meta.searchSources = searchSources
+        onMeta?.(meta)
+        metaSent = 'done'
+        const rest = buf.slice(nl + 1).replace(/^\s+/, '')
+        if (rest) onToken?.(rest)
+      } else {
+        // Model skipped the META format — treat everything as prose.
+        onMeta?.(searchSources.length ? { searchSources } : {})
+        metaSent = 'done'
+        onToken?.(buf)
+      }
+    }
+  })
+  if (skipped) return { skipped: true }
+  if (metaSent !== 'done' && buf.trim()) { onMeta?.(searchSources.length ? { searchSources } : {}); onToken?.(buf) }
+  return { skipped: false, searchSources }
 }
 
 export async function evaluateSolo({ config = {}, transcript = [], profile = {}, provider }) {
