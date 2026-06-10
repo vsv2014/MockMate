@@ -19,7 +19,7 @@ function ElectronShell() {
   const [view, setView] = useState('home')
   const [report, setReport] = useState(null)
   const [panelSize, setPanelSize] = useState({ w: 420, h: 560 })
-  const [opacity, setOpacity] = useState(0.95)
+  const [opacity, setOpacity] = useState(1)   // solid by default for readability; the slider can dim it
   const [stealth, setStealth] = useState(false)
   const [clickThrough, setClickThrough] = useState(false)
   const [minimized, setMinimized] = useState(false)
@@ -435,6 +435,13 @@ export function IconBtn({ icon, title, onClick, active, danger }) {
 export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, onResize, onStealth, onMinimize, onClose, title, extra, actions, opacity = 0.95, autoHeight, clickThrough, confirmClose }) {
   const [confirming, setConfirming] = useState(false)
   const confirmTimer = useRef(null)
+  // 📌 Pin — keep the overlay above full-screen Zoom/Meet. Persisted so it survives
+  // view changes, and re-asserted on mount so the window matches the saved state.
+  const [pinned, setPinned] = useState(() => { try { return localStorage.getItem('mm-pinned') === '1' } catch { return false } })
+  useEffect(() => { if (inElectron) window.electronAPI?.setPin?.(pinned) }, [pinned])
+  function togglePin() {
+    setPinned(p => { const v = !p; try { localStorage.setItem('mm-pinned', v ? '1' : '0') } catch {} ; return v })
+  }
   function handleClose() {
     if (!confirmClose) return onClose?.()
     if (confirming) { clearTimeout(confirmTimer.current); onClose?.(); return }
@@ -447,7 +454,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         position: 'absolute', left: 0, top: 0,
         width: panelSize.w,
         height: (minimized || autoHeight) ? 'auto' : panelSize.h,
-        background: 'rgba(8,9,14,0.94)',
+        background: 'rgba(8,9,14,0.96)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: 14,
         boxShadow: '0 16px 64px rgba(0,0,0,0.85)',
@@ -473,6 +480,11 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
             : <span style={{ fontSize: 12, color: '#a78bfa', fontWeight: 700 }}>{title || 'MockMate'}</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }} onMouseDown={e => e.stopPropagation()}>
             {actions}
+            {inElectron && (
+              <button onClick={togglePin} onMouseDown={e => e.stopPropagation()}
+                title={pinned ? 'Pinned above full-screen apps — click to unpin' : 'Pin above full-screen apps (Zoom/Meet)'}
+                style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: pinned ? 'rgba(124,58,237,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, opacity: pinned ? 1 : 0.6 }}>📌</button>
+            )}
             <IconBtn icon="eye" onClick={onStealth} title={inElectron ? 'Hide overlay  (Alt+H)' : 'Dim  (Alt+H)'} />
             <IconBtn icon={minimized ? 'expand' : 'minimize'} onClick={onMinimize} title={minimized ? 'Expand' : 'Minimize'} />
             {confirming

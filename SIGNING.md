@@ -58,8 +58,8 @@ Add all five:
 Push a version tag (or run the workflow manually):
 
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
 CI will build, **sign**, and **notarize** the macOS DMG. The notarization step adds a

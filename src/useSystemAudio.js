@@ -189,13 +189,18 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
   // Open (or reopen) the Deepgram socket. Reuses the existing audio graph.
   const connectSocket = useCallback(async () => {
     if (userStop.current) return
-    let tokenRes
+    let tokenRes, tokenStatus
     try {
-      tokenRes = await fetch('/api/deepgram-token', { method: 'POST' }).then(r => r.json())
+      const r = await fetch('/api/deepgram-token', { method: 'POST' })
+      tokenStatus = r.status
+      tokenRes = await r.json().catch(() => null)
     } catch (e) { return scheduleReconnect('token fetch failed') }
     if (!tokenRes?.access_token) {
-      // A missing token usually means a bad/missing key — not worth endless retries.
-      return fail(tokenRes?.error || 'No Deepgram token')
+      // 401/403 = bad/missing key (config error) → stop, retrying won't help. Anything else
+      // (5xx grant blip, 429, transient) → reconnect: over a 60-90min session tokens are
+      // re-minted on every reconnect, so one transient failure must NOT kill the interview.
+      if (tokenStatus === 401 || tokenStatus === 403) return fail(tokenRes?.error || 'Deepgram auth failed — check your API key')
+      return scheduleReconnect(`token grant ${tokenStatus || 'error'}`)
     }
     if (userStop.current) return
 
@@ -256,7 +261,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
           }
         }
         lastEarlyTrigger.current = ''
-        onFinalRef.current?.(text, { speaker: sp, isCandidate })
+        onFinalRef.current?.(text, { speaker: sp, isCandidate, isQuestion: looksLikeQuestion(text) })
         setInterim('')
       } else {
         setInterim(text)

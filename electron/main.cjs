@@ -263,6 +263,15 @@ ipcMain.handle('capture-screen', () => captureScreen())   // "Solve it" button t
 ipcMain.handle('exclude-from-capture', () => ({ ok: process.platform !== 'linux', id: 'pip' }))
 ipcMain.on('get-userdata-path', e => { e.returnValue = app.getPath('userData') })
 ipcMain.on('hide-window', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide() })
+// Pin: raise to the highest always-on-top level so the overlay stays ABOVE a
+// full-screen Zoom/Meet (normal always-on-top sits below full-screen apps).
+ipcMain.on('set-pin', (_, on) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  try {
+    mainWindow.setAlwaysOnTop(true, on ? 'screen-saver' : 'floating')
+    mainWindow.setVisibleOnAllWorkspaces(!!on, { visibleOnFullScreen: true })
+  } catch {}
+})
 ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const [x, y] = mainWindow.getPosition(); mainWindow.setPosition(x + dx, y + dy)

@@ -71,7 +71,8 @@ app.post('/api/hint-stream', async (req, res) => {
   try {
     const out = await streamHint(req.body || {}, {
       onMeta: m => send('meta', m),
-      onToken: t => send('token', t)
+      onToken: t => send('token', t),
+      onUsage: u => send('usage', u)
     })
     send(out?.skipped ? 'skip' : 'done', {})
   } catch (e) {

@@ -161,7 +161,7 @@ Return ONE JSON object, no prose, no markdown fences:
 
   const historyBlock = conversationHistory.length > 0
     ? '\n\nConversation so far (for follow-up questions — "that"/"it"/"what you said" refers to this):\n' +
-      conversationHistory.slice(-4).map(t => `${t.role.toUpperCase()}: ${String(t.text).slice(0, 300)}`).join('\n')
+      conversationHistory.slice(-8).map(t => `${t.role.toUpperCase()}: ${String(t.text).slice(0, 300)}`).join('\n')
     : ''
 
   const extraBlock = extraContext?.trim()
@@ -223,14 +223,14 @@ const PLAYBOOKS = [
   {
     key: 'system_design', tier: 'strong',
     match: /\b(system design|design (a|an|the)|architect|scal|throughput|load.?balanc|shard|partition|replicat|distributed|micro.?service|\bcdn\b|consistency|cap theorem|\bsql\b|nosql|kafka|rabbitmq)\b/i,
-    answer: 'Spoken, 4-6 sentences. Talk through the scale assumptions, the data-store choice and WHY, the key components, and the MAIN trade-off — conversationally, not as a lecture.',
+    answer: 'SYSTEM DESIGN — never start designing blind. ALWAYS open by asking 1-2 sharp scoping questions out loud (scale / QPS, read-vs-write ratio, consistency vs availability, key use cases), then state your assumptions. Then, in 4-6 spoken sentences: the data-store choice and WHY, the key components, and the MAIN trade-off — conversationally, not a lecture.',
     coach: '**Clarify:** scope questions to ask (QPS, read/write ratio, consistency vs availability).\n**Scale:** which of horizontal-vs-vertical, load balancing, caching, sharding apply here.\n**Data:** SQL vs NoSQL + why; indexing / partitioning / replication if relevant.\n**Components:** the queues / caches / CDN to mention + one concrete trade-off (e.g. Kafka vs RabbitMQ).\n**Trade-offs:** the 1-2 trade-offs to verbalize — this is what is actually graded.'
   },
   {
     key: 'dsa', tier: 'strong',
     match: /\b(algorithm|complexity|big[- ]?o|dynamic programming|\bdp\b|recursion|binary search|two pointers|sliding window|\bbfs\b|\bdfs\b|leetcode|subarray|substring|linked list|\bgraph\b|\btree\b|\bheap\b|\barray\b|hashmap|optimi[sz]e|time limit)\b/i,
-    answer: 'Spoken, 2-4 sentences. Name the pattern, give the approach + time/space complexity, and for a coding problem add a SHORT correct code sketch with clear variable names. Always say the WHY of the data-structure / algorithm choice.',
-    coach: '**Clarify:** 1-2 sharp questions to ask first (edge cases, constraints, input size).\n**Approach:** brute-force in one line + its complexity → then the optimal pattern + its complexity.\n**Why:** the key trade-off to say out loud (e.g. BFS vs DFS, HashMap vs Set) and the reason.\n**Clean code:** one cue — name things clearly, state the invariant while coding.'
+    answer: 'CODING/DSA — NEVER jump straight to code; that is the biggest red flag. ALWAYS open by asking the 1-2 SHARPEST clarifying questions out loud (sorted? duplicates? input size / expected complexity? 4 or 8 directions? in-place?) — one or two sharp ones, not a barrage — then state the assumption you will go with. Next, in 2-3 spoken sentences: name the PATTERN and why it fits, the brute-force + its complexity, then the OPTIMAL approach with its time/space complexity and WHY it actually works (the key insight/invariant — not just the steps), and the main edge cases. THEN give the FULL, correct, runnable solution in a fenced ``` code block — default to Python unless the candidate\'s language is set otherwise — clean code in one go.',
+    coach: '**Clarify:** 1-2 sharp questions to ask first (sorted? duplicates? input size? directions?).\n**Pattern:** name it (sliding window / BFS / DP-…) and why it fits.\n**Approach:** brute-force in one line + its complexity → optimal + its time/space complexity.\n**Why it works:** the key insight/invariant to say out loud (and the trade-off, e.g. BFS vs DFS, HashMap vs Set).\n**Edge cases:** the 2-3 to mention before coding.\n**Clean code:** name things clearly; default Python.'
   },
   {
     key: 'company', tier: 'fast',
@@ -271,7 +271,13 @@ Otherwise output, in this exact order:
 ${META_LINE}
 2) Then a newline, then the SPOKEN answer prose (no markdown headers).
 
-SPOKEN STYLE (it is said out loud, not read): real-person contractions and connectors ("so", "honestly", "basically"); start mid-thought, never with a textbook definition; ALWAYS state the WHY / the trade-off out loud, not just the what. Never use these AI-tell words: ${BANNED_WORDS}.
+SPOKEN STYLE (said out loud, not read): real-person contractions and connectors ("so", "honestly", "basically", "what I did was"); start mid-thought, never a textbook definition; 2-4 sentences then STOP — don't keep teaching; plain words, not jargon ("response time" not "latency"); ALWAYS state the WHY / the trade-off, not just the what. Never use these AI-tell words: ${BANNED_WORDS}.
+
+GROUND IN THE CANDIDATE (critical — they're reading this as their OWN work):
+- The RESUME is the only source of truth — NEVER invent tools, numbers, projects, or features that aren't in it. If asked about something not on it: "honestly haven't used that directly, but I'd approach it by…" then the closest real thing from the resume. Never fake expertise.
+- For experience/technical answers, NAME the specific project and open with it ("In our <project>, what we did was…") — not the generic concept.
+- Keep numbers messy and human ("around 0.8-ish, I'd have to check") — never clean, fabricated-sounding ranges.
+- Pick ONE option, don't list three ("I'd use X"). If they say "just tell me X", give only X. If it's a repeat, answer shorter.
 
 FOR THIS EXACT QUESTION TYPE — follow this and nothing else:
 ${guide}`
@@ -295,7 +301,7 @@ Keep every line short. Calm, confident framing. Never use these AI-tell words: $
 // complexity/watch) then streams the SPOKEN answer prose token-by-token, so the UI
 // shows words in <1s instead of waiting for a full JSON object. Outputs the sentinel
 // [SKIP] when the input isn't a real interview question.
-export async function streamHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', mode = 'answer' } = {}, { onMeta, onToken } = {}) {
+export async function streamHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', mode = 'answer' } = {}, { onMeta, onToken, onUsage, signal } = {}) {
   if (!question || !String(question).trim()) return { skipped: true }
 
   // Web-search grounding for company/product/current-events questions (same as generateHint).
@@ -314,7 +320,7 @@ export async function streamHint({ question, profile = {}, conversationHistory =
 
   const resumeBlock = profile.resume ? `\n\nCANDIDATE RESUME (ground behavioral/resume answers in this):\n${String(profile.resume).slice(0, 4000)}` : ''
   const historyBlock = conversationHistory.length
-    ? '\n\nConversation so far (resolve "that"/"it"/"what you said" against this):\n' + conversationHistory.slice(-4).map(t => `${t.role.toUpperCase()}: ${String(t.text).slice(0, 300)}`).join('\n') : ''
+    ? '\n\nConversation so far (resolve "that"/"it"/"what you said" against this):\n' + conversationHistory.slice(-8).map(t => `${t.role.toUpperCase()}: ${String(t.text).slice(0, 300)}`).join('\n') : ''
   const extraBlock = extraContext?.trim() ? `\n\nEXTRA CONTEXT FROM CANDIDATE:\n${extraContext.trim()}` : ''
 
   // Pick the ONE playbook for this question and inject only its structure — focused
@@ -323,15 +329,20 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   const system = mode === 'coach' ? buildCoachSystem(language, pb.coach) : buildAnswerSystem(language, pb.answer)
   const user = `${resumeBlock}${historyBlock}${extraBlock}${searchBlock}\n\nCurrent question: "${String(question).slice(0, 800)}"`
 
-  // Model-escalation tier comes from the matched playbook (zero added latency).
-  const fast = process.env.OPENAI_API_KEY ? 'openai_mini' : process.env.GEMINI_API_KEY ? 'gemini' : provider
-  const strong = process.env.OPENAI_API_KEY ? 'openai' : fast
+  // HONOR THE USER'S EXPLICIT MODEL CHOICE. If they picked a model in the dropdown
+  // (provider is a real id, not '' / 'auto'), use it for EVERY question — so choosing
+  // Claude Opus actually gets you Opus, not gpt-4o-mini. Only when they leave it on
+  // Auto do we escalate (fast model for simple Qs, strong for coding/system-design).
   const tier = pb.tier
-  const chosen = tier === 'strong' ? strong : fast
+  const escalateFast = process.env.OPENAI_API_KEY ? 'openai_mini' : process.env.GEMINI_API_KEY ? 'gemini' : null
+  const escalateStrong = process.env.OPENAI_API_KEY ? 'openai' : escalateFast
+  const userPicked = provider && provider !== 'auto'
+  const chosen = userPicked ? provider : ((tier === 'strong' ? escalateStrong : escalateFast) || provider)
 
   let buf = '', metaSent = false, skipped = false
   await streamText({
     provider: chosen, maxTokens: (tier === 'strong' || mode === 'coach') ? 900 : 700,
+    onUsage, signal,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     onToken: tok => {
       if (skipped || metaSent === 'done') { if (metaSent === 'done') onToken?.(tok); return }
