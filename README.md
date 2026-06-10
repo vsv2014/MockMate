@@ -12,9 +12,9 @@ Grab the latest build from the [**Releases page**](https://github.com/vsv2014/Mo
 
 | Platform | File | Run |
 |---|---|---|
-| **Windows** | `MockMate-Setup-1.1.0.exe` | Run the installer |
-| **Linux** | `MockMate-1.1.0.AppImage` | `chmod +x` → run it |
-| **macOS** | `MockMate-1.1.0-arm64.dmg` (Apple Silicon) / `-x64.dmg` (Intel) | Open the dmg → drag to Applications |
+| **Windows** | `MockMate-Setup-<version>.exe` | Run the installer |
+| **Linux** | `MockMate-<version>.AppImage` | `chmod +x` → run it |
+| **macOS** | `MockMate-<version>-arm64.dmg` (Apple Silicon) / `MockMate-<version>-x64.dmg` (Intel) | Open the dmg → drag to Applications |
 
 On first launch, MockMate opens a **setup screen** where you paste your API keys — no manual
 file editing. Keys are saved locally and the app restarts ready to use.
@@ -38,11 +38,18 @@ install the next time you reopen MockMate — no re-download needed.
 git clone https://github.com/vsv2014/MockMate
 cd MockMate
 npm install
-npm run electron:dev   # launches the Electron overlay + API server + Vite
+cp .env.example .env       # configure keys ONCE — dev reads this automatically
+npm run electron:dev       # launches the Electron overlay + API server + Vite
 ```
 
-No `.env` is required to start — the app shows the setup screen if no keys are found. To
-preconfigure keys, create a `.env` in the project root (or next to the built executable).
+**Developer config — set it once.** Copy `.env.example` → `.env` and fill in your keys
+(OpenAI / Anthropic / Gemini / Groq / Deepgram), an optional `OPENAI_MODEL`, or a full
+custom OpenAI-compatible endpoint (`LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`). Both the
+dev API server and Electron read `.env` on every launch, so you **never re-enter keys
+through the UI** while developing. `.env` is gitignored — your keys are never committed.
+
+> No `.env` is required to *start* — without one, the app shows the in-app key setup
+> (that's the path packaged end-users use). The `.env` is purely the dev convenience.
 
 ---
 

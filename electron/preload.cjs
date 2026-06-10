@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('shortcut-stealth', handler)
   },
   hideWindow: () => ipcRenderer.send('hide-window'),
+  setPin: on => ipcRenderer.send('set-pin', on),
   getUserDataPath: () => ipcRenderer.sendSync('get-userdata-path'),
   writeEnv: content => ipcRenderer.invoke('write-env', content),
   relaunchApp: () => ipcRenderer.invoke('relaunch-app'),

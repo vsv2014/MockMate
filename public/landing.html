@@ -763,8 +763,14 @@
     const isMac = ua.includes('Macintosh') || ua.includes('Mac OS')
     const isLinux = ua.includes('Linux') && !ua.includes('Android')
 
-    const ALL_URL = 'https://github.com/vsv2014/MockMate/releases/latest'
+    const REPO = 'https://github.com/vsv2014/MockMate'
+    const ALL_URL = REPO + '/releases/latest'
+    // All buttons open the latest-release page (always resolves, regardless of how the
+    // release assets are named). We only swap the LABEL to the detected OS — we do NOT
+    // deep-link to a specific asset, because asset filenames vary by version and a
+    // version-less direct link 404s until a release ships with matching names.
     const ids = ['nav-download', 'hero-download', 'cta-download']
+    const setHref = url => ids.forEach(id => { const el = document.getElementById(id); if (el) el.href = url })
 
     function addBadge(text) {
       const ctas = document.querySelector('.hero-ctas')
@@ -776,23 +782,23 @@
     }
 
     if (isWindows) {
-      ids.forEach(id => { const el = document.getElementById(id); if (el) { el.href = ALL_URL; el.target = '_blank' } })
+      setHref(ALL_URL)
       document.getElementById('hero-download').innerHTML = '↓ Download for Windows'
       document.getElementById('nav-download').textContent = 'Download for Windows →'
       document.getElementById('cta-download').innerHTML = '↓ Download for Windows'
-      addBadge('Windows 10/11 · 64-bit · Run the installer · auto-updates')
+      addBadge('Windows 10/11 · pick the .exe on the releases page')
     } else if (isLinux) {
-      ids.forEach(id => { const el = document.getElementById(id); if (el) { el.href = ALL_URL; el.target = '_blank' } })
+      setHref(ALL_URL)
       document.getElementById('hero-download').innerHTML = '↓ Download for Linux'
       document.getElementById('nav-download').textContent = 'Download for Linux →'
       document.getElementById('cta-download').innerHTML = '↓ Download for Linux'
-      addBadge('Linux 64-bit · chmod +x then run · ~107 MB')
+      addBadge('Linux 64-bit · grab the .AppImage on the releases page')
     } else if (isMac) {
-      ids.forEach(id => { const el = document.getElementById(id); if (el) { el.href = ALL_URL; el.target = '_blank' } })
+      setHref(ALL_URL)
       document.getElementById('hero-download').innerHTML = '↓ Download for macOS'
       document.getElementById('nav-download').textContent = 'Download for macOS →'
       document.getElementById('cta-download').innerHTML = '↓ Download for macOS'
-      addBadge('macOS 12+ · Apple Silicon & Intel · signed & notarized')
+      addBadge('macOS · pick arm64 (Apple Silicon) or x64 (Intel) .dmg')
     }
   </script>
 </body>

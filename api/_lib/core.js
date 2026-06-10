@@ -62,7 +62,10 @@ export function availableProviders() {
 // Configured ones are selectable; the rest are shown disabled with a "needs key" hint.
 export function allProviders() {
   return Object.entries(CATALOG).map(([id, p]) => ({
-    id, label: p.label, envKey: p.envKey, configured: !!process.env[p.envKey]
+    id,
+    // Reflect a custom OPENAI_MODEL in the label so the dropdown confirms it's active.
+    label: id === 'openai' && process.env.OPENAI_MODEL ? `OpenAI · ${process.env.OPENAI_MODEL}` : p.label,
+    envKey: p.envKey, configured: !!process.env[p.envKey]
   }))
 }
 
@@ -109,6 +112,8 @@ export function extractJSON(text) {
 // fix its own output. Handles the messy ways Gemini emits JSON.
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const isRateLimit = e => e?.status === 429 || /\b429\b|rate.?limit|quota|resource.?exhausted/i.test(e?.message || '')
+// Out of CREDITS (not a transient rate-limit) — waiting won't help; tell the user plainly.
+const isQuotaExhausted = e => /insufficient_quota|exceeded your current quota|billing|not active|payment/i.test(e?.message || '') || e?.code === 'insufficient_quota'
 
 // Cache: remember which provider last worked so we skip failed ones immediately
 let lastWorkingProvider = null
@@ -181,6 +186,10 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
   }
 
   // All providers exhausted
+  if (isQuotaExhausted(lastError)) {
+    const e = new Error('Your AI provider is out of credits (insufficient quota). Add billing/credits, switch to another model, or set a free GEMINI_API_KEY as a fallback.')
+    e.status = 402; e.code = 'insufficient_quota'; throw e
+  }
   const e = new Error('All configured AI providers are rate-limited. Add GROQ_API_KEY (free) or GEMINI_API_KEY (free) to .env for automatic fallback.')
   e.status = 429; throw e
 }
@@ -188,7 +197,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
 // Streaming text completion — emits tokens via onToken as they arrive (true SSE).
 // Provider fallback only kicks in BEFORE the first token; once streaming has begun
 // we don't restart on another provider (that would duplicate output).
-export async function streamText({ messages, maxTokens = 700, provider, onToken }) {
+export async function streamText({ messages, maxTokens = 700, provider, onToken, onUsage, signal }) {
   const providerQueue = getFallbackProviders(provider)
   let lastError, emitted = false
   for (const provId of providerQueue) {
@@ -198,18 +207,31 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken 
     try {
       const params = { model, max_tokens: maxTokens, messages, stream: true }
       if (/gemini/i.test(model)) params.reasoning_effort = 'none'
-      const stream = await llm.chat.completions.create(params)
+      // Only OpenAI/Groq reliably support stream usage; gate it so others don't 400.
+      const supportsUsage = /openai\.com|groq\.com/.test(prov.baseURL || '')
+      if (supportsUsage) params.stream_options = { include_usage: true }
+      let usage = null
+      const stream = await llm.chat.completions.create(params, signal ? { signal } : undefined)
       for await (const chunk of stream) {
+        if (chunk?.usage) usage = chunk.usage
         const tok = chunk?.choices?.[0]?.delta?.content || ''
         if (tok) { emitted = true; onToken?.(tok) }
       }
       lastWorkingProvider = provId
+      if (usage && onUsage) onUsage({ model, input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0 })
       return
     } catch (e) {
+      // Client disconnected (question superseded / overlay closed) — stop immediately and
+      // do NOT fail over to another provider, which would re-spend tokens on a dead request.
+      if (signal?.aborted || e?.name === 'AbortError') throw e
       lastError = e
       if (isRateLimit(e)) rateLimitedUntil[provId] = Date.now() + 5 * 60 * 1000
       if (emitted) throw e   // already streamed partial output — don't restart elsewhere
     }
+  }
+  if (isQuotaExhausted(lastError)) {
+    const e = new Error('Your AI provider is out of credits (insufficient quota). Add billing/credits, switch model, or add a free GEMINI_API_KEY fallback.')
+    e.status = 402; e.code = 'insufficient_quota'; throw e
   }
   throw lastError || new Error('No LLM provider could stream a response')
 }
