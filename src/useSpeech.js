@@ -7,7 +7,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 //
 // Caveats (be honest in the UI): best in Chrome/Edge; Firefox/Safari are spotty.
 // Recognition stops on long silence, so we auto-restart while `active`.
-export function useSpeech(onFinal) {
+export function useSpeech(onFinal, lang = 'en-US') {
   const Rec = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)
   const supported = !!Rec
   const [active, setActive] = useState(false)
@@ -16,13 +16,17 @@ export function useSpeech(onFinal) {
   const activeRef = useRef(false)
   const onFinalRef = useRef(onFinal)
   useEffect(() => { onFinalRef.current = onFinal }, [onFinal])
+  // Transcribe in the interview's language, not always en-US — wrong-language
+  // recognition mangles accuracy. Applied at each start() so a setup change takes effect.
+  const langRef = useRef(lang || 'en-US')
+  useEffect(() => { langRef.current = lang || 'en-US' }, [lang])
 
   useEffect(() => {
     if (!supported) return
     const rec = new Rec()
     rec.continuous = true
     rec.interimResults = true
-    rec.lang = 'en-US'
+    rec.lang = langRef.current
     rec.onresult = e => {
       let live = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -50,6 +54,7 @@ export function useSpeech(onFinal) {
   const start = useCallback(() => {
     if (!supported || activeRef.current) return
     activeRef.current = true; setActive(true)
+    try { if (recRef.current) recRef.current.lang = langRef.current } catch {}
     try { recRef.current?.start() } catch {}
   }, [supported])
 

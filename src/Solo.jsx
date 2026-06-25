@@ -1,20 +1,24 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { useSpeech } from './useSpeech'
 import { useDeepgram } from './useDeepgram'
-import { analyze, liveNudge } from './delivery'
+import { analyze, liveNudge } from '../shared/delivery.js'
 import Report from './Report'
+import { saveSession } from './history'
+import { loadProfile, saveProfile as persistProfile } from './lib/profile'
+import { fmtClock } from './lib/ui'
+import { LANGUAGES, STT_LANG } from './lib/languages'
+import { isTransient } from '../shared/llm-errors.js'
 
-const PROFILE_KEY = 'peerMockProfile'
-function loadProfile() {
-  try { return JSON.parse(localStorage.getItem(PROFILE_KEY)) || {} } catch { return {} }
-}
-function fmtClock(ms) {
-  const s = Math.max(0, Math.floor(ms / 1000))
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-}
-function speak(text, on) {
-  if (!on || !window.speechSynthesis) return
-  try { window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance(text)) } catch {}
+function speak(text, on, onDone) {
+  // onDone fires when speech finishes (or immediately if TTS is off/unsupported) so the
+  // caller can re-open the mic for the user's turn without capturing the interviewer's voice.
+  if (!on || !window.speechSynthesis) { onDone?.(); return }
+  try {
+    window.speechSynthesis.cancel()
+    const u = new SpeechSynthesisUtterance(text)
+    if (onDone) { u.onend = onDone; u.onerror = onDone }
+    window.speechSynthesis.speak(u)
+  } catch { onDone?.() }
 }
 
 export default function Solo({ onHome }) {
@@ -27,7 +31,10 @@ export default function Solo({ onHome }) {
   const [providers, setProviders] = useState([])
   const [provider, setProvider] = useState(() => { try { return localStorage.getItem('llmProvider') || '' } catch { return '' } })
   const [dgAvailable, setDgAvailable] = useState(false)
-  const [useDg, setUseDg] = useState(true)   // prefer Deepgram when available
+  // Default to the FREE browser engine for Solo: it starts instantly (no token/socket
+  // handshake) and uses no Deepgram quota — ideal for practice. Deepgram ("Accurate")
+  // stays one click away for noisy mics / accents.
+  const [useDg, setUseDg] = useState(false)
 
   useEffect(() => {
     fetch('/api/providers').then(r => r.json()).then(d => {
@@ -47,39 +54,88 @@ export default function Solo({ onHome }) {
   const [error, setError] = useState('')
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [clock, setClock] = useState(0)
+  const [micStarting, setMicStarting] = useState(false)   // "Starting…" until the mic is actually live
 
   const startedAt = useRef(Date.now())
   const answerStart = useRef(null)
   const bottomRef = useRef(null)
   const transcriptRef = useRef([])
+  // Hands-free conversation: once the user starts the mic, the interviewer keeps the
+  // loop going — auto-restart the mic after it speaks, and auto-send when the user pauses.
+  const voiceRef = useRef(false)        // true while in hands-free voice mode
+  const answerRef = useRef('')          // latest draft, readable from timers
+  const thinkingRef = useRef(false)
+  const phaseRef = useRef('setup')
+  const silenceTimer = useRef(null)     // fires submit() after a speech pause
   useEffect(() => { transcriptRef.current = transcript }, [transcript])
+  useEffect(() => { answerRef.current = answer }, [answer])
+  useEffect(() => { thinkingRef.current = thinking }, [thinking])
+  useEffect(() => { phaseRef.current = phase }, [phase])
+  // Clear any pending auto-send on unmount.
+  useEffect(() => () => clearTimeout(silenceTimer.current), [])
 
   const config = { domainLabel: profile.targetRole ? `${profile.targetRole}` : 'General', roundLabel: 'Interview', focus, followupDepth, relentless }
 
   const onFinalText = text => {
     if (answerStart.current == null) answerStart.current = Date.now()
     setAnswer(a => (a ? a.trim() + ' ' : '') + text)
+    if (voiceRef.current) scheduleAutoSubmit()   // hands-free: auto-send once they pause
   }
-  const web = useSpeech(onFinalText)
+  // Auto-send the spoken answer after a short pause, so the interviewer keeps the
+  // conversation going without a button press. Reset on every new word; only fires
+  // when in voice mode, the interviewer isn't already responding, and there's content.
+  function scheduleAutoSubmit() {
+    clearTimeout(silenceTimer.current)
+    silenceTimer.current = setTimeout(() => {
+      if (voiceRef.current && !thinkingRef.current && phaseRef.current === 'live' && answerRef.current.trim()) submit()
+    }, 2600)
+  }
+  const web = useSpeech(onFinalText, STT_LANG[profile.language] || 'en-US')
   // If Deepgram drops mid-session (quota/network/auth), fall back to the free
   // browser engine automatically so you can always keep talking.
   const dg = useDeepgram(onFinalText, reason => {
     setUseDg(false)
     setError(`Accurate speech (Deepgram) stopped — ${reason}. Switched to the free browser engine; you can keep talking.`)
     if (web.supported) web.start()
-  })
+  }, STT_LANG[profile.language] || 'en-US')
   // Use Deepgram when configured & chosen; otherwise the free browser engine.
   const usingDg = useDg && dgAvailable
   const speech = usingDg ? dg : web
 
+  // While the user is still producing words (interim text), hold off the auto-send timer;
+  // re-arm it once they go quiet. This is the endpointing that decides "they finished talking".
+  useEffect(() => {
+    if (!voiceRef.current) return
+    if (speech.interim && speech.interim.trim()) clearTimeout(silenceTimer.current)
+    else if (answerRef.current.trim()) scheduleAutoSubmit()
+  }, [speech.interim]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-open the mic for the user's turn (after the interviewer finished speaking).
+  function resumeMic() {
+    if (!voiceRef.current || phaseRef.current !== 'live') return
+    try { const r = speech.start(); if (r && typeof r.catch === 'function') r.catch(() => {}) } catch {}
+  }
+
   async function startMic() {
     setError('')
+    setMicStarting(true)      // instant feedback — Deepgram's token+socket handshake takes a moment
+    voiceRef.current = true   // enter hands-free mode: auto-send on pause + auto-resume after replies
     if (usingDg) {
       try { await dg.start() } catch (e) { setUseDg(false); setError('Could not start Deepgram — using the free browser engine.'); if (web.supported) web.start() }
     } else {
       web.start()
     }
   }
+
+  // User manually stops the mic — leave hands-free mode and cancel any pending auto-send.
+  function stopMic() {
+    voiceRef.current = false
+    clearTimeout(silenceTimer.current)
+    setMicStarting(false)
+    speech.stop()
+  }
+  // Clear the "Starting…" label the instant the mic is actually live.
+  useEffect(() => { if (speech.active) setMicStarting(false) }, [speech.active])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [transcript, thinking, speech.interim])
   useEffect(() => {
@@ -88,26 +144,47 @@ export default function Solo({ onHome }) {
     return () => clearInterval(id)
   }, [phase])
 
-  // live coach on the current draft
-  const liveStats = answer.trim() ? analyze(answer + (speech.interim ? ' ' + speech.interim : ''), null) : null
+  // live coach on the current draft — memoized so it only recomputes when the text changes
+  // (not on every clock tick / unrelated re-render).
+  const liveStats = useMemo(
+    () => answer.trim() ? analyze(answer + (speech.interim ? ' ' + speech.interim : ''), null) : null,
+    [answer, speech.interim]
+  )
   const nudge = liveStats ? liveNudge(liveStats, { spoken: true }) : null
 
-  function saveProfile(p) { setProfile(p); try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)) } catch {} }
+  function saveProfile(p) { setProfile(p); persistProfile(p) }
 
-  async function requestTurn(current) {
-    setThinking(true); setError('')
+  async function requestTurn(current, attempt = 0) {
+    setThinking(true); if (attempt === 0) setError('')
+    // A transient provider blip (503/overloaded/timeout/network) shouldn't end a long
+    // interview — retry a couple of times before surfacing an error. The server already
+    // retries + fails over across providers; this is the last-resort client safety net.
+    const retryTransient = async (msg, status) => {
+      // Use the SAME classifier the server retries on (shared/llm-errors) so client + server
+      // never disagree about what's retryable.
+      const transient = isTransient({ status, message: msg })
+      if (transient && attempt < 2) {
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)))
+        return requestTurn(current, attempt + 1)
+      }
+      setThinking(false); setError(msg || `Service error (${status || '?'})`)
+      return null
+    }
     try {
       const res = await fetch('/api/interview', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config, transcript: current, profile, provider, language: profile.language || 'English' })
-      }).then(r => r.json())
+      })
+      let data = {}; try { data = await res.json() } catch { data = {} }   // 503s can arrive with no body
+      if (!res.ok || data.error || !data.turn?.say) return await retryTransient(data.error, res.status)
       setThinking(false)
-      if (res.error) { setError(res.error); return }
-      const turn = res.turn
+      const turn = data.turn
       setTranscript([...current, { role: 'interviewer', text: turn.say }])
       if (turn.questionNumber) setCurrentQuestion(turn.questionNumber)
-      speak(turn.say, tts)
-    } catch (e) { setThinking(false); setError(e.message) }
+      // Speak, then hand the turn back to the user: re-open the mic when the voice finishes
+      // (or immediately if TTS is off) so the conversation continues hands-free.
+      speak(turn.say, tts, resumeMic)
+    } catch (e) { return await retryTransient(e.message, 0) }
   }
 
   function start() {
@@ -117,17 +194,19 @@ export default function Solo({ onHome }) {
   }
 
   async function submit() {
-    const text = answer.trim()
-    if (!text || thinking) return
-    speech.stop()
+    clearTimeout(silenceTimer.current)            // cancel any pending auto-send
+    const text = (answerRef.current || answer).trim()
+    if (!text || thinkingRef.current) return
+    speech.stop()                                 // pause mic so the interviewer's voice isn't transcribed
     const durationMs = answerStart.current ? Date.now() - answerStart.current : null
     const meta = { ...analyze(text, durationMs), spoken: true }
     const next = [...transcriptRef.current, { role: 'candidate', text, meta }]
-    setTranscript(next); setAnswer(''); answerStart.current = null
-    await requestTurn(next)
+    setTranscript(next); setAnswer(''); answerRef.current = ''; answerStart.current = null
+    await requestTurn(next)                        // requestTurn re-opens the mic after the reply
   }
 
   async function end() {
+    voiceRef.current = false; clearTimeout(silenceTimer.current)
     speech.stop(); window.speechSynthesis?.cancel()
     if (!transcriptRef.current.some(t => t.role === 'candidate')) { onHome(); return }
     setEvaluating(true)
@@ -136,13 +215,16 @@ export default function Solo({ onHome }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config, transcript: transcriptRef.current, profile, provider })
       }).then(r => r.json())
-      setReport(res.report || { error: res.error }); setPhase('report')
+      const rep = res.report || { error: res.error }
+      setReport(rep); setPhase('report')
+      // Persist for later review (transcript + feedback), kept ~3 months on this machine.
+      saveSession({ report: rep, transcript: transcriptRef.current, config, profile })
     } catch (e) { setReport({ error: e.message }); setPhase('report') }
     setEvaluating(false)
   }
 
   // ── report ──
-  if (phase === 'report') return <Report report={report} onAgain={onHome} solo />
+  if (phase === 'report') return <Report report={report} onAgain={onHome} solo transcript={transcriptRef.current} />
 
   // ── setup ──
   if (phase === 'setup') return (
@@ -187,7 +269,7 @@ export default function Solo({ onHome }) {
         <div className="field">
           <label className="label">Interview language</label>
           <select value={profile.language || 'English'} onChange={e => saveProfile({ ...profile, language: e.target.value })} style={{ maxWidth: 360 }}>
-            {['English','Spanish','French','German','Portuguese','Hindi','Japanese','Chinese','Korean','Arabic','Italian','Dutch'].map(l =>
+            {LANGUAGES.map(l =>
               <option key={l} value={l}>{l}</option>)}
           </select>
         </div>
@@ -247,11 +329,11 @@ export default function Solo({ onHome }) {
         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }} />
 
       <div className="mic-bar" style={{ marginTop: 10 }}>
-        <button className={speech.active ? 'btn-danger' : 'btn-ghost'} onClick={() => speech.active ? speech.stop() : startMic()} disabled={!speech.supported}>
-          {speech.active ? '⏹ Stop' : '🎤 Speak'}
+        <button className={speech.active ? 'btn-danger' : 'btn-ghost'} onClick={() => speech.active ? stopMic() : startMic()} disabled={!speech.supported || micStarting}>
+          {micStarting ? '⏳ Starting…' : speech.active ? '⏹ Stop' : '🎤 Speak'}
         </button>
         <button className="btn" onClick={submit} disabled={!answer.trim() || thinking}>Send answer</button>
-        {speech.active && <><span className="rec-dot" /><span className="meta">listening</span></>}
+        {speech.active && <><span className="rec-dot" /><span className="meta">listening — auto-sends when you pause</span></>}
         <span className="spacer" />
         <span className="meta">The interviewer won’t tell you if you’re right — feedback comes at the end.</span>
       </div>

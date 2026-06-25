@@ -40,9 +40,9 @@
       --border-2:  rgba(28,26,22,0.16);
 
       /* Single accent — warm ember (deliberately NOT violet) */
-      --accent:      #d6441b;
-      --accent-deep: #b5360f;
-      --accent-soft: rgba(214,68,27,0.10);
+      --accent:      #0d9488;
+      --accent-deep: #0f766e;
+      --accent-soft: rgba(13,148,136,0.10);
       --green:       #1f7a52;
 
       --shadow-sm:  0 1px 2px rgba(28,26,22,0.05), 0 2px 8px -2px rgba(28,26,22,0.06);
@@ -73,9 +73,9 @@
       --border:    rgba(255,255,255,0.09);
       --border-2:  rgba(255,255,255,0.15);
 
-      --accent:      #e85a2e;
-      --accent-deep: #d6441b;
-      --accent-soft: rgba(232,90,46,0.14);
+      --accent:      #14b8a6;
+      --accent-deep: #0d9488;
+      --accent-soft: rgba(20,184,166,0.14);
       --green:       #34d399;
 
       --shadow-sm:  0 1px 2px rgba(0,0,0,0.3), 0 2px 8px -2px rgba(0,0,0,0.4);
@@ -103,8 +103,8 @@
     .bg-mesh {
       position: fixed; inset: 0; z-index: -2; pointer-events: none;
       background:
-        radial-gradient(70% 50% at 50% -10%, rgba(214,68,27,0.10), transparent 60%),
-        radial-gradient(40% 35% at 90% 5%, rgba(214,68,27,0.05), transparent 70%),
+        radial-gradient(70% 50% at 50% -10%, rgba(13,148,136,0.10), transparent 60%),
+        radial-gradient(40% 35% at 90% 5%, rgba(13,148,136,0.05), transparent 70%),
         var(--bg);
     }
     .bg-grain {
@@ -113,7 +113,7 @@
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
     }
 
-    ::selection { background: rgba(214,68,27,0.22); color: var(--ink); }
+    ::selection { background: rgba(13,148,136,0.22); color: var(--ink); }
 
     /* ── NAV ── */
     nav {
@@ -135,7 +135,7 @@
     .logo-mark {
       width: 22px; height: 22px; border-radius: 7px;
       background: linear-gradient(150deg, var(--accent), var(--accent-deep));
-      box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset, 0 4px 12px rgba(214,68,27,0.35);
+      box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset, 0 4px 12px rgba(13,148,136,0.35);
       display: grid; place-items: center; font-size: 12px; color: #fff;
     }
     nav a { color: var(--muted); font-size: 14px; text-decoration: none; transition: color 0.2s; }
@@ -198,7 +198,7 @@
       background: linear-gradient(150deg, var(--accent), var(--accent-deep)); color: #fff;
       padding: 15px 30px; border-radius: 12px;
       font-size: 15.5px; font-weight: 600; text-decoration: none; letter-spacing: -0.01em;
-      box-shadow: 0 1px 0 rgba(255,255,255,0.25) inset, 0 10px 28px -10px rgba(214,68,27,0.55);
+      box-shadow: 0 1px 0 rgba(255,255,255,0.25) inset, 0 10px 28px -10px rgba(13,148,136,0.55);
       transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease);
     }
     .btn-hero::after {
@@ -206,7 +206,7 @@
       background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.3) 50%, transparent 70%);
       transform: translateX(-120%); transition: transform 0.6s var(--ease);
     }
-    .btn-hero:hover { transform: translateY(-2px); box-shadow: 0 1px 0 rgba(255,255,255,0.3) inset, 0 16px 40px -12px rgba(214,68,27,0.7); }
+    .btn-hero:hover { transform: translateY(-2px); box-shadow: 0 1px 0 rgba(255,255,255,0.3) inset, 0 16px 40px -12px rgba(13,148,136,0.7); }
     .btn-hero:hover::after { transform: translateX(120%); }
 
     .btn-secondary {
@@ -227,7 +227,7 @@
     @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
     .mockup-glow {
       position: absolute; inset: -50px -30px;
-      background: radial-gradient(circle at 50% 40%, rgba(214,68,27,0.18), transparent 68%);
+      background: radial-gradient(circle at 50% 40%, rgba(13,148,136,0.18), transparent 68%);
       pointer-events: none; filter: blur(8px);
     }
     .mockup {
@@ -251,12 +251,12 @@
     .m-live { font-size: 10px; color: #4ade80; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.04em; }
     .mockup-body { padding: 18px; }
     .m-q-label { font-size: 9px; color: #fca98e; font-weight: 700; letter-spacing: 0.16em; margin-bottom: 7px; }
-    .m-q { font-size: 13px; color: #f4d9cf; background: rgba(214,68,27,0.12); border: 1px solid rgba(214,68,27,0.28); border-radius: 10px; padding: 11px 13px; margin-bottom: 15px; line-height: 1.5; }
+    .m-q { font-size: 13px; color: #f4d9cf; background: rgba(13,148,136,0.12); border: 1px solid rgba(13,148,136,0.28); border-radius: 10px; padding: 11px 13px; margin-bottom: 15px; line-height: 1.5; }
     .m-answer { background: rgba(6,40,28,0.5); border: 1px solid rgba(52,211,153,0.2); border-radius: 12px; padding: 15px; }
     .m-badges { display: flex; gap: 6px; margin-bottom: 11px; }
     .m-badge { font-size: 9px; padding: 3px 9px; border-radius: 100px; font-weight: 700; letter-spacing: 0.02em; }
     .m-b-resume { background: rgba(16,185,129,0.18); color: #6ee7b7; }
-    .m-b-type { background: rgba(214,68,27,0.22); color: #fca98e; }
+    .m-b-type { background: rgba(13,148,136,0.22); color: #fca98e; }
     .m-text { font-size: 13px; color: #d1fae5; line-height: 1.75; }
     .m-cursor { display: inline-block; width: 2px; height: 0.9em; background: #4ade80; margin-left: 2px; vertical-align: text-bottom; animation: blink 0.7s step-end infinite; }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
@@ -301,7 +301,7 @@
     }
     .feat::before {
       content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
-      background: radial-gradient(140px 90px at var(--mx,50%) var(--my,0%), rgba(214,68,27,0.55), transparent 70%);
+      background: radial-gradient(140px 90px at var(--mx,50%) var(--my,0%), rgba(13,148,136,0.55), transparent 70%);
       -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
       -webkit-mask-composite: xor; mask-composite: exclude;
       opacity: 0; transition: opacity 0.3s;
@@ -448,13 +448,13 @@
 
   <!-- HERO -->
   <section class="hero">
-    <div class="hero-eyebrow reveal"><span class="dot"></span>AI Mock Interviews · Honest Scoring · Real-Time Coaching</div>
+    <div class="hero-eyebrow reveal"><span class="dot"></span>AI Mock Interviews · ATS Resume Score · Live Job Matching</div>
     <h1 class="reveal">
       Practice interviews<br />
       <span class="highlight">until you're unstoppable.</span>
     </h1>
     <p class="hero-sub reveal">
-      An AI interviewer that grills you like a real hiring panel, scores you honestly, and coaches you in the moment — across behavioral, system design, and coding rounds. Walk into the real thing already ready.
+      An AI interviewer that grills you like a real hiring panel, scores you honestly, and coaches you in the moment — behavioral, system design, and coding rounds. Plus an ATS resume score, per-role resume tailoring, and live job matches: the whole path from application to offer.
     </p>
     <div class="hero-ctas reveal">
       <a href="https://github.com/vsv2014/MockMate/releases/latest" class="btn-hero" id="hero-download" target="_blank">
@@ -535,7 +535,7 @@
   <!-- FEATURES -->
   <section class="section" id="features" style="padding-top:0">
     <span class="section-tag reveal">Features</span>
-    <h2 class="section-h reveal">Everything you need<br />to walk in prepared.</h2>
+    <h2 class="section-h reveal">Everything you need<br />from resume to offer.</h2>
 
     <div class="features">
       <div class="feat reveal">
@@ -567,6 +567,21 @@
         <span class="feat-icon">🤖</span>
         <h3>Solo practice mode</h3>
         <p>An AI interviewer asks questions calibrated to your role. Probes with follow-ups. Scores you at the end.</p>
+      </div>
+      <div class="feat reveal">
+        <span class="feat-icon">🎯</span>
+        <h3>ATS resume score</h3>
+        <p>Graded 0–100 the way ATS software and a recruiter would — 20+ checks across keywords, metrics, and parse-safety, with the exact fixes to get past the bots.</p>
+      </div>
+      <div class="feat reveal" style="transition-delay:.06s">
+        <span class="feat-icon">✏️</span>
+        <h3>Tailor &amp; referrals</h3>
+        <p>Rewrites your resume for each role — surfacing keywords you genuinely match, never fabricating — and drafts personalized referral messages from your background.</p>
+      </div>
+      <div class="feat reveal" style="transition-delay:.12s">
+        <span class="feat-icon">💼</span>
+        <h3>Matching jobs</h3>
+        <p>Live roles ranked against your resume with why-it-fits and skill gaps. Filter by location, sort by fit, and save the ones you want to a personal dashboard.</p>
       </div>
     </div>
 
@@ -798,7 +813,7 @@
       document.getElementById('hero-download').innerHTML = '↓ Download for macOS'
       document.getElementById('nav-download').textContent = 'Download for macOS →'
       document.getElementById('cta-download').innerHTML = '↓ Download for macOS'
-      addBadge('macOS · pick arm64 (Apple Silicon) or x64 (Intel) .dmg')
+      addBadge('macOS · arm64 (Apple Silicon) or x64 (Intel) .dmg · first run: right-click → Open')
     }
   </script>
 </body>

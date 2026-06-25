@@ -1,6 +1,6 @@
 {
   "name": "mockmate",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "module",
   "main": "electron/main.cjs",
   "description": "Real-Time AI Interview Companion — floats over Zoom/Teams/Meet, invisible to screen capture",
@@ -18,7 +18,9 @@
     "electron:build": "vite build && electron-builder",
     "electron:build:win": "vite build && electron-builder --win",
     "server": "node server.js",
-    "vite": "vite"
+    "vite": "vite",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "build": {
     "appId": "com.mockmate.app",
@@ -31,12 +33,11 @@
       "dist/**/*",
       "electron/**/*",
       "api/**/*",
-      "src/delivery.js",
+      "shared/**/*",
       "server.js",
       "server-entry.cjs",
       "setup.html",
       "package.json",
-      ".env",
       "node_modules/**/*",
       "!node_modules/electron/**/*",
       "!node_modules/.cache/**/*"
@@ -120,10 +121,14 @@
     }
   },
   "dependencies": {
+    "@sentry/electron": "^7.14.0",
+    "@sentry/node": "^10.60.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "electron-updater": "^6.8.9",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
     "openai": "^6.25.0",
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
@@ -135,6 +140,7 @@
     "electron": "^32.3.3",
     "electron-builder": "^24.0.0",
     "vite": "^6.0.7",
+    "vitest": "^4.1.9",
     "wait-on": "^8.0.0"
   }
 }
