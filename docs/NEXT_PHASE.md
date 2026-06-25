@@ -188,3 +188,41 @@ referral contacts and submitting applications. Everything else stays in the app.
 A new user can: install the app → **sign up** → **subscribe (Stripe)** → run Live/Solo/Jobs **without ever
 seeing an API key** → hit plan limits gracefully. Power users can still flip to **BYO key**. The platform's
 keys are high-tier and server-held, so "it just works and never asks for a key" — matching the competitors.
+
+---
+
+## "Room" — peer / human mock interviews (parked idea, deliberate)
+
+MockMate **started** as a peer-mock-interview tool (the profile is still stored under the localStorage key
+`peerMockProfile`, and `src/Room.jsx` is the leftover surface). The original idea: invite a friend into a
+**room** and interview each other live — a human interviewer instead of the AI. It was set aside when the
+product focused on the **AI interviewer (Solo)** + **AI live companion** + career tools. This documents the
+idea so it's a roadmap decision, not lost code.
+
+### Why it was parked (and why that's the right call for now)
+- **It's a different architecture.** Two humans live in a room needs **WebRTC** (peer audio/video), a
+  **signaling server**, **TURN/STUN** servers for NAT traversal, and **room/session state** — a whole
+  always-on multiplayer backend. None of that exists today (the app is single-user: local server + LLM).
+- **Cold-start / matchmaking.** A peer feature is only useful with a **pool of peers to match** — the hard
+  problem Pramp / interviewing.io exist to solve. Hard for a small team to bootstrap.
+- **Availability.** The AI is 24/7 and instant; a peer needs another person free at the same time.
+- **Differentiation.** The AI angle (always-on, honest scoring, real-time help) is what beats LockedIn AI /
+  FinalRound. Peer interviews compete in a separate, crowded, infra-heavy market.
+
+### If we ever build it (what it would take)
+1. **Real-time transport:** WebRTC for peer A/V, plus a **signaling service** (WebSocket) to exchange
+   offers/answers/ICE candidates. Add a hosted **TURN** server (e.g. coturn / a managed provider) — without
+   it, ~15-20% of users behind strict NATs can't connect.
+2. **Room lifecycle:** create/join by code or link, presence, "who's interviewer vs candidate", leave/teardown.
+   Lives on the same `backend/` service (accounts already there) — gate rooms behind login.
+3. **Reuse what exists:** the AI can still ride along as a **co-pilot for the human interviewer** (suggested
+   follow-ups, a scorecard) and run the **post-session review** (`makeReport`) on the recorded transcript —
+   so it complements the AI product instead of replacing it.
+4. **Matchmaking (only if going public):** a lobby/queue to pair strangers by role + level; otherwise keep it
+   **invite-a-friend** only (no matchmaking needed, far simpler — a good MVP).
+
+### Recommendation
+Keep `src/Room.jsx` in the repo as a marker (it's harmless, unused dead code — nothing imports it). Revisit
+**only** if users specifically ask for human peer practice. If we do, start with **invite-a-friend rooms**
+(no matchmaking) on top of the accounts backend, with the AI as the interviewer's co-pilot + post-session
+scorer — that's the version that reuses the most of what we already have.
