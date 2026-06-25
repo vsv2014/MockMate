@@ -1,41 +1,19 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-
-// Downsample Float32 mic audio to 16 kHz mono PCM16 (Deepgram linear16 input).
-function toPCM16(input, inRate, outRate = 16000) {
-  let data = input
-  if (outRate < inRate) {
-    const ratio = inRate / outRate
-    const len = Math.round(input.length / ratio)
-    const out = new Float32Array(len)
-    let pos = 0
-    for (let i = 0; i < len; i++) {
-      const next = Math.round((i + 1) * ratio)
-      let sum = 0, c = 0
-      for (let j = pos; j < next && j < input.length; j++) { sum += input[j]; c++ }
-      out[i] = c ? sum / c : 0
-      pos = next
-    }
-    data = out
-  }
-  const pcm = new Int16Array(data.length)
-  for (let i = 0; i < data.length; i++) {
-    const s = Math.max(-1, Math.min(1, data[i]))
-    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff
-  }
-  return pcm.buffer
-}
+import { toPCM16 } from './audio-pcm'
 
 // Accurate live transcription via Deepgram. The browser gets a short-lived token
 // from our server, then streams audio straight to Deepgram over a WebSocket.
 // Same interface as useSpeech: { supported, active, interim, start, stop }.
-export function useDeepgram(onFinal, onFail) {
+export function useDeepgram(onFinal, onFail, lang = 'en-US') {
   const [active, setActive] = useState(false)
   const [interim, setInterim] = useState('')
   const ws = useRef(null), ctx = useRef(null), proc = useRef(null), stream = useRef(null)
   const userStop = useRef(false), connected = useRef(false)
   const onFinalRef = useRef(onFinal), onFailRef = useRef(onFail)
+  const langRef = useRef(lang || 'en-US')   // transcribe in the chosen language, not always English
   useEffect(() => { onFinalRef.current = onFinal }, [onFinal])
   useEffect(() => { onFailRef.current = onFail }, [onFail])
+  useEffect(() => { langRef.current = lang || 'en-US' }, [lang])
 
   const teardown = useCallback(() => {
     try { if (ws.current?.readyState === 1) ws.current.send(JSON.stringify({ type: 'CloseStream' })) } catch {}
@@ -67,7 +45,7 @@ export function useDeepgram(onFinal, onFail) {
     stream.current = mic
     const ac = new (window.AudioContext || window.webkitAudioContext)()
     ctx.current = ac
-    const url = 'wss://api.deepgram.com/v1/listen?model=nova-2&encoding=linear16&sample_rate=16000&channels=1&interim_results=true&smart_format=true&punctuate=true'
+    const url = `wss://api.deepgram.com/v1/listen?model=nova-2&encoding=linear16&sample_rate=16000&channels=1&interim_results=true&smart_format=true&punctuate=true&language=${encodeURIComponent(langRef.current)}`
     const sock = new WebSocket(url, ['token', res.access_token])
     ws.current = sock
     sock.binaryType = 'arraybuffer'

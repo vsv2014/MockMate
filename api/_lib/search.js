@@ -1,10 +1,8 @@
 // Web search for live context — Tavily (AI-optimised) or Serper (Google).
 // Tavily returns clean AI-ready snippets; Serper returns raw Google results.
 // Whichever key is set gets used; Tavily is preferred.
-
-export function searchConfigured() {
-  return !!(process.env.TAVILY_API_KEY || process.env.SERPER_API_KEY)
-}
+// (searchConfigured() lives in core.js — the single source consumers import.)
+import { fetchWithTimeout as fetchT } from './http.js'
 
 // Detect questions that need live web context — company info, recent news,
 // product details, "why us" questions. DSA/algo/behavioral → no search needed.
@@ -29,7 +27,7 @@ export async function searchWeb(query) {
 }
 
 async function searchTavily(query) {
-  const resp = await fetch('https://api.tavily.com/search', {
+  const resp = await fetchT('https://api.tavily.com/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -54,7 +52,7 @@ async function searchTavily(query) {
 }
 
 async function searchSerper(query) {
-  const resp = await fetch('https://google.serper.dev/search', {
+  const resp = await fetchT('https://google.serper.dev/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-API-KEY': process.env.SERPER_API_KEY },
     body: JSON.stringify({ q: query.slice(0, 400), num: 3 })

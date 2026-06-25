@@ -6,6 +6,13 @@ const path = require('path')
 const fs = require('fs')
 const { fork } = require('child_process')
 
+// Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
+// so a candidate's resume/transcript never leaves the device via Sentry (privacy-first).
+try {
+  const Sentry = require('@sentry/electron/main')
+  if (process.env.SENTRY_DSN) Sentry.init({ dsn: process.env.SENTRY_DSN, sendDefaultPii: false, beforeSend(e) { if (e.request) delete e.request.data; return e } })
+} catch {}
+
 const isProd = app.isPackaged
 const DEV_URL = 'http://localhost:5174'
 const PROD_URL = 'http://localhost:3002'
@@ -295,7 +302,9 @@ ipcMain.handle('write-env', (_, content) => {
       .map(l => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()] }))
     const existing = fs.existsSync(envPath) ? parse(fs.readFileSync(envPath, 'utf8')) : {}
     const incoming = parse(content)
-    for (const [k, v] of Object.entries(incoming)) if (v) { existing[k] = v; process.env[k] = v }  // set non-empty + go live now
+    // Only allow recognized config keys to be written from the renderer — never arbitrary env.
+    const ALLOWED = /(_API_KEY|_MODEL|_BASE_URL|_APP_ID|_APP_KEY)$/
+    for (const [k, v] of Object.entries(incoming)) if (v && ALLOWED.test(k)) { existing[k] = v; process.env[k] = v }  // set non-empty allowed + go live now
     const merged = Object.entries(existing).map(([k, v]) => `${k}=${v}`).join('\n') + '\n'
     fs.writeFileSync(envPath, merged, 'utf8')
     return { ok: true }

@@ -1,9 +1,8 @@
 // Solo (you-vs-AI) interview engine for the web app. Open-ended, speech-first,
 // no difficulty knob — the interviewer calibrates to the target role.
-import { completeJSON, resolveVisionProvider, extractJSON, streamText } from './core.js'
-import { analyze } from '../../src/delivery.js'
+import { completeJSON, visionComplete, extractJSON, streamText, pickFastProvider, pickStrongProvider } from './core.js'
+import { analyze, BANNED_WORDS } from '../../shared/delivery.js'
 import { searchWeb, needsWebSearch } from './search.js'
-import OpenAI from 'openai'
 
 function profileBlock(p = {}) {
   let s = ''
@@ -44,7 +43,13 @@ Respond with ONE valid JSON object and nothing else, no markdown fences:
 }
 
 export async function interviewerTurn({ config = {}, transcript = [], profile = {}, provider, language = 'English' }) {
-  const messages = transcript.map(t => ({ role: t.role === 'interviewer' ? 'assistant' : 'user', content: t.text }))
+  // Only send recent turns to the model. An unbounded transcript over a long (20+ min)
+  // session makes each request bigger and slower — raising latency, cost, and the chance
+  // of provider overload/timeout (the "503" mid-interview). Recent context is what drives
+  // follow-ups; the FULL transcript is still used for the end-of-session evaluation.
+  const RECENT_TURNS = 40
+  const recent = transcript.length > RECENT_TURNS ? transcript.slice(-RECENT_TURNS) : transcript
+  const messages = recent.map(t => ({ role: t.role === 'interviewer' ? 'assistant' : 'user', content: t.text }))
   if (messages.length === 0) messages.push({ role: 'user', content: "I'm ready. Please begin the interview with your first question." })
   const langNote = language && language !== 'English' ? `\n\nConduct this interview entirely in ${language}.` : ''
   return await completeJSON({
@@ -140,7 +145,7 @@ HOW TO WRITE THIS — it will be SPOKEN OUT LOUD in seconds, never read like an 
 4. Be a little imperfect on purpose — that's what reads as human: "around O(n) I think", "if I remember right", "something like that". Flawless = robotic = caught.
 5. NO lists read aloud, NO "firstly/secondly", NO headings, NO essay scaffolding. Just talk.
 6. Plain spoken words, not résumé-jargon: "response time" not "latency", "handles more load" not "horizontally scalable", "the steps" not "the orchestration".
-7. BANNED — instant AI tells: leverage, robust, seamless, delve, comprehensive, facilitate, utilize, best-in-class, cutting-edge, tapestry, realm, underscore, multifaceted.
+7. BANNED — instant AI tells: ${BANNED_WORDS}.
 8. MODE B → open with YOUR project ("In our Document Intelligence project…"), not theory. MODE A → open with the pattern ("So this is basically a sliding-window one…"), not a textbook line.
 
 The candidate GLANCES at the opener + keyPoints and then speaks in their OWN words. keyPoints are speaking notes to riff from — NOT a script. sampleAnswer is just one natural way to say it if they freeze.
@@ -188,9 +193,7 @@ Return ONE JSON object, no prose, no markdown fences:
   //   gpt-4o-mini (fast, cheap, high TPM) → Gemini (free, ~1M TPM) → user's choice.
   // This keeps live hints OFF Groq's tiny 6k-TPM free tier, which exhausts in ~1-2
   // questions during a continuous interview. Groq stays as a fallback in the queue.
-  const fastProvider = process.env.OPENAI_API_KEY ? 'openai_mini'
-    : process.env.GEMINI_API_KEY ? 'gemini'
-    : provider
+  const fastProvider = pickFastProvider() || provider
 
   const hint = await completeJSON({
     maxTokens: 700, provider: fastProvider,
@@ -245,21 +248,31 @@ const PLAYBOOKS = [
     coach: '**STAR:** Situation / Task / Action / Result as four short bullets pulled from the resume — points to expand in their own words, never a script.\n**Signal:** the ownership/leadership trait to surface (say "I", quantify the result).'
   },
   {
+    // Pure technical / conceptual knowledge ("what is X", "explain Y", "difference
+    // between A and B"). Must come AFTER dsa/system_design so real coding problems still
+    // get those cards, but BEFORE the general catch-all so concept questions are NOT
+    // resume-grounded. Answer from general knowledge, confidence:"general".
+    key: 'technical', tier: 'fast',
+    match: /\b(what(?:'s| is| are| does| do)|explain|describe what|difference between|differ(?:ence)?|define|pros and cons|trade.?offs? between|when (?:would|should|do) you use|why (?:do we|use|is|are)|what happens (?:when|if)|how does .* work)\b/i,
+    answer: 'PURE KNOWLEDGE question — answer from GENERAL technical knowledge, NOT the resume. Do NOT name a personal project, do NOT say "in our project", do NOT invent experience. confidence MUST be "general". In 2-4 spoken sentences: the precise answer, the WHY / mechanism underneath, and the one trade-off or gotcha that signals real depth. Be concrete and correct over broad.',
+    coach: '**Concept:** the precise definition in one line.\n**Why/mechanism:** what is actually happening under the hood.\n**Trade-off / gotcha:** the subtle point that signals depth.'
+  },
+  {
     key: 'general', tier: 'fast',
     match: /.*/,
-    answer: 'Answer directly in 2-3 spoken sentences, grounded in the resume where relevant. State the reasoning behind your take.',
+    answer: 'Answer directly in 2-3 spoken sentences. If the question is about the candidate\'s own experience, ground it in the resume; if it is a general/knowledge question, answer from general knowledge and set confidence:"general" — do NOT force a resume reference. State the reasoning behind your take.',
     coach: '**Frame:** restate what they are really asking, in one line.\n**Point:** the 2-3 key things to say.\n**Why:** the reasoning behind your take.'
   }
 ]
 
 // First matching card wins (general is the catch-all). Zero added latency — pure regex.
-function pickPlaybook(question = '') {
+export function pickPlaybook(question = '') {
   for (const pb of PLAYBOOKS) if (pb.match.test(question)) return pb
   return PLAYBOOKS[PLAYBOOKS.length - 1]
 }
 
-const BANNED_WORDS = 'leverage, robust, seamless, delve, comprehensive, utilize, best-in-class, cutting-edge, tapestry, realm, underscore'
-const META_LINE = '1) FIRST LINE ONLY: META: {"type":"dsa|coding|technical|system_design|behavioral|resume|culture|other","confidence":"resume|general","pattern":<pattern name or null>,"complexity":<e.g. "O(n) time, O(1) space" or null>,"watch":"<one specific mistake to avoid for THIS question, <=12 words>"}'
+// BANNED_WORDS is imported from delivery.js (single source shared with the live coach).
+const META_LINE = '1) FIRST LINE ONLY: a single-line VALID JSON object (every value a quoted string or null — no unquoted text), then a newline. Shape: META: {"type":"dsa|coding|technical|system_design|behavioral|resume|culture|other","confidence":"resume|general","pattern":"<pattern name, or null>","complexity":"<e.g. O(n) time, O(1) space, or null>","watch":"<one specific mistake to avoid for THIS question, <=12 words>"}'
 
 // Answer mode: shared spoken-style rules + ONLY the matched card's structure.
 function buildAnswerSystem(language, guide) {
@@ -275,7 +288,7 @@ SPOKEN STYLE (said out loud, not read): real-person contractions and connectors 
 
 GROUND IN THE CANDIDATE (critical — they're reading this as their OWN work):
 - The RESUME is the only source of truth — NEVER invent tools, numbers, projects, or features that aren't in it. If asked about something not on it: "honestly haven't used that directly, but I'd approach it by…" then the closest real thing from the resume. Never fake expertise.
-- For experience/technical answers, NAME the specific project and open with it ("In our <project>, what we did was…") — not the generic concept.
+- For EXPERIENCE / behavioral answers, NAME the specific project and open with it ("In our <project>, what we did was…"). But for a PURE KNOWLEDGE / conceptual question (what is X, explain Y, difference between A and B), answer from general knowledge and do NOT force a project reference or resume grounding.
 - Keep numbers messy and human ("around 0.8-ish, I'd have to check") — never clean, fabricated-sounding ranges.
 - Pick ONE option, don't list three ("I'd use X"). If they say "just tell me X", give only X. If it's a repeat, answer shorter.
 
@@ -334,8 +347,8 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   // Claude Opus actually gets you Opus, not gpt-4o-mini. Only when they leave it on
   // Auto do we escalate (fast model for simple Qs, strong for coding/system-design).
   const tier = pb.tier
-  const escalateFast = process.env.OPENAI_API_KEY ? 'openai_mini' : process.env.GEMINI_API_KEY ? 'gemini' : null
-  const escalateStrong = process.env.OPENAI_API_KEY ? 'openai' : escalateFast
+  const escalateFast = pickFastProvider()
+  const escalateStrong = pickStrongProvider()
   const userPicked = provider && provider !== 'auto'
   const chosen = userPicked ? provider : ((tier === 'strong' ? escalateStrong : escalateFast) || provider)
 
@@ -369,7 +382,19 @@ export async function streamHint({ question, profile = {}, conversationHistory =
     }
   })
   if (skipped) return { skipped: true }
-  if (metaSent !== 'done' && buf.trim()) { onMeta?.(searchSources.length ? { searchSources } : {}); onToken?.(buf) }
+  // Stream ended without a clean META+newline (e.g. model omitted the newline, or got cut
+  // off mid-META). Emit meta + prose WITHOUT leaking the raw "META: {…}" line to the user.
+  if (metaSent !== 'done' && buf.trim()) {
+    let meta = searchSources.length ? { searchSources } : {}
+    let prose = buf
+    const m = buf.match(/^\s*META:\s*(\{[\s\S]*?\})?\s*([\s\S]*)$/i)
+    if (m) {
+      if (m[1]) { try { meta = { ...JSON.parse(m[1]), ...(searchSources.length ? { searchSources } : {}) } } catch {} }
+      prose = (m[2] || '').replace(/^\s+/, '')
+    }
+    onMeta?.(meta)
+    if (prose.trim()) onToken?.(prose)
+  }
   return { skipped: false, searchSources }
 }
 
@@ -401,8 +426,7 @@ Return ONE JSON object, no prose:
 }
 
 export async function analyzeScreen({ imageBase64, profile = {}, language }) {
-  const prov = resolveVisionProvider()   // requires OpenAI or Gemini
-  const llm = new OpenAI({ apiKey: prov.key, baseURL: prov.baseURL })
+  if (!imageBase64) { const e = new Error('No screenshot captured. Try the capture shortcut again.'); e.status = 400; throw e }
   const ctx = profileBlock(profile)
   const codeLang = language || profile.codingLanguage || 'Python'
 
@@ -426,7 +450,7 @@ For CODING problems specifically:
 - "approach" = 3-5 short plain-English steps explaining the solution.
 - "edgeCases" = the specific edge cases to mention to the interviewer.
 
-BANNED WORDS: leverage, robust, seamless, delve, comprehensive, utilize.
+BANNED WORDS: ${BANNED_WORDS}.
 Answer must sound like a real engineer talking — natural, slightly imperfect, NOT textbook.
 
 Return ONE JSON object, no markdown:
@@ -446,20 +470,8 @@ Return ONE JSON object, no markdown:
   "watchOut": "<one specific mistake to avoid>"
 }`
 
-  const resp = await llm.chat.completions.create({
-    model: prov.model,
-    max_tokens: 1500,
-    messages: [{
-      role: 'user',
-      content: [
-        { type: 'image_url', image_url: { url: `data:image/png;base64,${imageBase64}` } },
-        { type: 'text', text: prompt }
-      ]
-    }]
-  })
-
-  const raw = resp.choices?.[0]?.message?.content
-  if (!raw) throw new Error('No response from vision model')
+  // Retries + falls over OpenAI ↔ Gemini, so a single provider's 429 no longer breaks it.
+  const raw = await visionComplete({ imageBase64, prompt, maxTokens: 1500 })
   const out = extractJSON(raw)
   // Defensive: strip any markdown code fences the model wrapped around the code.
   if (out && typeof out.code === 'string') {

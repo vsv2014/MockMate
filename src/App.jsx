@@ -3,6 +3,11 @@ import Solo from './Solo'
 import LiveCompanion from './LiveCompanion'
 import Report from './Report'
 import Jobs from './Jobs'
+import Career from './Career'
+import ApiKeysPanel from './ApiKeys'
+import { loadSessions, deleteSession } from './history'
+import { scoreColor, TYPE_LABEL } from './lib/ui'
+import { CODING_LANGUAGES } from './lib/languages'
 
 const inElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
 const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
@@ -39,11 +44,23 @@ function ElectronShell() {
   const [meetingActive, setMeetingActive] = useState(false)
   const [codingDetected, setCodingDetected] = useState(false)
   const [browserShareWarning, setBrowserShareWarning] = useState(false)
-  useEffect(() => {
+  const recheckProviders = useCallback(() => {
     fetch('/api/providers').then(r => r.json()).then(d => {
-      if (!d.providers?.length) setNoProviders(true)
+      setNoProviders(!d.providers?.length)
     }).catch(() => {})
   }, [])
+  useEffect(() => { recheckProviders() }, [recheckProviders])
+
+  // First-run welcome: show once, only when no keys exist yet. Dismissed permanently
+  // after the user saves a key or taps "Skip", so returning users never see it.
+  const [welcomed, setWelcomed] = useState(() => { try { return localStorage.getItem('mm-welcomed') === '1' } catch { return false } })
+  const dismissWelcome = useCallback(() => { try { localStorage.setItem('mm-welcomed', '1') } catch {} ; setWelcomed(true) }, [])
+  const showWelcome = !welcomed && noProviders
+
+  // Past Solo sessions (stored locally, ~3 months) — for review/copy.
+  const [sessions, setSessions] = useState(() => loadSessions())
+  const [openSession, setOpenSession] = useState(null)
+  const refreshSessions = useCallback(() => setSessions(loadSessions()), [])
 
   // Auto-detect meeting apps (Zoom, Teams, Meet) + coding platforms (LeetCode, etc.)
   useEffect(() => {
@@ -139,7 +156,39 @@ function ElectronShell() {
     e.stopPropagation(); e.preventDefault()
   }
 
-  function goHome() { setReport(null); setView('home') }
+  function goHome() { setReport(null); setOpenSession(null); refreshSessions(); setView('home') }
+  function openHistory() { refreshSessions(); setOpenSession(null); setView('history') }
+
+  // ── First-run welcome — guide a brand-new user straight to adding a key ──
+  if (showWelcome) return (
+    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
+      onDrag={startDrag} onResize={startResize}
+      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
+      onClose={dismissWelcome} title="Welcome to MockMate" autoHeight>
+      <div style={{ padding: '14px 16px 16px' }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>👋 Welcome — add one key to begin</div>
+        <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6, marginBottom: 12 }}>
+          MockMate uses <strong style={{ color: '#cbd5e1' }}>your own</strong> API keys — they stay on this machine and unlock every mode. Add at least one to get started:
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '9px 11px' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>🤖 Solo Practice</div>
+            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>Needs <strong style={{ color: '#5eead4' }}>any one LLM key</strong> (OpenAI / Claude / Gemini / Groq). Groq is free. Voice uses the free browser engine.</div>
+          </div>
+          <div style={{ background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: 8, padding: '9px 11px' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>🎯 Live Companion</div>
+            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>Also add a <strong style={{ color: '#5eead4' }}>Deepgram key</strong> for live transcription of the interviewer.</div>
+          </div>
+        </div>
+        <ApiKeysPanel showStatus onSaved={() => { recheckProviders(); dismissWelcome() }} />
+        <button onClick={dismissWelcome}
+          style={{ width: '100%', marginTop: 10, padding: '7px', background: 'transparent', color: '#64748b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+          Skip for now — I'll add keys later
+        </button>
+        <div style={{ fontSize: 9, color: '#475569', textAlign: 'center', marginTop: 6 }}>You can always manage keys from Home → ⚙ API Keys &amp; Settings.</div>
+      </div>
+    </OverlayPanel>
+  )
 
   // Solo and Companion take over the full panel content — render them directly
   if (view === 'solo') return (
@@ -180,7 +229,73 @@ function ElectronShell() {
       onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
       onClose={goHome} title="Matching Jobs">
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        <Jobs onHome={goHome} />
+        <Jobs onHome={goHome} noProviders={noProviders} />
+      </div>
+    </OverlayPanel>
+  )
+
+  if (view === 'career') return (
+    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
+      onDrag={startDrag} onResize={startResize}
+      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
+      onClose={goHome} title="Resume & Career Tools">
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        <Career onHome={goHome} noProviders={noProviders} onSettings={() => setView('settings')} />
+      </div>
+    </OverlayPanel>
+  )
+
+  if (view === 'settings') return (
+    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
+      onDrag={startDrag} onResize={startResize}
+      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
+      onClose={goHome} title="API Keys & Settings">
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
+        <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.6, marginBottom: 12 }}>
+          Add your API keys once here — they apply to <strong style={{ color: '#e2e8f0' }}>Solo Practice</strong>, the <strong style={{ color: '#e2e8f0' }}>Live Companion</strong>, and <strong style={{ color: '#e2e8f0' }}>Jobs</strong>. You don't need to open any mode first.
+        </div>
+        <ApiKeysPanel showStatus onSaved={recheckProviders} />
+      </div>
+    </OverlayPanel>
+  )
+
+  if (view === 'history') return (
+    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
+      onDrag={startDrag} onResize={startResize}
+      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
+      onClose={goHome} title={openSession ? 'Past Session' : 'Past Sessions'}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: openSession ? 0 : '12px 14px 14px' }}>
+        {openSession ? (
+          <Report report={openSession.report} transcript={openSession.transcript} solo
+            onAgain={() => setOpenSession(null)} onAgainLabel="Back to sessions" />
+        ) : sessions.length === 0 ? (
+          <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6, padding: '8px 2px' }}>
+            No past sessions yet. Finish a <strong style={{ color: '#cbd5e1' }}>Solo Practice</strong> and it'll be saved here — transcript + feedback, kept for ~3 months on this machine.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <ScoreTrend sessions={sessions} />
+            <div style={{ fontSize: 10, color: '#475569' }}>{sessions.length} session{sessions.length > 1 ? 's' : ''} · stored locally · last ~3 months</div>
+            {sessions.map(s => (
+              <div key={s.id} onClick={() => setOpenSession(s)}
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 9, padding: '10px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.5)'}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
+                {s.score != null && (
+                  <div style={{ flexShrink: 0, width: 38, height: 38, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13,
+                    color: scoreColor(s.score),
+                    background: 'rgba(255,255,255,0.04)', border: `2px solid ${s.score >= 75 ? 'rgba(34,197,94,0.4)' : s.score >= 50 ? 'rgba(251,191,36,0.4)' : 'rgba(248,113,113,0.4)'}` }}>{s.score}</div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}{s.verdict ? ` · ${s.verdict}` : ''}</div>
+                  <div style={{ fontSize: 10, color: '#475569' }}>{new Date(s.ts).toLocaleString()} · {(s.transcript?.length || 0)} messages</div>
+                </div>
+                <button onClick={e => { e.stopPropagation(); deleteSession(s.id); refreshSessions() }} title="Delete"
+                  style={{ flexShrink: 0, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 14 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </OverlayPanel>
   )
@@ -213,33 +328,55 @@ function ElectronShell() {
           </div>
         )}
         {noProviders && (
-          <div style={{ background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 7, padding: '7px 10px', marginBottom: 8, fontSize: 11, color: '#fca5a5' }}>
-            ⚠ No API keys. Add to <code style={{ background: '#1c0505', padding: '0 3px', borderRadius: 2 }}>.env</code> and restart.
+          <div onClick={() => setView('settings')}
+            style={{ background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 7, padding: '8px 10px', marginBottom: 8, fontSize: 11, color: '#fca5a5', cursor: 'pointer', lineHeight: 1.5 }}>
+            ⚠ <strong>No API keys yet</strong> — tap to add them. Needed for Solo, Companion & Jobs.
           </div>
         )}
 
         <ScreenAnalysisPanel analysis={screenAnalysis} analyzing={screenAnalyzing} onDismiss={() => setScreenAnalysis(null)} />
 
         <div onClick={() => setView('solo')} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '12px 14px', marginBottom: 8, cursor: 'pointer' }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(109,40,217,0.5)'}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.5)'}
           onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>🤖 Solo Practice</div>
           <div style={{ fontSize: 11, color: '#475569' }}>AI interviewer · follow-up probes · scored report</div>
         </div>
 
-        <div onClick={() => setView('companion')} style={{ background: 'rgba(109,40,217,0.12)', border: '1px solid rgba(109,40,217,0.3)', borderRadius: 10, padding: '12px 14px', cursor: 'pointer' }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(109,40,217,0.7)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(109,40,217,0.3)'}>
+        <div onClick={() => setView('companion')} style={{ background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: 10, padding: '12px 14px', cursor: 'pointer' }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.7)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.3)'}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>🎯 Live Interview Companion</div>
           <div style={{ fontSize: 11, color: '#475569', marginBottom: 5 }}>Floats over Zoom / Teams / Meet · real-time AI answers</div>
           <div style={{ fontSize: 10, color: '#4ade80' }}>🛡 Invisible to all screen capture</div>
         </div>
 
         <div onClick={() => setView('jobs')} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '12px 14px', marginTop: 8, cursor: 'pointer' }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(109,40,217,0.5)'}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.5)'}
           onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>💼 Matching Jobs</div>
           <div style={{ fontSize: 11, color: '#475569' }}>Live roles ranked against your resume · why-it-fits + gaps</div>
+        </div>
+
+        <div onClick={() => setView('career')} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '12px 14px', marginTop: 8, cursor: 'pointer' }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.5)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>🎯 Resume &amp; Career Tools</div>
+          <div style={{ fontSize: 11, color: '#475569' }}>ATS resume score · tailor to a role · draft referral messages</div>
+        </div>
+
+        <div onClick={() => setView('settings')} style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${noProviders ? 'rgba(13,148,136,0.5)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 10, padding: '12px 14px', marginTop: 8, cursor: 'pointer' }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.5)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = noProviders ? 'rgba(13,148,136,0.5)' : 'rgba(255,255,255,0.08)'}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>⚙ API Keys &amp; Settings</div>
+          <div style={{ fontSize: 11, color: '#475569' }}>Add OpenAI / Claude / Gemini / Groq / Deepgram keys — used everywhere</div>
+        </div>
+
+        <div onClick={openHistory} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '12px 14px', marginTop: 8, cursor: 'pointer' }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.5)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>📚 Past Sessions{sessions.length ? ` (${sessions.length})` : ''}</div>
+          <div style={{ fontSize: 11, color: '#475569' }}>Review past Solo conversations · feedback · copy transcript &amp; scores</div>
         </div>
 
         {/* Keyboard shortcuts */}
@@ -254,7 +391,7 @@ function ElectronShell() {
               ['◢ Corner', 'Resize panel'],
             ].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 7px', background: 'rgba(255,255,255,0.02)', borderRadius: 5 }}>
-                <code style={{ fontSize: 9, color: '#6d28d9', background: 'rgba(109,40,217,0.12)', padding: '1px 5px', borderRadius: 3, fontFamily: 'monospace' }}>{k}</code>
+                <code style={{ fontSize: 9, color: '#0d9488', background: 'rgba(20,184,166,0.12)', padding: '1px 5px', borderRadius: 3, fontFamily: 'monospace' }}>{k}</code>
                 <span style={{ fontSize: 9, color: '#334155' }}>{v}</span>
               </div>
             ))}
@@ -315,11 +452,8 @@ export function CodeBlock({ code, language }) {
   )
 }
 
-const CODE_LANGS = ['Python', 'Java', 'C++', 'JavaScript', 'Go', 'TypeScript']
-
 // ── Screen Analysis Panel — shown when Ctrl+Shift+U is pressed ───────────────
 export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyze, onRecapture }) {
-  const TYPE_LABEL = { coding: '💻 Coding', system_design: '🏗️ System Design', behavioral: '🧩 Behavioral', slide: '📊 Slide', other: '💬 General' }
   if (!analyzing && !analysis) return null
   const isCoding = analysis?.contentType === 'coding'
   // Coding mode uses a green/dev accent; everything else keeps the amber capture accent.
@@ -343,7 +477,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
             ? (
               <>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
-                  {analysis.pattern && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(109,40,217,0.3)', color: '#c7d2fe', borderRadius: 10, fontWeight: 700 }}>⚡ {analysis.pattern}</span>}
+                  {analysis.pattern && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(20,184,166,0.3)', color: '#99f6e4', borderRadius: 10, fontWeight: 700 }}>⚡ {analysis.pattern}</span>}
                   {analysis.complexity && <span style={{ fontSize: 9, padding: '2px 8px', background: '#0d1117', color: '#7ee787', borderRadius: 10, fontFamily: 'monospace' }}>{analysis.complexity}</span>}
                   {analysis.language && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(255,255,255,0.06)', color: '#94a3b8', borderRadius: 10 }}>{analysis.language}</span>}
                 </div>
@@ -351,7 +485,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
                 {/* Language switcher — re-solve the same screen in another language, no re-capture */}
                 {onReanalyze && (
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
-                    {CODE_LANGS.map(lang => {
+                    {CODING_LANGUAGES.map(lang => {
                       const on = (analysis.language || '').toLowerCase() === lang.toLowerCase()
                       return (
                         <button key={lang} onClick={() => onReanalyze(lang)} title={`Solve in ${lang}`}
@@ -422,13 +556,57 @@ export function IconBtn({ icon, title, onClick, active, danger }) {
   const bg = hover ? (danger ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.1)')
     : active ? 'rgba(34,197,94,0.14)' : 'transparent'
   return (
-    <button onClick={onClick} title={title}
+    <button onClick={onClick} title={title} aria-label={title} aria-pressed={active || undefined}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
         width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: bg, color: base, border: 'none', borderRadius: 7, cursor: 'pointer',
         fontSize: 14, lineHeight: 1, transition: 'background 0.12s', flexShrink: 0
       }}><Glyph name={icon} /></button>
+  )
+}
+
+// ── Score trend — dependency-free inline SVG line chart of recent session scores ──
+// Renders nothing until there are at least 2 scored sessions (a single point isn't a
+// trend). Uses a uniform-scaled viewBox so dots stay circular at any panel width.
+function ScoreTrend({ sessions }) {
+  const all = (sessions || []).filter(s => typeof s.score === 'number')
+  if (all.length < 2) return null
+  const scored = all.slice().reverse().slice(-20)   // oldest → newest, most recent 20
+  const truncated = all.length > scored.length
+  const n = scored.length
+  const W = 300, H = 96, padX = 12, padTop = 10, padBot = 16
+  const xAt = i => padX + (n === 1 ? (W - 2 * padX) / 2 : i * (W - 2 * padX) / (n - 1))
+  const yAt = v => padTop + (1 - Math.max(0, Math.min(100, v)) / 100) * (H - padTop - padBot)
+  const pts = scored.map((s, i) => ({ x: xAt(i), y: yAt(s.score), s }))
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ')
+  const avg = Math.round(scored.reduce((a, s) => a + s.score, 0) / n)
+  const delta = scored[n - 1].score - scored[0].score
+  const fmt = ts => { try { return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) } catch { return '' } }
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 12px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>Score trend</span>
+        <span style={{ fontSize: 10, color: '#64748b' }}>avg {avg}</span>
+        <span style={{ fontSize: 10, color: delta >= 0 ? '#4ade80' : '#f87171' }}>{delta >= 0 ? '▲' : '▼'} {Math.abs(delta)} since {truncated ? 'shown start' : 'first'}</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+        {[75, 50].map(g => (
+          <g key={g}>
+            <line x1={padX} x2={W - padX} y1={yAt(g)} y2={yAt(g)} stroke="rgba(255,255,255,0.07)" strokeDasharray="3 3" />
+            <text x={W - padX} y={yAt(g) - 2} fontSize="7" fill="#475569" textAnchor="end">{g}</text>
+          </g>
+        ))}
+        <path d={line} fill="none" stroke="rgba(45,212,191,0.75)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+        {pts.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r="2.6" fill={scoreColor(p.s.score)} stroke="#0a0a12" strokeWidth="1">
+            <title>{`${p.s.score}/100 · ${fmt(p.s.ts)}${p.s.label ? ' · ' + p.s.label : ''}`}</title>
+          </circle>
+        ))}
+        <text x={padX} y={H - 3} fontSize="7" fill="#475569" textAnchor="start">{fmt(scored[0].ts)}</text>
+        <text x={W - padX} y={H - 3} fontSize="7" fill="#475569" textAnchor="end">{fmt(scored[n - 1].ts)}</text>
+      </svg>
+    </div>
   )
 }
 
@@ -477,13 +655,14 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         }}>
           {extra
             ? <div onMouseDown={e => e.stopPropagation()}>{extra}</div>
-            : <span style={{ fontSize: 12, color: '#a78bfa', fontWeight: 700 }}>{title || 'MockMate'}</span>}
+            : <span style={{ fontSize: 12, color: '#2dd4bf', fontWeight: 700 }}>{title || 'MockMate'}</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }} onMouseDown={e => e.stopPropagation()}>
             {actions}
             {inElectron && (
               <button onClick={togglePin} onMouseDown={e => e.stopPropagation()}
                 title={pinned ? 'Pinned above full-screen apps — click to unpin' : 'Pin above full-screen apps (Zoom/Meet)'}
-                style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: pinned ? 'rgba(124,58,237,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, opacity: pinned ? 1 : 0.6 }}>📌</button>
+                aria-label={pinned ? 'Unpin overlay from above full-screen apps' : 'Pin overlay above full-screen apps'} aria-pressed={pinned}
+                style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: pinned ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, opacity: pinned ? 1 : 0.6 }}>📌</button>
             )}
             <IconBtn icon="eye" onClick={onStealth} title={inElectron ? 'Hide overlay  (Alt+H)' : 'Dim  (Alt+H)'} />
             <IconBtn icon={minimized ? 'expand' : 'minimize'} onClick={onMinimize} title={minimized ? 'Expand' : 'Minimize'} />
@@ -508,6 +687,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
       </div>
 
       <style>{`@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+        #mockmate-overlay button:focus-visible, #mockmate-overlay a:focus-visible, #mockmate-overlay input:focus-visible, #mockmate-overlay select:focus-visible, #mockmate-overlay textarea:focus-visible{outline:2px solid #2dd4bf;outline-offset:2px;border-radius:6px}
         #mockmate-overlay *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.18) transparent}
         #mockmate-overlay ::-webkit-scrollbar{width:6px;height:6px}
         #mockmate-overlay ::-webkit-scrollbar-track{background:transparent}
@@ -518,16 +698,6 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
   )
 }
 
-function Btn({ children, onClick, active, danger, title }) {
-  return (
-    <button onClick={onClick} title={title} style={{
-      fontSize: 10, padding: '2px 8px',
-      background: active ? '#7f1d1d' : danger ? '#450a0a' : 'rgba(255,255,255,0.06)',
-      color: active ? '#fca5a5' : danger ? '#fca5a5' : '#475569',
-      border: 'none', borderRadius: 4, cursor: 'pointer'
-    }}>{children}</button>
-  )
-}
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {

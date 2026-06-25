@@ -19,13 +19,14 @@ Grab the latest build from the [**Releases page**](https://github.com/vsv2014/Mo
 On first launch, MockMate opens a **setup screen** where you paste your API keys — no manual
 file editing. Keys are saved locally and the app restarts ready to use.
 
-**Auto-update (Windows, macOS & Linux):** new versions download silently in the background and
-install the next time you reopen MockMate — no re-download needed.
+**Auto-update (Windows & Linux):** new versions download silently in the background and install
+the next time you reopen MockMate — no re-download needed. **macOS updates are manual for now**
+(the build isn't code-signed yet) — grab the latest `.dmg` from the [releases page](https://github.com/vsv2014/MockMate/releases/latest).
 
-> **macOS:** the DMG is signed with a Developer ID certificate and notarized by Apple, so it
-> opens with no Gatekeeper warning. (If you build an *unsigned* DMG yourself, macOS will block it
-> with _"Apple could not verify MockMate is free of malware"_ — clear it with
-> `xattr -dr com.apple.quarantine /Applications/MockMate.app`. See [`SIGNING.md`](SIGNING.md).)
+> **macOS:** the DMG is **not** notarized yet, so on first open Gatekeeper shows
+> _"Apple could not verify MockMate is free of malware"_ — clear it with **right-click → Open**
+> (or `xattr -dr com.apple.quarantine /Applications/MockMate.app`). New versions are a manual
+> re-download for now; auto-update on macOS needs Apple Developer signing — see [`SIGNING.md`](SIGNING.md).
 >
 > **Windows:** the installer is **not** code-signed, so Windows SmartScreen may show
 > _"Windows protected your PC"_ on first run — click **More info → Run anyway**.
@@ -94,6 +95,18 @@ answer matches it.
 - **Language switcher** — re-solve the same problem in Python/Java/C++/JS/Go/TS instantly
 - Syntax-highlighted, one-tap **copy**, hidden from screen share
 
+### 💼 Matching Jobs
+- Live roles (Remotive + Adzuna) **ranked against your resume** — why-it-fits + skill gaps
+- Location filter, sort by fit / newest / salary, on-site vs remote badges, Load-more
+- **★ Save** any role to a local **Saved-jobs dashboard** for later
+
+### 🎯 Resume & Career Tools
+- **ATS resume score** — graded 0–100 the way ATS software + a recruiter would (20+ checks: keywords,
+  impact metrics, parse-safety, seniority…), with missing keywords, prioritized fixes, and red flags
+- **Tailor resume** — rewrites summary + bullets for a target role/JD and surfaces keywords you
+  genuinely match (**never fabricates** experience)
+- **Referral DM drafter** — a personalized, non-cringe referral request from your resume + role
+
 ---
 
 ## Answer Intelligence
@@ -160,6 +173,12 @@ Live hints prefer fast, high-limit models (GPT-4o-mini → Gemini) and keep Groq
 ---
 
 ## Architecture
+
+**Code layers (enforced):**
+- `src/` — **frontend only** (React renderer; DOM, audio capture, `localStorage`). Shared frontend helpers in `src/lib/` (`profile`, `ui`, `languages`).
+- `api/`, `server.js`, `electron/` — **backend only** (Node). AI/provider/retry/failover logic in `api/_lib/` (`core`, `interview`, `jobs`, `search`, `http`). The backend **never imports from `src/`**.
+- `shared/` — **pure logic used by both** layers (e.g. `shared/delivery.js`: delivery analysis + the single banned-words list). The dependency arrow only ever points *into* `shared/`.
+- `backend/` — a **separate** (currently optional/unwired) auth+Mongo service; the foundation for the managed-backend phase ([`docs/NEXT_PHASE.md`](docs/NEXT_PHASE.md)).
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -231,16 +250,31 @@ are **never** stored here — they stay on the user's machine.
 - ✅ **Matching Jobs** (live) — your resume ranked against real postings with reasons + gaps (keyless Remotive source)
 - macOS code signing + notarization (unlocks macOS auto-update)
 
-**Next**
-- **Matching Jobs — geo-aware** *(planned)*: a `JobSource` provider abstraction with **location-first** ranking (same-city → same-country → remote), so an India-based user sees India roles, not Australia. First geo provider: **Adzuna** (`ADZUNA_APP_ID` / `ADZUNA_APP_KEY`); **JSearch** (RapidAPI) to legally surface LinkedIn/Indeed/Glassdoor listings. Keyless Remotive stays as the always-on fallback.
-- **Auth + opt-in cloud sync** *(planned)*: wire the existing `backend/` (Mongo + JWT + Google) into the desktop app — a small sign-in UI so users can **optionally** sync resume / saved jobs / session history across devices. **Local-first** by default; the resume only leaves the device if the user signs in. (Backend models + routes already exist; only desktop login wiring + a sync endpoint remain.)
-- **Model-escalation tier**: fast model for simple Qs, strong/reasoning model for DSA + system design (biggest answer-quality lever).
-- **Coach Mode** (alongside Answer Mode): instead of the full answer, prompt the *structure* top interviewers grade — clarify edge cases → brute-force + complexity → optimal + the "why" (e.g. BFS vs DFS) — plus a dedicated **System Design scaffold** (scalability → DB choice → components → trade-offs). Trains communication, not just recall.
-- Managed-key proxy — paid tier with zero key setup ("it just works")
-- Full-session conversation memory (beyond the last few turns)
-- Coding-mode follow-ups: "optimize / explain / dry-run", capture-just-the-problem-pane
+**Done (1.3.0)**
+- ✅ **Matching Jobs — geo-aware + local jobs**: location filter/input, role-first matching, Load-more, salary/recency sort, and **Adzuna** (`ADZUNA_APP_ID`/`ADZUNA_APP_KEY`) for real **local on-site** jobs merged with region-filtered remote (keyless Remotive stays the always-on fallback).
+- ✅ **Global API keys + first-run Welcome** — set keys once (Home → ⚙ Settings); apply to Solo, Live & Jobs without opening any mode first.
+- ✅ **Solo review**: copy feedback, copy transcript, full conversation, **3-month local history**, and a **score-trend chart**.
+- ✅ **Live Companion session review** — records what *you* said (not the AI's suggestions) → Solo-style scored review.
+- ✅ **Resilience**: retry + **instant auto-failover across providers**, transient-503 handling, bounded long-session context, timeouts on all external calls, vision (screen-analysis) failover OpenAI↔Gemini.
+- ✅ **Telugu + Indian languages**; browser STT now transcribes in the chosen language.
+- ✅ **Codebase cleanup**: dead code removed, shared `src/lib/` + `shared/` modules (single source for colors/languages/profile/banned-words/timeout), backend no longer imports from the frontend.
+- ✅ **Resume & Career Tools**: **ATS resume score** (20+ checks), **per-role resume tailoring** (never fabricates), and a **referral-message drafter** — all from your existing resume + LLM (`api/_lib/career.js`).
+- ✅ **Saved-jobs dashboard**: ★ Save any match to a local, persistent saved list (`src/savedJobs.js`).
+
+**Next — Managed backend (the path to compete with LockedIn AI / FinalRound)**
+> Full design spec: [`docs/NEXT_PHASE.md`](docs/NEXT_PHASE.md)
+- **Login / accounts**, **Stripe subscriptions**, **server-held API keys**, and **per-user usage metering** — so users "sign up, pay, and it just works" with no key setup. Built on the existing `backend/` (Mongo + JWT). BYO-key stays a first-class option.
+
+**Next — quality**
+- **Model-escalation tier**: fast model for simple Qs, strong/reasoning model for DSA + system design.
+- Full-session conversation memory (beyond the last few turns).
+- Coding-mode follow-ups: "optimize / explain / dry-run".
 
 **Later**
+- **Job-application automation** (LinkedIn auto-apply, referral finding + auto-DM) — a **separate
+  browser-extension** product, **not** an OAuth feature of this app. It runs in the user's own
+  logged-in browser session (LinkedIn exposes no public auto-apply/connections API) and carries
+  LinkedIn-ToS/account-ban risk. Design + the OAuth-≠-auto-apply rationale: [`docs/NEXT_PHASE.md`](docs/NEXT_PHASE.md). The ToS-safe pieces (ATS score, tailoring, referral drafting) already ship in-app above.
 - Deeper stealth (process / Activity-Monitor hiding) for an "undetectable" claim
 - More languages (→ 25+), privacy-respecting opt-in analytics
 - Linux screen-protection research (Wayland/X11)

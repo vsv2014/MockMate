@@ -1,28 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
-
-function toPCM16(input, inRate, outRate = 16000) {
-  let data = input
-  if (outRate < inRate) {
-    const ratio = inRate / outRate
-    const len = Math.round(input.length / ratio)
-    const out = new Float32Array(len)
-    let pos = 0
-    for (let i = 0; i < len; i++) {
-      const next = Math.round((i + 1) * ratio)
-      let sum = 0, c = 0
-      for (let j = pos; j < next && j < input.length; j++) { sum += input[j]; c++ }
-      out[i] = c ? sum / c : 0
-      pos = next
-    }
-    data = out
-  }
-  const pcm = new Int16Array(data.length)
-  for (let i = 0; i < data.length; i++) {
-    const s = Math.max(-1, Math.min(1, data[i]))
-    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff
-  }
-  return pcm.buffer
-}
+import { toPCM16 } from './audio-pcm'
 
 async function getStream(sourceId) {
   if (!sourceId || sourceId === 'microphone') {
@@ -48,9 +25,10 @@ function looksLikeQuestion(text) {
 // Build the Deepgram URL. diarize=true tags each word with a speaker so we can tell
 // the interviewer from the candidate; keywords=<term>:2 boosts recognition of the
 // candidate's domain terms, tech, and proper nouns pulled from their resume.
-function buildDgUrl(keyterms = [], degraded = false) {
+function buildDgUrl(keyterms = [], degraded = false, lang = 'en-US') {
   const base = 'wss://api.deepgram.com/v1/listen?model=nova-2&encoding=linear16&sample_rate=16000&channels=1'
     + '&interim_results=true&smart_format=true&punctuate=true&utterance_end_ms=1200'
+    + `&language=${encodeURIComponent(lang || 'en-US')}`   // transcribe in the chosen interview language
   if (degraded) return base   // plain proven baseline — drop diarize + keyterms if the enhanced config won't connect
   return base + '&diarize=true' + keyterms.slice(0, 40).map(t => `&keywords=${encodeURIComponent(t)}:2`).join('')
 }
@@ -105,6 +83,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
   const pcmQueue = useRef([]), pcmQueueBytes = useRef(0), pcmDroppedBytes = useRef(0)
   // Keyterms (resume/role jargon) boosted in Deepgram, + speaker tracking for diarization.
   const keytermsRef = useRef([])
+  const langRef = useRef('en-US')   // Deepgram transcription language (from the interview language)
   const speakerStats = useRef(new Map()), interviewerSpeaker = useRef(null), candidateSpeaker = useRef(null)
   // Graceful-degrade: if the ENHANCED socket (diarize+keyterms) never connects, retry plain.
   const everConnected = useRef(false), degradedAudio = useRef(false)
@@ -204,7 +183,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
     }
     if (userStop.current) return
 
-    const sock = new WebSocket(buildDgUrl(keytermsRef.current, degradedAudio.current), ['token', tokenRes.access_token])
+    const sock = new WebSocket(buildDgUrl(keytermsRef.current, degradedAudio.current, langRef.current), ['token', tokenRes.access_token])
     ws.current = sock
 
     sock.onopen = () => {
@@ -325,6 +304,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
     reconnectAttempts.current = 0
     everConnected.current = false; degradedAudio.current = false
     keytermsRef.current = sanitizeKeyterms(opts.keyterms)
+    if (opts.language) langRef.current = opts.language
     speakerStats.current = new Map(); interviewerSpeaker.current = null; candidateSpeaker.current = null
     try {
       const audioStream = await getStream(sourceId)
