@@ -1,6 +1,6 @@
 # Next Phase — Managed Backend (accounts · subscriptions · server-held keys)
 
-> **Status:** DESIGN ONLY. Not built yet. This is the spec for the agent/dev who picks this up.
+> **Status (updated 2026-06-26):** ✅ **Phase 1 (Auth) is SHIPPED in v1.4.0** — signup/login/onboarding, JWT, the Account screen, and the app gated behind sign-in. ⏳ Phases 2–4 (proxy + metering, Stripe billing, polish) are still **design-only / pending**. Per-phase status is marked in [Suggested phasing](#suggested-phasing-so-it-ships-incrementally) below.
 > **Why:** Today MockMate is **bring-your-own-key (BYO)** — each user pastes their own
 > OpenAI/Claude/Deepgram keys. That's great for a personal/dev tool, but it's the wall that
 > stops MockMate from competing with LockedIn AI / FinalRound: normal users won't create 3
@@ -48,6 +48,8 @@ Use it as the foundation rather than starting fresh:
 - Fold the AI engine (`api/_lib/*`) into it (or have it call the same shared lib) so there's ONE backend, not two.
 - **Decide hosting:** for a real product the backend should be a **hosted service** (Render/Fly/Railway/AWS), not bundled in the Electron app — the app talks to `https://api.mockmate.app/...`. (The local `server.js` stays for BYO/offline mode.)
 
+> ✅ **DONE (v1.4.0):** `backend/server.js` is now **forked from the Electron main process** (killed on quit). **Hosting decision:** shipped as a **local fork with a file-backed store by default** (offline-safe, zero infra), with **MongoDB opt-in via `MONGO_URI`** and an **env-configurable API base (`MOCKMATE_API_BASE`)** — so it can be pointed at a hosted service later with no code change. Auth endpoints (`/auth/signup|login|me|logout`) are complete; the AI engine has **not** yet been folded behind it (that's Phase 2). JWT secret is persisted per-install in `userData`; token stored encrypted via `safeStorage`.
+
 ---
 
 ## Data model (Mongo)
@@ -91,19 +93,19 @@ Enforce in middleware: before each `/api/*`, check `Usage[userId][period]` vs pl
 ---
 
 ## Client (Electron) changes
-- Add a **Login screen** (before the Home overlay). Store JWT in `userData` (secure storage).
-- Send `Authorization: Bearer <jwt>` on every `/api/*` call (one place: a `postJSON`/`useApi` wrapper).
-- Point API base URL at the hosted backend (env-configurable; falls back to local `server.js` for BYO/offline).
-- Settings: "Use my own API key" toggle (BYO) vs "Use my MockMate plan" (managed).
-- Show plan + usage in the header (the usage counter already exists — point it at `/auth/me`).
+- ✅ **DONE** — **Login/Welcome/Signup/Onboarding screens** gate the app before the Home overlay. JWT stored in `userData`, encrypted via `safeStorage` (never localStorage). *(`src/auth/`)*
+- ✅ **DONE** — single API wrapper (`src/auth/api.js`) sends `Authorization: Bearer <jwt>` and handles 401 → clear token → redirect to Login. *(Note: this currently covers the **auth** endpoints; folding the `/api/*` AI routes through it is Phase 2.)*
+- ✅ **DONE** — API base URL is env-configurable (`MOCKMATE_API_BASE`), local fork by default.
+- ✅ **DONE (partial)** — Account screen has the **"Use my own API keys"** (BYO) toggle. The managed-plan path arrives with Phase 2.
+- ✅ **DONE** — plan badge shows in the overlay header; Account screen shows plan + usage bars (display-only until Phase 2 metering is live), sourced from `/auth/me`.
 
 ---
 
 ## Suggested phasing (so it ships incrementally)
-1. **Auth**: signup/login/JWT on `backend/`, Login screen, gate the app. (No billing yet — everyone "free".)
-2. **Proxy + metering**: move `/api/*` behind auth; record usage; platform keys server-side.
-3. **Stripe**: checkout + webhook + plan gating + limits.
-4. **Polish**: BYO toggle, usage dashboard, server-side history, team/referral, etc.
+1. ✅ **DONE (v1.4.0) — Auth**: signup/login/JWT on `backend/`, Welcome/Login/Signup/Onboarding screens, Account screen, the app gated behind sign-in. Everyone is on `free`; no billing yet. *Gate for Phase 2: deploy + ≥1 real login first.*
+2. ⏳ **PENDING — Proxy + metering**: move `/api/*` behind auth; record usage (the `Usage` model + usage bars already exist, currently display-only); platform keys server-side; 402 on limit.
+3. ⏳ **PENDING — Stripe**: checkout + webhook + plan gating + limits. (Account screen's *Upgrade to Pro* CTA is already present but disabled until this lands.)
+4. ⏳ **PENDING — Polish**: BYO toggle (✅ already shipped in the Account screen), usage dashboard, server-side history, team/referral, etc.
 
 ---
 

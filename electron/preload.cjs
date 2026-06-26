@@ -32,6 +32,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   hideWindow: () => ipcRenderer.send('hide-window'),
   setPin: on => ipcRenderer.send('set-pin', on),
   getUserDataPath: () => ipcRenderer.sendSync('get-userdata-path'),
+  // Auth API base URL (env-configurable; local fork by default)
+  getApiBase: () => ipcRenderer.sendSync('get-api-base'),
+  // JWT storage — encrypted at rest via OS keychain in the main process. Never localStorage.
+  auth: {
+    getToken: () => ipcRenderer.invoke('auth-get-token'),
+    setToken: token => ipcRenderer.invoke('auth-set-token', token),
+    clearToken: () => ipcRenderer.invoke('auth-clear-token'),
+  },
   writeEnv: content => ipcRenderer.invoke('write-env', content),
   relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
   applyKeys: () => ipcRenderer.invoke('apply-keys'),

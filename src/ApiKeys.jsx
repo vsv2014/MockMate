@@ -16,7 +16,7 @@ const KEY_FIELDS = [
   { k: 'ANTHROPIC_API_KEY', label: 'Anthropic / Claude  (Opus · Sonnet · Haiku)' },
   { k: 'GEMINI_API_KEY', label: 'Google Gemini' },
   { k: 'GROQ_API_KEY', label: 'Groq (free, fast)' },
-  { k: 'DEEPGRAM_API_KEY', label: 'Deepgram (live transcription)' },
+  { k: 'DEEPGRAM_API_KEY', label: 'Deepgram API key' },
 ]
 const EMPTY = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', GROQ_API_KEY: '', DEEPGRAM_API_KEY: '', OPENAI_MODEL: '', ADZUNA_APP_ID: '', ADZUNA_APP_KEY: '' }
 
@@ -66,8 +66,15 @@ export default function ApiKeysPanel({ onSaved, showStatus = false }) {
         </div>
       )}
       {KEY_FIELDS.map(({ k, label }) => (
-        <input key={k} type="password" placeholder={label} value={keyVals[k]} autoComplete="off"
-          onChange={e => setKeyVals(v => ({ ...v, [k]: e.target.value }))} style={inp} />
+        <React.Fragment key={k}>
+          <input type="password" placeholder={label} value={keyVals[k]} autoComplete="off"
+            onChange={e => setKeyVals(v => ({ ...v, [k]: e.target.value }))} style={inp} />
+          {k === 'DEEPGRAM_API_KEY' && (
+            <div style={{ fontSize: 9, color: '#64748b', lineHeight: 1.4, marginTop: -2 }}>
+              Required for voice in Solo and Live. Free tier available at <span style={{ color: '#5eead4' }}>deepgram.com</span>.
+            </div>
+          )}
+        </React.Fragment>
       ))}
       {/* Custom model id — use ANY OpenAI model with your key (not a secret, so plain text). */}
       <input type="text" placeholder="Custom OpenAI model id (optional — e.g. gpt-4o, or a newer id)" value={keyVals.OPENAI_MODEL} autoComplete="off" spellCheck={false}

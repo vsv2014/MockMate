@@ -1,9 +1,10 @@
 // Electron main — overlay window with setContentProtection(true):
 //   Windows → WDA_EXCLUDEFROMCAPTURE,  macOS → NSWindowSharingNone
 //   (Linux has no equivalent — overlay IS visible in screen share there.)
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut, Notification, shell, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut, Notification, shell, dialog, safeStorage } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const crypto = require('crypto')
 const { fork } = require('child_process')
 
 // Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
@@ -17,7 +18,12 @@ const isProd = app.isPackaged
 const DEV_URL = 'http://localhost:5174'
 const PROD_URL = 'http://localhost:3002'
 
-let mainWindow, setupWindow, apiServer
+let mainWindow, setupWindow, apiServer, backendServer
+
+// Auth/SaaS backend. Base URL is env-configurable so we can point the app at a
+// hosted backend later with no code change; default is the local fork.
+const BACKEND_PORT = process.env.MOCKMATE_BACKEND_PORT || '4000'
+const API_BASE = process.env.MOCKMATE_API_BASE || `http://localhost:${BACKEND_PORT}`
 
 // Assets ship via extraFiles — next to the exe, not inside resources/app
 function assetsPath(...parts) {
@@ -84,6 +90,39 @@ function startApiServer(onReady) {
     }
   })
   setTimeout(fire, 6000)   // fallback if 'ready' never arrives
+}
+
+// Persistent per-install JWT secret. Generated once, kept in userData (0600),
+// and handed to the forked backend so tokens stay valid across app restarts.
+function getJwtSecret() {
+  const f = path.join(app.getPath('userData'), '.jwt-secret')
+  try { if (fs.existsSync(f)) return fs.readFileSync(f, 'utf8').trim() } catch {}
+  const secret = crypto.randomBytes(48).toString('hex')
+  try { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, secret, { mode: 0o600 }) } catch {}
+  return secret
+}
+
+// Fork the auth backend (Express). File-backed by default (offline-safe, no
+// MongoDB needed); set MONGO_URI to switch to Mongo. Data lives in userData.
+function startBackend() {
+  const entry = path.join(app.getAppPath(), 'backend', 'server-entry.cjs')
+  if (!fs.existsSync(entry)) { console.error('[backend] entry not found:', entry); return }
+  backendServer = fork(entry, [], {
+    cwd: path.join(app.getAppPath(), 'backend'),
+    env: {
+      ...process.env,
+      PORT: BACKEND_PORT,
+      JWT_SECRET: getJwtSecret(),
+      JWT_EXPIRES: process.env.JWT_EXPIRES || '7d',
+      MOCKMATE_DATA_DIR: app.getPath('userData'),   // file store lives beside the user's keys
+      NODE_ENV: 'production',
+    },
+    stdio: 'pipe',
+  })
+  backendServer.stdout?.on('data', d => console.log('[backend]', d.toString().trim()))
+  backendServer.stderr?.on('data', d => console.error('[backend]', d.toString().trim()))
+  backendServer.on('error', e => console.error('[backend] fork error:', e.message))
+  backendServer.on('exit', code => { if (code) console.error('[backend] exited with code', code) })
 }
 
 function createSetupWindow() {
@@ -231,6 +270,7 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     loadEnv()
+    startBackend()   // auth/SaaS API — independent of the renderer; starts in the background
     // ALWAYS open the single overlay window — no separate setup window. With the
     // bundled .env keys present it goes straight to work; if no keys are found the
     // overlay shows its inline "Add your API keys" form. One window, never two.
@@ -240,7 +280,7 @@ if (!gotTheLock) {
   })
 }
 
-app.on('will-quit', () => { globalShortcut.unregisterAll(); apiServer?.kill() })
+app.on('will-quit', () => { globalShortcut.unregisterAll(); apiServer?.kill(); backendServer?.kill() })
 
 // Auto-detect, by open window/tab titles: (1) a video meeting, (2) a coding platform.
 const MEETING_RE = /zoom meeting|google meet|microsoft teams|webex|whereby/i
@@ -269,6 +309,34 @@ ipcMain.handle('capture-screen', () => captureScreen())   // "Solve it" button t
 // This confirms it to the renderer so it can warn honestly on Linux (no protection).
 ipcMain.handle('exclude-from-capture', () => ({ ok: process.platform !== 'linux', id: 'pip' }))
 ipcMain.on('get-userdata-path', e => { e.returnValue = app.getPath('userData') })
+
+// ── Auth token storage (JWT) — encrypted at rest via OS keychain (safeStorage),
+// stored in userData. NEVER localStorage. Falls back to a userData file if the
+// OS has no keychain (some headless Linux) — still off the renderer, still off disk-as-localStorage.
+const AUTH_TOKEN_FILE = () => path.join(app.getPath('userData'), 'auth-token.bin')
+ipcMain.handle('auth-get-token', () => {
+  try {
+    const f = AUTH_TOKEN_FILE()
+    if (!fs.existsSync(f)) return null
+    const buf = fs.readFileSync(f)
+    if (safeStorage.isEncryptionAvailable()) { try { return safeStorage.decryptString(buf) } catch { return null } }
+    return buf.toString('utf8')
+  } catch { return null }
+})
+ipcMain.handle('auth-set-token', (_, token) => {
+  try {
+    const f = AUTH_TOKEN_FILE()
+    fs.mkdirSync(path.dirname(f), { recursive: true })
+    const data = safeStorage.isEncryptionAvailable()
+      ? safeStorage.encryptString(String(token))
+      : Buffer.from(String(token), 'utf8')
+    fs.writeFileSync(f, data, { mode: 0o600 })
+    return { ok: true }
+  } catch (e) { return { ok: false, error: e.message } }
+})
+ipcMain.handle('auth-clear-token', () => { try { fs.rmSync(AUTH_TOKEN_FILE(), { force: true }) } catch {} ; return { ok: true } })
+// Auth API base URL for the renderer (env-configurable; local fork by default).
+ipcMain.on('get-api-base', e => { e.returnValue = API_BASE })
 ipcMain.on('hide-window', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide() })
 // Pin: raise to the highest always-on-top level so the overlay stays ABOVE a
 // full-screen Zoom/Meet (normal always-on-top sits below full-screen apps).

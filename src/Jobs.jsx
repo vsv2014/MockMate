@@ -72,7 +72,7 @@ export function NoKeysBanner({ onSettings, what }) {
   )
 }
 
-export default function Jobs({ onHome, noProviders }) {
+export default function Jobs({ onHome, noProviders, embedded }) {
   const [profile, setProfile] = useState(() => loadProfile())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -114,11 +114,13 @@ export default function Jobs({ onHome, noProviders }) {
   useEffect(() => { if (hasResume) find() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div style={{ padding: '12px 14px 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <button onClick={onHome} style={btnGhost}>← Back</button>
-        <div style={{ fontWeight: 700, fontSize: 13 }}>💼 Matching Jobs</div>
-      </div>
+    <div style={{ padding: embedded ? 0 : '12px 14px 16px' }}>
+      {!embedded && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <button onClick={onHome} style={btnGhost}>← Back</button>
+          <div style={{ fontWeight: 700, fontSize: 13 }}>💼 Matching Jobs</div>
+        </div>
+      )}
 
       {/* Matches / Saved tabs */}
       <div role="tablist" style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
