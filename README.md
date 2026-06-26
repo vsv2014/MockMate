@@ -236,19 +236,31 @@ cd backend && cp .env.example .env   # set MONGO_URI + JWT_SECRET
 npm install && npm start             # → http://127.0.0.1:4000
 ```
 
-Implemented: email/password auth (bcrypt + JWT), Google OAuth endpoints, `GET/PATCH /me`
-(profile + resume), and per-user session history. Desktop login wiring is in progress. API keys
-are **never** stored here — they stay on the user's machine.
+Implemented: email/password auth (bcrypt + JWT), `/auth/signup|login|me|logout`, Google OAuth
+endpoints, and `GET/PATCH /me` (profile + resume). **Desktop login wiring shipped in v1.4.0** —
+the backend is forked from the Electron main process, with a **file-backed store by default**
+(offline-safe; **MongoDB opt-in via `MONGO_URI`**) and an **env-configurable base URL
+(`MOCKMATE_API_BASE`)** for pointing at a hosted service later. API keys are **never** stored
+here — they stay on the user's machine.
 
 ---
 
 ## Roadmap
 
+**Done (1.4.0)**
+- ✅ **Auth system** — Welcome / Signup / Login / 2-step Onboarding; the app is gated behind sign-in (everyone on `free`, no billing yet).
+- ✅ **Account screen** — plan badge, monthly usage bars (display-only until metering ships), *Use my own API keys* toggle, Sign out.
+- ✅ **Home overlay redesigned** — Kanit, `#0c0c0c`, accent-gradient Live hero, Practice grid, single Career row, quiet footer; shortcuts moved behind the ⌨ button.
+- ✅ **Kanit self-hosted** — woff2 bundled, no Google Fonts CDN (privacy + offline-safe).
+- ✅ **Job match in Career** — Matching Jobs is now a tab inside the Career suite (Home → Career → Jobs).
+- ✅ **Auth backend wired** — forked from Electron main; **file-store default**, **Mongo opt-in** (`MONGO_URI`), **env-configurable base** (`MOCKMATE_API_BASE`); JWT stored via `safeStorage`.
+- ✅ **Solo voice reliability** — Deepgram-primary with a text-mode fallback; never silently fails on browser STT inside Electron.
+- ✅ **Auto-update CI guards** — release fails loudly if the tag ≠ `package.json` version or `latest*.yml` is missing.
+
 **Done**
 - ✅ Auto-update via `electron-updater` (Windows + Linux) — silent background install on restart
 - ✅ **Real-time accuracy + speed core**: Deepgram **keyterm boosting** (resume/role jargon), **diarization** (answers the interviewer, not your own voice), and **true token streaming** (first words in <1s, replacing the cosmetic word-reveal)
 - ✅ **Matching Jobs** (live) — your resume ranked against real postings with reasons + gaps (keyless Remotive source)
-- macOS code signing + notarization (unlocks macOS auto-update)
 
 **Done (1.3.0)**
 - ✅ **Matching Jobs — geo-aware + local jobs**: location filter/input, role-first matching, Load-more, salary/recency sort, and **Adzuna** (`ADZUNA_APP_ID`/`ADZUNA_APP_KEY`) for real **local on-site** jobs merged with region-filtered remote (keyless Remotive stays the always-on fallback).
@@ -262,8 +274,10 @@ are **never** stored here — they stay on the user's machine.
 - ✅ **Saved-jobs dashboard**: ★ Save any match to a local, persistent saved list (`src/savedJobs.js`).
 
 **Next — Managed backend (the path to compete with LockedIn AI / FinalRound)**
-> Full design spec: [`docs/NEXT_PHASE.md`](docs/NEXT_PHASE.md)
-- **Login / accounts**, **Stripe subscriptions**, **server-held API keys**, and **per-user usage metering** — so users "sign up, pay, and it just works" with no key setup. Built on the existing `backend/` (Mongo + JWT). BYO-key stays a first-class option.
+> Full design spec + per-phase status: [`docs/NEXT_PHASE.md`](docs/NEXT_PHASE.md)
+- ✅ **Login / accounts** — shipped in v1.4.0 (auth, onboarding, Account screen; everyone on `free`).
+- ⏳ **Proxy + metering** — route `/api/*` through the authed backend, record usage, enforce plan caps (402 on limit).
+- ⏳ **Stripe subscriptions** + **server-held platform keys** — so users "sign up, pay, and it just works" with no key setup. BYO-key stays a first-class option.
 
 **Next — quality**
 - **Model-escalation tier**: fast model for simple Qs, strong/reasoning model for DSA + system design.
@@ -275,6 +289,7 @@ are **never** stored here — they stay on the user's machine.
   browser-extension** product, **not** an OAuth feature of this app. It runs in the user's own
   logged-in browser session (LinkedIn exposes no public auto-apply/connections API) and carries
   LinkedIn-ToS/account-ban risk. Design + the OAuth-≠-auto-apply rationale: [`docs/NEXT_PHASE.md`](docs/NEXT_PHASE.md). The ToS-safe pieces (ATS score, tailoring, referral drafting) already ship in-app above.
+- ⏳ **macOS code signing + notarization** — unlocks macOS auto-update (currently a manual `.dmg` re-download)
 - Deeper stealth (process / Activity-Monitor hiding) for an "undetectable" claim
 - More languages (→ 25+), privacy-respecting opt-in analytics
 - Linux screen-protection research (Wayland/X11)
