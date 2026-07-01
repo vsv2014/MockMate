@@ -1,25 +1,65 @@
 import 'dotenv/config'
+import dotenv from 'dotenv'
+import os from 'os'
+import path from 'path'
 import express from 'express'
 import cors from 'cors'
 import { initStore } from './src/store.js'
 import authRoutes from './src/routes/auth.js'
 import meRoutes from './src/routes/me.js'
+import { requireAuth } from './src/middleware/auth.js'
+import { checkCap, recordLlm } from './src/middleware/meter.js'
+import { registerApiRoutes } from '../api/_lib/apiRoutes.js'
+import billingRoutes, { stripeWebhook } from './src/routes/billing.js'
+
+// Load the managed-AI provider keys the same way server.js does, so the hosted proxy can call
+// LLMs. In production these are MockMate's OWN keys (host env); in dev they come from the userData
+// .env (your keys act as stand-in "MockMate keys" for local testing).
+const MM_DATA_DIR = process.env.MOCKMATE_DATA_DIR
+  || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support', 'mockmate')
+    : process.platform === 'win32' ? path.join(process.env.APPDATA || os.homedir(), 'mockmate')
+    : path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'mockmate'))
+try { dotenv.config({ path: path.join(MM_DATA_DIR, '.env') }) } catch {}
 
 // JWT secret must exist before any route signs/verifies. When forked by the
 // desktop app, Electron passes a persistent per-install secret (see main.cjs).
 // Standalone dev without one set is allowed but logs a loud warning.
+// A public bind (hosting sets HOST=0.0.0.0) with no real secret would sign/verify JWTs with a
+// well-known literal → anyone could forge a token for any account. Refuse to boot in that case.
+// Loopback-only dev (no HOST / 127.0.0.1) keeps the convenience default.
+const PUBLIC_BIND = process.env.HOST && !['127.0.0.1', 'localhost', '::1'].includes(process.env.HOST)
 if (!process.env.JWT_SECRET) {
+  if (PUBLIC_BIND) {
+    console.error(`[backend] FATAL: JWT_SECRET is required when binding a public interface (HOST=${process.env.HOST}). Refusing to start with an insecure default.`)
+    process.exit(1)
+  }
   process.env.JWT_SECRET = 'mockmate-dev-insecure-secret-change-me'
-  console.warn('[backend] JWT_SECRET not set — using an insecure dev default. Do NOT ship like this.')
+  console.warn('[backend] JWT_SECRET not set — using an insecure dev default (loopback only). Do NOT ship like this.')
+}
+
+// Billing needs BOTH keys: the secret key lets users pay, but without the webhook secret every
+// event fails signature verification and plans never flip → charged-but-not-upgraded. Fail loud.
+if (process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_WEBHOOK_SECRET) {
+  console.warn('[backend] STRIPE_SECRET_KEY is set but STRIPE_WEBHOOK_SECRET is missing — webhooks will 400 and plans will NOT upgrade. Set STRIPE_WEBHOOK_SECRET.')
 }
 
 const app = express()
 app.use(cors())                       // desktop renderer is a different origin (localhost:5174 / :3002 / file://)
+
+// Stripe webhook MUST see the raw body to verify the signature — mount it BEFORE express.json.
+app.post('/billing/webhook', express.raw({ type: 'application/json' }), stripeWebhook)
+
 app.use(express.json({ limit: '2mb' }))
 
 app.get('/health', (req, res) => res.json({ ok: true }))
 app.use('/auth', authRoutes)
 app.use('/me', meRoutes)
+app.use('/billing', billingRoutes)    // /billing/checkout + /billing/portal (authed); 501 until STRIPE_SECRET_KEY is set
+
+// Managed-AI proxy (Phase 2b): the SAME /api/* engine as the local server, but AUTHED (JWT)
+// and METERED (monthly cap → 402 "Upgrade or use your own key"). This is what makes managed AI
+// real for keyless users — the desktop points here in managed mode.
+registerApiRoutes(app, { auth: [requireAuth, checkCap], onLlm: recordLlm })
 
 const PORT = Number(process.env.PORT) || 4000
 
@@ -31,8 +71,11 @@ initStore()
       const { default: sessionRoutes } = await import('./src/routes/sessions.js')
       app.use('/sessions', sessionRoutes)
     }
-    const server = app.listen(PORT, '127.0.0.1', () => {
-      console.log(`[backend] auth API on http://127.0.0.1:${PORT}`)
+    // Default to loopback (safe for the desktop-forked backend); hosting sets HOST=0.0.0.0 so
+    // Render/Fly can route to it. Local Electron fork never sets HOST → stays 127.0.0.1.
+    const HOST = process.env.HOST || '127.0.0.1'
+    const server = app.listen(PORT, HOST, () => {
+      console.log(`[backend] auth${process.env.MONGO_URI ? '+managed AI' : ''} API on http://${HOST}:${PORT} (store: ${process.env.MONGO_URI ? 'mongo' : 'file'})`)
       process.send?.({ type: 'ready', port: PORT })   // tell the Electron parent we're up
     })
     server.on('error', e => {

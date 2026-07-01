@@ -15,7 +15,7 @@ export function AuthShell({ children, maxWidth = 360 }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 20px',
       background: T.bg,
       backgroundImage:
-        'radial-gradient(ellipse at 25% 20%, rgba(124,58,237,0.10), transparent 55%),' +
+        'radial-gradient(ellipse at 25% 20%, rgba(20,184,166,0.10), transparent 55%),' +
         'radial-gradient(ellipse at 80% 85%, rgba(249,115,22,0.07), transparent 55%)',
       fontFamily: T.font, color: T.text1,
     }}>

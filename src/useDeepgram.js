@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { apiFetch } from './lib/apiClient'
 import { toPCM16 } from './audio-pcm'
 
 // Accurate live transcription via Deepgram. The browser gets a short-lived token
@@ -39,7 +40,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
     if (ws.current) return  // already running — guard against concurrent calls
     userStop.current = false
     try {
-    const res = await fetch('/api/deepgram-token', { method: 'POST' }).then(r => r.json())
+    const res = await apiFetch('/api/deepgram-token', { method: 'POST' }).then(r => r.json())
     if (!res.access_token) throw new Error(res.error || 'No Deepgram token')
     const mic = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } })
     stream.current = mic

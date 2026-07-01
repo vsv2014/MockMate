@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAudioSources: () => ipcRenderer.invoke('get-audio-sources'),
   windowDrag: (dx, dy) => ipcRenderer.send('window-drag', { dx, dy }),
   windowResize: (w, h) => ipcRenderer.send('window-resize', { w, h }),
+  // 'app' = full windowed dashboard (large, centered); 'overlay' = compact floating panel.
+  setWindowMode: mode => ipcRenderer.send('set-window-mode', mode),
   onScreenCaptured: cb => {
     const handler = (_, base64) => cb(base64)
     ipcRenderer.on('screen-captured', handler)
@@ -40,8 +42,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setToken: token => ipcRenderer.invoke('auth-set-token', token),
     clearToken: () => ipcRenderer.invoke('auth-clear-token'),
   },
+  // Auto-update toast: subscribe to progress, restart-to-install, and manual check.
+  onUpdateStatus: cb => {
+    const h = (_, d) => cb(d)
+    ipcRenderer.on('update-status', h)
+    return () => ipcRenderer.removeListener('update-status', h)
+  },
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  checkForUpdates: () => ipcRenderer.invoke('check-updates-now'),
   writeEnv: content => ipcRenderer.invoke('write-env', content),
   relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
   applyKeys: () => ipcRenderer.invoke('apply-keys'),
-  openKeySetup: () => ipcRenderer.invoke('open-key-setup')
+  openKeySetup: () => ipcRenderer.invoke('open-key-setup'),
+  openExternal: url => ipcRenderer.invoke('open-external', url)
 })

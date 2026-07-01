@@ -1,42 +1,38 @@
-// MockMate design-system tokens — the single source of truth for the new
-// SaaS surfaces (auth, onboarding, account). Match the spec exactly; do not
-// add colors, fonts, or shadows outside this file.
-//
-// These power the auth/onboarding screens. The legacy overlay (App.jsx, Solo,
-// LiveCompanion, …) keeps its existing teal/slate inline styles untouched —
-// this is additive, not a rewrite.
+// MockMate design-system tokens — the single source of truth for every surface.
+// Matches the MM_PROMPT visual language. Change colors/radii HERE only.
 
 export const T = {
   // Surfaces
-  bg: '#0c0c0c',
-  surface1: '#161616',
-  surface2: '#1d1d1f',
+  bg: '#08080C',
+  surface1: '#111217',
+  surface2: '#16171C',
 
   // Borders
-  border: 'rgba(255,255,255,0.08)',
-  borderStrong: 'rgba(255,255,255,0.14)',
+  border: 'rgba(255,255,255,0.07)',
+  borderStrong: 'rgba(255,255,255,0.12)',
 
   // Text
-  text1: 'rgba(255,255,255,0.92)',
-  text2: 'rgba(255,255,255,0.55)',
-  text3: 'rgba(255,255,255,0.30)',
+  text1: '#E8E8EC',
+  text2: '#8A8A8E',
+  text3: '#71717A',
 
-  // Accent
-  accent: 'linear-gradient(135deg, #7c3aed, #f97316)',
-  accentFrom: '#7c3aed',
-  accentTo: '#f97316',
-  accentGlow: 'rgba(124,58,237,0.45)',
+  // Accent — teal primary + emerald (MockMate's original feel)
+  accent: 'linear-gradient(135deg, #14B8A6, #10B981)',
+  accentFrom: '#14B8A6',
+  accentTo: '#10B981',
+  accentGlow: 'rgba(20,184,166,0.45)',
 
   // Brand wordmark / metallic text
   chrome: 'linear-gradient(180deg, #e8edf2 0%, #9aa3ad 100%)',
 
   // Status
-  success: '#22c55e',
-  danger: '#f87171',
+  success: '#10B981',
+  warning: '#F59E0B',
+  danger: '#F43F5E',
 
   // Radii
-  rCard: 12,
-  rCtrl: 8,
+  rCard: 16,
+  rCtrl: 12,
 
   // Font
   font: "'Kanit', system-ui, -apple-system, sans-serif",

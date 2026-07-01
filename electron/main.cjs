@@ -154,7 +154,10 @@ function createMainWindow() {
   // opaque, framed window there. Windows/macOS keep the transparent floating overlay.
   const isLinux = process.platform === 'linux'
   mainWindow = new BrowserWindow({
-    width: 460, height: 680, x: width - 480, y: 20,
+    // Launch at app (dashboard) size, centered; the renderer switches to the compact
+    // overlay via set-window-mode when entering Live/Solo.
+    width: Math.min(1200, width - 80), height: 760, center: true,
+    minWidth: 420, minHeight: 560,
     alwaysOnTop: true,
     frame: isLinux,                                   // Linux: normal window chrome so it's visible + movable
     transparent: !isLinux,                            // transparent overlay only on Win/macOS
@@ -216,6 +219,13 @@ function launchTrayAndShortcuts() {
 // Capture the primary screen and hand the PNG to the renderer for vision analysis.
 // Called by the Ctrl+Shift+U shortcut AND by the in-app "Solve it" button (ipc).
 async function captureScreen() {
+  // Linux/Wayland routes desktopCapturer through the pipewire ScreenCast portal, which is
+  // unreliable/absent here and can HANG or crash the process (SIGKILL). The screenshot-solve
+  // feature just isn't available on Linux — notify instead of attempting the portal.
+  if (process.platform === 'linux') {
+    try { if (Notification.isSupported()) new Notification({ title: 'Screen capture unavailable on Linux', body: 'The screenshot-solve feature needs Windows or macOS (Wayland blocks it).' }).show() } catch {}
+    return
+  }
   try {
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } })
     if (!sources.length) return
@@ -238,19 +248,43 @@ app.on('browser-window-created', (_, win) => {
 // Silent auto-update: download new releases in the background and install on the
 // NEXT quit. No prompt/notification on purpose — a toast during a screen share
 // would expose the app. The user just gets the new version next time they reopen.
+let autoUpdaterRef = null
+let updaterStarted = false
+function sendUpdate(payload) { try { mainWindow?.webContents?.send('update-status', payload) } catch {} }
 function setupAutoUpdate() {
-  if (!isProd) return
+  if (!isProd || updaterStarted) return   // guard re-entry: don't double-register listeners / interval
+  updaterStarted = true
   try {
     const { autoUpdater } = require('electron-updater')
+    autoUpdaterRef = autoUpdater
     autoUpdater.autoDownload = true
-    autoUpdater.autoInstallOnAppQuit = true
+    autoUpdater.autoInstallOnAppQuit = true    // silent fallback: installs on quit even if the user ignores the toast
     autoUpdater.on('error', e => console.error('[updater]', e?.message))
-    autoUpdater.on('update-downloaded', i => console.log('[updater] ready, installs on quit:', i?.version))
+    // Forward progress to the renderer so it can show the update toast (workspace only).
+    autoUpdater.on('update-available', i => sendUpdate({ state: 'available', version: i?.version }))
+    autoUpdater.on('download-progress', p => sendUpdate({ state: 'downloading', percent: Math.round(p.percent || 0), transferred: p.transferred, total: p.total }))
+    autoUpdater.on('update-downloaded', i => sendUpdate({ state: 'ready', version: i?.version }))
     autoUpdater.checkForUpdates().catch(e => console.error('[updater] check failed:', e?.message))
-    // Re-check every 6h for long-running sessions
     setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000)
   } catch (e) { console.error('[updater] unavailable:', e?.message) }
 }
+// Restart & install the downloaded update now (from the toast's "Restart" button).
+ipcMain.handle('install-update', () => { try { autoUpdaterRef?.quitAndInstall() } catch (e) { console.error('[updater]', e?.message) } ; return { ok: true } })
+// Manual check. In prod → real check; in dev → simulate the toast sequence so the UI is verifiable.
+let demoUpdateTimer = null
+ipcMain.handle('check-updates-now', () => {
+  if (isProd && autoUpdaterRef) { autoUpdaterRef.checkForUpdates().catch(() => {}); return { ok: true } }
+  clearInterval(demoUpdateTimer)   // repeated clicks must not stack concurrent progress loops
+  const total = 125_000_000
+  sendUpdate({ state: 'available', version: 'demo' })
+  let pct = 0
+  demoUpdateTimer = setInterval(() => {
+    pct += 17
+    if (pct >= 100) { clearInterval(demoUpdateTimer); sendUpdate({ state: 'ready', version: 'demo' }) }
+    else sendUpdate({ state: 'downloading', percent: pct, transferred: Math.round(total * pct / 100), total })
+  }, 450)
+  return { ok: true, simulated: true }
+})
 
 // Single-instance lock — a second `MockMate` launch (double-click, stale dev
 // process, relaunch race) must NOT open a second overlay. The second process
@@ -270,7 +304,10 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     loadEnv()
-    startBackend()   // auth/SaaS API — independent of the renderer; starts in the background
+    // Fork a LOCAL auth backend only when NOT pointed at a hosted one. With MOCKMATE_API_BASE set
+    // (production / Mongo-backed), the desktop talks to the hosted backend over HTTPS — no local
+    // fork, and DB credentials (MONGO_URI) never ship on the client.
+    if (!process.env.MOCKMATE_API_BASE) startBackend()
     // ALWAYS open the single overlay window — no separate setup window. With the
     // bundled .env keys present it goes straight to work; if no keys are found the
     // overlay shows its inline "Add your API keys" form. One window, never two.
@@ -286,7 +323,11 @@ app.on('will-quit', () => { globalShortcut.unregisterAll(); apiServer?.kill(); b
 const MEETING_RE = /zoom meeting|google meet|microsoft teams|webex|whereby/i
 const CODING_RE  = /leetcode|hackerrank|coderpad|codesignal|hackerearth|codility|codingame|geeksforgeeks|interviewbit|codewars|online assessment|codepair|byteboard|replit/i
 let meetingWasActive = false, codingWasActive = false
-setInterval(async () => {
+// NOTE: on Linux/Wayland, desktopCapturer.getSources() routes through the pipewire
+// ScreenCast portal — it can't enumerate window titles, fails ("ScreenCastPortal
+// failed"), and repeated polling stalls the main process (app shows "not responding").
+// So auto-detection is disabled on Linux; users start Live Companion manually there.
+if (process.platform !== 'linux') setInterval(async () => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   try {
     const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } })
@@ -301,6 +342,9 @@ setInterval(async () => {
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 
 ipcMain.handle('get-audio-sources', async () => {
+  // Linux/Wayland can't capture desktop/loopback audio and the screencast portal
+  // stalls — the microphone is the only usable source, so skip desktopCapturer entirely.
+  if (process.platform === 'linux') return []
   const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } })
   return sources.map(s => ({ id: s.id, name: s.name }))
 })
@@ -350,10 +394,29 @@ ipcMain.on('set-pin', (_, on) => {
 ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const [x, y] = mainWindow.getPosition(); mainWindow.setPosition(x + dx, y + dy)
+  lastWindowMode = null   // geometry changed manually — let the next set-window-mode re-apply
 })
 ipcMain.on('window-resize', (_, { w, h }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   mainWindow.setSize(Math.max(320, w), Math.max(200, h))
+  lastWindowMode = null
+})
+// Switch between the full windowed dashboard ('app') and the compact overlay ('overlay').
+let lastWindowMode = null
+ipcMain.on('set-window-mode', (_, mode) => {
+  if (!mainWindow || mainWindow.isDestroyed() || mode === lastWindowMode) return
+  lastWindowMode = mode
+  try {
+    const { width, height } = screen.getPrimaryDisplay().workAreaSize
+    if (mode === 'app') {
+      const w = Math.min(1200, width - 80), h = Math.min(760, height - 80)
+      mainWindow.setSize(w, h); mainWindow.center()
+    } else {
+      // Clamp to the work area so the compact overlay is never pushed off-screen on small/scaled displays.
+      const w = Math.min(460, width - 40), h = Math.min(680, height - 40)
+      mainWindow.setSize(w, h); mainWindow.setPosition(Math.max(0, width - w - 20), 20)
+    }
+  } catch {}
 })
 // MERGE the submitted keys into the existing .env (so adding one key never wipes
 // the others). Only non-empty incoming values overwrite; everything else is kept.
@@ -403,5 +466,10 @@ ipcMain.handle('apply-keys', () => {
 })
 // Kept for compatibility; no longer used by the setup flow.
 ipcMain.handle('relaunch-app', () => { app.relaunch(); app.exit(0) })
+// Open a billing URL in the user's default browser. Scoped to HTTPS Stripe hosts only — the URL
+// comes from the backend, so an allowlist prevents a spoofed/compromised backend from launching an
+// arbitrary link. Widen this (or add a separate channel) if we ever open non-Stripe links.
+const BILLING_URL = /^https:\/\/([a-z0-9-]+\.)*stripe\.com\//i
+ipcMain.handle('open-external', (_e, url) => { if (typeof url === 'string' && BILLING_URL.test(url)) shell.openExternal(url); return { ok: true } })
 // Open the API-key setup window on demand (e.g. "Add API keys" from the overlay).
 ipcMain.handle('open-key-setup', () => { if (!setupWindow) createSetupWindow(); else setupWindow.focus(); return { ok: true } })

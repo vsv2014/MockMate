@@ -115,7 +115,7 @@ export default function Onboarding({ onComplete }) {
               onDrop={onDrop}
               style={{
                 border: `1.5px dashed ${dragOver ? T.accentFrom : T.borderStrong}`,
-                background: dragOver ? 'rgba(124,58,237,0.06)' : T.surface2,
+                background: dragOver ? 'rgba(20,184,166,0.06)' : T.surface2,
                 borderRadius: T.rCard, padding: '28px 16px', textAlign: 'center', cursor: 'pointer',
                 transition: 'border-color 0.15s, background 0.15s',
               }}
