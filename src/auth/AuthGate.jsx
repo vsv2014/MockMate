@@ -83,6 +83,7 @@ export default function AuthGate({ children }) {
       user: session.user,
       plan: session.plan,
       usage: session.usage,
+      limits: session.limits,
       logout: doLogout,
       refresh: loadSession,
     })

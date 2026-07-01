@@ -52,10 +52,16 @@ export async function interviewerTurn({ config = {}, transcript = [], profile = 
   const messages = recent.map(t => ({ role: t.role === 'interviewer' ? 'assistant' : 'user', content: t.text }))
   if (messages.length === 0) messages.push({ role: 'user', content: "I'm ready. Please begin the interview with your first question." })
   const langNote = language && language !== 'English' ? `\n\nConduct this interview entirely in ${language}.` : ''
-  return await completeJSON({
+  const turn = await completeJSON({
     maxTokens: 700, provider,
     messages: [{ role: 'system', content: buildPrompt(config, profile) + langNote }, ...messages]
   })
+  // Guard: a model can return valid JSON that's missing "say" (off-schema). Surface it as a
+  // retryable error — the client auto-retries + fails over — instead of a dead "Service error (200)".
+  if (!turn || typeof turn.say !== 'string' || !turn.say.trim()) {
+    const e = new Error('The interviewer glitched for a second — tap Send again.'); e.status = 502; throw e
+  }
+  return turn
 }
 
 export async function generateHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '' }) {
@@ -394,7 +400,11 @@ export async function streamHint({ question, profile = {}, conversationHistory =
     }
     onMeta?.(meta)
     if (prose.trim()) onToken?.(prose)
+    return { skipped: false, searchSources }
   }
+  // Model streamed nothing usable (empty completion) — treat as a skip so the client shows no
+  // blank answer bubble instead of a `done` event with no content.
+  if (metaSent !== 'done') return { skipped: true }
   return { skipped: false, searchSources }
 }
 

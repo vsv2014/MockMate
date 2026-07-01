@@ -81,6 +81,50 @@ export function allProviders() {
   }))
 }
 
+// Ask each CONFIGURED provider what models its key can ACTUALLY use — so the picker is always
+// current and never 400s on a stale/unavailable model id (the Gemini-2.5 trap). Returns
+// [{ id:'provider::model', provider, model, label }]. Per-provider failures are swallowed
+// (best-effort discovery) so one bad key can't break the whole list.
+export async function listModels() {
+  const out = []
+  const push = (provider, model, label) => { if (model) out.push({ id: `${provider}::${model}`, provider, model, label }) }
+  const settle = async (fn) => { try { await fn() } catch {} }
+
+  await Promise.all([
+    // OpenAI — chat models only (skip audio/image/embedding/etc.)
+    process.env.OPENAI_API_KEY && settle(async () => {
+      const r = await fetchWithTimeout('https://api.openai.com/v1/models', { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } })
+      if (!r.ok) return
+      ;((await r.json())?.data || []).map(m => m.id)
+        .filter(id => /^(gpt-|o[0-9]|chatgpt)/i.test(id) && !/audio|realtime|transcrib|tts|image|embedding|moderation|search|dall|whisper/i.test(id))
+        .sort().reverse()
+        .forEach(id => push('openai', id, `OpenAI · ${id}`))
+    }),
+    // Anthropic (Claude) — the base id 'claude_sonnet' just carries the shared key/endpoint.
+    process.env.ANTHROPIC_API_KEY && settle(async () => {
+      const r = await fetchWithTimeout('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' } })
+      if (!r.ok) return
+      ;((await r.json())?.data || []).forEach(m => push('claude_sonnet', m.id, `Claude · ${m.display_name || m.id}`))
+    }),
+    // Google Gemini — models that support generateContent.
+    process.env.GEMINI_API_KEY && settle(async () => {
+      const r = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}&pageSize=100`)
+      if (!r.ok) return
+      ;((await r.json())?.models || [])
+        .filter(m => (m.supportedGenerationMethods || []).includes('generateContent') && /gemini/i.test(m.name || ''))
+        .forEach(m => { const id = (m.name || '').replace(/^models\//, ''); push('gemini', id, `Gemini · ${m.displayName || id}`) })
+    }),
+    // Groq (OpenAI-compatible).
+    process.env.GROQ_API_KEY && settle(async () => {
+      const r = await fetchWithTimeout('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` } })
+      if (!r.ok) return
+      ;((await r.json())?.data || []).map(m => m.id).filter(id => !/whisper|tts|guard/i.test(id))
+        .forEach(id => push('groq', id, `Groq · ${id}`))
+    }),
+  ].filter(Boolean))
+  return out
+}
+
 // Vision-capable provider — GPT-4o preferred, Gemini as fallback.
 export function resolveVisionProvider() {
   if (process.env.OPENAI_API_KEY) {
@@ -93,8 +137,20 @@ export function resolveVisionProvider() {
   throw Object.assign(new Error('Screen analysis needs a vision key — add an OpenAI (GPT-4o) or Gemini key in ⚙ Settings.'), { status: 400 })
 }
 
+// A provider id may be a plain CATALOG key ('openai') OR an encoded dynamic-model pick
+// ('openai::gpt-5.1' = that provider's key/endpoint + an exact model chosen from /api/models).
+// baseOf() returns the CATALOG key so failover/ban logic keeps working on the provider level.
+const baseOf = id => (id && id.includes('::')) ? id.slice(0, id.indexOf('::')) : id
+
 // Resolve a chosen provider id to { key, baseURL, model }, with sensible fallback.
 function resolveProvider(id) {
+  // Encoded "providerId::modelId" — use that provider's key/endpoint with the exact chosen model.
+  if (id && id.includes('::')) {
+    const base = id.slice(0, id.indexOf('::')), model = id.slice(id.indexOf('::') + 2)
+    const cc = CATALOG[base]
+    if (cc && process.env[cc.envKey] && model) return { key: process.env[cc.envKey], baseURL: cc.baseURL, model }
+    id = base   // base unusable → fall through to normal resolution
+  }
   const c = CATALOG[id]
   if (c && process.env[c.envKey]) return { key: process.env[c.envKey], baseURL: c.baseURL, model: c.model() }
   if (process.env.LLM_API_KEY) return { key: process.env.LLM_API_KEY, baseURL: process.env.LLM_BASE_URL, model: process.env.LLM_MODEL || 'gemini-2.5-flash' }
@@ -111,6 +167,7 @@ function clientFor(prov) {
 // service. Same-endpoint siblings (e.g. gpt-4o & gpt-4o-mini both hit api.openai.com)
 // share an outage, so there's no point trying one right after the other fails.
 function baseUrlFor(id) {
+  id = baseOf(id)
   const c = CATALOG[id]
   if (c) return c.baseURL
   if (id === 'custom') return process.env.LLM_BASE_URL || 'custom'
@@ -160,27 +217,30 @@ function getFallbackProviders(requestedId) {
   const order = ['openai_mini', 'groq', 'gemini', 'openai', 'claude_haiku', 'claude_sonnet', 'claude_opus']
   const configured = availableProviders().map(p => p.id)
   const now = Date.now()
-  // Filter out recently rate-limited providers
-  const available = [...new Set([requestedId, ...order, ...configured])]
+  const reqBase = baseOf(requestedId)
+  const encoded = !!requestedId && requestedId !== reqBase   // 'provider::model' dynamic pick
+  // Filter out recently rate-limited providers (bans are keyed by the base provider id).
+  const available = [...new Set([reqBase, ...order, ...configured])]
     .filter(id => configured.includes(id))
     .filter(id => !rateLimitedUntil[id] || rateLimitedUntil[id] < now)
+  // Dynamic-model pick → lead with the EXACT encoded choice so its chosen model is used,
+  // then the remaining configured providers as automatic failover.
+  if (encoded && available.includes(reqBase)) {
+    return [requestedId, ...available.filter(id => id !== reqBase)]
+  }
   // Respect the caller's REQUESTED provider as primary — keep it first whenever it's
-  // available. Only use last-known-working to order the REMAINING fallbacks. (Previously
-  // lastWorkingProvider was forced first even over an explicit choice, so after one
-  // failover the app would stay switched off the user's selected model.)
-  if (requestedId && available.includes(requestedId)) {
-    const reqBase = baseUrlFor(requestedId)
+  // available. Only use last-known-working to order the REMAINING fallbacks.
+  if (reqBase && available.includes(reqBase)) {
+    const reqUrl = baseUrlFor(reqBase)
     // Order fallbacks so a DIFFERENT endpoint than the primary comes first (stable sort keeps
     // the preference order within each group). On a primary outage the switch is instant —
     // same-endpoint siblings are tried only as a last resort.
-    const rest = available.filter(id => id !== requestedId)
-      .sort((a, b) => (baseUrlFor(a) === reqBase ? 1 : 0) - (baseUrlFor(b) === reqBase ? 1 : 0))
-    // Prefer last-known-working first ONLY if it's on a different endpoint than the primary
-    // (a same-endpoint sibling would share the primary's outage, so don't lead with it).
-    if (lastWorkingProvider && lastWorkingProvider !== requestedId && rest.includes(lastWorkingProvider) && baseUrlFor(lastWorkingProvider) !== reqBase) {
-      return [requestedId, lastWorkingProvider, ...rest.filter(id => id !== lastWorkingProvider)]
+    const rest = available.filter(id => id !== reqBase)
+      .sort((a, b) => (baseUrlFor(a) === reqUrl ? 1 : 0) - (baseUrlFor(b) === reqUrl ? 1 : 0))
+    if (lastWorkingProvider && lastWorkingProvider !== reqBase && rest.includes(lastWorkingProvider) && baseUrlFor(lastWorkingProvider) !== reqUrl) {
+      return [reqBase, lastWorkingProvider, ...rest.filter(id => id !== lastWorkingProvider)]
     }
-    return [requestedId, ...rest]
+    return [reqBase, ...rest]
   }
   // Requested provider unavailable (banned/unconfigured) — fall back, last-working first.
   if (lastWorkingProvider && available.includes(lastWorkingProvider)) {
@@ -192,7 +252,7 @@ function getFallbackProviders(requestedId) {
 export async function completeJSON({ messages, maxTokens = 1600, provider }) {
   assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
-  let lastError
+  let lastError, sawQuota = false, sawRate = false, sawTransient = false
 
   for (const provId of providerQueue) {
     let prov
@@ -204,16 +264,30 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
     // and force a clean JSON object (no ```json fences). Scoped to Gemini so
     // Groq/OpenAI requests are unchanged.
     const isGemini = /gemini/i.test(model)
+    // JSON mode is for OpenAI/Groq only. Gemini 2.5 (OpenAI-compat) 400s on
+    // response_format:json_object — it just needs reasoning_effort:'none' (set below) to stop
+    // its default "thinking" from eating the token budget. This matches streamText, which works.
+    const jsonMode = /openai\.com|groq\.com/i.test(prov.baseURL || '')
     const ask = async msgs => {
+      let useExtras = true   // JSON-mode / reasoning params; dropped if this provider 400s on them
       for (let attempt = 0; ; attempt++) {
         try {
           const params = { model, max_tokens: maxTokens, messages: msgs }
-          if (isGemini) { params.reasoning_effort = 'none'; params.response_format = { type: 'json_object' } }
+          if (useExtras && isGemini) params.reasoning_effort = 'none'
+          if (useExtras && jsonMode) params.response_format = { type: 'json_object' }
           const r = await llm.chat.completions.create(params)
           return r.choices[0].message.content
         } catch (e) {
-          // Retry rate-limits AND transient 5xx/network hiccups with growing backoff,
-          // up to 3 tries, before giving up on this provider.
+          // A 400 while sending the optional JSON-mode/reasoning params usually means THIS
+          // provider/model rejects one of them (e.g. some Gemini models 400 on reasoning_effort).
+          // Drop the extras and retry once before treating it as a real failure.
+          if (e?.status === 400 && useExtras && (jsonMode || isGemini)) {
+            console.warn(`[llm] ${provId} rejected JSON-mode params (400) → retrying without them`)
+            useExtras = false
+            attempt--   // param-probe shouldn't consume a real transient/rate retry
+            continue
+          }
+          // Retry rate-limits AND transient 5xx/network hiccups with growing backoff.
           if ((!isRateLimit(e) && !isTransient(e)) || attempt >= 2) throw e
           await sleep(800 * (attempt + 1))
         }
@@ -222,44 +296,63 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
 
     try {
       const raw = await ask(messages)
-      lastWorkingProvider = provId   // remember what worked
+      let parsed
       try {
-        return extractJSON(raw)
+        parsed = extractJSON(raw)
       } catch {
         const fixed = await ask([
           { role: 'system', content: 'You repair malformed JSON. Output ONLY one valid JSON object — no prose, no code fences, no trailing commas.' },
           { role: 'user', content: 'Fix this into a single valid JSON object:\n\n' + String(raw || '').slice(0, 8000) }
         ])
-        return extractJSON(fixed)
+        parsed = extractJSON(fixed)
       }
+      lastWorkingProvider = provId   // remember only AFTER a clean parse — not for garbage output
+      return parsed
     } catch (e) {
       lastError = e
+      // Check quota BEFORE rate-limit: "insufficient_quota" also matches the rate-limit regex,
+      // but out-of-credits is a different, more actionable problem.
+      if (isQuotaExhausted(e)) { sawQuota = true; console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
       if (isRateLimit(e)) {
-        rateLimitedUntil[provId] = Date.now() + RATE_LIMIT_BAN_MS
+        sawRate = true
+        rateLimitedUntil[baseOf(provId)] = Date.now() + RATE_LIMIT_BAN_MS
         console.warn(`[MockMate] ${provId} rate-limited → trying next provider`)
         continue
       }
       if (isTransient(e)) {
-        // Provider had a transient hiccup (503/overloaded/timeout) even after retries —
-        // try the next configured provider rather than breaking the interview.
+        sawTransient = true
         console.warn(`[MockMate] ${provId} transient error (${e?.status || ''}) → trying next provider`)
         continue
       }
-      throw e   // genuine error (auth, bad request) — fail fast
+      // Genuine error (bad model id, invalid key, bad request) on THIS provider. Fail over to the
+      // next configured provider. A 400/401/403/404 won't self-heal this session, so BENCH the
+      // provider briefly — otherwise a permanently-broken key (e.g. a Gemini model your key can't
+      // use) gets retried on every single request, spamming logs and adding latency to each turn.
+      if ([400, 401, 403, 404].includes(e?.status)) rateLimitedUntil[baseOf(provId)] = Date.now() + RATE_LIMIT_BAN_MS
+      console.error(`[llm] ${provId} (${model}) failed (${e?.status || ''}): ${e?.message || e} → trying next provider`)
+      continue
     }
   }
 
-  // All providers exhausted
-  if (isQuotaExhausted(lastError)) {
+  // All providers exhausted — surface the MOST actionable error seen across ALL of them
+  // (not just the last), so an earlier out-of-credits/rate-limit isn't masked by a later 400.
+  if (sawQuota) {
     const e = new Error('Your AI provider is out of credits (insufficient quota). Add billing/credits, switch to another model, or set a free GEMINI_API_KEY as a fallback.')
     e.status = 402; e.code = 'insufficient_quota'; throw e
   }
-  if (isTransient(lastError)) {
+  if (sawRate) {
+    const e = new Error('All your AI provider keys are rate-limited right now. Add a second key (Gemini or Groq — free) in ⚙ Settings for automatic failover, or try again in a moment.')
+    e.status = 429; throw e
+  }
+  if (sawTransient) {
     const e = new Error('The AI provider is temporarily unavailable (503/overloaded). It usually clears in a few seconds — please try again, or add a second provider key (e.g. GEMINI) for automatic failover.')
     e.status = 503; throw e
   }
-  const e = new Error('All your AI provider keys are rate-limited right now. Add a second key (Gemini or Groq — free) in ⚙ Settings for automatic failover, or try again in a moment.')
-  e.status = 429; throw e
+  // Every configured provider hit a genuine error. Keep the technical detail in the LOG (already
+  // logged per-provider above), but show the USER a human message — never a raw "400 no body".
+  console.error(`[llm] all providers failed — last: ${lastError?.status || ''} ${lastError?.message || lastError}`)
+  const e = new Error('Couldn\'t reach your AI right now. Check your API key in ⚙ Settings — some free keys hit limits or reject models during long sessions; a funded OpenAI key runs reliably.')
+  e.status = lastError?.status || 502; throw e
 }
 
 // All vision-capable providers (in preference order) — so screen analysis can fail over
@@ -339,7 +432,7 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       // do NOT fail over to another provider, which would re-spend tokens on a dead request.
       if (signal?.aborted || e?.name === 'AbortError') throw e
       lastError = e
-      if (isRateLimit(e)) rateLimitedUntil[provId] = Date.now() + RATE_LIMIT_BAN_MS
+      if (isRateLimit(e)) rateLimitedUntil[baseOf(provId)] = Date.now() + RATE_LIMIT_BAN_MS
       if (emitted) throw e   // already streamed partial output — don't restart elsewhere
       // Before any token: only fall over for retryable classes (rate-limit / transient).
       // A genuine error (bad/expired key = 401, malformed request = 400) fails FAST with a

@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
+import { apiFetch } from './lib/apiClient'
 import { toPCM16 } from './audio-pcm'
 
 async function getStream(sourceId) {
@@ -170,7 +171,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
     if (userStop.current) return
     let tokenRes, tokenStatus
     try {
-      const r = await fetch('/api/deepgram-token', { method: 'POST' })
+      const r = await apiFetch('/api/deepgram-token', { method: 'POST' })
       tokenStatus = r.status
       tokenRes = await r.json().catch(() => null)
     } catch (e) { return scheduleReconnect('token fetch failed') }

@@ -163,14 +163,20 @@ function rankHeuristic(jobs, resume, targetRole, max, tokens) {
   const SENIORITY = new Set(['senior', 'junior', 'sr', 'jr', 'lead', 'principal', 'staff', 'mid', 'associate', 'entry', 'chief', 'head'])
   const roleWord = (targetRole || '').toLowerCase().split(/\s+/).filter(w => w && !SENIORITY.has(w))[0]
   const scored = jobs.map(j => {
-    const hay = `${j.title} ${j.tags.join(' ')} ${j.snippet}`.toLowerCase()
-    const hits = profileKw.filter(k => hay.includes(k))
-    const titleMatch = roleWord && roleWord.length > 2 && j.title.toLowerCase().includes(roleWord)
-    let score = Math.min(96, hits.length * 9 + (titleMatch ? 12 : 0))
+    const title = (j.title || '').toLowerCase()
+    const tagStr = j.tags.join(' ').toLowerCase()
+    const snip = (j.snippet || '').toLowerCase()
+    // Matches in the TITLE/TAGS are strong signal; matches only in the description are weak
+    // (a "Communications Manager" JD mentioning "engineer" shouldn't rank for a dev search).
+    const titleTagHits = profileKw.filter(k => title.includes(k) || tagStr.includes(k))
+    const snipHits = profileKw.filter(k => !title.includes(k) && !tagStr.includes(k) && snip.includes(k))
+    const titleMatch = roleWord && roleWord.length > 2 && title.includes(roleWord)
+    let score = Math.min(96, titleTagHits.length * 14 + snipHits.length * 3 + (titleMatch ? 18 : 0))
     // Push region-locked-elsewhere postings down so local/worldwide rises to the top.
     const locOk = locationOk(j.location, tokens)
     if (!locOk) score = Math.max(5, score - 30)
-    return { ...j, score, reason: hits.length ? `Overlaps on: ${hits.slice(0, 6).join(', ')}` : 'Same field as your resume', gaps: locOk ? '' : 'May be region-locked outside your location' }
+    const allHits = [...new Set([...titleTagHits, ...snipHits])]
+    return { ...j, score, reason: allHits.length ? `Overlaps on: ${allHits.slice(0, 6).join(', ')}` : 'Same field as your resume', gaps: locOk ? '' : 'May be region-locked outside your location' }
   }).sort((a, b) => b.score - a.score)
   // Prefer ≥30 matches; if too few clear that bar, still show the top of the pool.
   const strong = scored.filter(j => j.score >= 30)

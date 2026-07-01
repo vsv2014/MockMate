@@ -85,6 +85,9 @@ function makeFileBackend() {
     async findUserByResetToken(hash) {
       return db.users.find(u => u.resetTokenHash && u.resetTokenHash === hash) || null
     },
+    async findUserByStripeCustomerId(cid) {
+      return db.users.find(u => u.stripeCustomerId && u.stripeCustomerId === cid) || null
+    },
     async createUser(doc) {
       const now = new Date().toISOString()
       const user = {
@@ -183,6 +186,7 @@ async function makeMongoBackend() {
     async findUserById(id) { try { return lean(await User.findById(id)) } catch { return null } },
     async findUserByGoogleId(googleId) { return lean(await User.findOne({ googleId })) },
     async findUserByResetToken(hash) { return lean(await User.findOne({ resetTokenHash: hash })) },
+    async findUserByStripeCustomerId(cid) { return lean(await User.findOne({ stripeCustomerId: cid })) },
     async createUser(doc) { return lean(await User.create({ ...doc, email: (doc.email || '').toLowerCase() })) },
     async updateUser(id, patch) { return lean(await User.findByIdAndUpdate(id, patch, { new: true })) },
     async getUsage(userId, period) {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { apiFetch } from './lib/apiClient'
 // Resume/profile is shared with Solo & LiveCompanion via the same store.
 import { loadProfile, saveProfile } from './lib/profile'
 import { scoreColor } from './lib/ui'
@@ -65,7 +66,7 @@ function JobCard({ j, saved, onToggleSave }) {
 // firing a request that fails with a raw provider error.
 export function NoKeysBanner({ onSettings, what }) {
   return (
-    <div style={{ ...note, borderColor: 'rgba(13,148,136,0.45)', background: 'rgba(13,148,136,0.1)', color: '#5eead4' }}>
+    <div style={{ ...note, borderColor: 'rgba(20,184,166,0.45)', background: 'rgba(20,184,166,0.1)', color: '#5eead4' }}>
       <div style={{ marginBottom: 8 }}>⚠ <strong>No API key yet.</strong> {what} needs an AI key — add one (OpenAI / Claude / Gemini / Groq; Gemini &amp; Groq have free tiers).</div>
       <button onClick={onSettings} style={{ ...btnPrimary, width: 'auto', padding: '6px 14px', fontSize: 11.5 }}>⚙ Open Settings</button>
     </div>
@@ -94,7 +95,7 @@ export default function Jobs({ onHome, noProviders, embedded }) {
   const find = useCallback(async () => {
     setError(''); setLoading(true); setResult(null); setVisible(8)
     try {
-      const res = await fetch('/api/jobs', {
+      const res = await apiFetch('/api/jobs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resume: profile.resume || '', targetRole: profile.targetRole || '', location: profile.location || '' })
       })
@@ -127,8 +128,8 @@ export default function Jobs({ onHome, noProviders, embedded }) {
         {[['matches', '🔍 Matches'], ['saved', `★ Saved${savedJobs.length ? ` (${savedJobs.length})` : ''}`]].map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
             style={{ flex: 1, fontSize: 11, fontWeight: 700, padding: '6px 4px', borderRadius: 7, cursor: 'pointer', border: '1px solid',
-              borderColor: tab === k ? 'rgba(13,148,136,0.6)' : 'rgba(255,255,255,0.1)',
-              background: tab === k ? 'rgba(13,148,136,0.22)' : 'transparent', color: tab === k ? '#5eead4' : '#94a3b8' }}>{label}</button>
+              borderColor: tab === k ? 'rgba(20,184,166,0.6)' : 'rgba(255,255,255,0.1)',
+              background: tab === k ? 'rgba(20,184,166,0.22)' : 'transparent', color: tab === k ? '#5eead4' : '#94a3b8' }}>{label}</button>
         ))}
       </div>
 
@@ -167,7 +168,7 @@ export default function Jobs({ onHome, noProviders, embedded }) {
             style={input} />
 
           {noProviders && (
-            <div style={{ ...note, borderColor: 'rgba(13,148,136,0.3)', color: '#5eead4' }}>
+            <div style={{ ...note, borderColor: 'rgba(20,184,166,0.3)', color: '#5eead4' }}>
               💡 Add an API key in ⚙ Settings to upgrade from keyword matching to <strong>AI ranking</strong> (smarter fit + reasons). Jobs still work without one.
             </div>
           )}
@@ -197,8 +198,8 @@ export default function Jobs({ onHome, noProviders, embedded }) {
                   {SORTS.map(([k, label]) => (
                     <button key={k} onClick={() => setSort(k)}
                       style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 6, cursor: 'pointer', border: '1px solid',
-                        borderColor: sort === k ? 'rgba(13,148,136,0.6)' : 'rgba(255,255,255,0.1)',
-                        background: sort === k ? 'rgba(13,148,136,0.25)' : 'transparent',
+                        borderColor: sort === k ? 'rgba(20,184,166,0.6)' : 'rgba(255,255,255,0.1)',
+                        background: sort === k ? 'rgba(20,184,166,0.25)' : 'transparent',
                         color: sort === k ? '#5eead4' : '#64748b' }}>{label}</button>
                   ))}
                 </div>
@@ -206,7 +207,7 @@ export default function Jobs({ onHome, noProviders, embedded }) {
 
               {result.note && <div style={note}>{result.note}</div>}
               {result.localEnabled === false && !result.note && (
-                <div style={{ ...note, borderColor: 'rgba(13,148,136,0.3)', color: '#5eead4' }}>
+                <div style={{ ...note, borderColor: 'rgba(20,184,166,0.3)', color: '#5eead4' }}>
                   💡 Showing remote roles. Add free <strong>Adzuna keys</strong> in ⚙ Settings to also include <strong>local on-site jobs</strong> for your city.
                 </div>
               )}
@@ -237,12 +238,12 @@ export default function Jobs({ onHome, noProviders, embedded }) {
 
 const lbl = { display: 'block', fontSize: 10, color: '#475569', fontWeight: 700, letterSpacing: '0.05em', marginBottom: 4 }
 const input = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, padding: '8px 10px', color: '#e2e8f0', fontSize: 12, marginBottom: 10, boxSizing: 'border-box' }
-const btnPrimary = { width: '100%', background: '#0d9488', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }
+const btnPrimary = { width: '100%', background: '#14B8A6', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }
 const btnGhost = { background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer' }
 const note = { fontSize: 11, color: '#94a3b8', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 7, padding: '8px 10px', margin: '10px 0', lineHeight: 1.5 }
 const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 9, padding: '11px 12px', marginBottom: 8, position: 'relative' }
 const scorePill = { minWidth: 30, height: 30, borderRadius: 7, border: '1.5px solid', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 800, flexShrink: 0 }
 const tag = { fontSize: 9, color: '#5eead4', background: 'rgba(20,184,166,0.15)', padding: '2px 7px', borderRadius: 10 }
-const applyLink = { display: 'inline-block', fontSize: 11, fontWeight: 700, color: '#2dd4bf', textDecoration: 'none' }
+const applyLink = { display: 'inline-block', fontSize: 11, fontWeight: 700, color: '#5eead4', textDecoration: 'none' }
 const saveBtn = { fontSize: 11, fontWeight: 700, background: 'transparent', border: '1px solid', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }
-const btnLoadMore = { width: '100%', background: 'rgba(20,184,166,0.15)', color: '#5eead4', border: '1px solid rgba(13,148,136,0.4)', borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginTop: 4 }
+const btnLoadMore = { width: '100%', background: 'rgba(20,184,166,0.15)', color: '#5eead4', border: '1px solid rgba(20,184,166,0.4)', borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginTop: 4 }

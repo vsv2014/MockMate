@@ -1,0 +1,1354 @@
+[2026-07-01T12:29:49.472Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T12:29:49.491Z] [log] MockMate server on 127.0.0.1:3002 (UI + /api/*)
+[2026-07-01T12:29:58.062Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T12:29:58.157Z] [error] [llm] gemini failed (400): 400 status code (no body)
+[2026-07-01T12:29:58.157Z] [error] [api] POST /api/interview → 400: 400 status code (no body)
+[2026-07-01T12:30:29.376Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T12:30:29.390Z] [log] MockMate server on 127.0.0.1:3002 (UI + /api/*)
+[2026-07-01T12:30:51.142Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T12:30:51.378Z] [error] [llm] gemini failed (400): 400 status code (no body)
+[2026-07-01T12:30:51.378Z] [error] [api] POST /api/interview → 400: 400 status code (no body)
+[2026-07-01T12:31:00.787Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T12:31:00.803Z] [log] MockMate server on 127.0.0.1:3002 (UI + /api/*)
+[2026-07-01T12:31:34.313Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T12:31:34.410Z] [error] [llm] gemini failed (400): 400 status code (no body)
+[2026-07-01T12:31:34.410Z] [error] [api] POST /api/interview → 400: 400 status code (no body)
+[2026-07-01T12:33:11.365Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T12:33:11.385Z] [log] MockMate server on 127.0.0.1:3002 (UI + /api/*)
+[2026-07-01T13:48:40.295Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T13:48:40.318Z] [log] MockMate server on 127.0.0.1:3002 (UI + /api/*)
+[2026-07-01T13:57:25.568Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:25.706Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:25.706Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:25.981Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:26.132Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:26.132Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:28.477Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:28.591Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:28.591Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:28.900Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:29.020Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:29.020Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:31.326Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:31.448Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:31.448Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:31.751Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:31.880Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:31.880Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:35.305Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:35.432Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:35.433Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:35.732Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:35.882Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:35.882Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:41.782Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:41.875Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:41.875Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:42.182Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:42.283Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:42.283Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:44.815Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:44.910Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:44.910Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:45.019Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:45.225Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:45.225Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:48.835Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:49.019Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:49.019Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:49.121Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:49.248Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:49.249Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:52.351Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:52.450Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:52.450Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:57:52.771Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:57:52.879Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:57:52.879Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:01.252Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:01.374Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:01.374Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:01.649Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:01.820Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:01.820Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:05.510Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:05.808Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:05.808Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:05.914Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:06.211Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:06.211Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:13.977Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:14.140Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:14.140Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:14.399Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:14.569Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:14.569Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:15.971Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:16.105Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:16.106Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:16.397Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:16.551Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:16.551Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:17.430Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:17.541Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:17.542Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:17.846Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:17.974Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:17.974Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:22.465Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:22.587Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:22.587Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:22.887Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:23.009Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:23.010Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:24.877Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:25.010Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:25.010Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:25.300Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:25.451Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:25.451Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:26.855Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:26.979Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:26.980Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:27.273Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:27.402Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:27.403Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:29.164Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:29.300Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:29.300Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:29.601Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:29.730Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:29.730Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:34.026Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:34.138Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:34.139Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:34.443Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:34.576Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:34.576Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:37.135Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:37.244Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:37.244Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:37.550Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:37.687Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:37.688Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:41.908Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:42.036Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:42.036Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:42.331Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:42.471Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:42.471Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:43.548Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:43.677Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:43.677Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:43.988Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:44.110Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:44.110Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:46.760Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:46.884Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:46.884Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:47.013Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:47.202Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:47.202Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:48.086Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:48.197Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:48.197Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:48.511Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:48.648Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:48.648Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:50.327Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:50.440Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:50.441Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:50.758Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:50.873Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:50.873Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:55.682Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:55.794Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:55.794Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:58:56.098Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:58:56.237Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:58:56.237Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:01.572Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:01.691Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:01.691Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:01.973Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:02.092Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:02.092Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:03.716Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:03.845Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:03.846Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:04.117Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:04.255Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:04.255Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:09.094Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:09.194Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:09.194Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:09.302Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:09.513Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:09.514Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:11.072Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:11.169Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:11.169Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:11.277Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:11.372Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:11.372Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:12.313Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:12.408Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:12.408Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:12.514Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:12.612Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:12.612Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:15.054Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:15.158Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:15.159Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:15.288Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:15.386Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:15.386Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:17.547Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:17.640Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:17.641Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:17.944Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:18.040Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:18.040Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:20.454Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:20.554Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:20.555Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:20.673Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:20.770Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:20.770Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:23.999Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:24.098Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:24.099Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:24.201Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:24.299Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:24.299Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:30.675Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:30.816Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:30.816Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:31.090Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:31.238Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:31.238Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:35.114Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:35.253Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:35.253Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:35.542Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:35.685Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:35.685Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:37.296Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:37.414Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:37.414Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:37.749Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:37.863Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:37.863Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:43.013Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:43.115Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:43.115Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:43.224Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:43.331Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:43.332Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:46.263Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:46.366Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:46.366Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:46.465Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:46.564Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:46.564Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:51.212Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:51.326Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:51.326Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:51.461Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:51.571Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:51.571Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:54.191Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:54.306Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:54.306Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T13:59:54.431Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T13:59:54.549Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T13:59:54.549Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:13.337Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:13.536Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:13.536Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:13.735Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:13.890Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:13.890Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:30.132Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:30.273Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:30.273Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:30.530Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:30.684Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:30.684Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:32.319Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:32.418Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:32.418Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:32.735Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:32.828Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:32.828Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:36.339Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:36.452Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:36.453Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:36.739Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:36.855Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:36.855Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:39.264Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:39.358Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:39.358Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:39.466Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:39.570Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:39.570Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:44.301Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:44.491Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:44.491Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:44.692Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:44.896Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:44.896Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:46.798Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:46.936Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:46.936Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:00:47.192Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:00:47.355Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:00:47.355Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:11.565Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:11.861Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:11.861Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:11.984Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:12.284Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:12.284Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:15.194Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:15.316Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:15.316Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:15.616Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:15.745Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:15.745Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:18.349Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:18.482Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:18.482Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:18.767Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:18.906Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:18.906Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:21.683Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:21.803Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:21.803Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:22.108Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:22.243Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:22.243Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:35.556Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:35.697Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:35.697Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:35.983Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:36.119Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:36.119Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:36.587Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:36.822Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:36.822Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:37.018Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:37.243Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:37.243Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:41.662Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:41.760Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:41.760Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:41.874Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:41.978Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:41.978Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:44.850Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:44.954Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:44.954Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:45.100Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:45.206Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:45.206Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:53.110Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:53.252Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:53.252Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:53.523Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:53.706Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:53.706Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:55.735Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:55.850Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:55.850Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:56.154Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:56.279Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:56.279Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:58.754Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:58.870Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:58.870Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:01:59.173Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:01:59.308Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:01:59.309Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:03.671Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:03.787Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:03.787Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:04.080Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:04.212Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:04.212Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:07.177Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:07.319Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:07.321Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:07.596Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:07.778Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:07.778Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:09.326Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:09.454Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:09.454Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:09.766Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:09.904Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:09.904Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:14.231Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:14.335Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:14.335Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:14.475Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:14.579Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:14.579Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:16.842Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:16.951Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:16.951Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:17.062Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:17.240Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:17.240Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:23.592Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:23.740Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:23.741Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:24.027Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:24.190Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:24.198Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:24.668Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:24.954Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:24.954Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:25.105Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:25.397Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:25.397Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:26.113Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:26.251Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:26.251Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:26.507Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:26.658Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:26.658Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:29.522Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:29.814Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:29.815Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:29.931Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:30.219Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:30.219Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:42.697Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:42.815Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:42.815Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:43.093Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:43.194Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:43.194Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:44.820Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:44.919Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:44.919Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:45.214Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:45.338Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:45.338Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:48.819Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:48.938Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:48.938Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:49.223Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:49.346Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:49.346Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:53.870Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:54.016Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:54.016Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:02:54.120Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:02:54.292Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:02:54.292Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:08.897Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:09.006Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:09.006Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:09.286Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:09.413Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:09.413Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:12.575Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:12.675Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:12.675Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:12.779Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:12.975Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:12.975Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:16.625Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:16.713Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:16.713Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:16.822Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:17.116Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:17.116Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:19.717Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:19.830Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:19.830Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:20.109Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:20.237Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:20.237Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:25.202Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:25.302Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:25.303Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:25.413Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:25.507Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:25.507Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:30.285Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:30.379Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:30.379Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:30.490Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:30.586Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:30.586Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:33.359Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:33.460Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:36.094Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T14:03:36.094Z] [error] [api] POST /api/hint → 402: Your AI provider is out of credits (insufficient quota). Add billing/credits, switch to another model, or set a free GEMINI_API_KEY as a fallback.
+[2026-07-01T14:03:36.197Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:36.299Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:37.844Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:37.940Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:37.940Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:37.984Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:38.040Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:03:38.139Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:38.139Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:38.362Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:03:38.363Z] [error] [api] POST /api/evaluate → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:03:38.809Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T14:03:38.809Z] [error] [api] POST /api/hint → 402: Your AI provider is out of credits (insufficient quota). Add billing/credits, switch to another model, or set a free GEMINI_API_KEY as a fallback.
+[2026-07-01T14:03:48.342Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T14:03:48.354Z] [log] MockMate server on 127.0.0.1:3002 (UI + /api/*)
+[2026-07-01T14:04:03.617Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:03.735Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:03.735Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:04.014Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:04.150Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:04.150Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:05.826Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:06.024Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:06.024Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:06.235Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:06.333Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:06.333Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:11.239Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:11.339Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:11.339Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:11.638Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:11.739Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:11.739Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:14.287Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:14.391Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:14.391Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:14.693Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:14.807Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:14.807Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:17.356Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:17.454Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:17.454Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:17.758Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:17.864Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:17.864Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:19.612Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:19.731Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:19.731Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:20.028Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:20.140Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:20.140Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:24.778Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:24.980Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:24.980Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:25.176Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:25.386Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:25.386Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:27.135Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:27.236Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:27.236Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:27.532Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:27.647Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:27.647Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:32.329Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:32.419Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:32.419Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:32.530Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:32.728Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:32.728Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:35.557Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:35.662Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:35.663Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:35.959Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:36.056Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:36.056Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:36.421Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:36.518Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:36.518Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:36.619Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:36.933Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:36.934Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:42.246Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:42.358Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:42.358Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:42.646Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:42.770Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:42.771Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:47.671Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:47.775Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:47.775Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:47.904Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:48.063Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:48.063Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:50.696Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:50.796Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:50.796Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:51.096Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:51.212Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:51.212Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:52.538Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:52.627Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:52.627Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:52.933Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:53.026Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:53.026Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:58.145Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:58.238Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:58.238Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:04:58.543Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:04:58.639Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:04:58.639Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:03.290Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:03.414Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:03.414Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:03.692Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:03.818Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:03.819Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:10.844Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:10.937Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:10.938Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:11.043Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:11.142Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:11.142Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:16.441Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:16.796Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:16.796Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:16.916Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:17.052Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:17.052Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:25.606Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:25.905Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:25.906Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:26.026Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:26.325Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:26.326Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:30.298Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:30.412Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:30.412Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:30.710Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:30.835Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:30.835Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:35.025Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:35.140Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:35.140Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:35.439Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:35.586Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:35.586Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:37.678Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:37.798Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:37.798Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:38.100Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:38.235Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:38.235Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:42.392Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:42.504Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:42.504Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:42.819Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:42.931Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:42.931Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:43.701Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:43.813Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:43.813Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:44.120Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:44.241Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:44.241Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:45.416Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:45.584Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:45.584Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:45.839Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:46.007Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:46.007Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:54.276Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:54.582Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:54.583Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:54.719Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:55.028Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:55.028Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:57.629Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:57.918Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:57.918Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:05:58.048Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:05:58.349Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:05:58.349Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:02.817Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:02.927Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:02.927Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:03.211Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:03.334Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:03.334Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:07.850Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:07.947Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:07.947Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:08.054Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:08.152Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:08.153Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:13.560Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:13.657Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:13.657Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:13.786Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:13.883Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:13.883Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:17.760Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:17.860Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:17.861Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:17.969Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:18.065Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:18.065Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:22.589Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:22.792Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:22.792Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:23.005Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:23.200Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:23.200Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:24.657Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:24.855Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:24.855Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:25.057Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:25.261Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:25.261Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:27.226Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:27.330Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:27.330Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:27.432Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:27.619Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:27.619Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:31.970Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:32.081Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:32.081Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:32.367Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:32.471Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:32.471Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:32.942Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:33.038Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:33.038Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:33.339Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:33.453Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:33.453Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:36.692Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:36.794Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:36.794Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:36.899Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:36.997Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:36.997Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:37.932Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:38.028Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:38.028Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:38.136Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:38.231Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:38.231Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:40.441Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:40.533Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:40.533Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:40.641Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:40.742Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:40.742Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:45.355Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:45.451Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:45.451Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:45.755Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:45.864Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:45.864Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:46.568Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:46.676Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:46.676Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:46.961Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:47.083Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:47.083Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:48.848Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:48.942Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:48.942Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:49.243Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:49.341Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:49.341Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:54.137Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:54.238Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:54.239Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:54.532Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:54.635Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:54.635Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:57.390Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:57.496Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:57.496Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:06:57.786Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:06:57.921Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:06:57.921Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:00.434Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:00.539Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:00.539Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:00.835Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:00.947Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:00.947Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:02.244Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:02.347Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:02.347Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:02.642Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:02.736Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:02.736Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:06.503Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:06.600Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:06.600Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:06.899Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:07.022Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:07.023Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:10.340Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:10.439Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:10.440Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:10.548Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:10.654Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:10.654Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:11.437Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:11.737Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:11.737Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:11.846Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:11.955Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:11.956Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:16.497Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:16.607Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:16.608Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:16.733Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:16.846Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:16.847Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:17.428Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:17.548Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:17.548Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:17.677Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:17.795Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:17.795Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:21.490Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:21.604Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:21.604Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:21.726Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:21.846Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:21.846Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:26.786Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:26.898Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:26.898Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:27.186Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:27.307Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:27.307Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:29.018Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:29.112Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:29.112Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:29.415Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:29.516Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:29.516Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:34.493Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:34.657Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:34.657Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:34.896Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:35.073Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:35.073Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:39.242Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:39.335Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:39.335Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:39.544Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:39.746Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:39.746Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:44.143Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:44.240Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:44.240Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:44.342Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:44.638Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:44.638Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:48.121Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:48.224Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:48.225Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:48.516Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:48.627Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:48.627Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:57.173Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:57.285Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:57.285Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:07:57.397Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:07:57.493Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:07:57.493Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:05.844Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:05.960Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:05.960Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:06.238Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:06.363Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:06.363Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:09.858Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:09.965Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:09.965Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:10.253Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:10.376Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:10.376Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:12.957Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:13.071Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:13.072Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:13.353Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:13.487Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:13.487Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:21.418Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:21.536Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:21.536Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:21.821Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:21.943Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:21.943Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:30.594Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:30.689Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:30.689Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:30.995Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:31.096Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:31.096Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:40.265Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:40.378Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:40.379Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:40.487Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:40.579Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:40.579Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:45.263Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:45.364Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:45.364Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:45.665Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:45.778Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:45.778Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:50.192Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:50.285Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:50.285Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:50.403Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:50.496Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:50.496Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:53.988Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:54.085Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:54.085Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:54.203Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:54.298Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:54.299Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:55.913Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:56.013Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:56.014Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:56.129Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:56.433Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:56.433Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:59.094Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:59.192Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:59.192Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:08:59.491Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:08:59.594Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:08:59.595Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:00.021Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:00.122Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:00.122Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:00.418Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:00.524Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:00.524Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:03.558Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:03.658Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:03.658Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:03.952Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:04.049Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:04.049Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:08.607Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:08.704Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:08.704Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:08.806Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:08.903Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:08.903Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:11.615Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:11.707Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:11.708Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:11.813Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:11.919Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:11.919Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:16.719Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:16.814Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:16.814Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:16.917Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:17.015Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:17.015Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:21.947Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:22.097Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:22.097Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:22.369Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:22.525Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:22.526Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:25.394Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:25.541Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:25.541Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:25.833Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:26.142Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:26.142Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:29.711Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:29.832Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:29.832Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:30.123Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:30.257Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:30.257Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:34.967Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:35.067Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:35.068Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:35.360Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:35.484Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:35.484Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:39.775Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:39.882Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:39.882Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:40.173Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:40.286Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:40.286Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:43.114Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:43.214Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:43.215Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:43.323Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:43.415Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:43.415Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:45.261Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:45.393Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:45.394Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:45.503Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:45.596Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:45.596Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:50.492Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:50.594Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:50.594Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:50.904Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:51.010Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:51.011Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:52.268Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:52.364Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:52.365Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:09:52.664Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:09:52.777Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:09:52.778Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:10:38.222Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:10:38.354Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:10:38.354Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:10:38.626Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:10:38.764Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:10:38.764Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:10:46.639Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:10:46.754Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:10:46.754Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:10:47.085Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:10:47.203Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:10:47.203Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:10:51.593Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T14:10:51.609Z] [log] MockMate server on 127.0.0.1:3002 (UI + /api/*)
+[2026-07-01T14:11:09.378Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:09.501Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:09.501Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:09.799Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:09.922Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:09.923Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:14.995Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:15.095Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:15.095Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:15.210Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:15.304Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:15.304Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:17.229Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:17.326Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:17.327Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:17.437Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:17.537Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:17.537Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:21.604Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:21.902Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:21.903Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:22.006Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:22.327Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:22.328Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:29.114Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:29.413Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:29.413Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:29.521Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:29.817Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:29.817Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:34.532Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:34.840Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:34.841Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:34.968Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:35.270Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:35.270Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:38.035Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:38.326Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:38.326Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:38.450Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:38.747Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:38.747Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:41.217Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:41.518Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:41.518Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:41.642Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:41.963Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:41.963Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:43.662Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:43.966Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:43.966Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:44.107Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:44.397Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:44.397Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:50.980Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:51.286Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:51.286Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:51.393Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:51.701Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:51.701Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:57.316Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:57.626Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:57.626Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:57.733Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:58.039Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:58.039Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:58.987Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:59.295Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:59.296Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:11:59.411Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:11:59.515Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:11:59.516Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:01.104Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:01.408Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:01.408Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:01.511Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:01.815Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:01.815Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:02.090Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:02.393Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:02.393Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:02.493Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:02.585Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:02.586Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:08.716Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:09.023Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:09.023Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:09.144Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:09.451Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:09.451Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:13.660Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:13.760Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:13.760Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:13.867Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:14.174Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:14.175Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:14.538Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:14.639Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:14.639Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:14.948Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:15.046Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:15.046Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:18.164Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:18.262Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:18.262Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:18.365Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:18.465Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:18.465Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:21.054Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:21.362Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:21.363Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:21.470Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:21.575Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:21.575Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:25.544Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:25.849Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:25.849Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:25.955Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:26.054Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:26.054Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:27.683Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:27.981Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:27.981Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:28.088Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:28.185Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:28.185Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:30.108Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:30.420Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:30.420Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:30.525Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:30.828Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:30.829Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:31.813Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:32.115Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:32.115Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:32.225Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:32.526Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:32.526Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:32.913Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:33.223Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:33.223Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:33.329Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:33.635Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:33.636Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:35.586Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:35.888Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:35.888Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:35.994Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:36.296Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:36.296Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:42.316Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:42.616Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:42.616Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:42.722Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:42.818Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:42.818Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:51.709Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:52.016Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:52.016Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:12:52.119Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:12:52.423Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:12:52.424Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:00.164Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:00.260Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:00.260Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:00.384Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:00.482Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:00.482Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:02.008Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:02.101Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:02.101Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:02.214Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:02.314Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:02.314Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:07.474Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:07.769Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:07.769Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:07.910Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:08.198Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:08.198Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:08.630Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:08.937Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:08.937Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:09.073Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:09.362Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:09.362Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:12.901Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:13.210Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:13.210Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:13.334Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:13.455Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:13.455Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:18.501Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:18.798Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:18.799Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:18.913Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:19.203Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:19.203Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:20.894Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:21.197Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:21.197Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:21.304Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:21.604Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:21.604Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:25.964Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:26.258Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:26.258Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:26.363Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:26.667Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:26.667Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:28.073Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:28.378Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:28.378Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:28.482Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:28.779Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:28.779Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:33.604Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:33.919Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:33.919Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:34.041Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:34.347Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:34.347Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:35.479Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:35.789Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:35.789Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:35.915Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:36.216Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:36.216Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:38.616Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:38.916Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:38.916Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:39.042Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:39.340Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:39.341Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:44.068Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:44.369Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:44.369Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:44.469Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:44.779Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:44.779Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:46.314Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:46.626Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:46.627Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:46.736Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:47.033Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:47.033Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:51.826Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:52.123Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:52.123Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:52.252Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:52.565Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:52.565Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:57.792Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:58.088Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:58.088Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:13:58.213Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:13:58.543Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:13:58.543Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:14:00.260Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:14:00.558Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:14:00.558Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:14:00.682Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:14:00.779Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:14:00.780Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:14:02.836Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:14:03.138Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:14:03.138Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:14:03.258Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:14:03.565Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:14:03.565Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:14:10.991Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:14:11.087Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:14:11.087Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:14:11.194Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T14:14:11.293Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T14:14:11.293Z] [error] [api] POST /api/hint → 400: All AI providers failed — last error: 400 status code (no body)
+[2026-07-01T14:14:15.314Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T14:14:15.315Z] [error] [api] POST /api/evaluate → 402: Your AI provider is out of credits (insufficient quota). Add billing/credits, switch to another model, or set a free GEMINI_API_KEY as a fallback.
+[2026-07-01T14:14:17.062Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T14:14:17.062Z] [error] [api] POST /api/evaluate → 402: Your AI provider is out of credits (insufficient quota). Add billing/credits, switch to another model, or set a free GEMINI_API_KEY as a fallback.
+[2026-07-01T15:00:06.836Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T15:00:06.866Z] [log] MockMate server on 127.0.0.1:3002 (UI + /api/*)
+[2026-07-01T15:00:49.684Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T15:00:49.919Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T15:00:50.253Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T15:02:18.054Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T15:02:18.054Z] [error] [api] POST /api/interview → 402: Your AI provider is out of credits (insufficient quota). Add billing/credits, switch to another model, or set a free GEMINI_API_KEY as a fallback.
+[2026-07-01T15:02:54.455Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T15:02:54.609Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T15:02:54.911Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T15:02:54.911Z] [error] [api] POST /api/evaluate → 402: Your AI provider is out of credits (insufficient quota). Add billing/credits, switch to another model, or set a free GEMINI_API_KEY as a fallback.
+[2026-07-01T15:03:46.999Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T15:03:47.009Z] [log] MockMate server on 127.0.0.1:3002 (UI + /api/*)
+[2026-07-01T15:10:23.009Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T15:10:23.018Z] [log] MockMate server on 127.0.0.1:3011 (UI + /api/*)
+[2026-07-01T15:10:27.444Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T15:10:27.678Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T15:10:28.032Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T15:10:28.032Z] [error] [api] POST /api/interview → 402: Your AI provider is out of credits (insufficient quota). Add billing/credits, switch to another model, or set a free GEMINI_API_KEY as a fallback.
+[2026-07-01T15:15:19.905Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T15:15:20.084Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T15:15:20.492Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T15:17:53.352Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T15:17:53.363Z] [log] MockMate server on 127.0.0.1:3002 (UI + /api/*)
+[2026-07-01T15:18:17.601Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T15:18:17.727Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T15:18:18.060Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T15:21:27.959Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T15:21:27.971Z] [log] MockMate server on 127.0.0.1:3002 (UI + /api/*)
+[2026-07-01T15:22:04.447Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T15:22:04.626Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T15:22:04.928Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T15:22:06.487Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T15:22:06.582Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T15:22:06.890Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T15:22:06.891Z] [error] [api] POST /api/interview → 402: Your AI provider is out of credits (insufficient quota). Add billing/credits, switch to another model, or set a free GEMINI_API_KEY as a fallback.
+[2026-07-01T15:38:12.513Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T15:38:12.695Z] [warn] [llm] gemini rejected JSON-mode params (400) → retrying without them
+[2026-07-01T15:38:13.028Z] [error] [llm] gemini (gemini-2.5-flash) failed (400): 400 status code (no body) → trying next provider
+[2026-07-01T15:38:48.834Z] [warn] [MockMate] groq out of quota → trying next provider
+[2026-07-01T15:58:39.222Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T15:58:39.234Z] [log] MockMate server on 127.0.0.1:3033 (UI + /api/*)
+[2026-07-01T16:01:48.642Z] [log] [MockMate] server logs → /home/vishalveerannapet/Downloads/MockMate-main/logs/server.log
+[2026-07-01T16:01:48.655Z] [log] MockMate server on 127.0.0.1:3002 (UI + /api/*)

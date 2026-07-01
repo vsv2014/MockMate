@@ -6,6 +6,9 @@
   "functions": {
     "api/*.js": { "maxDuration": 30 }
   },
+  "rewrites": [
+    { "source": "/api/models", "destination": "/api/providers?only=models" }
+  ],
   "env": {
     "ELECTRON_SKIP_BINARY_DOWNLOAD": "1"
   },

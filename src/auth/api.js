@@ -101,3 +101,22 @@ export async function logout() {
   try { await request('/auth/logout', { method: 'POST', auth: true }) } catch { /* best-effort */ }
   await clearToken()
 }
+
+// ── Billing (Phase 2c) ─────────────────────────────────────────────────────────
+// Checkout / portal always target the auth backend (JWT-attached), never the local
+// BYOK server. The returned Stripe URL opens in the user's default browser — payment
+// completes there, and a webhook flips the plan to Pro server-side.
+function openUrl(url) {
+  if (typeof window !== 'undefined' && window.electronAPI?.openExternal) window.electronAPI.openExternal(url)
+  else if (typeof window !== 'undefined') window.open(url, '_blank', 'noopener')
+}
+export async function startCheckout() {
+  const { url } = await request('/billing/checkout', { method: 'POST', auth: true })
+  if (url) openUrl(url)
+  return url
+}
+export async function openBillingPortal() {
+  const { url } = await request('/billing/portal', { method: 'POST', auth: true })
+  if (url) openUrl(url)
+  return url
+}

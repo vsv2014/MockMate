@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import rateLimit from 'express-rate-limit'
 import { store, toSafeUser, currentPeriod } from '../store.js'
+import { limitFor } from '../plans.js'
 import { signToken, requireAuth } from '../middleware/auth.js'
 import { sendResetEmail } from '../mailer.js'
 
@@ -49,16 +50,20 @@ router.post('/login', authLimiter, async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Something went wrong. Please try again.' }) }
 })
 
-// GET /auth/me (JWT) → { user, plan, usage }
+// GET /auth/me (JWT) → { user, plan, usage, limits }
+// `limits` is the ENFORCED cap for this plan (from plans.js) so the UI never keeps its own copy.
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const user = await store().findUserById(req.userId)
     if (!user) return res.status(404).json({ error: 'Account not found' })
+    const plan = user.plan || 'free'
     const usage = await store().getUsage(user.id, currentPeriod())
+    const limit = limitFor(plan)
     res.json({
       user: toSafeUser(user),
-      plan: user.plan || 'free',
+      plan,
       usage: { period: usage.period, llmCalls: usage.llmCalls || 0, sttSeconds: usage.sttSeconds || 0 },
+      limits: { llmCalls: limit.llmCalls, sttSeconds: limit.sttSeconds },
     })
   } catch (e) { res.status(500).json({ error: 'Could not load your account.' }) }
 })
