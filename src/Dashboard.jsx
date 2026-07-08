@@ -166,17 +166,19 @@ export function UpdateToast() {
   }, [])
   if (!u || dismissed) return null
   const ready = u.state === 'ready'
+  const failed = u.state === 'error'
+  const RELEASES = 'https://github.com/vsv2014/MockMate/releases/latest'
   const mb = b => (Number(b || 0) / 1e6).toFixed(1)
   return (
     <div style={{ position: 'fixed', right: 20, bottom: 20, width: 340, zIndex: 100000, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, boxShadow: '0 16px 48px rgba(0,0,0,0.55)', padding: '14px 16px', fontFamily: T.font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
         <span style={{ fontSize: 15 }}>⬇️</span>
         <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: T.text1 }}>
-          {ready ? 'Update ready to install' : `Downloading update${u.version && u.version !== 'demo' ? ` v${u.version}` : ''}`}
+          {failed ? 'Couldn’t download update' : ready ? 'Update ready to install' : `Downloading update${u.version && u.version !== 'demo' ? ` v${u.version}` : ''}`}
         </span>
         <button onClick={() => setDismissed(true)} style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 14 }}>✕</button>
       </div>
-      {!ready && (
+      {!ready && !failed && (
         <>
           <div style={{ fontSize: 11.5, color: T.text2, margin: '8px 0 7px' }}>
             {u.percent != null ? `${u.percent}%` : '…'}{u.total ? ` (${mb(u.transferred)}MB of ${mb(u.total)}MB)` : ''}
@@ -185,6 +187,21 @@ export function UpdateToast() {
             <div style={{ height: '100%', width: `${u.percent || 4}%`, background: T.accent, borderRadius: 3, transition: 'width .3s' }} />
           </div>
           <div style={{ fontSize: 10.5, color: T.text3, marginTop: 8 }}>Continues in the background — installs on next quit if you wait.</div>
+        </>
+      )}
+      {failed && (
+        <>
+          <div style={{ fontSize: 11.5, color: T.text2, margin: '8px 0 10px' }}>
+            Auto-update didn’t complete. Retry, or download and reinstall the latest version manually.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => window.electronAPI?.downloadUpdate?.()}
+              style={{ flex: 1, height: 36, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>
+              Retry download
+            </button>
+            <button onClick={() => window.electronAPI?.openExternal?.(RELEASES)}
+              style={{ height: 36, padding: '0 14px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12.5, cursor: 'pointer', fontFamily: T.font }}>Get it manually</button>
+          </div>
         </>
       )}
       {ready && (

@@ -58,7 +58,10 @@ function sanitizeKeyterms(terms) {
   }
   return out
 }
-const MAX_RECONNECTS = 8        // give up after this many CONSECUTIVE failures (counter resets on a successful open)
+const MAX_RECONNECTS = 150      // CONSECUTIVE failures before giving up (counter resets on a successful open).
+                                // At the 8s backoff cap this keeps retrying through ~20min of outage — a WiFi
+                                // handoff, VPN reconnect, or brief sleep must NOT permanently kill a live interview.
+                                // Genuine fatal closes (FATAL_CLOSE / in-band Error / auth) hard-stop separately.
 const KEEPALIVE_MS = 4000       // Deepgram closes after 10s of no data — ping well within that
 // WebSocket close codes that are fatal (auth / quota / policy) — never worth retrying.
 const FATAL_CLOSE = new Set([1008, 4001, 4003, 4008])

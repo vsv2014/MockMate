@@ -18,10 +18,14 @@ const inp = {
 // LLM providers shown as labeled rows. `match` maps a configured provider (from
 // /api/providers) back to its row so we can show a live "Added" badge.
 const PROVIDERS = [
-  { k: 'OPENAI_API_KEY', name: 'OpenAI', hint: 'GPT-4o · GPT-4o-mini', match: /openai|gpt/i },
-  { k: 'ANTHROPIC_API_KEY', name: 'Anthropic', hint: 'Claude Opus · Sonnet · Haiku', match: /anthropic|claude/i },
-  { k: 'GEMINI_API_KEY', name: 'Google Gemini', hint: 'free tier', free: true, match: /gemini|google/i },
-  { k: 'GROQ_API_KEY', name: 'Groq', hint: 'free · fastest', free: true, match: /groq/i },
+  { k: 'GROQ_API_KEY', name: 'Groq', hint: 'free · fastest — best to start', free: true, match: /groq/i,
+    note: 'No credit card. Create a free key at', link: { href: 'https://console.groq.com/keys', label: 'console.groq.com/keys' } },
+  { k: 'GEMINI_API_KEY', name: 'Google Gemini', hint: 'free tier', free: true, match: /gemini|google/i,
+    note: 'Free with a Google account at', link: { href: 'https://aistudio.google.com/apikey', label: 'aistudio.google.com/apikey' } },
+  { k: 'OPENAI_API_KEY', name: 'OpenAI', hint: 'GPT-4o · GPT-4o-mini — paid API', match: /openai|gpt/i,
+    note: 'Needs billing credit (not ChatGPT Plus) at', link: { href: 'https://platform.openai.com/api-keys', label: 'platform.openai.com' } },
+  { k: 'ANTHROPIC_API_KEY', name: 'Anthropic', hint: 'Claude — paid API', match: /anthropic|claude/i,
+    note: 'Needs billing credit at', link: { href: 'https://console.anthropic.com/settings/keys', label: 'console.anthropic.com' } },
 ]
 const EMPTY = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', GROQ_API_KEY: '', DEEPGRAM_API_KEY: '', OPENAI_MODEL: '', ADZUNA_APP_ID: '', ADZUNA_APP_KEY: '' }
 
@@ -48,7 +52,7 @@ function KeyField({ name, hint, value, onChange, added, free, secret = true, not
         style={inp}
         onFocus={e => e.target.style.borderColor = T.accentFrom}
         onBlur={e => e.target.style.borderColor = T.border} />
-      {note && <div style={{ fontSize: 10, color: T.text2, lineHeight: 1.4 }}>{note}{link && <> <a href={link.href} style={{ color: T.accentFrom }}>{link.label}</a></>}</div>}
+      {note && <div style={{ fontSize: 10, color: T.text2, lineHeight: 1.4 }}>{note}{link && <> <a href={link.href} target="_blank" rel="noopener noreferrer" style={{ color: T.accentFrom }}>{link.label}</a></>}</div>}
     </div>
   )
 }
@@ -170,10 +174,11 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       <div style={card}>
         {PROVIDERS.map(p => (
           <KeyField key={p.k} name={p.name} hint={p.hint} free={p.free} added={isAdded(p)}
+            note={p.note} link={p.link}
             value={keyVals[p.k]} onChange={set(p.k)} />
         ))}
         <div style={{ fontSize: 10.5, color: '#86efac', lineHeight: 1.45, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: T.rCtrl, padding: '8px 10px' }}>
-          💡 Add a <strong>second key</strong> (e.g. OpenAI + a free Gemini). If one is rate-limited or down, MockMate auto-switches mid-interview.
+          💡 Start free with <strong>Groq</strong> or <strong>Gemini</strong> — no card needed. Add a second key and MockMate auto-switches if one is rate-limited mid-interview. (A ChatGPT Plus subscription is <strong>not</strong> an API key.)
         </div>
       </div>
 

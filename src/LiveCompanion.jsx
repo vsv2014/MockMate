@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { apiFetch } from './lib/apiClient'
 import { useSystemAudio } from './useSystemAudio'
 import Report from './Report'
+import SoloFeedback from './SoloFeedback'
+import { T } from './auth/tokens'
+import { isManaged } from './lib/aiMode'
 import { OverlayPanel, ScreenAnalysisPanel, IconBtn } from './App'
 import ApiKeysPanel from './ApiKeys'
 import { saveSession } from './history'
@@ -118,11 +122,12 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
   const [allProviders, setAllProviders] = useState([]) // every model (for the dropdown)
   const [provider, setProvider] = useState(() => { try { return localStorage.getItem('llmProvider') || '' } catch { return '' } })
   const [dgAvailable, setDgAvailable] = useState(false)
+  const [models, setModels] = useState([])   // dynamic per-key model list from /api/models
   // Inline API-key entry — same keys are also editable globally (Home → Settings).
   const [showKeys, setShowKeys] = useState(false)
 
   function refetchProviders() {
-    return fetch('/api/providers').then(r => r.json()).then(d => {
+    return apiFetch('/api/providers').then(r => r.json()).then(d => {
       const list = d.providers || []
       setProviders(list)
       setAllProviders(d.allProviders || list.map(p => ({ ...p, configured: true })))
@@ -134,6 +139,7 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
 
   useEffect(() => {
     refetchProviders()
+    apiFetch('/api/models').then(r => r.json()).then(d => setModels(d.models || [])).catch(() => {})
     window.electronAPI?.getAudioSources?.().then(srcs => {
       setAudioSources(srcs || [])
       // Auto-select system audio (best for hearing the interviewer) — but NOT on
@@ -149,18 +155,26 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
   useEffect(() => { if (provider) { try { localStorage.setItem('llmProvider', provider) } catch {} } }, [provider])
 
   function patch(p) { const next = { ...profile, ...p }; setProfile(next); saveProfile(next) }
+  const managed = isManaged()   // managed → hide model picker, let the server auto-route
   const [pdfMsg, setPdfMsg] = useState('')
 
-  const inp = { width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#e2e8f0', padding: '6px 10px', borderRadius: 6, fontSize: 12, outline: 'none', boxSizing: 'border-box' }
+  const inp = { width: '100%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text1, padding: '10px 12px', borderRadius: T.rCtrl, fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: T.font }
 
   return (
-    <OverlayPanel panelSize={panelSize} stealth={stealth} onStealth={onStealth}
-      onMinimize={onMinimize} onResize={onResize} onDrag={onDrag} onClose={onHome} title="Live Companion — Setup">
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ minHeight: '100vh', background: T.bg, color: T.text1, fontFamily: T.font, overflowY: 'auto' }}>
+      <div style={{ maxWidth: 760, margin: '0 auto', padding: '22px 26px', display: 'flex', flexDirection: 'column', gap: 12, boxSizing: 'border-box' }}>
+
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 4 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>Live Interview</div>
+            <div style={{ fontSize: 13, color: T.text2, marginTop: 3 }}>Set up, then MockMate floats invisibly over your call and suggests answers in real time.</div>
+          </div>
+          <button onClick={onHome} style={{ height: 38, padding: '0 16px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 13, cursor: 'pointer', fontFamily: T.font }}>← Back</button>
+        </div>
 
         {!dgAvailable && (
-          <div style={{ background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 6, padding: '7px 10px', fontSize: 11, color: '#fca5a5' }}>
-            ⚠ Add <code>DEEPGRAM_API_KEY</code> to <code>.env</code> and restart
+          <div style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fca5a5' }}>
+            ⚠ Live needs a <strong>Deepgram key</strong> to transcribe the interviewer. Add one in <strong>Settings → Voice</strong>, then come back.
           </div>
         )}
 
@@ -210,25 +224,17 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
             )
           })()}
         </Field>
-        <Field label="AI model">
-          {/* Only CONFIGURED providers — no locked/greyed clutter. Add keys below. */}
-          <select style={inp} value={provider} onChange={e => setProvider(e.target.value)} disabled={!providers.length}>
-            {!providers.length && <option value="">No models yet — add an API key below</option>}
-            {providers.map(p => (
-              <option key={p.id} value={p.id}>{p.label}</option>
-            ))}
-          </select>
-          <button onClick={() => setShowKeys(s => !s)}
-            style={{ marginTop: 6, width: '100%', padding: '7px', background: providers.length ? 'rgba(255,255,255,0.05)' : 'rgba(13,148,136,0.25)', color: providers.length ? '#5eead4' : '#5eead4', border: '1px solid rgba(13,148,136,0.4)', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-            {providers.length ? (showKeys ? '× Close key entry' : '⚙ Add / manage API keys') : (showKeys ? '× Close' : '🔑 Add your API keys to get started')}
-          </button>
-          <div style={{ fontSize: 9, color: '#64748b', marginTop: 4 }}>Tip: keys can also be managed globally from Home → ⚙ API Keys &amp; Settings.</div>
-          {showKeys && (
-            <div style={{ marginTop: 8, padding: 10, background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 8 }}>
-              <ApiKeysPanel onSaved={() => { refetchProviders(); setShowKeys(false) }} />
-            </div>
-          )}
-        </Field>
+        {!managed && (
+          <Field label="AI model">
+            <select style={inp} value={provider} onChange={e => setProvider(e.target.value)} disabled={!providers.length && !models.length}>
+              {!providers.length && !models.length && <option value="">No models yet — add a key in Settings</option>}
+              {models.length > 0
+                ? models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
+                : providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+            <div style={{ fontSize: 11, color: T.text3, marginTop: 6 }}>Live list of every model your key supports. Manage keys in <strong style={{ color: T.text2 }}>Settings → API &amp; Connections</strong>.</div>
+          </Field>
+        )}
 
         <Field label="Interview language">
           <select style={inp} value={profile.language || 'English'} onChange={e => patch({ language: e.target.value })}>
@@ -242,19 +248,19 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
           </select>
         </Field>
 
-        <button disabled={!dgAvailable} onClick={() => onStart({ profile, sourceId, provider })}
-          style={{ marginTop: 4, padding: '8px', background: dgAvailable ? '#0d9488' : '#1e1b4b', color: dgAvailable ? '#fff' : '#475569', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: dgAvailable ? 'pointer' : 'default' }}>
-          Start listening →
+        <button disabled={!dgAvailable} onClick={() => onStart({ profile, sourceId, provider: managed ? '' : provider })}
+          style={{ height: 48, marginTop: 4, background: dgAvailable ? T.accent : T.surface2, color: dgAvailable ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: 15, fontWeight: 600, cursor: dgAvailable ? 'pointer' : 'default', fontFamily: T.font }}>
+          Start Live →
         </button>
       </div>
-    </OverlayPanel>
+    </div>
   )
 }
 
 function Field({ label, children }) {
   return (
     <div>
-      <div style={{ fontSize: 10, color: '#475569', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 4 }}>{label.toUpperCase()}</div>
+      <div style={{ fontSize: 11.5, color: T.text2, marginBottom: 6, fontFamily: T.font }}>{label}</div>
       {children}
     </div>
   )
@@ -403,7 +409,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     // SAFETY NET — the proven non-streaming endpoint. If streaming fails for ANY reason,
     // we fall back to this, so the live answer can never be worse than the old behavior.
     const runFallback = async () => {
-      const res = await fetch('/api/hint', {
+      const res = await apiFetch('/api/hint', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: abort.signal,
         body: JSON.stringify({ question, profile: profileRef.current, conversationHistory: priorTurns(), provider: providerRef.current, language: profileRef.current?.language || 'English', extraContext: extraContextRef.current || undefined })
       })
@@ -416,7 +422,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     }
 
     try {
-      const res = await fetch('/api/hint-stream', {
+      const res = await apiFetch('/api/hint-stream', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: abort.signal,
         body: JSON.stringify({ question, profile: profileRef.current, conversationHistory: priorTurns(), provider: providerRef.current, language: profileRef.current?.language || 'English', extraContext: extraContextRef.current || undefined, mode: coachModeRef.current ? 'coach' : 'answer' })
       })
@@ -508,10 +514,13 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       return
     }
     if (!trimmed || trimmed.split(/\s+/).length < 3) return   // lower gate — catch short Qs ("why this approach?")
-    // Coalesce: a question often arrives as several final segments. Accumulate them and
-    // answer ONCE, ~850ms after the last segment (a natural pause = question finished).
+    // Coalesce: a question often arrives as several final segments. Accumulate them and answer
+    // ONCE after a short pause. If the text already ends in '?' it's clearly complete → fire
+    // almost immediately for a snappy live feel; otherwise wait a touch longer for stragglers.
+    // (Was a flat 850ms, which added a full extra beat of silence on every question.)
     pendingQ.current = pendingQ.current ? `${pendingQ.current} ${trimmed}` : trimmed
     clearTimeout(finalDebounce.current)
+    const terminal = /\?\s*$/.test(pendingQ.current)
     finalDebounce.current = setTimeout(() => {
       const q = pendingQ.current.trim(); pendingQ.current = ''
       if (!q) return
@@ -521,7 +530,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       if (isStragglerDuplicate(q, lastHintText.current)) { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); return }
       convoRef.current.push({ role: 'interviewer', text: q, ts: Date.now() })   // record the question asked
       generateHint(q)
-    }, 850)
+    }, terminal ? 250 : 450)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const audio = useSystemAudio(onFinal, reason => setError(`Transcription stopped: ${reason}`), onEarlyQuestion)
@@ -572,7 +581,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     try {
       // Score it the way Solo Practice does — from what the CANDIDATE said. Gives a real
       // summary, scorecard, and delivery review of how the interview actually went.
-      const res = await fetch('/api/evaluate', {
+      const res = await apiFetch('/api/evaluate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           config: { domainLabel: profileRef.current?.targetRole || 'Live interview', roundLabel: 'Live interview' },
@@ -769,32 +778,23 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export default function LiveCompanion({ onHome, panelSize, stealth, onStealth, onMinimize, onResize, onDrag, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive }) {
+export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealth, onStealth, onMinimize, onResize, onDrag, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive }) {
   const [phase, setPhase] = useState('setup')
   const [sessionConfig, setSessionConfig] = useState(null)
   const [sessionNotes, setSessionNotes] = useState(null)
+  // Tell the parent our phase so it can size the window: setup/notes = full dashboard
+  // window; live = compact invisible overlay.
+  useEffect(() => { onPhaseChange?.(phase) }, [phase, onPhaseChange])
 
   if (phase === 'notes') {
     const conversation = sessionNotes?.conversation || []
-    // Reuse the Solo review: scorecard + delivery + the FULL conversation (interviewer
-    // questions + what YOU actually said), with copy buttons. A minimal report keeps the
-    // conversation visible even if scoring failed. overallScore null → score card hidden.
-    const report = sessionNotes?.report || { summary: 'Session ended. Your conversation is below.', overallScore: null, dimensions: [], strengths: [], improvements: [] }
+    const report = sessionNotes?.report || { summary: 'Session ended — your conversation is below.', overallScore: null, dimensions: [], strengths: [], improvements: [] }
     return (
-      <OverlayPanel panelSize={panelSize} stealth={stealth} onStealth={onStealth}
-        onMinimize={onMinimize} onResize={onResize} onDrag={onDrag}
-        onClose={onHome} title="Session Review" autoHeight>
-        <div style={{ maxHeight: 460, overflowY: 'auto' }}>
-          {conversation.length
-            ? <Report report={report} transcript={conversation} solo onAgain={onHome} onAgainLabel="Done" />
-            : (
-              <div style={{ padding: '14px' }}>
-                <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>No conversation was captured this session. (Your spoken answers are recorded only when your voice is part of the captured audio and detected as you.)</div>
-                <button onClick={onHome} style={{ marginTop: 14, width: '100%', padding: '8px', background: '#0d9488', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Done</button>
-              </div>
-            )}
+      <div style={{ minHeight: '100vh', background: T.bg, color: T.text1, fontFamily: T.font, overflowY: 'auto' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '22px 26px', boxSizing: 'border-box' }}>
+          <SoloFeedback report={report} transcript={conversation} onAgain={onHome} onAgainLabel="← Back to dashboard" />
         </div>
-      </OverlayPanel>
+      </div>
     )
   }
 

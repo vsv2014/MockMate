@@ -276,7 +276,12 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
           if (useExtras && isGemini) params.reasoning_effort = 'none'
           if (useExtras && jsonMode) params.response_format = { type: 'json_object' }
           const r = await llm.chat.completions.create(params)
-          return r.choices[0].message.content
+          // A content-filter / safety refusal / some Gemini responses come back with an empty
+          // choices array. Throw a transient-classified error so we retry, rather than a raw
+          // TypeError on r.choices[0].
+          const choice = r.choices?.[0]
+          if (!choice?.message) { const e = new Error('provider returned no choices'); e.status = 503; throw e }
+          return choice.message.content ?? ''
         } catch (e) {
           // A 400 while sending the optional JSON-mode/reasoning params usually means THIS
           // provider/model rejects one of them (e.g. some Gemini models 400 on reasoning_effort).

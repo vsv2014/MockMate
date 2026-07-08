@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('update-status', h)
   },
   installUpdate: () => ipcRenderer.invoke('install-update'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
   checkForUpdates: () => ipcRenderer.invoke('check-updates-now'),
   writeEnv: content => ipcRenderer.invoke('write-env', content),
   relaunchApp: () => ipcRenderer.invoke('relaunch-app'),

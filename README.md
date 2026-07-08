@@ -1,8 +1,13 @@
 # MockMate — Real-Time AI Interview Companion
 
-A desktop overlay that floats over your screen during live interviews, listens to the
-interviewer, and gives you natural, resume-grounded answers in seconds.
-**Invisible to screen recording and screen share on Windows & macOS.**
+A desktop app for interview prep **and** live help: a full **dashboard workspace** (Solo practice,
+Resume Studio, Job matching, Past sessions) plus an **invisible live overlay** that floats over your
+screen during real interviews, listens to the interviewer, and gives natural, resume-grounded
+answers in seconds. **Invisible to screen recording and screen share on Windows & macOS.**
+
+AI runs in one of two modes: **MockMate AI** (managed — no keys to manage, automatic best-model
+routing + failover) or **Bring your own key** (OpenAI / Anthropic / Gemini / Groq, stored locally;
+the model picker is discovered live from your key, so it never lists a model you can't use).
 
 ---
 
@@ -16,8 +21,9 @@ Grab the latest build from the [**Releases page**](https://github.com/vsv2014/Mo
 | **Linux** | `MockMate-<version>.AppImage` | `chmod +x` → run it |
 | **macOS** | `MockMate-<version>-arm64.dmg` (Apple Silicon) / `MockMate-<version>-x64.dmg` (Intel) | Open the dmg → drag to Applications |
 
-On first launch, MockMate opens a **setup screen** where you paste your API keys — no manual
-file editing. Keys are saved locally and the app restarts ready to use.
+On first launch you sign in and land on the **dashboard**. AI is **managed by default** (MockMate
+AI — nothing to configure), or open **Settings → Bring your own key** to use your own OpenAI /
+Anthropic / Gemini / Groq key (stored locally). Then just **Start Interview**.
 
 **Auto-update (Windows & Linux):** new versions download silently in the background and install
 the next time you reopen MockMate — no re-download needed. **macOS updates are manual for now**
@@ -39,9 +45,14 @@ the next time you reopen MockMate — no re-download needed. **macOS updates are
 git clone https://github.com/vsv2014/MockMate
 cd MockMate
 npm install
-cp .env.example .env       # configure keys ONCE — dev reads this automatically
-npm run electron:dev       # launches the Electron overlay + API server + Vite
+cp .env.example .env            # configure keys ONCE — dev reads this automatically
+npm run electron:dev            # macOS / Windows: Electron app + API server + Vite
+# Linux (Chromium's SUID sandbox needs root perms) — use the no-sandbox dev script instead:
+npm run electron:dev:nosandbox
 ```
+
+> **Debugging:** the API server tees all logs (LLM errors, provider failover, model discovery)
+> to **`logs/server.log`** — `tail -n 40 logs/server.log` is the fastest way to see what broke.
 
 **Developer config — set it once.** Copy `.env.example` → `.env` and fill in your keys
 (OpenAI / Anthropic / Gemini / Groq / Deepgram), an optional `OPENAI_MODEL`, or a full
