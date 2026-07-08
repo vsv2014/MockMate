@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output (rebuilt by `vite build` / `electron-builder` — must not be committed)
+dist/
+release/
+*.tsbuildinfo
+.vite/
+
+# Secrets & local config (keep .env.example, ignore real .env)
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db

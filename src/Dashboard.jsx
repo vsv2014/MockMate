@@ -15,6 +15,7 @@ const NAV = [
   { id: 'home', icon: '🏠', label: 'Home' },
   { id: 'companion', icon: '🎯', label: 'Live Interview' },
   { id: 'solo', icon: '🤖', label: 'Solo Practice' },
+  { id: 'duo', icon: '👥', label: 'Duo (Beta)' },
   { id: 'jobs', icon: '💼', label: 'Jobs' },
   { id: 'career', icon: '📄', label: 'Resume Studio' },
   { id: 'settings', icon: '⚙️', label: 'Settings' },
@@ -140,9 +141,12 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
               <span style={{ width: 28, height: 28, borderRadius: '50%', background: T.accent, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>{initials}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: T.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{auth?.user?.name || auth?.user?.email || 'Account'}</span>
-                <span style={{ display: 'block', fontSize: 10, color: T.text3 }}>{auth?.plan === 'pro' ? 'Pro plan' : 'Free plan'}</span>
+                <span style={{ display: 'block', fontSize: 10, color: T.text3 }}>{auth?.guest ? 'Guest' : auth?.plan === 'pro' ? 'Pro plan' : 'Free plan'}</span>
               </span>
             </button>
+            <div style={{ textAlign: 'center', fontSize: 10, color: T.text3, marginTop: 8 }}>
+              MockMate v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''}
+            </div>
           </div>
         </div>
 
@@ -237,6 +241,7 @@ export function DashboardHome({ auth, sessions = [], noProviders, onNav, onCaptu
   const ACTIONS = [
     { id: 'companion', icon: '🎯', title: 'Live Interview', desc: 'Real-time AI help during interviews', cta: 'Start Live', accent: '#ef4444' },
     { id: 'solo', icon: '🤖', title: 'Solo Practice', desc: 'Practice with an AI interviewer', cta: 'Start Practice', accent: T.accentFrom },
+    { id: 'duo', icon: '👥', title: 'Duo (Beta)', desc: 'A friend joins your interview live to help', cta: 'Start Duo', accent: '#a78bfa' },
     { id: 'jobs', icon: '💼', title: 'Job Matching', desc: 'Find roles that match your profile', cta: 'Find Jobs', accent: '#22c55e' },
     { id: 'career', icon: '📄', title: 'Resume Studio', desc: 'Improve resume & career tools', cta: 'Open Tools', accent: '#eab308' },
   ]
@@ -253,10 +258,16 @@ export function DashboardHome({ auth, sessions = [], noProviders, onNav, onCaptu
         <div style={{ background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: T.rCard, padding: '10px 14px', fontSize: 12.5, color: T.success, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>✓</span><span><strong>MockMate AI ready</strong> — models are managed for you. Just start an interview.</span>
         </div>
-      ) : noProviders && (
+      ) : noProviders ? (
         <div onClick={() => onNav('settings')}
           style={{ background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCard, padding: '11px 14px', fontSize: 12.5, color: '#5eead4', cursor: 'pointer' }}>
           ⚠ <strong>No AI key connected yet</strong> — click to add one, or switch to MockMate AI in Settings.
+        </div>
+      ) : (
+        // BYOK with keys configured — make the mode visible (was silent before).
+        <div onClick={() => onNav('settings')}
+          style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '10px 14px', fontSize: 12.5, color: T.text2, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>🔑</span><span>Running on <strong style={{ color: T.text1 }}>your own API key</strong> (BYOK) — manage in Settings.</span>
         </div>
       )}
 

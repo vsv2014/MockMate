@@ -8,32 +8,65 @@ import { isRateLimit, isQuotaExhausted, isTransient } from '../../shared/llm-err
 // ── Provider registry ───────────────────────────────────────────────────────
 // Keys live in env (server-side, never shipped to the browser). The client
 // chooses which provider by id; the server resolves it here.
+// Every model default is env-overridable (X_MODEL) so a renamed/unavailable id is a one-line .env
+// fix — no code change. Exact ids drift fast; listModels() also live-discovers what each key can
+// actually use, and completeJSON/streamText bench-and-failover on a bad id, so a stale default
+// degrades gracefully rather than breaking a session.
 const CATALOG = {
+  // ── OpenAI ──
+  gpt_5: {
+    label: 'GPT-5.4', envKey: 'OPENAI_API_KEY',
+    baseURL: 'https://api.openai.com/v1',
+    model: () => process.env.OPENAI_GPT5_MODEL || 'gpt-5.4'
+  },
   openai: {
     label: 'GPT-4o', envKey: 'OPENAI_API_KEY',
     baseURL: 'https://api.openai.com/v1',
     model: () => process.env.OPENAI_MODEL || 'gpt-4o'
   },
   openai_mini: {
-    label: 'GPT-4o mini (fast)', envKey: 'OPENAI_API_KEY',
+    label: 'GPT mini (fast)', envKey: 'OPENAI_API_KEY',
     baseURL: 'https://api.openai.com/v1',
-    model: () => 'gpt-4o-mini'
+    model: () => process.env.OPENAI_MINI_MODEL || 'gpt-4o-mini'   // un-hardcoded — set OPENAI_MINI_MODEL=gpt-5-mini to modernize
   },
-  groq: {
-    label: 'Groq · Llama 3.3 70B', envKey: 'GROQ_API_KEY',
-    baseURL: 'https://api.groq.com/openai/v1',
-    model: () => process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+  // ── Google Gemini ──
+  gemini_flash_lite: {
+    label: 'Gemini 3.1 Flash-Lite (fastest)', envKey: 'GEMINI_API_KEY',
+    baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    model: () => process.env.GEMINI_FLASH_LITE_MODEL || 'gemini-3.1-flash-lite'
+  },
+  gemini_3_flash: {
+    label: 'Gemini 3 Flash', envKey: 'GEMINI_API_KEY',
+    baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    model: () => process.env.GEMINI_3_MODEL || 'gemini-3-flash'
   },
   gemini: {
     label: 'Gemini 2.5 Flash', envKey: 'GEMINI_API_KEY',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
     model: () => process.env.GEMINI_MODEL || 'gemini-2.5-flash'
   },
-  // Anthropic via its OpenAI-compatible endpoint (works with the openai client).
+  // ── Groq (LPU — very low TTFT) ──
+  groq: {
+    label: 'Groq · Llama 3.3 70B', envKey: 'GROQ_API_KEY',
+    baseURL: 'https://api.groq.com/openai/v1',
+    model: () => process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+  },
+  // ── Cerebras (Wafer-Scale — fastest throughput; OpenAI-compatible) ──
+  cerebras: {
+    label: 'Cerebras · Llama 3.3 70B', envKey: 'CEREBRAS_API_KEY',
+    baseURL: 'https://api.cerebras.ai/v1',
+    model: () => process.env.CEREBRAS_MODEL || 'llama-3.3-70b'
+  },
+  // ── Anthropic via its OpenAI-compatible endpoint (works with the openai client) ──
   claude_opus: {
     label: 'Claude Opus 4.8', envKey: 'ANTHROPIC_API_KEY',
     baseURL: 'https://api.anthropic.com/v1/',
-    model: () => 'claude-opus-4-8'
+    model: () => process.env.ANTHROPIC_OPUS_MODEL || 'claude-opus-4-8'
+  },
+  claude_sonnet_5: {
+    label: 'Claude Sonnet 5', envKey: 'ANTHROPIC_API_KEY',
+    baseURL: 'https://api.anthropic.com/v1/',
+    model: () => process.env.ANTHROPIC_SONNET5_MODEL || 'claude-sonnet-5'
   },
   claude_sonnet: {
     label: 'Claude Sonnet 4.6', envKey: 'ANTHROPIC_API_KEY',
@@ -63,11 +96,23 @@ export function availableProviders() {
 // Tier-based provider preference (used for auto-escalation). Keeps provider/key policy in
 // core.js (with CATALOG) rather than re-derived from process.env in interview.js. Returns
 // null if nothing's configured — callers fall back to the requested provider.
+// AUTO uses KNOWN-GOOD current models — IDs every key of that provider can actually call — so the
+// first request never wastes a round-trip 400ing on a model the key lacks (which benches it and
+// silently drops the answer to a lower tier). The newer/faster catalog entries (Gemini 3 Flash-Lite,
+// Cerebras, GPT-5.4, Sonnet 5) stay selectable in the dropdown and remain in the failover queue.
+// FAST tier — Live hints / simple questions. Optimize time-to-first-token + generous limits.
 export function pickFastProvider() {
-  return process.env.OPENAI_API_KEY ? 'openai_mini' : process.env.GEMINI_API_KEY ? 'gemini' : null
+  if (process.env.GEMINI_API_KEY) return 'gemini'          // 2.5-flash: fast, free, universally available
+  if (process.env.OPENAI_API_KEY) return 'openai_mini'     // gpt-4o-mini (override via OPENAI_MINI_MODEL)
+  if (process.env.CEREBRAS_API_KEY) return 'cerebras'
+  if (process.env.GROQ_API_KEY) return 'groq'
+  return null
 }
+// STRONG tier — coding / system-design. A strong model the key can definitely use.
 export function pickStrongProvider() {
-  return process.env.OPENAI_API_KEY ? 'openai' : pickFastProvider()
+  if (process.env.OPENAI_API_KEY) return 'openai'          // gpt-4o: strong + universally available
+  if (process.env.ANTHROPIC_API_KEY) return 'claude_opus'  // claude-opus-4-8
+  return pickFastProvider()
 }
 
 // EVERY model in the catalog, each flagged whether it has a key — for the UI dropdown.
@@ -134,7 +179,7 @@ export function resolveVisionProvider() {
     const g = CATALOG.gemini
     return { key: process.env.GEMINI_API_KEY, baseURL: g.baseURL, model: g.model() }
   }
-  throw Object.assign(new Error('Screen analysis needs a vision key — add an OpenAI (GPT-4o) or Gemini key in ⚙ Settings.'), { status: 400 })
+  throw aiError('vision_none', 400)
 }
 
 // A provider id may be a plain CATALOG key ('openai') OR an encoded dynamic-model pick
@@ -156,7 +201,7 @@ function resolveProvider(id) {
   if (process.env.LLM_API_KEY) return { key: process.env.LLM_API_KEY, baseURL: process.env.LLM_BASE_URL, model: process.env.LLM_MODEL || 'gemini-2.5-flash' }
   const first = availableProviders()[0]
   if (first && CATALOG[first.id]) { const p = CATALOG[first.id]; return { key: process.env[p.envKey], baseURL: p.baseURL, model: p.model() } }
-  const e = new Error(NO_PROVIDER_MSG); e.status = 402; throw e
+  throw aiError('no_provider', 402)
 }
 
 function clientFor(prov) {
@@ -200,21 +245,68 @@ const rateLimitedUntil = {}   // provId → timestamp when ban expires
 // away for 5 minutes after one transient burst.
 const RATE_LIMIT_BAN_MS = 90 * 1000
 
-// Surface-neutral guidance shared by every entry point. Works for the desktop app (keys are
-// added in Settings ⚙) — not phrased as ".env", which is only the Vercel deployment surface.
-const NO_PROVIDER_MSG = 'No AI provider key found. Open Settings (⚙) and add a key — OpenAI, Anthropic (Claude), Gemini, or Groq (Gemini & Groq have free tiers).'
+// Mode-aware user-facing errors. The SAME engine serves TWO deployments: the local BYOK server
+// (server.js :3002), where the user owns the key, and the managed proxy (backend/server.js :4000),
+// where they don't. "Check your API key in Settings" is correct advice for BYOK but confusing for a
+// managed user who has no key to check — so the managed backend sets MOCKMATE_MANAGED=1 and we swap
+// the wording to the action a managed user actually has: retry, or switch to their own key.
+const managedMode = () => process.env.MOCKMATE_MANAGED === '1'
+// Each entry: [ byokMessage, managedMessage ]. Same status code either way.
+const AI_ERRORS = {
+  no_provider: [
+    'No AI provider key found. Open Settings (⚙) and add a key — OpenAI, Anthropic (Claude), Gemini, or Groq (Gemini & Groq have free tiers).',
+    'MockMate AI is temporarily unavailable. Please try again in a moment, or switch to your own API key in Settings (⚙).',
+  ],
+  quota: [
+    'Your AI provider is out of credits (insufficient quota). Add billing/credits, switch to another model, or set a free GEMINI_API_KEY as a fallback.',
+    'MockMate AI has hit a temporary capacity limit. Please try again shortly, or switch to your own API key in Settings (⚙) for uninterrupted use.',
+  ],
+  rate: [
+    'All your AI provider keys are rate-limited right now. Add a second key (Gemini or Groq — free) in ⚙ Settings for automatic failover, or try again in a moment.',
+    'MockMate AI is busy right now. Please try again in a moment, or switch to your own API key in Settings (⚙).',
+  ],
+  transient: [
+    'The AI provider is temporarily unavailable (503/overloaded). It usually clears in a few seconds — please try again, or add a second provider key (e.g. GEMINI) for automatic failover.',
+    'MockMate AI is temporarily unavailable. It usually clears in a few seconds — please try again.',
+  ],
+  generic: [
+    'Couldn\'t reach your AI right now. Check your API key in ⚙ Settings — some free keys hit limits or reject models during long sessions; a funded OpenAI key runs reliably.',
+    'Couldn\'t reach MockMate AI right now. Please try again, or switch to your own API key in Settings (⚙).',
+  ],
+  vision_none: [
+    'Screen analysis needs a vision model — add an OPENAI_API_KEY (GPT-4o) or GEMINI_API_KEY in ⚙ Settings.',
+    'Screen analysis is temporarily unavailable. Please try again, or add your own OpenAI/Gemini key in Settings (⚙).',
+  ],
+  vision_quota: [
+    'Your vision provider is out of credits. Add billing, or add a free GEMINI_API_KEY as a fallback.',
+    'Screen analysis has hit a temporary capacity limit. Please try again shortly, or add your own key in Settings (⚙).',
+  ],
+  vision_rate: [
+    'Vision model is rate-limited. Add a second vision key (e.g. a free GEMINI_API_KEY) so screen analysis can fail over, or try again in a moment.',
+    'Screen analysis is busy right now. Please try again in a moment.',
+  ],
+}
+// Build a user-facing Error with the wording that matches the current deployment mode.
+function aiError(kind, status) {
+  const pair = AI_ERRORS[kind] || AI_ERRORS.generic
+  const e = new Error(managedMode() ? pair[1] : pair[0])
+  e.status = status
+  return e
+}
 
 // Throw a clear, distinct error when the user simply hasn't added any key yet — so callers don't
 // get a misleading "all providers rate-limited" (429) when nothing is configured at all.
 export function assertProviderConfigured() {
-  if (availableProviders().length === 0) { const e = new Error(NO_PROVIDER_MSG); e.status = 402; throw e }
+  if (availableProviders().length === 0) throw aiError('no_provider', 402)
 }
 
 function getFallbackProviders(requestedId) {
   // Preferred try-order (fast/cheap first), then EVERY other configured provider appended —
   // so ANY second key you add (Anthropic/Claude, Groq, Gemini, a custom endpoint, …) is part
   // of the failover, not just this hardcoded subset. That's what makes auto-switch actually work.
-  const order = ['openai_mini', 'groq', 'gemini', 'openai', 'claude_haiku', 'claude_sonnet', 'claude_opus']
+  // Known-good current models first so failover never leads with a speculative id that 400s; the
+  // newer entries (gpt_5 / gemini_3_flash / flash-lite / sonnet_5 / cerebras) are still in the queue.
+  const order = ['gemini', 'openai_mini', 'groq', 'openai', 'cerebras', 'claude_haiku', 'gemini_3_flash', 'gemini_flash_lite', 'gpt_5', 'claude_sonnet', 'claude_sonnet_5', 'claude_opus']
   const configured = availableProviders().map(p => p.id)
   const now = Date.now()
   const reqBase = baseOf(requestedId)
@@ -341,23 +433,13 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
 
   // All providers exhausted — surface the MOST actionable error seen across ALL of them
   // (not just the last), so an earlier out-of-credits/rate-limit isn't masked by a later 400.
-  if (sawQuota) {
-    const e = new Error('Your AI provider is out of credits (insufficient quota). Add billing/credits, switch to another model, or set a free GEMINI_API_KEY as a fallback.')
-    e.status = 402; e.code = 'insufficient_quota'; throw e
-  }
-  if (sawRate) {
-    const e = new Error('All your AI provider keys are rate-limited right now. Add a second key (Gemini or Groq — free) in ⚙ Settings for automatic failover, or try again in a moment.')
-    e.status = 429; throw e
-  }
-  if (sawTransient) {
-    const e = new Error('The AI provider is temporarily unavailable (503/overloaded). It usually clears in a few seconds — please try again, or add a second provider key (e.g. GEMINI) for automatic failover.')
-    e.status = 503; throw e
-  }
+  if (sawQuota) { const e = aiError('quota', 402); e.code = 'insufficient_quota'; throw e }
+  if (sawRate) throw aiError('rate', 429)
+  if (sawTransient) throw aiError('transient', 503)
   // Every configured provider hit a genuine error. Keep the technical detail in the LOG (already
   // logged per-provider above), but show the USER a human message — never a raw "400 no body".
   console.error(`[llm] all providers failed — last: ${lastError?.status || ''} ${lastError?.message || lastError}`)
-  const e = new Error('Couldn\'t reach your AI right now. Check your API key in ⚙ Settings — some free keys hit limits or reject models during long sessions; a funded OpenAI key runs reliably.')
-  e.status = lastError?.status || 502; throw e
+  throw aiError('generic', lastError?.status || 502)
 }
 
 // All vision-capable providers (in preference order) — so screen analysis can fail over
@@ -374,10 +456,7 @@ function visionProviders() {
 // then falls over to the other vision provider, instead of erroring on the first try.
 export async function visionComplete({ imageBase64, prompt, maxTokens = 1500, detail = 'auto' }) {
   const providers = visionProviders()
-  if (!providers.length) {
-    const e = new Error('Screen analysis needs a vision model — add an OPENAI_API_KEY (GPT-4o) or GEMINI_API_KEY in ⚙ Settings.')
-    e.status = 400; throw e
-  }
+  if (!providers.length) throw aiError('vision_none', 400)
   let lastError
   for (const prov of providers) {
     const llm = clientFor(prov)
@@ -400,8 +479,8 @@ export async function visionComplete({ imageBase64, prompt, maxTokens = 1500, de
       }
     }
   }
-  if (isQuotaExhausted(lastError)) { const e = new Error('Your vision provider is out of credits. Add billing, or add a free GEMINI_API_KEY as a fallback.'); e.status = 402; throw e }
-  if (isRateLimit(lastError)) { const e = new Error('Vision model is rate-limited. Add a second vision key (e.g. a free GEMINI_API_KEY) so screen analysis can fail over, or try again in a moment.'); e.status = 429; throw e }
+  if (isQuotaExhausted(lastError)) throw aiError('vision_quota', 402)
+  if (isRateLimit(lastError)) throw aiError('vision_rate', 429)
   throw lastError || new Error('Screen analysis failed')
 }
 
@@ -445,10 +524,7 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       if (!isRateLimit(e) && !isTransient(e)) throw e
     }
   }
-  if (isQuotaExhausted(lastError)) {
-    const e = new Error('Your AI provider is out of credits (insufficient quota). Add billing/credits, switch model, or add a free GEMINI_API_KEY fallback.')
-    e.status = 402; e.code = 'insufficient_quota'; throw e
-  }
+  if (isQuotaExhausted(lastError)) { const e = aiError('quota', 402); e.code = 'insufficient_quota'; throw e }
   throw lastError || new Error('No LLM provider could stream a response')
 }
 
@@ -472,6 +548,42 @@ export async function deepgramToken({ allowRawKey = false } = {}) {
   const e = new Error(`Deepgram token grant failed (${r.status}). For deployment, create an Owner-scoped Deepgram key that can mint tokens.`)
   e.status = r.status
   throw e
+}
+
+// ── LiveKit room token — MockMate "Duo" ─────────────────────────────────────
+// A shared room where a friend/mentor joins your interview live: shared transcript + screen +
+// a PRIVATE AI co-pilot only the candidate sees (see src/Room.jsx). livekit-server-sdk is imported
+// LAZILY inside the function so the shared engine still loads when Duo isn't installed/configured —
+// Solo & Live must never break because an OPTIONAL feature's package is missing (same lazy pattern
+// as the Mongo store). Configure LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET to enable.
+export async function mintToken({ room, identity, name } = {}) {
+  const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_URL } = process.env
+  if (!room || !identity) { const e = new Error('room and identity are required'); e.status = 400; throw e }
+  if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !LIVEKIT_URL) {
+    const e = new Error('Duo/rooms are not configured — set LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET.'); e.status = 501; throw e
+  }
+  let AccessToken
+  try { ({ AccessToken } = await import('livekit-server-sdk')) }
+  catch { const e = new Error('Duo needs the livekit-server-sdk package — run `npm i livekit-server-sdk`.'); e.status = 501; throw e }
+  const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity, name: name || identity, ttl: '2h' })
+  at.addGrant({ roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: true })
+  return { token: await at.toJwt(), url: LIVEKIT_URL }
+}
+
+// ── Embeddings — powers document RAG (chunk → embed → retrieve, see shared/retrieval.js) ─────
+// Provider-agnostic, reusing the configured LLM keys: OpenAI text-embedding-3-small (preferred),
+// else Gemini text-embedding-004. Returns one vector per input string. Cheap; keep the doc index
+// on the client and only hit this to embed chunks (once) + each question.
+export async function embed(input) {
+  const list = (Array.isArray(input) ? input : [input]).filter(t => t && String(t).trim())
+  if (!list.length) return []
+  let prov
+  if (process.env.OPENAI_API_KEY) prov = { key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: process.env.EMBED_MODEL || 'text-embedding-3-small' }
+  else if (process.env.GEMINI_API_KEY) prov = { key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: process.env.EMBED_MODEL || 'text-embedding-004' }
+  else { const e = new Error('Document search needs an OpenAI or Gemini key (for embeddings).'); e.status = 501; throw e }
+  const llm = clientFor(prov)
+  const r = await llm.embeddings.create({ model: prov.model, input: list.map(t => String(t).slice(0, 8000)) })
+  return r.data.map(d => d.embedding)
 }
 
 

@@ -5,7 +5,7 @@ import { PrimaryButton, TextLink } from './ui'
 
 // ── Welcome screen (first launch, before login) ───────────────────────────────
 // Props: onGetStarted() → signup, onSignIn() → login
-export default function Welcome({ onGetStarted, onSignIn }) {
+export default function Welcome({ onGetStarted, onSignIn, onGuest }) {
   return (
     <AuthShell>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 26 }}>
@@ -28,6 +28,13 @@ export default function Welcome({ onGetStarted, onSignIn }) {
           }}
         >Sign in</button>
       </div>
+
+      {onGuest && (
+        <div style={{ textAlign: 'center', marginTop: 14 }}>
+          <TextLink onClick={onGuest}>Try it without an account →</TextLink>
+          <div style={{ fontSize: 11, color: T.text3, marginTop: 4 }}>Uses your own API key locally. Sign in anytime to sync &amp; use MockMate AI.</div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 24 }}>
         {['Invisible overlay', 'AI feedback', 'Job matching'].map(tag => (

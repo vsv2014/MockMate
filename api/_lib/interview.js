@@ -4,6 +4,36 @@ import { completeJSON, visionComplete, extractJSON, streamText, pickFastProvider
 import { analyze, BANNED_WORDS } from '../../shared/delivery.js'
 import { searchWeb, needsWebSearch } from './search.js'
 
+// Web-search grounding must NEVER stall an answer — above all a live streamed hint, where
+// time-to-first-word is the whole product. Time-box the lookup: if it returns within budget we
+// ground the answer in it; otherwise we start answering immediately (ungrounded) and drop the
+// late result. Bounds worst-case TTFT to the budget instead of the search engine's 10s timeout.
+// Live streaming is latency-critical → a tight search budget (grounding is a bonus, speed is not
+// optional). Solo turns (blocking) can afford a little more since there's no token-by-token stream.
+const SEARCH_BUDGET_MS = { stream: 1200, blocking: 2500 }
+function groundedSearch(question, budgetMs) {
+  const search = searchWeb(question, budgetMs).catch(() => null)   // swallow late/slow failures
+  const timeout = new Promise(resolve => setTimeout(() => resolve(null), budgetMs))
+  return Promise.race([search, timeout])
+}
+
+// Answer verbosity — the "Concise / Balanced / Detailed" control. Concise = faster first word +
+// fewer tokens + easier to glance at mid-call (Live); Detailed = fuller depth. Returns a prompt
+// directive to append to the system message and a maxTokens cap relative to the caller's base.
+function styleFor(style, baseTokens) {
+  if (style === 'concise') return {
+    directive: '\n\nLENGTH: Be CONCISE — lead with the direct answer in the first sentence, then at most two short supporting sentences. No preamble, no filler.',
+    // Strong tier (base ≥900: coding / system-design) keeps room so a code block or design
+    // walkthrough isn't hard-truncated; only the fast/simple tier gets the tight cap.
+    maxTokens: Math.min(baseTokens, baseTokens >= 900 ? 650 : 380),
+  }
+  if (style === 'detailed') return {
+    directive: '\n\nLENGTH: Be thorough — a complete, well-structured answer with specifics and concrete examples.',
+    maxTokens: Math.max(baseTokens, 1100),
+  }
+  return { directive: '', maxTokens: baseTokens }   // balanced (default) — unchanged behavior
+}
+
 function profileBlock(p = {}) {
   let s = ''
   if (p.name) s += `\nCandidate name: ${p.name}`
@@ -64,7 +94,7 @@ export async function interviewerTurn({ config = {}, transcript = [], profile = 
   return turn
 }
 
-export async function generateHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '' }) {
+export async function generateHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', style = 'balanced', autoSkip = true }) {
   const ctx = profileBlock(profile)
   const langInstruction = language && language !== 'English'
     ? `\n\nLANGUAGE: Respond ENTIRELY in ${language}. The fullAnswer, sampleAnswer, keyPoints, opener, resumeStory, and watchOut must ALL be written in ${language}. Do not mix languages.`
@@ -184,7 +214,7 @@ Return ONE JSON object, no prose, no markdown fences:
   let searchSources = []
   if (needsWebSearch(question)) {
     try {
-      const results = await searchWeb(question)
+      const results = await groundedSearch(question, SEARCH_BUDGET_MS.blocking)
       if (results?.sources?.length) {
         searchSources = results.sources
         searchBlock = '\n\nLIVE WEB SEARCH RESULTS (use these facts — they are current and specific):\n'
@@ -192,7 +222,7 @@ Return ONE JSON object, no prose, no markdown fences:
         searchBlock += results.sources.map(s => `[${s.title}]\n${s.snippet}`).join('\n\n')
         searchBlock += '\n\nIMPORTANT: Ground your answer in these search results. Reference specific details from them.'
       }
-    } catch { /* search failure is non-fatal — answer without it */ }
+    } catch { /* search failure/timeout is non-fatal — answer without it */ }
   }
 
   // Pick the live-hint provider for SPEED + high rate limits (P0-C):
@@ -204,10 +234,15 @@ Return ONE JSON object, no prose, no markdown fences:
   const userPicked = provider && provider !== 'auto'
   const fastProvider = userPicked ? provider : (pickFastProvider() || provider)
 
+  // Use the concise/detailed DIRECTIVE, but NOT the tight concise token cap here: this path returns
+  // a full multi-field JSON object, and 380 tokens truncates it into invalid JSON. Keep ≥700.
+  const { directive } = styleFor(style, 700)
+  const maxTokens = style === 'detailed' ? 1100 : 700
+  const skipDirective = autoSkip ? '' : '\n\nALWAYS ANSWER: respond to every input — never skip, even for small talk or a partial/unclear question.'
   const hint = await completeJSON({
-    maxTokens: 700, provider: fastProvider,
+    maxTokens, provider: fastProvider,
     messages: [
-      { role: 'system', content: system },
+      { role: 'system', content: system + directive + skipDirective },
       { role: 'user', content: `${historyBlock}${extraBlock}${searchBlock}\n\nCurrent question: "${String(question).slice(0, 800)}"` }
     ]
   })
@@ -323,21 +358,21 @@ Keep every line short. Calm, confident framing. Never use these AI-tell words: $
 // complexity/watch) then streams the SPOKEN answer prose token-by-token, so the UI
 // shows words in <1s instead of waiting for a full JSON object. Outputs the sentinel
 // [SKIP] when the input isn't a real interview question.
-export async function streamHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', mode = 'answer' } = {}, { onMeta, onToken, onUsage, signal } = {}) {
+export async function streamHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', mode = 'answer', style = 'balanced', autoSkip = true } = {}, { onMeta, onToken, onUsage, signal } = {}) {
   if (!question || !String(question).trim()) return { skipped: true }
 
   // Web-search grounding for company/product/current-events questions (same as generateHint).
   let searchSources = [], searchBlock = ''
   if (needsWebSearch(question)) {
     try {
-      const results = await searchWeb(question)
+      const results = await groundedSearch(question, SEARCH_BUDGET_MS.stream)
       if (results?.sources?.length) {
         searchSources = results.sources
         searchBlock = '\n\nLIVE WEB SEARCH RESULTS (ground the answer in these current facts):\n'
           + (results.answer ? `Summary: ${results.answer}\n\n` : '')
           + results.sources.map(s => `[${s.title}] ${s.snippet}`).join('\n\n')
       }
-    } catch { /* search failure is non-fatal */ }
+    } catch { /* search failure/timeout is non-fatal */ }
   }
 
   const resumeBlock = profile.resume ? `\n\nCANDIDATE RESUME (ground behavioral/resume answers in this):\n${String(profile.resume).slice(0, 4000)}` : ''
@@ -348,7 +383,7 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   // Pick the ONE playbook for this question and inject only its structure — focused
   // prompt = the model follows it far more reliably than one giant all-types prompt.
   const pb = pickPlaybook(question)
-  const system = mode === 'coach' ? buildCoachSystem(language, pb.coach) : buildAnswerSystem(language, pb.answer)
+  const baseSystem = mode === 'coach' ? buildCoachSystem(language, pb.coach) : buildAnswerSystem(language, pb.answer)
   const user = `${resumeBlock}${historyBlock}${extraBlock}${searchBlock}\n\nCurrent question: "${String(question).slice(0, 800)}"`
 
   // HONOR THE USER'S EXPLICIT MODEL CHOICE. If they picked a model in the dropdown
@@ -361,10 +396,16 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   const userPicked = provider && provider !== 'auto'
   const chosen = userPicked ? provider : ((tier === 'strong' ? escalateStrong : escalateFast) || provider)
 
+  // Apply the verbosity control on top of the tier's base budget.
+  const { directive, maxTokens } = styleFor(style, (tier === 'strong' || mode === 'coach') ? 900 : 700)
+  // Auto-skip OFF → force an answer for every input (override the [SKIP] instruction).
+  const skipDirective = autoSkip ? '' : '\n\nALWAYS ANSWER: respond to every input — do NOT output [SKIP], even for small talk, filler, or a partial/unclear question. Do your best with what was said.'
+  const system = baseSystem + directive + skipDirective
+
   let buf = '', metaSent = false, skipped = false, proseEmitted = false
   const emit = t => { if (t) { proseEmitted = true; onToken?.(t) } }   // track that real answer text went out
   await streamText({
-    provider: chosen, maxTokens: (tier === 'strong' || mode === 'coach') ? 900 : 700,
+    provider: chosen, maxTokens,
     onUsage, signal,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     onToken: tok => {
@@ -439,10 +480,13 @@ Return ONE JSON object, no prose:
   return report
 }
 
-export async function analyzeScreen({ imageBase64, profile = {}, language }) {
+export async function analyzeScreen({ imageBase64, profile = {}, language, style = 'balanced' }) {
   if (!imageBase64) { const e = new Error('No screenshot captured. Try the capture shortcut again.'); e.status = 400; throw e }
   const ctx = profileBlock(profile)
   const codeLang = language || profile.codingLanguage || 'Python'
+  // "Faster Screenshot Replies": concise → answer-first, minimal prose, tighter token budget.
+  // (Code solutions still get room — the cap only trims the surrounding explanation.)
+  const fast = style === 'concise'
 
   const prompt = `You are a private interview coach analyzing a screenshot taken during a live interview.
 ${ctx ? `\nCandidate background:\n${ctx}\n` : ''}
@@ -485,7 +529,8 @@ Return ONE JSON object, no markdown:
 }`
 
   // Retries + falls over OpenAI ↔ Gemini, so a single provider's 429 no longer breaks it.
-  const raw = await visionComplete({ imageBase64, prompt, maxTokens: 1500 })
+  const faster = fast ? '\n\nFASTER MODE: Lead with the answer/solution first. Keep prose minimal — the code and the 1-2 most important points only.' : ''
+  const raw = await visionComplete({ imageBase64, prompt: prompt + faster, maxTokens: fast ? 900 : 1500 })
   const out = extractJSON(raw)
   // Defensive: strip any markdown code fences the model wrapped around the code.
   if (out && typeof out.code === 'string') {

@@ -94,7 +94,17 @@ answer matches it.
 - Auto-detects coding platforms (LeetCode, HackerRank, CoderPad…) → one-tap **Coding mode**
 - **Live web search** auto-triggers for company/product questions
 - **Mid-session context field** to steer answers ("focus on Python", "system design round")
+- **Documents (RAG)** — upload your resume / JD / notes; they're chunked + embedded and the most
+  relevant parts are retrieved *per question* (no more truncated-resume stuffing)
+- **Answer controls** — Concise / Balanced / Detailed length, Answer vs Coach mode, Auto-skip noise
+- **Minimize to a pill** — collapses to a small, still-capture-protected logo you click to reopen
 - Post-session AI notes
+
+### 👥 Duo (Beta)
+- A friend/mentor **joins your interview room live** — shared transcript + screen share
+- The candidate gets a **private AI co-pilot** the partner never sees — rendered in a
+  **screen-capture-protected window** (invisible to the interviewer's share), not just remote control
+- Needs LiveKit configured (`LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`)
 
 ### 🤖 Solo Practice
 - AI interviewer asks role-calibrated questions, probes with follow-ups
@@ -159,16 +169,21 @@ works even when it's not visible.
 
 | Key | Purpose | Free? | Link |
 |---|---|---|---|
-| `OPENAI_API_KEY` | GPT-4o answers + screen/coding vision | Pay per use | [platform.openai.com](https://platform.openai.com/api-keys) |
+| `OPENAI_API_KEY` | GPT-5.4 / GPT-4o answers + screen/coding vision + document embeddings (RAG) | Pay per use | [platform.openai.com](https://platform.openai.com/api-keys) |
 | `GROQ_API_KEY` | Fast AI answers | ✅ Free | [console.groq.com](https://console.groq.com/keys) |
-| `GEMINI_API_KEY` | AI answers + vision alternative | ✅ Free | [aistudio.google.com](https://aistudio.google.com/apikey) |
+| `GEMINI_API_KEY` | AI answers + vision + embeddings (RAG) alternative | ✅ Free | [aistudio.google.com](https://aistudio.google.com/apikey) |
+| `CEREBRAS_API_KEY` | Fastest-throughput answers (Llama, wafer-scale) | ✅ Free | [cloud.cerebras.ai](https://cloud.cerebras.ai) |
+| `ANTHROPIC_API_KEY` | Claude Opus 4.8 / Sonnet 5 / Haiku 4.5 answers | Pay per use | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
 | `DEEPGRAM_API_KEY` | Live audio transcription | ✅ $200 credits | [console.deepgram.com](https://console.deepgram.com) |
 | `TAVILY_API_KEY` | Web search for company questions | ✅ Free | [tavily.com](https://tavily.com) |
+| `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | **Duo** rooms (collaborative interview help) | ✅ Free tier | [cloud.livekit.io](https://cloud.livekit.io) |
 
-**Minimum to run:** one LLM key + Deepgram key.
+**Minimum to run:** one LLM key + Deepgram key. Duo needs the LiveKit trio (optional). See `.env.example`.
 **Recommended:** configure **2+ LLM providers** — MockMate auto-falls-back when one is
 rate-limited, which matters for a full-hour interview (Groq's free tier alone exhausts quickly).
-Live hints prefer fast, high-limit models (GPT-4o-mini → Gemini) and keep Groq as a fallback.
+On **Auto**, Live hints prefer the fastest current model (Gemini Flash-Lite / Cerebras / Groq) and
+hard questions escalate to a strong model (GPT-5.4 / Claude Sonnet 5). Model defaults are
+`.env`-overridable (e.g. `OPENAI_GPT5_MODEL`, `GEMINI_FLASH_LITE_MODEL`, `CEREBRAS_MODEL`).
 
 ---
 

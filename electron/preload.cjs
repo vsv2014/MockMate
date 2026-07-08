@@ -33,6 +33,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   hideWindow: () => ipcRenderer.send('hide-window'),
   setPin: on => ipcRenderer.send('set-pin', on),
+  // Duo co-pilot: open/close the protected hint window + push hints into it (see main.cjs).
+  setRoomActive: on => ipcRenderer.send('set-room-active', on),
+  sendHint: payload => ipcRenderer.send('send-hint', payload),
   getUserDataPath: () => ipcRenderer.sendSync('get-userdata-path'),
   // Auth API base URL (env-configurable; local fork by default)
   getApiBase: () => ipcRenderer.sendSync('get-api-base'),

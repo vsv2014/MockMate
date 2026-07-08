@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiFetch } from './lib/apiClient'
 import { loadProfile, saveProfile } from './lib/profile'
 import { scoreColor } from './lib/ui'
 import { NoKeysBanner } from './Jobs'
@@ -14,7 +15,7 @@ function CopyBtn({ text }) {
     style={{ ...chip, cursor: 'pointer', border: 'none', color: done ? '#4ade80' : '#5eead4' }}>{done ? '✓ Copied' : '📋 Copy'}</button>
 }
 
-export default function Career({ onHome, noProviders, onSettings }) {
+export default function Career({ onHome, noProviders, onSettings, embedded }) {
   const [profile, setProfile] = useState(() => loadProfile())
   const [tab, setTab] = useState('ats')
   const [loading, setLoading] = useState(false)
@@ -35,7 +36,7 @@ export default function Career({ onHome, noProviders, onSettings }) {
   async function run(path, body) {
     setError(''); setLoading(true); setResult(null)
     try {
-      const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const res = await apiFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const text = await res.text()
       let d = null; try { d = JSON.parse(text) } catch {}
       if (!res.ok || d?.error) setError(d?.error || `Request failed (${res.status})`)
@@ -47,11 +48,13 @@ export default function Career({ onHome, noProviders, onSettings }) {
   const base = { resume: profile.resume || '', targetRole: profile.targetRole || '', jobDescription: jd }
 
   return (
-    <div style={{ padding: '12px 14px 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <button onClick={onHome} style={btnGhost}>← Back</button>
-        <div style={{ fontWeight: 700, fontSize: 13 }}>🎯 Resume &amp; Career Tools</div>
-      </div>
+    <div style={{ padding: embedded ? 0 : '12px 14px 16px' }}>
+      {!embedded && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <button onClick={onHome} style={btnGhost}>← Back</button>
+          <div style={{ fontWeight: 700, fontSize: 13 }}>🎯 Resume &amp; Career Tools</div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div role="tablist" style={{ display: 'flex', gap: 6, marginBottom: 12 }}>

@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { useSystemAudio } from './useSystemAudio'
-import Report from './Report'
 import SoloFeedback from './SoloFeedback'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
+import { getAutoSkip } from './lib/aiSettings'
+import { retrieveContext } from './lib/docs'
+import Documents from './Documents'
 import { OverlayPanel, ScreenAnalysisPanel, IconBtn } from './App'
 import ApiKeysPanel from './ApiKeys'
 import { saveSession } from './history'
@@ -157,6 +159,9 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
   function patch(p) { const next = { ...profile, ...p }; setProfile(next); saveProfile(next) }
   const managed = isManaged()   // managed → hide model picker, let the server auto-route
   const [pdfMsg, setPdfMsg] = useState('')
+  // BYOK with no LLM configured → hints would error on every question mid-call. Block Start and say why.
+  const noLLM = !managed && providers.length === 0 && models.length === 0
+  const canStart = dgAvailable && !noLLM
 
   const inp = { width: '100%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text1, padding: '10px 12px', borderRadius: T.rCtrl, fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: T.font }
 
@@ -177,10 +182,19 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
             ⚠ Live needs a <strong>Deepgram key</strong> to transcribe the interviewer. Add one in <strong>Settings → Voice</strong>, then come back.
           </div>
         )}
+        {dgAvailable && noLLM && (
+          <div style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fca5a5' }}>
+            ⚠ No AI model configured — hints would fail on every question. Add an AI key in <strong>Settings</strong> (or switch to MockMate AI), then come back.
+          </div>
+        )}
 
+        <Section n={1} title="Interview" subtitle="Who you are and the role">
         <Field label="Your name"><input style={inp} value={profile.name || ''} placeholder="e.g. Charan" onChange={e => patch({ name: e.target.value })} /></Field>
         <Field label="Target role"><input style={inp} value={profile.targetRole || ''} placeholder="e.g. Senior AI Engineer" onChange={e => patch({ targetRole: e.target.value })} /></Field>
         <Field label="Target company (sharpens 'why us' answers + web search)"><input style={inp} value={profile.targetCompany || ''} placeholder="e.g. Stripe" onChange={e => patch({ targetCompany: e.target.value })} /></Field>
+        </Section>
+
+        <Section n={2} title="Documents & context" subtitle="Ground answers in your resume, JD & notes">
         <Field label="Resume (optional — answers reference your projects)">
           <textarea rows={3} style={{ ...inp, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste resume text…" onChange={e => patch({ resume: e.target.value })} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
@@ -204,11 +218,17 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
         <Field label="Job description (optional — sharpens answers to this role)">
           <textarea rows={2} style={{ ...inp, resize: 'vertical' }} value={profile.jobDescription || ''} placeholder="Paste job description…" onChange={e => patch({ jobDescription: e.target.value })} />
         </Field>
+        <Field label="Documents (RAG — retrieves the relevant parts of your files per question)">
+          <Documents />
+        </Field>
         <Field label="Your voice & instructions (optional — shapes every answer)">
           <textarea rows={2} style={{ ...inp, resize: 'vertical' }} value={profile.customPrompt || ''}
             placeholder="e.g. 'Senior eng, talk like I'm chatting with a peer — casual, confident, short. Lean on my fintech work. Avoid buzzwords.'"
             onChange={e => patch({ customPrompt: e.target.value })} />
         </Field>
+        </Section>
+
+        <Section n={3} title="Delivery" subtitle="Audio, model & language" defaultOpen={false}>
         <Field label="Audio source">
           {(() => {
             const systemId = audioSources.find(s => /screen|entire|display/i.test(s.name))?.id || 'microphone'
@@ -247,9 +267,10 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
             {CODING_LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
         </Field>
+        </Section>
 
-        <button disabled={!dgAvailable} onClick={() => onStart({ profile, sourceId, provider: managed ? '' : provider })}
-          style={{ height: 48, marginTop: 4, background: dgAvailable ? T.accent : T.surface2, color: dgAvailable ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: 15, fontWeight: 600, cursor: dgAvailable ? 'pointer' : 'default', fontFamily: T.font }}>
+        <button disabled={!canStart} onClick={() => onStart({ profile, sourceId, provider: managed ? '' : provider })}
+          style={{ height: 48, marginTop: 4, background: canStart ? T.accent : T.surface2, color: canStart ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: 15, fontWeight: 600, cursor: canStart ? 'pointer' : 'default', fontFamily: T.font }}>
           Start Live →
         </button>
       </div>
@@ -266,8 +287,27 @@ function Field({ label, children }) {
   )
 }
 
+// Numbered, collapsible setup section (declutters the flat form — the LockedIn 1·2·3 pattern).
+function Section({ n, title, subtitle, defaultOpen = true, children }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, overflow: 'hidden' }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '13px 16px', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: T.font, textAlign: 'left' }}>
+        <span style={{ width: 24, height: 24, borderRadius: '50%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text2, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{n}</span>
+        <span style={{ flex: 1 }}>
+          <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: T.text1 }}>{title}</span>
+          {subtitle && <span style={{ display: 'block', fontSize: 11.5, color: T.text3, marginTop: 1 }}>{subtitle}</span>}
+        </span>
+        <span style={{ color: T.text3, fontSize: 12 }}>{open ? '▾' : '▸'}</span>
+      </button>
+      {open && <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>}
+    </div>
+  )
+}
+
 // ── Live overlay ──────────────────────────────────────────────────────────────
-function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, onStealth, onMinimize, onResize, onDrag, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, pip: initialPip }) {
+function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, pip: initialPip }) {
   const [transcript, setTranscript] = useState([])
   const [hint, setHint] = useState(null)
   const [hintLoading, setHintLoading] = useState(false)
@@ -280,6 +320,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const [usage, setUsage] = useState({ tokens: 0, cost: 0 })   // session token/cost burn (BYOK gauge)
   const [coachMode, setCoachMode] = useState(false)   // 💬 Answer (full answer) ↔ 🎓 Coach (structure only)
   const coachModeRef = useRef(false)
+  // Answer verbosity — Concise (fast, glanceable) ↔ Balanced ↔ Detailed. Persisted; sent to the
+  // hint engine as `style`. Concise streams the first word sooner and stays readable mid-call.
+  const [answerStyle, setAnswerStyle] = useState(() => { try { return localStorage.getItem('mm-answer-style') || 'balanced' } catch { return 'balanced' } })
+  const answerStyleRef = useRef('balanced')
   const [clock, setClock] = useState(0)
   const [error, setError] = useState('')
   const [extraContext, setExtraContext] = useState('')
@@ -300,10 +344,12 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   // superseded/skipped answers) when the interviewer's question arrives in pieces.
   const finalDebounce = useRef(null)
   const pendingQ = useRef('')
+  const ragSpec = useRef({ q: '', p: null })   // speculative RAG embed started during the debounce, reused by generateHint
   const convoRef = useRef([])   // the REAL conversation: interviewer questions + what YOU said (not AI answers)
 
   useEffect(() => { extraContextRef.current = extraContext }, [extraContext])
   useEffect(() => { coachModeRef.current = coachMode }, [coachMode])   // so generateHint (a [] useCallback closure) reads the live value
+  useEffect(() => { answerStyleRef.current = answerStyle; try { localStorage.setItem('mm-answer-style', answerStyle) } catch {} }, [answerStyle])
 
   useEffect(() => {
     bcRef.current = new BroadcastChannel('mockmate-live')
@@ -406,12 +452,26 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     }
     const resetSkip = () => { clearTimeout(lockTimeout); setHintLoading(false); setStreaming(false); hintInFlight.current = false; lastHintText.current = ''; setBuyTimePhrase('') }
 
+    // Document RAG — retrieve the chunks of the candidate's uploaded docs most relevant to THIS
+    // question and fold them into the context. No-op (instant '') when no docs are uploaded, and
+    // time-boxed inside retrieveContext so it can never stall the live answer.
+    // Reuse the speculative embed started during the debounce (overlaps its ~400ms with the wait);
+    // fall back to embedding now if the final question differs. Tight budget so RAG can't add more
+    // than ~0.6s to time-to-first-token. (No-docs users pay 0ms — retrieveContext returns '' instantly.)
+    const spec = ragSpec.current
+    const ragContext = (spec.q === question && spec.p)
+      ? await spec.p.catch(() => '')
+      : await retrieveContext(question, { budgetMs: 600 }).catch(() => '')
+    if (ragSpec.current === spec) ragSpec.current = { q: '', p: null }   // don't wipe a newer question's speculative embed set during the await
+    if (question !== lastHintText.current) return   // a newer question superseded this during retrieval
+    const mergedContext = () => [extraContextRef.current, ragContext].filter(Boolean).join('\n\n') || undefined
+
     // SAFETY NET — the proven non-streaming endpoint. If streaming fails for ANY reason,
     // we fall back to this, so the live answer can never be worse than the old behavior.
     const runFallback = async () => {
       const res = await apiFetch('/api/hint', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: abort.signal,
-        body: JSON.stringify({ question, profile: profileRef.current, conversationHistory: priorTurns(), provider: providerRef.current, language: profileRef.current?.language || 'English', extraContext: extraContextRef.current || undefined })
+        body: JSON.stringify({ question, profile: profileRef.current, conversationHistory: priorTurns(), provider: providerRef.current, language: profileRef.current?.language || 'English', extraContext: mergedContext(), style: answerStyleRef.current, autoSkip: getAutoSkip() })
       })
       const d = await res.json()
       if (question !== lastHintText.current) return        // superseded while awaiting
@@ -424,7 +484,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     try {
       const res = await apiFetch('/api/hint-stream', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: abort.signal,
-        body: JSON.stringify({ question, profile: profileRef.current, conversationHistory: priorTurns(), provider: providerRef.current, language: profileRef.current?.language || 'English', extraContext: extraContextRef.current || undefined, mode: coachModeRef.current ? 'coach' : 'answer' })
+        body: JSON.stringify({ question, profile: profileRef.current, conversationHistory: priorTurns(), provider: providerRef.current, language: profileRef.current?.language || 'English', extraContext: mergedContext(), mode: coachModeRef.current ? 'coach' : 'answer', style: answerStyleRef.current, autoSkip: getAutoSkip() })
       })
       if (!res.ok || !res.body) { await runFallback(); return }   // streaming unavailable → proven path
 
@@ -521,6 +581,13 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     pendingQ.current = pendingQ.current ? `${pendingQ.current} ${trimmed}` : trimmed
     clearTimeout(finalDebounce.current)
     const terminal = /\?\s*$/.test(pendingQ.current)
+    // Speculative RAG: on a complete-looking question, start the doc-embed NOW so it overlaps the
+    // debounce wait instead of adding to time-to-first-token. generateHint reuses this if the final
+    // question matches. No-ops instantly when no docs are uploaded (retrieveContext returns '').
+    if (terminal) {
+      const specQ = pendingQ.current.trim()
+      ragSpec.current = { q: specQ, p: retrieveContext(specQ, { budgetMs: 600 }).catch(() => '') }
+    }
     finalDebounce.current = setTimeout(() => {
       const q = pendingQ.current.trim(); pendingQ.current = ''
       if (!q) return
@@ -624,7 +691,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   ) : null
 
   return (
-    <OverlayPanel panelSize={panelSize} stealth={stealth} onStealth={onStealth} actions={liveActions} confirmClose
+    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} onStealth={onStealth} actions={liveActions} confirmClose
       onMinimize={onMinimize} onResize={onResize} onDrag={onDrag}
       onClose={endSession} extra={titleExtra}>
       {/* ── Single scrollable chat feed ── */}
@@ -760,11 +827,19 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             <button onClick={() => setContextOpen(c => !c)} style={{ background: 'none', border: 'none', color: contextOpen ? '#5eead4' : '#2d3748', fontSize: 9, cursor: 'pointer', padding: 0, fontWeight: 700, letterSpacing: '0.07em' }}>
               {contextOpen ? '▾' : '▸'} EXTRA CONTEXT {extraContext && <span style={{ background: 'rgba(20,184,166,0.25)', color: '#5eead4', borderRadius: 6, padding: '0 4px', fontSize: 8, marginLeft: 4 }}>on</span>}
             </button>
-            <button onClick={() => setCoachMode(m => !m)}
-              title="Coach mode gives you the STRUCTURE to say — clarify, trade-offs, the 'why' — instead of a full answer, so you communicate like a strong engineer. Answer mode gives the spoken answer."
-              style={{ display: 'flex', alignItems: 'center', gap: 5, background: coachMode ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${coachMode ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.1)'}`, color: coachMode ? '#4ade80' : '#94a3b8', fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', borderRadius: 100, padding: '3px 9px', cursor: 'pointer' }}>
-              {coachMode ? '🎓 COACH' : '💬 ANSWER'}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {/* Answer length — cycles Concise → Balanced → Detailed. Concise = fastest first word. */}
+              <button onClick={() => setAnswerStyle(s => s === 'concise' ? 'balanced' : s === 'balanced' ? 'detailed' : 'concise')}
+                title="Answer length — Concise (fastest, easiest to glance at) · Balanced · Detailed. Concise streams the first word soonest and uses fewer tokens."
+                style={{ display: 'flex', alignItems: 'center', gap: 5, background: answerStyle === 'balanced' ? 'rgba(255,255,255,0.04)' : 'rgba(20,184,166,0.15)', border: `1px solid ${answerStyle === 'balanced' ? 'rgba(255,255,255,0.1)' : 'rgba(20,184,166,0.4)'}`, color: answerStyle === 'balanced' ? '#94a3b8' : '#5eead4', fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', borderRadius: 100, padding: '3px 9px', cursor: 'pointer' }}>
+                {answerStyle === 'concise' ? '⚡ CONCISE' : answerStyle === 'detailed' ? '📖 DETAILED' : '⚖ BALANCED'}
+              </button>
+              <button onClick={() => setCoachMode(m => !m)}
+                title="Coach mode gives you the STRUCTURE to say — clarify, trade-offs, the 'why' — instead of a full answer, so you communicate like a strong engineer. Answer mode gives the spoken answer."
+                style={{ display: 'flex', alignItems: 'center', gap: 5, background: coachMode ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${coachMode ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.1)'}`, color: coachMode ? '#4ade80' : '#94a3b8', fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', borderRadius: 100, padding: '3px 9px', cursor: 'pointer' }}>
+                {coachMode ? '🎓 COACH' : '💬 ANSWER'}
+              </button>
+            </div>
           </div>
           {contextOpen && (
             <textarea value={extraContext} onChange={e => setExtraContext(e.target.value)}
@@ -778,7 +853,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealth, onStealth, onMinimize, onResize, onDrag, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive }) {
+export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive }) {
   const [phase, setPhase] = useState('setup')
   const [sessionConfig, setSessionConfig] = useState(null)
   const [sessionNotes, setSessionNotes] = useState(null)
@@ -841,7 +916,7 @@ export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealt
   return (
     <LiveOverlay
       {...sessionConfig}
-      panelSize={panelSize} stealth={stealth}
+      panelSize={panelSize} stealth={stealth} minimized={minimized}
       onStealth={onStealth} onMinimize={onMinimize}
       onResize={onResize} onDrag={onDrag}
       onEnd={data => {

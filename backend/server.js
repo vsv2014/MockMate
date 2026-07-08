@@ -43,6 +43,11 @@ if (process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_WEBHOOK_SECRET) {
   console.warn('[backend] STRIPE_SECRET_KEY is set but STRIPE_WEBHOOK_SECRET is missing — webhooks will 400 and plans will NOT upgrade. Set STRIPE_WEBHOOK_SECRET.')
 }
 
+// This process IS the managed-AI proxy (authed + metered, MockMate's own keys). Flag it so the
+// shared engine (api/_lib/core.js) shows managed-appropriate error wording — a user here owns no
+// key, so "check your API key in Settings" would be wrong. The local BYOK server never sets this.
+process.env.MOCKMATE_MANAGED = '1'
+
 const app = express()
 app.use(cors())                       // desktop renderer is a different origin (localhost:5174 / :3002 / file://)
 
@@ -59,7 +64,10 @@ app.use('/billing', billingRoutes)    // /billing/checkout + /billing/portal (au
 // Managed-AI proxy (Phase 2b): the SAME /api/* engine as the local server, but AUTHED (JWT)
 // and METERED (monthly cap → 402 "Upgrade or use your own key"). This is what makes managed AI
 // real for keyless users — the desktop points here in managed mode.
-registerApiRoutes(app, { auth: [requireAuth, checkCap], onLlm: recordLlm })
+// auth      = requireAuth + LLM-response cap (gates the LLM routes).
+// authLight = requireAuth only — for /api/deepgram-token, so transcription can start/reconnect
+//             even when the user has hit their monthly AI-response cap (STT is metered separately).
+registerApiRoutes(app, { auth: [requireAuth, checkCap], authLight: [requireAuth], onLlm: recordLlm })
 
 const PORT = Number(process.env.PORT) || 4000
 

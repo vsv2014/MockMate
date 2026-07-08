@@ -20,13 +20,15 @@ export function needsWebSearch(question) {
   )
 }
 
-export async function searchWeb(query) {
-  if (process.env.TAVILY_API_KEY) return searchTavily(query)
-  if (process.env.SERPER_API_KEY) return searchSerper(query)
+// timeoutMs caps the underlying HTTP request so a slow search engine can't linger (the caller
+// also races this against its own answer budget — see groundedSearch in interview.js).
+export async function searchWeb(query, timeoutMs = 8000) {
+  if (process.env.TAVILY_API_KEY) return searchTavily(query, timeoutMs)
+  if (process.env.SERPER_API_KEY) return searchSerper(query, timeoutMs)
   return null
 }
 
-async function searchTavily(query) {
+async function searchTavily(query, timeoutMs = 8000) {
   const resp = await fetchT('https://api.tavily.com/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -37,7 +39,7 @@ async function searchTavily(query) {
       max_results: 3,
       include_answer: true
     })
-  })
+  }, timeoutMs)
   if (!resp.ok) throw new Error(`Tavily ${resp.status}`)
   const data = await resp.json()
   return {
@@ -51,12 +53,12 @@ async function searchTavily(query) {
   }
 }
 
-async function searchSerper(query) {
+async function searchSerper(query, timeoutMs = 8000) {
   const resp = await fetchT('https://google.serper.dev/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-API-KEY': process.env.SERPER_API_KEY },
     body: JSON.stringify({ q: query.slice(0, 400), num: 3 })
-  })
+  }, timeoutMs)
   if (!resp.ok) throw new Error(`Serper ${resp.status}`)
   const data = await resp.json()
   return {
