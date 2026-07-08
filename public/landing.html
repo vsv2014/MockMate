@@ -372,6 +372,11 @@
       box-shadow: var(--shadow-sm); transition: transform 0.3s var(--ease), box-shadow 0.3s;
     }
     .key-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+    /* Generic card — used by the FAQ list */
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 18px 20px; box-shadow: var(--shadow-sm);
+    }
     .key-card code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-deep); background: var(--accent-soft); padding: 4px 9px; border-radius: 6px; display: inline-block; margin-bottom: 12px; }
     .key-card p { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; line-height: 1.5; }
     .free-tag { font-size: 10px; background: rgba(31,122,82,0.12); color: var(--green); padding: 3px 9px; border-radius: 100px; font-weight: 700; letter-spacing: 0.02em; }
@@ -460,19 +465,24 @@
 
   <!-- HERO -->
   <section class="hero">
-    <div class="hero-eyebrow reveal"><span class="dot"></span>AI Mock Interviews · ATS Resume Score · Live Job Matching</div>
+    <div class="hero-eyebrow reveal"><span class="dot"></span>Real-time interview copilot · Private · Free to start</div>
     <h1 class="reveal">
-      Practice interviews<br />
-      <span class="highlight">until you're unstoppable.</span>
+      Never get caught off-guard<br />
+      <span class="highlight">in an interview again.</span>
     </h1>
     <p class="hero-sub reveal">
-      An AI interviewer that grills you like a real hiring panel, scores you honestly, and coaches you in the moment — behavioral, system design, and coding rounds. Plus an ATS resume score, per-role resume tailoring, and live job matches: the whole path from application to offer.
+      A private AI copilot for live interviews and practice. It hears each question and puts a structured, resume-grounded answer on your screen in about a second — <strong>invisible to screen share</strong>. Behavioral, system design, and coding rounds, plus an ATS resume score and live job matches.
     </p>
     <div class="hero-ctas reveal">
       <a href="https://github.com/vsv2014/MockMate/releases/latest" class="btn-hero" id="hero-download" target="_blank">
         ↓ Download for Free
       </a>
       <a href="#how" class="btn-secondary">See how it works</a>
+    </div>
+    <div class="hero-trust reveal" style="margin-top:20px;font-size:13px;color:var(--muted);display:flex;gap:18px;justify-content:center;flex-wrap:wrap">
+      <span>✓ Free to start — no credit card</span>
+      <span>✓ Runs on your machine — resume &amp; keys never leave your device</span>
+      <span>✓ Invisible to screen share</span>
     </div>
 
     <!-- Live app mockup (dark — matches the real overlay) -->
@@ -716,10 +726,60 @@
     </div>
   </section>
 
+  <!-- INDUSTRIES / ROLES -->
+  <section class="section" style="padding-top:0" id="roles">
+    <span class="section-tag reveal">Roles</span>
+    <h2 class="section-h reveal">Tuned to your role.</h2>
+    <p class="section-p reveal">MockMate adapts the question style, the follow-ups, and what a "good" answer looks like to the kind of interview you're actually in.</p>
+    <div class="lang-list reveal" style="margin-top:26px">
+      <span class="lang">💻 Software Engineering</span>
+      <span class="lang">🏗 System Design</span>
+      <span class="lang">📊 Data &amp; Analytics</span>
+      <span class="lang">📦 Product Management</span>
+      <span class="lang">🧩 Consulting / Case</span>
+      <span class="lang">💰 Finance</span>
+      <span class="lang">📣 Marketing</span>
+      <span class="lang">🎨 Design</span>
+      <span class="lang">🤝 Behavioral &amp; Leadership</span>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section" style="padding-top:0" id="faq">
+    <span class="section-tag reveal">FAQ</span>
+    <h2 class="section-h reveal">Questions, answered.</h2>
+    <div class="reveal" style="display:flex;flex-direction:column;gap:12px;margin-top:26px;max-width:780px">
+      <div class="card">
+        <h3 style="font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px">How fast does an answer appear?</h3>
+        <p style="font-size:14px;color:var(--muted);line-height:1.6;margin:0">About a second after the interviewer finishes the question. The answer streams onto your screen word-by-word, so you can start speaking almost immediately.</p>
+      </div>
+      <div class="card">
+        <h3 style="font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px">Is it visible if I share my screen?</h3>
+        <p style="font-size:14px;color:var(--muted);line-height:1.6;margin:0">No. On Windows and macOS the overlay is excluded from screen capture, so it stays invisible in Zoom, Teams, and Meet shares and recordings.</p>
+      </div>
+      <div class="card">
+        <h3 style="font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px">Is my data private?</h3>
+        <p style="font-size:14px;color:var(--muted);line-height:1.6;margin:0">Yes. MockMate runs on your machine. Your resume and API keys are stored locally and never sent to us — the app talks directly to the AI provider you choose.</p>
+      </div>
+      <div class="card">
+        <h3 style="font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px">Is it really free to start?</h3>
+        <p style="font-size:14px;color:var(--muted);line-height:1.6;margin:0">Yes — add a free <strong>Groq</strong> or <strong>Gemini</strong> key (no credit card) and go. Bring a paid OpenAI or Anthropic key when you want the strongest models. Note: a ChatGPT Plus subscription is <strong>not</strong> an API key and won't work.</p>
+      </div>
+      <div class="card">
+        <h3 style="font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px">Which meeting platforms does it work with?</h3>
+        <p style="font-size:14px;color:var(--muted);line-height:1.6;margin:0">All of them — it listens to your system audio, so Zoom, Google Meet, Microsoft Teams, and any other platform work the same way.</p>
+      </div>
+      <div class="card">
+        <h3 style="font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px">Windows, Mac, or Linux?</h3>
+        <p style="font-size:14px;color:var(--muted);line-height:1.6;margin:0">All three. Windows and Linux update automatically; macOS is supported with a manual update for now.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- CTA -->
   <section class="cta-section">
     <h2 class="reveal">Ready for your<br /><span class="highlight">next interview?</span></h2>
-    <p class="reveal">Free to download. Bring your own API key and run unlimited sessions today.</p>
+    <p class="reveal">Free to start — no credit card. Add a free Groq or Gemini key and run your first interview today.</p>
     <div class="reveal" style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
       <a href="https://github.com/vsv2014/MockMate/releases/latest" class="btn-hero" id="cta-download" target="_blank">↓ Download for Free</a>
       <a href="https://github.com/vsv2014/MockMate" class="btn-secondary" target="_blank">★ Star on GitHub</a>
