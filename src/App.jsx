@@ -1,16 +1,27 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { apiFetch } from './lib/apiClient'
 import Solo from './Solo'
 import LiveCompanion from './LiveCompanion'
-import Report from './Report'
 import Jobs from './Jobs'
 import Career from './Career'
+import Account from './Account'
+import AuthGate from './auth/AuthGate'
+import { T } from './auth/tokens'
+import { AppShell, DashboardHome, SessionsTable } from './Dashboard'
+import SoloFeedback from './SoloFeedback'
 import ApiKeysPanel from './ApiKeys'
+import { getAiMode } from './lib/aiMode'
 import { loadSessions, deleteSession } from './history'
 import { scoreColor, TYPE_LABEL } from './lib/ui'
 import { CODING_LANGUAGES } from './lib/languages'
 
 const inElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
 const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
+
+// Views that render in the full windowed app shell (large window + sidebar). Solo runs
+// here too — there's no interviewer watching, so it gets the roomy dashboard, not the
+// overlay. ONLY the Live companion drops to the compact always-on-top overlay.
+const SHELL_VIEWS = ['home', 'solo', 'jobs', 'career', 'settings', 'account', 'history']
 
 // ── Not in Electron — show landing page ──────────────────────────────────────
 function BrowserGate() {
@@ -20,7 +31,7 @@ function BrowserGate() {
 }
 
 // ── Electron shell — wraps every screen in the floating overlay ───────────────
-function ElectronShell() {
+function ElectronShell({ auth }) {
   const [view, setView] = useState('home')
   const [report, setReport] = useState(null)
   const [panelSize, setPanelSize] = useState({ w: 420, h: 560 })
@@ -45,7 +56,7 @@ function ElectronShell() {
   const [codingDetected, setCodingDetected] = useState(false)
   const [browserShareWarning, setBrowserShareWarning] = useState(false)
   const recheckProviders = useCallback(() => {
-    fetch('/api/providers').then(r => r.json()).then(d => {
+    apiFetch('/api/providers').then(r => r.json()).then(d => {
       setNoProviders(!d.providers?.length)
     }).catch(() => {})
   }, [])
@@ -55,7 +66,8 @@ function ElectronShell() {
   // after the user saves a key or taps "Skip", so returning users never see it.
   const [welcomed, setWelcomed] = useState(() => { try { return localStorage.getItem('mm-welcomed') === '1' } catch { return false } })
   const dismissWelcome = useCallback(() => { try { localStorage.setItem('mm-welcomed', '1') } catch {} ; setWelcomed(true) }, [])
-  const showWelcome = !welcomed && noProviders
+  // Managed AI needs no setup, so the first-run "connect a key" gate only applies to BYOK mode.
+  const showWelcome = getAiMode() === 'byok' && !welcomed && noProviders
 
   // Past Solo sessions (stored locally, ~3 months) — for review/copy.
   const [sessions, setSessions] = useState(() => loadSessions())
@@ -82,7 +94,7 @@ function ElectronShell() {
     setScreenAnalyzing(true)
     setScreenAnalysis(null)
     try {
-      const d = await fetch('/api/analyze-screen', {
+      const d = await apiFetch('/api/analyze-screen', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, profile: profileRef.current, language })
       }).then(r => r.json())
@@ -159,51 +171,101 @@ function ElectronShell() {
   function goHome() { setReport(null); setOpenSession(null); refreshSessions(); setView('home') }
   function openHistory() { refreshSessions(); setOpenSession(null); setView('history') }
 
+  // Live sub-phase (setup | live | notes), reported by LiveCompanion — drives window sizing.
+  const [companionPhase, setCompanionPhase] = useState('setup')
+
+  // Resize the OS window: full dashboard for shell views + Live setup/feedback; compact
+  // invisible overlay for the live interview itself.
+  useEffect(() => {
+    let mode
+    if (view === 'companion') mode = companionPhase === 'live' ? 'overlay' : 'app'
+    else mode = (!showWelcome && SHELL_VIEWS.includes(view)) ? 'app' : 'overlay'
+    window.electronAPI?.setWindowMode?.(mode)
+  }, [view, showWelcome, companionPhase])
+
+  // The sessions list is a snapshot — refresh it when the Sessions tab opens so a
+  // just-finished interview shows up without navigating away and back.
+  useEffect(() => { if (view === 'history') refreshSessions() }, [view]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── First-run welcome — guide a brand-new user straight to adding a key ──
   if (showWelcome) return (
     <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
       onDrag={startDrag} onResize={startResize}
       onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
-      onClose={dismissWelcome} title="Welcome to MockMate" autoHeight>
-      <div style={{ padding: '14px 16px 16px' }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>👋 Welcome — add one key to begin</div>
-        <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6, marginBottom: 12 }}>
-          MockMate uses <strong style={{ color: '#cbd5e1' }}>your own</strong> API keys — they stay on this machine and unlock every mode. Add at least one to get started:
+      onClose={dismissWelcome} title="Connect your AI" autoHeight>
+      <div style={{ padding: '14px 16px 16px', fontFamily: T.font }}>
+        <div style={{ fontSize: 17, fontWeight: 600, color: T.text1, marginBottom: 4 }}>Connect your AI</div>
+        <div style={{ fontSize: 12.5, color: T.text2, lineHeight: 1.55, marginBottom: 12 }}>
+          One last step — add at least one AI key to power your interviews. Keys stay <strong style={{ color: T.text1 }}>on this machine</strong> and unlock every mode.
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '9px 11px' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>🤖 Solo Practice</div>
-            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>Needs <strong style={{ color: '#5eead4' }}>any one LLM key</strong> (OpenAI / Claude / Gemini / Groq). Groq is free. Voice uses the free browser engine.</div>
-          </div>
-          <div style={{ background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: 8, padding: '9px 11px' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>🎯 Live Companion</div>
-            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>Also add a <strong style={{ color: '#5eead4' }}>Deepgram key</strong> for live transcription of the interviewer.</div>
-          </div>
-        </div>
-        <ApiKeysPanel showStatus onSaved={() => { recheckProviders(); dismissWelcome() }} />
+        <ApiKeysPanel onSaved={() => { recheckProviders(); dismissWelcome() }} />
         <button onClick={dismissWelcome}
-          style={{ width: '100%', marginTop: 10, padding: '7px', background: 'transparent', color: '#64748b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+          style={{ width: '100%', marginTop: 12, height: 40, background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: T.font }}>
           Skip for now — I'll add keys later
         </button>
-        <div style={{ fontSize: 9, color: '#475569', textAlign: 'center', marginTop: 6 }}>You can always manage keys from Home → ⚙ API Keys &amp; Settings.</div>
+        <div style={{ fontSize: 10, color: T.text3, textAlign: 'center', marginTop: 8 }}>You can always manage keys from Home → ⚙ API Keys &amp; Settings.</div>
       </div>
     </OverlayPanel>
   )
 
-  // Solo and Companion take over the full panel content — render them directly
-  if (view === 'solo') return (
-    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
-      onDrag={startDrag} onResize={startResize}
-      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
-      onClose={goHome} title="Solo Practice">
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        <Solo onHome={goHome} overlay />
+  // ── Full windowed app shell (dashboard + sidebar) for the management views ──
+  if (SHELL_VIEWS.includes(view)) {
+    const shellHeader = { fontSize: 20, fontWeight: 600, color: T.text1, marginBottom: 4 }
+    let content = null
+    if (view === 'home') content = (
+      <>
+        <ScreenAnalysisPanel analysis={screenAnalysis} analyzing={screenAnalyzing} onDismiss={() => setScreenAnalysis(null)} onReanalyze={reanalyze} />
+        <DashboardHome auth={auth} sessions={sessions} noProviders={noProviders}
+          onNav={setView} onCapture={() => window.electronAPI?.captureScreen?.()} />
+      </>
+    )
+    else if (view === 'solo') content = <Solo onHome={goHome} />
+    else if (view === 'jobs') content = <div style={{ maxWidth: 820, margin: '0 auto' }}><div style={shellHeader}>Matching Jobs</div><Jobs onHome={goHome} noProviders={noProviders} /></div>
+    else if (view === 'career') content = <div style={{ maxWidth: 820, margin: '0 auto' }}><div style={shellHeader}>Resume Studio</div><Career onHome={goHome} noProviders={noProviders} onSettings={() => setView('settings')} /></div>
+    else if (view === 'settings') content = (
+      <div style={{ maxWidth: 640, margin: '0 auto' }}>
+        <div style={shellHeader}>Settings</div>
+        <div style={{ fontSize: 13, color: T.text2, lineHeight: 1.5, marginBottom: 16 }}>Choose how MockMate gets its AI. <strong>MockMate AI</strong> is managed for you — nothing to set up. Power users can bring their own keys.</div>
+        <ApiKeysPanel showStatus onSaved={recheckProviders} onModeChange={recheckProviders} />
+        <div style={{ marginTop: 18, padding: '14px 16px', background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.text1 }}>App updates</div>
+            <div style={{ fontSize: 11.5, color: T.text2, marginTop: 2 }}>MockMate updates automatically in the background. Check now to see what's available.</div>
+          </div>
+          <button onClick={() => window.electronAPI?.checkForUpdates?.()}
+            style={{ height: 36, padding: '0 16px', background: 'transparent', color: T.text1, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Check for updates</button>
+        </div>
       </div>
-    </OverlayPanel>
-  )
+    )
+    else if (view === 'account') content = <div style={{ maxWidth: 640, margin: '0 auto' }}><div style={shellHeader}>Account</div><Account auth={auth} noProviders={noProviders} onManageKeys={() => setView('settings')} /></div>
+    else if (view === 'history') content = (
+      <div style={{ maxWidth: 900, margin: '0 auto' }}>
+        {openSession ? (
+          <SoloFeedback report={openSession.report} transcript={openSession.transcript}
+            onAgain={() => setOpenSession(null)} onAgainLabel="← Back to sessions" />
+        ) : (
+          <>
+            <div style={shellHeader}>Past Sessions</div>
+            <SessionsTable sessions={sessions} onOpen={s => setOpenSession(s)}
+              onDelete={id => { deleteSession(id); refreshSessions() }} />
+          </>
+        )}
+      </div>
+    )
 
+    return (
+      <AppShell active={view} onNav={setView} auth={auth} meetingActive={meetingActive}
+        stealth={stealth} onStealth={handleStealthToggle}
+        onMinimize={() => window.electronAPI?.hideWindow?.()} onClose={() => window.close?.()}>
+        {content}
+      </AppShell>
+    )
+  }
+
+  // Live Interview is the only view that renders as the compact floating overlay — everything
+  // else lives in the dashboard shell (handled above).
   if (view === 'companion') return (
-    <LiveCompanion onHome={goHome} panelSize={panelSize} stealth={stealth} opacity={opacity} onOpacity={setOpacity}
+    <LiveCompanion onHome={goHome} onPhaseChange={setCompanionPhase} panelSize={panelSize} stealth={stealth} opacity={opacity} onOpacity={setOpacity}
       onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
       onResize={startResize} onDrag={startDrag}
       screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} onDismissScreen={() => setScreenAnalysis(null)}
@@ -212,195 +274,7 @@ function ElectronShell() {
       onPipActive={active => setStealth(active)} />
   )
 
-  if (view === 'report') return (
-    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
-      onDrag={startDrag} onResize={startResize}
-      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
-      onClose={goHome} title="Feedback">
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
-        <Report report={report} onAgain={goHome} overlay />
-      </div>
-    </OverlayPanel>
-  )
-
-  if (view === 'jobs') return (
-    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
-      onDrag={startDrag} onResize={startResize}
-      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
-      onClose={goHome} title="Matching Jobs">
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        <Jobs onHome={goHome} noProviders={noProviders} />
-      </div>
-    </OverlayPanel>
-  )
-
-  if (view === 'career') return (
-    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
-      onDrag={startDrag} onResize={startResize}
-      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
-      onClose={goHome} title="Resume & Career Tools">
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        <Career onHome={goHome} noProviders={noProviders} onSettings={() => setView('settings')} />
-      </div>
-    </OverlayPanel>
-  )
-
-  if (view === 'settings') return (
-    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
-      onDrag={startDrag} onResize={startResize}
-      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
-      onClose={goHome} title="API Keys & Settings">
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
-        <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.6, marginBottom: 12 }}>
-          Add your API keys once here — they apply to <strong style={{ color: '#e2e8f0' }}>Solo Practice</strong>, the <strong style={{ color: '#e2e8f0' }}>Live Companion</strong>, and <strong style={{ color: '#e2e8f0' }}>Jobs</strong>. You don't need to open any mode first.
-        </div>
-        <ApiKeysPanel showStatus onSaved={recheckProviders} />
-      </div>
-    </OverlayPanel>
-  )
-
-  if (view === 'history') return (
-    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
-      onDrag={startDrag} onResize={startResize}
-      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
-      onClose={goHome} title={openSession ? 'Past Session' : 'Past Sessions'}>
-      <div style={{ flex: 1, overflowY: 'auto', padding: openSession ? 0 : '12px 14px 14px' }}>
-        {openSession ? (
-          <Report report={openSession.report} transcript={openSession.transcript} solo
-            onAgain={() => setOpenSession(null)} onAgainLabel="Back to sessions" />
-        ) : sessions.length === 0 ? (
-          <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6, padding: '8px 2px' }}>
-            No past sessions yet. Finish a <strong style={{ color: '#cbd5e1' }}>Solo Practice</strong> and it'll be saved here — transcript + feedback, kept for ~3 months on this machine.
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <ScoreTrend sessions={sessions} />
-            <div style={{ fontSize: 10, color: '#475569' }}>{sessions.length} session{sessions.length > 1 ? 's' : ''} · stored locally · last ~3 months</div>
-            {sessions.map(s => (
-              <div key={s.id} onClick={() => setOpenSession(s)}
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 9, padding: '10px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.5)'}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
-                {s.score != null && (
-                  <div style={{ flexShrink: 0, width: 38, height: 38, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13,
-                    color: scoreColor(s.score),
-                    background: 'rgba(255,255,255,0.04)', border: `2px solid ${s.score >= 75 ? 'rgba(34,197,94,0.4)' : s.score >= 50 ? 'rgba(251,191,36,0.4)' : 'rgba(248,113,113,0.4)'}` }}>{s.score}</div>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}{s.verdict ? ` · ${s.verdict}` : ''}</div>
-                  <div style={{ fontSize: 10, color: '#475569' }}>{new Date(s.ts).toLocaleString()} · {(s.transcript?.length || 0)} messages</div>
-                </div>
-                <button onClick={e => { e.stopPropagation(); deleteSession(s.id); refreshSessions() }} title="Delete"
-                  style={{ flexShrink: 0, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 14 }}>✕</button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </OverlayPanel>
-  )
-
-  // ── Home screen ──
-  return (
-    <>
-    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
-      onDrag={startDrag} onResize={startResize}
-      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
-      onClose={() => window.close?.()}
-      title="MockMate" autoHeight>
-      <div style={{ padding: '12px 14px 14px' }}>
-
-        {!inElectron && (
-          <div style={{ background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 7, padding: '8px 10px', marginBottom: 8, fontSize: 11, color: '#fca5a5', lineHeight: 1.5 }}>
-            ⚠ <strong>Browser mode</strong> — this overlay IS visible during screen share. Run <code style={{ background: '#1c0505', padding: '0 3px', borderRadius: 2 }}>npm run dev</code> to launch the protected Electron app instead.
-          </div>
-        )}
-        {isLinux && (
-          <div style={{ background: '#431407', border: '1px solid #7c2d12', borderRadius: 7, padding: '7px 10px', marginBottom: 8, fontSize: 11, color: '#fdba74', lineHeight: 1.6 }}>
-            ⚠ <strong>Linux can't hide this overlay from screen share</strong> (no OS support). For practice & coaching this doesn't matter. For a live call, put MockMate on a <strong>second monitor you don't share</strong> — or use Windows/macOS for a fully hidden overlay.
-          </div>
-        )}
-        {meetingActive && (
-          <div onClick={() => setView('companion')}
-            style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 7, padding: '8px 10px', marginBottom: 8, fontSize: 11, color: '#4ade80', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e', flexShrink: 0 }} />
-            <span><strong>Meeting detected</strong> — tap to start Live Companion</span>
-          </div>
-        )}
-        {noProviders && (
-          <div onClick={() => setView('settings')}
-            style={{ background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 7, padding: '8px 10px', marginBottom: 8, fontSize: 11, color: '#fca5a5', cursor: 'pointer', lineHeight: 1.5 }}>
-            ⚠ <strong>No API keys yet</strong> — tap to add them. Needed for Solo, Companion & Jobs.
-          </div>
-        )}
-
-        <ScreenAnalysisPanel analysis={screenAnalysis} analyzing={screenAnalyzing} onDismiss={() => setScreenAnalysis(null)} />
-
-        <div onClick={() => setView('solo')} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '12px 14px', marginBottom: 8, cursor: 'pointer' }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.5)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>🤖 Solo Practice</div>
-          <div style={{ fontSize: 11, color: '#475569' }}>AI interviewer · follow-up probes · scored report</div>
-        </div>
-
-        <div onClick={() => setView('companion')} style={{ background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: 10, padding: '12px 14px', cursor: 'pointer' }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.7)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.3)'}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>🎯 Live Interview Companion</div>
-          <div style={{ fontSize: 11, color: '#475569', marginBottom: 5 }}>Floats over Zoom / Teams / Meet · real-time AI answers</div>
-          <div style={{ fontSize: 10, color: '#4ade80' }}>🛡 Invisible to all screen capture</div>
-        </div>
-
-        <div onClick={() => setView('jobs')} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '12px 14px', marginTop: 8, cursor: 'pointer' }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.5)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>💼 Matching Jobs</div>
-          <div style={{ fontSize: 11, color: '#475569' }}>Live roles ranked against your resume · why-it-fits + gaps</div>
-        </div>
-
-        <div onClick={() => setView('career')} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '12px 14px', marginTop: 8, cursor: 'pointer' }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.5)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>🎯 Resume &amp; Career Tools</div>
-          <div style={{ fontSize: 11, color: '#475569' }}>ATS resume score · tailor to a role · draft referral messages</div>
-        </div>
-
-        <div onClick={() => setView('settings')} style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${noProviders ? 'rgba(13,148,136,0.5)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 10, padding: '12px 14px', marginTop: 8, cursor: 'pointer' }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.5)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = noProviders ? 'rgba(13,148,136,0.5)' : 'rgba(255,255,255,0.08)'}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>⚙ API Keys &amp; Settings</div>
-          <div style={{ fontSize: 11, color: '#475569' }}>Add OpenAI / Claude / Gemini / Groq / Deepgram keys — used everywhere</div>
-        </div>
-
-        <div onClick={openHistory} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '12px 14px', marginTop: 8, cursor: 'pointer' }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(20,184,166,0.5)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>📚 Past Sessions{sessions.length ? ` (${sessions.length})` : ''}</div>
-          <div style={{ fontSize: 11, color: '#475569' }}>Review past Solo conversations · feedback · copy transcript &amp; scores</div>
-        </div>
-
-        {/* Keyboard shortcuts */}
-        <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: 9, color: '#334155', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 6 }}>KEYBOARD SHORTCUTS</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {[
-              ['Ctrl+Shift+U', 'Screen capture + AI analysis'],
-              ['Ctrl+Shift+H', 'Stealth — fade panel invisible'],
-              ['Alt+H', 'Stealth (keyboard alt)'],
-              ['⠿ Drag', 'Move overlay anywhere'],
-              ['◢ Corner', 'Resize panel'],
-            ].map(([k, v]) => (
-              <div key={k} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 7px', background: 'rgba(255,255,255,0.02)', borderRadius: 5 }}>
-                <code style={{ fontSize: 9, color: '#0d9488', background: 'rgba(20,184,166,0.12)', padding: '1px 5px', borderRadius: 3, fontFamily: 'monospace' }}>{k}</code>
-                <span style={{ fontSize: 9, color: '#334155' }}>{v}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </OverlayPanel>
-    </>
-  )
+  return null   // every other view is handled by the dashboard shell above
 }
 
 // Lightweight, dependency-free syntax highlighter — generic across Python/JS/
@@ -655,7 +529,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         }}>
           {extra
             ? <div onMouseDown={e => e.stopPropagation()}>{extra}</div>
-            : <span style={{ fontSize: 12, color: '#2dd4bf', fontWeight: 700 }}>{title || 'MockMate'}</span>}
+            : <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.88)', fontWeight: 600, fontFamily: T.font }}>{title || 'MockMate'}</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }} onMouseDown={e => e.stopPropagation()}>
             {actions}
             {inElectron && (
@@ -699,8 +573,43 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
 }
 
 
+// ── Home tile — new design-system card (dark surface, gradient accents, Kanit) ──
+// `accent` is the hover/border color for the tile; `glow` optionally tints the surface.
+function HomeTile({ onClick, icon, title, sub, accent = T.borderStrong, glow, badge, right }) {
+  const [h, setH] = React.useState(false)
+  return (
+    <div onClick={onClick}
+      onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        background: glow ? `linear-gradient(135deg, ${glow}, ${T.surface1})` : T.surface1,
+        border: `1px solid ${h ? accent : T.border}`,
+        borderRadius: T.rCard, padding: '12px 14px', cursor: 'pointer',
+        transform: h ? 'translateY(-1px)' : 'none',
+        boxShadow: h ? '0 8px 22px rgba(0,0,0,0.4)' : 'none',
+        transition: 'border-color .14s, transform .14s, box-shadow .14s',
+        fontFamily: T.font,
+      }}>
+      {icon && (typeof icon === 'string'
+        ? <div style={{
+            width: 34, height: 34, flexShrink: 0, borderRadius: 9, display: 'grid', placeItems: 'center',
+            fontSize: 16, background: 'rgba(255,255,255,0.05)', border: `1px solid ${T.border}`,
+          }}>{icon}</div>
+        : <div style={{ flexShrink: 0 }}>{icon}</div>)}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ fontWeight: 600, fontSize: 13.5, color: T.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
+          {badge}
+        </div>
+        {sub && <div style={{ fontSize: 11, color: T.text2, marginTop: 2, lineHeight: 1.4 }}>{sub}</div>}
+      </div>
+      {right}
+    </div>
+  )
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {
   if (!inElectron) return <BrowserGate />
-  return <ElectronShell />
+  return <AuthGate>{auth => <ElectronShell auth={auth} />}</AuthGate>
 }
