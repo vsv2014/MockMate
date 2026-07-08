@@ -168,6 +168,20 @@ function createMainWindow() {
   })
   mainWindow.setContentProtection(true)
 
+  // External links (e.g. "get a free API key" in Settings) must open in the user's real browser,
+  // never inside the app window. Handle both target=_blank/window.open and plain <a href> clicks.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    // Allow the app's own SPA origin (dev Vite server / bundled server / file://); send anything
+    // external out to the browser instead of navigating away from the app.
+    const current = mainWindow.webContents.getURL()
+    const sameOrigin = (() => { try { return new URL(url).origin === new URL(current).origin } catch { return false } })()
+    if (/^https?:\/\//.test(url) && !sameOrigin) { e.preventDefault(); shell.openExternal(url) }
+  })
+
   mainWindow.webContents.on('did-fail-load', (_e, code) => {
     if (code === -3) return   // ERR_ABORTED — normal during reloads, not a real failure
     // Retry the URL for THIS environment (dev = Vite, prod = bundled server).
@@ -259,9 +273,12 @@ function setupAutoUpdate() {
     autoUpdaterRef = autoUpdater
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true    // silent fallback: installs on quit even if the user ignores the toast
-    autoUpdater.on('error', e => console.error('[updater]', e?.message))
+    // Only surface errors once an update was actually found and then failed (download/install) —
+    // NOT for benign background-check failures (offline, no release yet), which must stay silent.
+    let updateFlowActive = false
+    autoUpdater.on('error', e => { console.error('[updater]', e?.message); if (updateFlowActive) sendUpdate({ state: 'error', message: e?.message || 'Update failed' }) })
     // Forward progress to the renderer so it can show the update toast (workspace only).
-    autoUpdater.on('update-available', i => sendUpdate({ state: 'available', version: i?.version }))
+    autoUpdater.on('update-available', i => { updateFlowActive = true; sendUpdate({ state: 'available', version: i?.version }) })
     autoUpdater.on('download-progress', p => sendUpdate({ state: 'downloading', percent: Math.round(p.percent || 0), transferred: p.transferred, total: p.total }))
     autoUpdater.on('update-downloaded', i => sendUpdate({ state: 'ready', version: i?.version }))
     autoUpdater.checkForUpdates().catch(e => console.error('[updater] check failed:', e?.message))
@@ -270,6 +287,9 @@ function setupAutoUpdate() {
 }
 // Restart & install the downloaded update now (from the toast's "Restart" button).
 ipcMain.handle('install-update', () => { try { autoUpdaterRef?.quitAndInstall() } catch (e) { console.error('[updater]', e?.message) } ; return { ok: true } })
+// Manually (re)start the download from the toast's "Download" button — covers a stalled
+// auto-download or a user who dismissed and wants it again.
+ipcMain.handle('download-update', () => { try { autoUpdaterRef?.downloadUpdate()?.catch(e => console.error('[updater]', e?.message)) } catch (e) { console.error('[updater]', e?.message) } ; return { ok: true } })
 // Manual check. In prod → real check; in dev → simulate the toast sequence so the UI is verifiable.
 let demoUpdateTimer = null
 ipcMain.handle('check-updates-now', () => {
@@ -468,8 +488,8 @@ ipcMain.handle('apply-keys', () => {
 ipcMain.handle('relaunch-app', () => { app.relaunch(); app.exit(0) })
 // Open a billing URL in the user's default browser. Scoped to HTTPS Stripe hosts only — the URL
 // comes from the backend, so an allowlist prevents a spoofed/compromised backend from launching an
-// arbitrary link. Widen this (or add a separate channel) if we ever open non-Stripe links.
-const BILLING_URL = /^https:\/\/([a-z0-9-]+\.)*stripe\.com\//i
-ipcMain.handle('open-external', (_e, url) => { if (typeof url === 'string' && BILLING_URL.test(url)) shell.openExternal(url); return { ok: true } })
+// arbitrary link. Allowlisted destinations: Stripe (billing) + GitHub (manual update download).
+const ALLOWED_EXTERNAL = /^https:\/\/([a-z0-9-]+\.)*(stripe\.com|github\.com)\//i
+ipcMain.handle('open-external', (_e, url) => { if (typeof url === 'string' && ALLOWED_EXTERNAL.test(url)) shell.openExternal(url); return { ok: true } })
 // Open the API-key setup window on demand (e.g. "Add API keys" from the overlay).
 ipcMain.handle('open-key-setup', () => { if (!setupWindow) createSetupWindow(); else setupWindow.focus(); return { ok: true } })

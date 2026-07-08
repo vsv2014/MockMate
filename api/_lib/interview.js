@@ -199,7 +199,10 @@ Return ONE JSON object, no prose, no markdown fences:
   //   gpt-4o-mini (fast, cheap, high TPM) → Gemini (free, ~1M TPM) → user's choice.
   // This keeps live hints OFF Groq's tiny 6k-TPM free tier, which exhausts in ~1-2
   // questions during a continuous interview. Groq stays as a fallback in the queue.
-  const fastProvider = pickFastProvider() || provider
+  // Honor an explicitly chosen model (same rule as streamHint); only auto-escalate to a fast
+  // provider when the caller left it on auto.
+  const userPicked = provider && provider !== 'auto'
+  const fastProvider = userPicked ? provider : (pickFastProvider() || provider)
 
   const hint = await completeJSON({
     maxTokens: 700, provider: fastProvider,
@@ -358,13 +361,14 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   const userPicked = provider && provider !== 'auto'
   const chosen = userPicked ? provider : ((tier === 'strong' ? escalateStrong : escalateFast) || provider)
 
-  let buf = '', metaSent = false, skipped = false
+  let buf = '', metaSent = false, skipped = false, proseEmitted = false
+  const emit = t => { if (t) { proseEmitted = true; onToken?.(t) } }   // track that real answer text went out
   await streamText({
     provider: chosen, maxTokens: (tier === 'strong' || mode === 'coach') ? 900 : 700,
     onUsage, signal,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     onToken: tok => {
-      if (skipped || metaSent === 'done') { if (metaSent === 'done') onToken?.(tok); return }
+      if (skipped || metaSent === 'done') { if (metaSent === 'done') emit(tok); return }
       buf += tok
       if (/^\s*\[SKIP\]/i.test(buf)) { skipped = true; return }
       if (buf.length < 6) return                       // wait to rule out "[SKIP]"/"META:"
@@ -377,13 +381,12 @@ export async function streamHint({ question, profile = {}, conversationHistory =
         if (searchSources.length) meta.searchSources = searchSources
         onMeta?.(meta)
         metaSent = 'done'
-        const rest = buf.slice(nl + 1).replace(/^\s+/, '')
-        if (rest) onToken?.(rest)
+        emit(buf.slice(nl + 1).replace(/^\s+/, ''))
       } else {
         // Model skipped the META format — treat everything as prose.
         onMeta?.(searchSources.length ? { searchSources } : {})
         metaSent = 'done'
-        onToken?.(buf)
+        emit(buf)
       }
     }
   })
@@ -399,12 +402,13 @@ export async function streamHint({ question, profile = {}, conversationHistory =
       prose = (m[2] || '').replace(/^\s+/, '')
     }
     onMeta?.(meta)
-    if (prose.trim()) onToken?.(prose)
-    return { skipped: false, searchSources }
+    emit(prose.trim() ? prose : '')
+    return proseEmitted ? { skipped: false, searchSources } : { skipped: true }
   }
-  // Model streamed nothing usable (empty completion) — treat as a skip so the client shows no
-  // blank answer bubble instead of a `done` event with no content.
-  if (metaSent !== 'done') return { skipped: true }
+  // Model streamed nothing usable — either no META at all, OR a META header with zero answer
+  // prose after it. Either way treat as a skip so the client shows nothing (and can retry)
+  // instead of a `done` event with badges but a blank answer body.
+  if (metaSent !== 'done' || !proseEmitted) return { skipped: true }
   return { skipped: false, searchSources }
 }
 

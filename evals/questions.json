@@ -1,0 +1,18 @@
+[
+  { "type": "behavioral", "role": "Senior Backend Engineer", "q": "Tell me about a time you improved the performance of a system under load." },
+  { "type": "behavioral", "role": "Senior Backend Engineer", "q": "Describe a disagreement with a teammate on a technical decision and how you resolved it." },
+  { "type": "behavioral", "role": "Engineering Manager", "q": "Tell me about a time you had to give difficult feedback to a report." },
+  { "type": "behavioral", "role": "Senior Backend Engineer", "q": "Walk me through a project you're most proud of and your specific contribution." },
+  { "type": "coding", "role": "Backend Engineer", "q": "Given an array of integers, return the length of the longest subarray whose sum equals k. Explain your approach and complexity." },
+  { "type": "coding", "role": "Backend Engineer", "q": "How would you detect a cycle in a singly linked list? Give the algorithm and its time/space complexity." },
+  { "type": "coding", "role": "Full-Stack Engineer", "q": "Design a rate limiter for an API endpoint. What algorithm would you use and why?" },
+  { "type": "coding", "role": "Backend Engineer", "q": "You have a slow SQL query joining three large tables. Walk me through how you'd diagnose and fix it." },
+  { "type": "system-design", "role": "Staff Engineer", "q": "Design a URL shortener that handles 10k writes/sec and 100k reads/sec. Cover storage, ID generation, and caching." },
+  { "type": "system-design", "role": "Staff Engineer", "q": "Design the notification system for a social app (push, email, in-app) that must not double-send. Discuss delivery guarantees." },
+  { "type": "system-design", "role": "Senior Backend Engineer", "q": "How would you design a job queue that guarantees at-least-once processing and survives worker crashes?" },
+  { "type": "system-design", "role": "Staff Engineer", "q": "Design a real-time leaderboard for a game with 50M users. Cover ranking, updates, and read latency." },
+  { "type": "company", "role": "Senior Engineer", "q": "Why do you want to work here, and how does your background fit this role?" },
+  { "type": "company", "role": "Senior Engineer", "q": "What do you think is the hardest technical challenge a company at our scale faces, and how would you approach it?" },
+  { "type": "technical-knowledge", "role": "Backend Engineer", "q": "Explain the difference between optimistic and pessimistic locking, and when you'd choose each." },
+  { "type": "technical-knowledge", "role": "Backend Engineer", "q": "What is the CAP theorem, and how does it inform database choice for a payments system?" }
+]

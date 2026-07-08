@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
-import { useSpeech } from './useSpeech'
+import { apiFetch } from './lib/apiClient'
 import { useDeepgram } from './useDeepgram'
 import { analyze, liveNudge } from '../shared/delivery.js'
-import Report from './Report'
+import SoloFeedback from './SoloFeedback'
 import { saveSession } from './history'
 import { loadProfile, saveProfile as persistProfile } from './lib/profile'
 import { fmtClock } from './lib/ui'
 import { LANGUAGES, STT_LANG } from './lib/languages'
 import { isTransient } from '../shared/llm-errors.js'
+import { T } from './auth/tokens'
+import { isManaged } from './lib/aiMode'
 
 function speak(text, on, onDone) {
   // onDone fires when speech finishes (or immediately if TTS is off/unsupported) so the
@@ -21,29 +23,85 @@ function speak(text, on, onDone) {
   } catch { onDone?.() }
 }
 
+// ── Small design-system building blocks (dark / glass / rounded / spacious) ──
+function Section({ title, hint, children }) {
+  return (
+    <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>{title}</div>
+        {hint && <div style={{ fontSize: 11.5, color: T.text3, marginTop: 2 }}>{hint}</div>}
+      </div>
+      {children}
+    </div>
+  )
+}
+function Label({ children }) { return <div style={{ fontSize: 12, color: T.text2, marginBottom: 7 }}>{children}</div> }
+function Chips({ options, value, onChange }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {options.map(o => {
+        const [val, label] = Array.isArray(o) ? o : [o, o]
+        const on = value === val
+        return (
+          <button key={val} onClick={() => onChange(val)}
+            style={{ padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font, fontSize: 12.5, fontWeight: on ? 600 : 400,
+              background: on ? 'rgba(20,184,166,0.18)' : T.surface2, color: on ? T.text1 : T.text2,
+              border: `1px solid ${on ? 'rgba(20,184,166,0.5)' : T.border}` }}>{label}</button>
+        )
+      })}
+    </div>
+  )
+}
+const textInput = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: 13, outline: 'none', fontFamily: T.font }
+
+// Listening waveform — animated bars while the mic is capturing.
+function Waveform({ active }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, height: 34 }}>
+      {Array.from({ length: 22 }).map((_, i) => (
+        <span key={i} style={{ width: 3, borderRadius: 2, height: 6,
+          background: active ? T.accentFrom : 'rgba(255,255,255,0.14)',
+          animation: active ? `mmbar 0.9s ease-in-out ${(i % 11) * 0.06}s infinite` : 'none' }} />
+      ))}
+      <style>{`@keyframes mmbar{0%,100%{height:5px}50%{height:26px}}`}</style>
+    </div>
+  )
+}
+
+const COMPANIES = ['Google', 'Meta', 'Amazon', 'OpenAI', 'Microsoft', 'Startup']
+const TIPS_BY_TYPE = {
+  Technical: ['State your assumptions first', 'Talk through tradeoffs, not just the answer', 'Give a concrete example'],
+  Behavioral: ['Use STAR: Situation, Task, Action, Result', 'Lead with the outcome / impact', 'Keep it to one clear story'],
+  'System Design': ['Clarify requirements & scale first', 'Sketch the high-level design, then drill in', 'Call out bottlenecks and tradeoffs'],
+  Mixed: ['Structure the answer before you dive in', 'Be specific — numbers and examples land', 'Pause to think; silence is fine'],
+}
+
 export default function Solo({ onHome }) {
   const [phase, setPhase] = useState('setup')   // setup | live | report
   const [profile, setProfile] = useState(loadProfile())
-  const [focus, setFocus] = useState('')
-  const [followupDepth, setFollowupDepth] = useState('normal')
+  const [interviewType, setInterviewType] = useState(() => loadProfile().interviewType || 'Technical')
+  const [voiceStyle, setVoiceStyle] = useState(() => loadProfile().voiceStyle || 'Professional')
+  const [followupDepth, setFollowupDepth] = useState('normal')   // Difficulty: light|normal|deep
   const [relentless, setRelentless] = useState(false)
   const [tts, setTts] = useState(true)
   const [providers, setProviders] = useState([])
   const [provider, setProvider] = useState(() => { try { return localStorage.getItem('llmProvider') || '' } catch { return '' } })
+  const managed = isManaged()
+  const effProvider = managed ? '' : provider   // managed → let the server auto-route/failover
   const [dgAvailable, setDgAvailable] = useState(false)
-  // Default to the FREE browser engine for Solo: it starts instantly (no token/socket
-  // handshake) and uses no Deepgram quota — ideal for practice. Deepgram ("Accurate")
-  // stays one click away for noisy mics / accents.
-  const [useDg, setUseDg] = useState(false)
+  const [models, setModels] = useState([])   // dynamic per-key model list from /api/models
+  // Voice = Deepgram ONLY. The browser SpeechRecognition API silently fails inside
+  // Electron, which is what made the mic "not work". No Deepgram key → type your answers.
 
   useEffect(() => {
-    fetch('/api/providers').then(r => r.json()).then(d => {
+    apiFetch('/api/providers').then(r => r.json()).then(d => {
       const list = d.providers || []
       setProviders(list)
       setProvider(p => (p && list.some(x => x.id === p)) ? p : (list[0]?.id || ''))
       setDgAvailable(!!d.deepgram)
     }).catch(() => {})
-  }, [])
+    if (!managed) apiFetch('/api/models').then(r => r.json()).then(d => setModels(d.models || [])).catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (provider) { try { localStorage.setItem('llmProvider', provider) } catch {} } }, [provider])
 
   const [transcript, setTranscript] = useState([])
@@ -54,87 +112,64 @@ export default function Solo({ onHome }) {
   const [error, setError] = useState('')
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [clock, setClock] = useState(0)
-  const [micStarting, setMicStarting] = useState(false)   // "Starting…" until the mic is actually live
+  const [micStarting, setMicStarting] = useState(false)
 
   const startedAt = useRef(Date.now())
   const answerStart = useRef(null)
   const bottomRef = useRef(null)
   const transcriptRef = useRef([])
-  // Hands-free conversation: once the user starts the mic, the interviewer keeps the
-  // loop going — auto-restart the mic after it speaks, and auto-send when the user pauses.
-  const voiceRef = useRef(false)        // true while in hands-free voice mode
-  const answerRef = useRef('')          // latest draft, readable from timers
+  const voiceRef = useRef(false)
+  const answerRef = useRef('')
   const thinkingRef = useRef(false)
   const phaseRef = useRef('setup')
-  const silenceTimer = useRef(null)     // fires submit() after a speech pause
+  const silenceTimer = useRef(null)
   useEffect(() => { transcriptRef.current = transcript }, [transcript])
   useEffect(() => { answerRef.current = answer }, [answer])
   useEffect(() => { thinkingRef.current = thinking }, [thinking])
   useEffect(() => { phaseRef.current = phase }, [phase])
-  // Clear any pending auto-send on unmount.
   useEffect(() => () => clearTimeout(silenceTimer.current), [])
 
-  const config = { domainLabel: profile.targetRole ? `${profile.targetRole}` : 'General', roundLabel: 'Interview', focus, followupDepth, relentless }
+  // Fold the setup choices into the interview config. `focus` is the freeform steer the
+  // engine already understands, so type + company flow through it and actually change questions.
+  const focusText = [`${interviewType} interview`, profile.targetCompany ? `for ${profile.targetCompany}` : '', voiceStyle ? `interviewer tone: ${voiceStyle}` : '']
+    .filter(Boolean).join(' — ')
+  const config = { domainLabel: profile.targetRole || 'General', roundLabel: 'Interview', focus: focusText, followupDepth, relentless, interviewType, difficulty: followupDepth, voiceStyle }
 
   const onFinalText = text => {
     if (answerStart.current == null) answerStart.current = Date.now()
     setAnswer(a => (a ? a.trim() + ' ' : '') + text)
-    if (voiceRef.current) scheduleAutoSubmit()   // hands-free: auto-send once they pause
+    if (voiceRef.current) scheduleAutoSubmit()
   }
-  // Auto-send the spoken answer after a short pause, so the interviewer keeps the
-  // conversation going without a button press. Reset on every new word; only fires
-  // when in voice mode, the interviewer isn't already responding, and there's content.
   function scheduleAutoSubmit() {
     clearTimeout(silenceTimer.current)
     silenceTimer.current = setTimeout(() => {
       if (voiceRef.current && !thinkingRef.current && phaseRef.current === 'live' && answerRef.current.trim()) submit()
     }, 2600)
   }
-  const web = useSpeech(onFinalText, STT_LANG[profile.language] || 'en-US')
-  // If Deepgram drops mid-session (quota/network/auth), fall back to the free
-  // browser engine automatically so you can always keep talking.
   const dg = useDeepgram(onFinalText, reason => {
-    setUseDg(false)
-    setError(`Accurate speech (Deepgram) stopped — ${reason}. Switched to the free browser engine; you can keep talking.`)
-    if (web.supported) web.start()
+    voiceRef.current = false
+    setMicStarting(false)
+    setError(`Voice input stopped — ${reason}. You can keep going by typing your answer below.`)
   }, STT_LANG[profile.language] || 'en-US')
-  // Use Deepgram when configured & chosen; otherwise the free browser engine.
-  const usingDg = useDg && dgAvailable
-  const speech = usingDg ? dg : web
+  const speech = dg
+  const canSpeak = dgAvailable
 
-  // While the user is still producing words (interim text), hold off the auto-send timer;
-  // re-arm it once they go quiet. This is the endpointing that decides "they finished talking".
   useEffect(() => {
     if (!voiceRef.current) return
     if (speech.interim && speech.interim.trim()) clearTimeout(silenceTimer.current)
     else if (answerRef.current.trim()) scheduleAutoSubmit()
   }, [speech.interim]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-open the mic for the user's turn (after the interviewer finished speaking).
   function resumeMic() {
     if (!voiceRef.current || phaseRef.current !== 'live') return
     try { const r = speech.start(); if (r && typeof r.catch === 'function') r.catch(() => {}) } catch {}
   }
-
   async function startMic() {
-    setError('')
-    setMicStarting(true)      // instant feedback — Deepgram's token+socket handshake takes a moment
-    voiceRef.current = true   // enter hands-free mode: auto-send on pause + auto-resume after replies
-    if (usingDg) {
-      try { await dg.start() } catch (e) { setUseDg(false); setError('Could not start Deepgram — using the free browser engine.'); if (web.supported) web.start() }
-    } else {
-      web.start()
-    }
+    setError(''); setMicStarting(true); voiceRef.current = true
+    try { await dg.start() }
+    catch (e) { voiceRef.current = false; setMicStarting(false); setError('Could not start voice input. You can still type your answer below.') }
   }
-
-  // User manually stops the mic — leave hands-free mode and cancel any pending auto-send.
-  function stopMic() {
-    voiceRef.current = false
-    clearTimeout(silenceTimer.current)
-    setMicStarting(false)
-    speech.stop()
-  }
-  // Clear the "Starting…" label the instant the mic is actually live.
+  function stopMic() { voiceRef.current = false; clearTimeout(silenceTimer.current); setMicStarting(false); speech.stop() }
   useEffect(() => { if (speech.active) setMicStarting(false) }, [speech.active])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [transcript, thinking, speech.interim])
@@ -144,8 +179,6 @@ export default function Solo({ onHome }) {
     return () => clearInterval(id)
   }, [phase])
 
-  // live coach on the current draft — memoized so it only recomputes when the text changes
-  // (not on every clock tick / unrelated re-render).
   const liveStats = useMemo(
     () => answer.trim() ? analyze(answer + (speech.interim ? ' ' + speech.interim : ''), null) : null,
     [answer, speech.interim]
@@ -153,15 +186,11 @@ export default function Solo({ onHome }) {
   const nudge = liveStats ? liveNudge(liveStats, { spoken: true }) : null
 
   function saveProfile(p) { setProfile(p); persistProfile(p) }
+  function patchProfile(patch) { saveProfile({ ...profile, ...patch }) }
 
   async function requestTurn(current, attempt = 0) {
     setThinking(true); if (attempt === 0) setError('')
-    // A transient provider blip (503/overloaded/timeout/network) shouldn't end a long
-    // interview — retry a couple of times before surfacing an error. The server already
-    // retries + fails over across providers; this is the last-resort client safety net.
     const retryTransient = async (msg, status) => {
-      // Use the SAME classifier the server retries on (shared/llm-errors) so client + server
-      // never disagree about what's retryable.
       const transient = isTransient({ status, message: msg })
       if (transient && attempt < 2) {
         await new Promise(r => setTimeout(r, 1500 * (attempt + 1)))
@@ -171,38 +200,38 @@ export default function Solo({ onHome }) {
       return null
     }
     try {
-      const res = await fetch('/api/interview', {
+      const res = await apiFetch('/api/interview', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config, transcript: current, profile, provider, language: profile.language || 'English' })
+        body: JSON.stringify({ config, transcript: current, profile, provider: effProvider, language: profile.language || 'English' })
       })
-      let data = {}; try { data = await res.json() } catch { data = {} }   // 503s can arrive with no body
+      let data = {}; try { data = await res.json() } catch { data = {} }
       if (!res.ok || data.error || !data.turn?.say) return await retryTransient(data.error, res.status)
       setThinking(false)
       const turn = data.turn
       setTranscript([...current, { role: 'interviewer', text: turn.say }])
       if (turn.questionNumber) setCurrentQuestion(turn.questionNumber)
-      // Speak, then hand the turn back to the user: re-open the mic when the voice finishes
-      // (or immediately if TTS is off) so the conversation continues hands-free.
       speak(turn.say, tts, resumeMic)
     } catch (e) { return await retryTransient(e.message, 0) }
   }
 
-  function start() {
-    setPhase('live')
-    startedAt.current = Date.now()
-    requestTurn([])
-  }
+  function start() { setPhase('live'); startedAt.current = Date.now(); requestTurn([]) }
 
   async function submit() {
-    clearTimeout(silenceTimer.current)            // cancel any pending auto-send
+    clearTimeout(silenceTimer.current)
     const text = (answerRef.current || answer).trim()
     if (!text || thinkingRef.current) return
-    speech.stop()                                 // pause mic so the interviewer's voice isn't transcribed
+    speech.stop()
     const durationMs = answerStart.current ? Date.now() - answerStart.current : null
     const meta = { ...analyze(text, durationMs), spoken: true }
     const next = [...transcriptRef.current, { role: 'candidate', text, meta }]
     setTranscript(next); setAnswer(''); answerRef.current = ''; answerStart.current = null
-    await requestTurn(next)                        // requestTurn re-opens the mic after the reply
+    await requestTurn(next)
+  }
+
+  // Re-speak the interviewer's last question (handy if you missed it).
+  function repeatQuestion() {
+    const last = [...transcriptRef.current].reverse().find(t => t.role === 'interviewer')
+    if (last) speak(last.text, true)
   }
 
   async function end() {
@@ -211,131 +240,196 @@ export default function Solo({ onHome }) {
     if (!transcriptRef.current.some(t => t.role === 'candidate')) { onHome(); return }
     setEvaluating(true)
     try {
-      const res = await fetch('/api/evaluate', {
+      const res = await apiFetch('/api/evaluate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config, transcript: transcriptRef.current, profile, provider })
+        body: JSON.stringify({ config, transcript: transcriptRef.current, profile, provider: effProvider })
       }).then(r => r.json())
       const rep = res.report || { error: res.error }
       setReport(rep); setPhase('report')
-      // Persist for later review (transcript + feedback), kept ~3 months on this machine.
       saveSession({ report: rep, transcript: transcriptRef.current, config, profile })
     } catch (e) { setReport({ error: e.message }); setPhase('report') }
     setEvaluating(false)
   }
 
   // ── report ──
-  if (phase === 'report') return <Report report={report} onAgain={onHome} solo transcript={transcriptRef.current} />
+  function practiceAgain() {
+    setReport(null); setTranscript([]); setAnswer(''); answerRef.current = ''
+    setCurrentQuestion(0); setClock(0); setError(''); setEvaluating(false); setPhase('setup')
+  }
+  if (phase === 'report') return <SoloFeedback report={report} onAgain={practiceAgain} transcript={transcriptRef.current} onAgainLabel="Practice again" />
 
-  // ── setup ──
+  // ── SETUP ─────────────────────────────────────────────────────────────────────
   if (phase === 'setup') return (
-    <div className="wrap">
-      <h1>Solo practice</h1>
-      <p className="subtitle">You vs an AI interviewer. It <strong>speaks</strong> the questions, you <strong>answer out loud</strong>, and it keeps going — open-ended, like the real thing. Free in Chrome/Edge.</p>
-
-      <div className="card">
-        <div className="field"><label className="label">Your name</label>
-          <input type="text" value={profile.name || ''} placeholder="e.g. Vishal" onChange={e => saveProfile({ ...profile, name: e.target.value })} /></div>
-        <div className="field"><label className="label">Target role</label>
-          <input type="text" value={profile.targetRole || ''} placeholder="e.g. Senior Backend Engineer" onChange={e => saveProfile({ ...profile, targetRole: e.target.value })} /></div>
-        <div className="field"><label className="label">Resume <span style={{ color: 'var(--text-faint)' }}>(optional — makes questions about you)</span></label>
-          <textarea rows={5} style={{ width: '100%', background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)', padding: '10px 12px', borderRadius: 8 }}
-            value={profile.resume || ''} placeholder="Paste your resume text…" onChange={e => saveProfile({ ...profile, resume: e.target.value })} /></div>
-        <div className="field"><label className="label">Focus <span style={{ color: 'var(--text-faint)' }}>(optional)</span></label>
-          <input type="text" value={focus} placeholder='e.g. "system design and tradeoffs"' onChange={e => setFocus(e.target.value)} /></div>
-        <div className="field">
-          <label className="label">Follow-up depth</label>
-          <div className="seg">{[['light', 'Light'], ['normal', 'Normal'], ['deep', 'Deep']].map(([id, l]) =>
-            <button key={id} className={followupDepth === id ? 'on' : ''} onClick={() => setFollowupDepth(id)}>{l}</button>)}</div>
-        </div>
-        {dgAvailable && (
-          <div className="field">
-            <label className="label">Speech recognition</label>
-            <div className="seg">
-              <button className={useDg ? 'on' : ''} onClick={() => setUseDg(true)}>🎯 Accurate (Deepgram)</button>
-              <button className={!useDg ? 'on' : ''} onClick={() => setUseDg(false)}>Free (browser)</button>
-            </div>
-            <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 6 }}>Deepgram is far more accurate and works in any browser; the free browser engine is Chrome/Edge only.</p>
-          </div>
-        )}
-        {providers.length > 0 && (
-          <div className="field">
-            <label className="label">AI model</label>
-            <select value={provider} onChange={e => setProvider(e.target.value)} style={{ maxWidth: 360 }}>
-              {providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
-            <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 6 }}>Groq is fastest with the highest free limits; GPT-4o is the most capable.</p>
-          </div>
-        )}
-        <div className="field">
-          <label className="label">Interview language</label>
-          <select value={profile.language || 'English'} onChange={e => saveProfile({ ...profile, language: e.target.value })} style={{ maxWidth: 360 }}>
-            {LANGUAGES.map(l =>
-              <option key={l} value={l}>{l}</option>)}
-          </select>
-        </div>
-        <div className="row" style={{ alignItems: 'center', marginTop: 4 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input type="checkbox" checked={relentless} onChange={() => setRelentless(v => !v)} /> 🔥 Beat-the-copilot (challenge canned answers)
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input type="checkbox" checked={tts} onChange={() => setTts(v => !v)} /> 🔊 Interviewer speaks aloud
-          </label>
-        </div>
+    <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16, fontFamily: T.font, paddingBottom: 20 }}>
+      <div>
+        <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>Solo Practice</div>
+        <div style={{ fontSize: 13, color: T.text2, marginTop: 3 }}>Set the scene, then step into a full interview with an AI interviewer. It speaks, you answer out loud (or type), and it probes deeper — just like the real thing.</div>
       </div>
 
-      {!speech.supported && <div className="banner warn"><span>⚠</span><span>Speaking needs <strong>Chrome or Edge</strong>. You can still type your answers here.</span></div>}
+      <Section title="Interview">
+        <div>
+          <Label>Role</Label>
+          <input style={textInput} value={profile.targetRole || ''} placeholder="e.g. Senior Backend Engineer" onChange={e => patchProfile({ targetRole: e.target.value })} />
+        </div>
+        <div>
+          <Label>Experience</Label>
+          <Chips options={['Student / New grad', '1–3 years', '4–6 years', '7+ years']} value={profile.yearsExp || ''} onChange={v => patchProfile({ yearsExp: v })} />
+        </div>
+        <div>
+          <Label>Interview type</Label>
+          <Chips options={['Technical', 'Behavioral', 'System Design', 'Mixed']} value={interviewType} onChange={v => { setInterviewType(v); patchProfile({ interviewType: v }) }} />
+        </div>
+        <div>
+          <Label>Difficulty</Label>
+          <Chips options={[['light', 'Easy'], ['normal', 'Medium'], ['deep', 'Hard']]} value={followupDepth} onChange={setFollowupDepth} />
+        </div>
+      </Section>
 
-      <button className="btn" onClick={start}>Start interview →</button>
-      <button className="btn-ghost" style={{ marginLeft: 10 }} onClick={onHome}>Back</button>
+      <Section title="Personal context" hint="Optional — lets the interviewer ask about your actual background.">
+        <textarea rows={4} style={{ ...textInput, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste your resume text…" onChange={e => patchProfile({ resume: e.target.value })} />
+      </Section>
+
+      <Section title="Target company" hint="Optional — tailors questions to a company's bar & style.">
+        <Chips options={COMPANIES} value={profile.targetCompany || ''} onChange={v => patchProfile({ targetCompany: profile.targetCompany === v ? '' : v })} />
+        <input style={textInput} value={profile.targetCompany || ''} placeholder="Or type any company…" onChange={e => patchProfile({ targetCompany: e.target.value })} />
+      </Section>
+
+      <Section title="Voice style" hint="How the interviewer comes across.">
+        <Chips options={['Professional', 'Friendly', 'Concise', 'Detailed']} value={voiceStyle} onChange={v => { setVoiceStyle(v); patchProfile({ voiceStyle: v }) }} />
+      </Section>
+
+      <Section title="Session">
+        {!managed && (providers.length > 0 || models.length > 0) && (
+          <div>
+            <Label>AI model</Label>
+            <select value={provider} onChange={e => setProvider(e.target.value)} style={{ ...textInput, maxWidth: 380 }}>
+              {models.length > 0
+                ? models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
+                : providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </div>
+        )}
+        <div>
+          <Label>Language</Label>
+          <select value={profile.language || 'English'} onChange={e => patchProfile({ language: e.target.value })} style={{ ...textInput, maxWidth: 340 }}>
+            {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontSize: 13, color: T.text2 }}>
+          <input type="checkbox" checked={tts} onChange={() => setTts(v => !v)} /> Interviewer speaks the questions aloud
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontSize: 13, color: T.text2 }}>
+          <input type="checkbox" checked={relentless} onChange={() => setRelentless(v => !v)} /> Challenge mode — pushes back on canned answers
+        </label>
+        <div style={{ fontSize: 11.5, color: T.text3 }}>
+          {canSpeak ? '🎤 Voice is on (Deepgram) — you can answer out loud, or type.' : '⌨ No Deepgram key — you\'ll type your answers. Add one in API & Settings to answer by voice.'}
+        </div>
+      </Section>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <button onClick={start} style={{ flex: 1, height: 48, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>Start Interview →</button>
+        <button onClick={onHome} style={{ height: 48, padding: '0 20px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 13, cursor: 'pointer', fontFamily: T.font }}>Back</button>
+      </div>
     </div>
   )
 
-  // ── live ──
+  // ── INTERVIEW WORKSPACE ─────────────────────────────────────────────────────────
+  const tips = TIPS_BY_TYPE[interviewType] || TIPS_BY_TYPE.Mixed
+  const lastQuestion = [...transcript].reverse().find(t => t.role === 'interviewer')?.text
+  const panel = { background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, display: 'flex', flexDirection: 'column', minHeight: 0 }
   return (
-    <div className="room-wrap">
-      <div className="room-top">
-        <h2 style={{ margin: 0 }}>{profile.targetRole || 'Interview'}</h2>
-        <span className="meta">· Question {currentQuestion || 1} · open-ended</span>
-        <span className="meta" style={{ fontFamily: 'var(--mono)', color: 'var(--text)' }}>⏱ {fmtClock(clock)}</span>
-        <span className="spacer" />
-        <button className="btn-danger" onClick={end} disabled={evaluating}>{evaluating ? 'Scoring…' : 'End & get feedback'}</button>
-      </div>
-
-      <div className="transcript" style={{ height: 'auto', minHeight: 320, maxHeight: '52vh' }}>
-        {transcript.map((t, i) => (
-          <div key={i} className={`t-seg ${t.role === 'interviewer' ? 'interviewer' : 'candidate'}`}>
-            <div className="t-who">{t.role === 'interviewer' ? 'Interviewer' : 'You'}</div>
-            <div>{t.text}</div>
-          </div>
-        ))}
-        {thinking && <div className="t-seg"><div className="t-interim">interviewer is thinking…</div></div>}
-        {error && <div className="banner warn" style={{ marginTop: 10 }}><span>⚠</span><span>{error}</span></div>}
-        <div ref={bottomRef} />
-      </div>
-
-      {liveStats && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '10px 0' }}>
-          <span className="chip">🗣 {liveStats.words} words</span>
-          {liveStats.fillers.count > 0 && <span className="chip">{liveStats.fillers.count} fillers</span>}
-          {liveStats.jargon.count > 0 && <span className="chip">{liveStats.jargon.count} buzzwords</span>}
-          {nudge && <span className="chip" style={{ color: nudge.rating === 'good' ? 'var(--good)' : nudge.rating === 'weak' ? 'var(--bad)' : 'var(--warn)' }}>{nudge.text}</span>}
-        </div>
-      )}
-
-      <textarea rows={3} style={{ width: '100%', background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)', padding: '10px 12px', borderRadius: 8, marginTop: 10 }}
-        placeholder={speech.active ? 'Listening… speak your answer' : 'Click the mic and speak — or type here'}
-        value={answer + (speech.interim ? ' ' + speech.interim : '')}
-        onChange={e => setAnswer(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }} />
-
-      <div className="mic-bar" style={{ marginTop: 10 }}>
-        <button className={speech.active ? 'btn-danger' : 'btn-ghost'} onClick={() => speech.active ? stopMic() : startMic()} disabled={!speech.supported || micStarting}>
-          {micStarting ? '⏳ Starting…' : speech.active ? '⏹ Stop' : '🎤 Speak'}
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 150px)', minHeight: 460, fontFamily: T.font, gap: 12 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{profile.targetRole || 'Interview'}</div>
+        <span style={{ fontSize: 12, color: T.text3 }}>{interviewType}{profile.targetCompany ? ` · ${profile.targetCompany}` : ''}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 13, color: T.text2, fontVariantNumeric: 'tabular-nums' }}>⏱ {fmtClock(clock)}</span>
+        <button onClick={end} disabled={evaluating}
+          style={{ height: 34, padding: '0 14px', background: 'rgba(239,68,68,0.14)', color: '#f87171', border: '1px solid rgba(239,68,68,0.35)', borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>
+          {evaluating ? 'Scoring…' : 'End interview'}
         </button>
-        <button className="btn" onClick={submit} disabled={!answer.trim() || thinking}>Send answer</button>
-        {speech.active && <><span className="rec-dot" /><span className="meta">listening — auto-sends when you pause</span></>}
-        <span className="spacer" />
-        <span className="meta">The interviewer won’t tell you if you’re right — feedback comes at the end.</span>
+      </div>
+
+      {/* 3 panels */}
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(320px, 1.1fr) 250px', gap: 12, minHeight: 0 }}>
+
+        {/* Left — conversation */}
+        <div style={panel}>
+          <div style={{ padding: '11px 14px', borderBottom: `1px solid ${T.border}`, fontSize: 12, fontWeight: 600, color: T.text2 }}>Conversation</div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {transcript.map((t, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em', color: t.role === 'interviewer' ? T.accentFrom : T.text3 }}>{t.role === 'interviewer' ? 'INTERVIEWER' : 'YOU'}</span>
+                <div style={{ fontSize: 13, lineHeight: 1.55, color: t.role === 'interviewer' ? T.text1 : T.text2 }}>{t.text}</div>
+              </div>
+            ))}
+            {thinking && <div style={{ fontSize: 12, color: T.text3, fontStyle: 'italic' }}>interviewer is thinking…</div>}
+            <div ref={bottomRef} />
+          </div>
+        </div>
+
+        {/* Center — current question + answering */}
+        <div style={{ ...panel, background: 'transparent', border: 'none', gap: 12 }}>
+          <div style={{ ...panel, flex: 1, padding: '18px 20px', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', color: T.text3 }}>QUESTION {currentQuestion || 1}</div>
+              <div style={{ fontSize: 21, fontWeight: 500, color: T.text1, lineHeight: 1.4, marginTop: 12 }}>
+                {thinking && !lastQuestion ? 'Getting your first question…' : (lastQuestion || '…')}
+              </div>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <Waveform active={speech.active} />
+              <div style={{ textAlign: 'center', fontSize: 11.5, color: T.text3, marginTop: 6 }}>
+                {micStarting ? 'Starting mic…' : speech.active ? 'Listening — pause when you\'re done' : canSpeak ? 'Click the mic to answer aloud, or type below' : 'Type your answer below'}
+              </div>
+            </div>
+          </div>
+
+          {/* Answer input */}
+          <textarea rows={3} style={{ ...textInput, resize: 'none', flexShrink: 0 }}
+            placeholder={speech.active ? 'Listening… speak your answer' : canSpeak ? 'Speak, or type your answer here' : 'Type your answer here, then Send'}
+            value={answer + (speech.interim ? ' ' + speech.interim : '')}
+            onChange={e => setAnswer(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }} />
+
+          {/* Controls */}
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            {canSpeak && (
+              <button onClick={() => speech.active ? stopMic() : startMic()} disabled={micStarting}
+                style={{ height: 42, width: 46, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: T.rCtrl, cursor: 'pointer', fontSize: 16,
+                  background: speech.active ? 'rgba(239,68,68,0.16)' : T.surface2, color: speech.active ? '#f87171' : T.text1, border: `1px solid ${speech.active ? 'rgba(239,68,68,0.4)' : T.border}` }}
+                title={speech.active ? 'Stop' : 'Speak'}>{speech.active ? '⏹' : '🎤'}</button>
+            )}
+            <button onClick={repeatQuestion} disabled={!lastQuestion}
+              style={{ height: 42, padding: '0 14px', flexShrink: 0, background: T.surface2, color: T.text2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, cursor: 'pointer', fontSize: 12.5, fontFamily: T.font }} title="Re-read the question">🔁 Repeat</button>
+            <button onClick={submit} disabled={!answer.trim() || thinking}
+              style={{ flex: 1, height: 42, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 14, fontWeight: 600, cursor: (!answer.trim() || thinking) ? 'default' : 'pointer', opacity: (!answer.trim() || thinking) ? 0.5 : 1, fontFamily: T.font }}>Send answer</button>
+          </div>
+          {error && <div style={{ fontSize: 12, color: '#fca5a5', flexShrink: 0 }}>⚠ {error}</div>}
+        </div>
+
+        {/* Right — AI insights */}
+        <div style={{ ...panel, background: 'transparent', border: 'none', gap: 12, overflowY: 'auto' }}>
+          <div style={{ ...panel, padding: '14px' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.05em', color: T.text3, marginBottom: 10 }}>HOW TO ANSWER</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+              {tips.map((t, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12.5, color: T.text2, lineHeight: 1.4 }}>
+                  <span style={{ color: T.accentFrom, flexShrink: 0 }}>✓</span><span>{t}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {nudge && (
+            <div style={{ ...panel, padding: '14px' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.05em', color: T.text3, marginBottom: 8 }}>LIVE COACH</div>
+              <div style={{ fontSize: 12.5, lineHeight: 1.45, color: nudge.rating === 'good' ? T.success : nudge.rating === 'weak' ? '#fca5a5' : '#fbbf24' }}>{nudge.text}</div>
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: T.text3, lineHeight: 1.5, padding: '0 4px' }}>
+            No hints on whether you're right — full feedback comes at the end.
+          </div>
+        </div>
       </div>
     </div>
   )

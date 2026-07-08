@@ -6,7 +6,7 @@ class PCMWorklet extends AudioWorkletProcessor {
   constructor() {
     super()
     this._buf = []        // accumulated input samples (at the context sampleRate)
-    this._target = 4096   // encode + post once we have this many samples (~matches old chunk size)
+    this._target = 2048   // ~128ms @16kHz — send sooner for lower live transcription latency (was 4096 / ~256ms)
   }
 
   process(inputs) {

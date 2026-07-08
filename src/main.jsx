@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import * as Sentry from '@sentry/electron/renderer'
+import './fonts.css'
 import './styles.css'
 import App from './App'
 import ErrorBoundary from './ErrorBoundary'

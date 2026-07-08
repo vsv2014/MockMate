@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.4.2 — 2026-07-08
+
+First real release since 1.4.0 (1.4.1 was never shipped properly). Hardens the live-interview
+path on Windows and makes it easy to start free.
+
+### Fixed (live interview)
+- **Blank-answer bug** — a streamed answer could show its badges but no text and still report "done"; now retries instead of showing nothing.
+- **Faster answers** — cut the pre-answer pause (~850ms → 250–450ms) and halved the audio buffer (~256ms → 128ms) for snappier live transcription.
+- **Survives network blips** — Live transcription no longer dies permanently after a ~40s outage (WiFi handoff / VPN / brief sleep); it reconnects for up to ~20 min.
+- **Model choice honored** on the non-streaming hint path; empty/filtered completions now fail over cleanly instead of erroring.
+
+### Added
+- **Start free, no card** — Groq & Gemini are listed first in Settings with direct "get a free key" links; clarifies that a ChatGPT Plus subscription is *not* an API key.
+- **Better update flow** — the update toast now has a Retry / "download manually" fallback so it's never a dead end.
+- Billing groundwork (Stripe checkout/portal/webhooks) — disabled until a hosted backend is configured.
+
+### Changed
+- Landing page reworked to the honest download-and-go + bring-your-own-key flow.
+- Account usage limits now come from the server (no more drift between what you see and what's enforced).
+
 ## v1.4.0 — 2026-06-26
 
 The SaaS foundation: accounts, a redesigned Home, and a more reliable Solo voice flow.
