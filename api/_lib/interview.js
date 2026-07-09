@@ -530,7 +530,11 @@ Return ONE JSON object, no markdown:
 
   // Retries + falls over OpenAI ↔ Gemini, so a single provider's 429 no longer breaks it.
   const faster = fast ? '\n\nFASTER MODE: Lead with the answer/solution first. Keep prose minimal — the code and the 1-2 most important points only.' : ''
-  const raw = await visionComplete({ imageBase64, prompt: prompt + faster, maxTokens: fast ? 900 : 1500 })
+  // Fast mode trims PROSE via the prompt, not the token ceiling: the whole response is one JSON
+  // object that must contain a complete `code` solution, so a low cap truncates mid-JSON and
+  // extractJSON throws (the feature fails on exactly the hard coding screenshots it targets). Keep
+  // the cap high enough to never cut off a real solution — a short answer finishes early regardless.
+  const raw = await visionComplete({ imageBase64, prompt: prompt + faster, maxTokens: fast ? 1400 : 1500 })
   const out = extractJSON(raw)
   // Defensive: strip any markdown code fences the model wrapped around the code.
   if (out && typeof out.code === 'string') {

@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { T } from './auth/tokens'
 import Room from './Room'
 import SoloFeedback from './SoloFeedback'
-import { loadProfile } from './lib/profile'
+import { loadProfile, saveProfile } from './lib/profile'
 
 // MockMate Duo — a live room where a friend/mentor joins your interview: shared transcript +
 // screen, and a PRIVATE AI co-pilot only the candidate sees. Self-contained flow:
@@ -58,6 +58,8 @@ export default function Duo({ onHome }) {
     const r = create ? randomRoom() : room.trim()
     if (!r) { setErr('Enter a room code, or create a new room.'); return }
     setErr('')
+    // Persist the name/target role so they're pre-filled next time (Home.jsx used to do this).
+    try { saveProfile({ ...prof, name: name.trim(), targetRole }) } catch {}
     try { history.replaceState(null, '', `?room=${encodeURIComponent(r)}`) } catch {}
     setSession({
       room: r, name: name.trim(), role,

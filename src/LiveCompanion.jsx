@@ -5,7 +5,7 @@ import SoloFeedback from './SoloFeedback'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { getAutoSkip } from './lib/aiSettings'
-import { retrieveContext } from './lib/docs'
+import { retrieveContext, warmDocs } from './lib/docs'
 import Documents from './Documents'
 import { OverlayPanel, ScreenAnalysisPanel, IconBtn } from './App'
 import ApiKeysPanel from './ApiKeys'
@@ -612,6 +612,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   useEffect(() => {
     audio.start(sourceId, { keyterms: resumeKeyterms(profileRef.current), language: STT_LANG[profileRef.current?.language] || 'en-US' })
+    warmDocs()   // pre-embed uploaded docs now so the FIRST question is grounded (not just Q2+)
     if (initialPip && !initialPip.closed) {
       initialPip.addEventListener('pagehide', () => {
         setPipWindow(null)

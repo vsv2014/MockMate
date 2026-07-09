@@ -84,6 +84,12 @@ initStore()
     const HOST = process.env.HOST || '127.0.0.1'
     const server = app.listen(PORT, HOST, () => {
       console.log(`[backend] auth${process.env.MONGO_URI ? '+managed AI' : ''} API on http://${HOST}:${PORT} (store: ${process.env.MONGO_URI ? 'mongo' : 'file'})`)
+      // Fail-open guard: without MONGO_URI, checkCap short-circuits (no usage caps) — safe for the
+      // loopback desktop fork, DANGEROUS on a public bind where it means uncapped managed AI billed
+      // to our keys with no upgrade wall. Shout loudly so a misconfigured deploy can't slip through.
+      if (!process.env.MONGO_URI && HOST !== '127.0.0.1' && HOST !== 'localhost') {
+        console.warn(`[backend] ⚠️  PUBLIC bind on ${HOST} with NO MONGO_URI — usage caps are DISABLED. Set MONGO_URI for the hosted backend, or bind to 127.0.0.1 for local use.`)
+      }
       process.send?.({ type: 'ready', port: PORT })   // tell the Electron parent we're up
     })
     server.on('error', e => {

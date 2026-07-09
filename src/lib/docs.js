@@ -31,10 +31,22 @@ async function embed(texts) {
   if (!r.ok) throw new Error(`embed ${r.status}`)
   return (await r.json()).vectors || []
 }
+// Warm the in-memory index off the critical path (call when Live starts). The per-session cache
+// is empty on a fresh launch, so without this the FIRST question's tight speculative budget (~600ms)
+// isn't enough to cold-embed all chunks and that answer comes back ungrounded. Fire-and-forget.
+export function warmDocs() {
+  const docs = load()
+  if (docs.length) ensureIndexed(docs).catch(() => {})
+}
 async function ensureIndexed(docs) {
   const all = []
   for (const doc of docs) {
-    const sig = `${doc.text.length}:${doc.text.slice(0, 48)}:${doc.text.slice(-48)}`   // cheap change-detector (head+tail catches same-length edits)
+    const t = doc.text
+    const mid = Math.max(0, Math.floor(t.length / 2) - 24)
+    // Cheap change-detector: length + head/mid/tail samples. A same-length edit that touches none
+    // of the three windows won't invalidate the cache — acceptable for resume/JD-sized docs, and a
+    // re-upload (the normal way docs change) always changes length or head/tail.
+    const sig = `${t.length}:${t.slice(0, 48)}:${t.slice(mid, mid + 48)}:${t.slice(-48)}`
     let entry = indexCache.get(doc.id)
     if (!entry || entry.sig !== sig) {
       const chunks = chunkText(doc.text, { size: 600, overlap: 100 }).slice(0, 40)   // cap per doc
