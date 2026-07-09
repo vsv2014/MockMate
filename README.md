@@ -6,7 +6,7 @@ screen during real interviews, listens to the interviewer, and gives natural, re
 answers in seconds. **Invisible to screen recording and screen share on Windows & macOS.**
 
 AI runs in one of two modes: **MockMate AI** (managed — no keys to manage, automatic best-model
-routing + failover) or **Bring your own key** (OpenAI / Anthropic / Gemini / Groq, stored locally;
+routing + failover) or **Bring your own key** (OpenAI / Anthropic / Gemini / Groq / Cerebras, stored locally;
 the model picker is discovered live from your key, so it never lists a model you can't use).
 
 ---
@@ -23,7 +23,7 @@ Grab the latest build from the [**Releases page**](https://github.com/vsv2014/Mo
 
 On first launch you sign in and land on the **dashboard**. AI is **managed by default** (MockMate
 AI — nothing to configure), or open **Settings → Bring your own key** to use your own OpenAI /
-Anthropic / Gemini / Groq key (stored locally). Then just **Start Interview**.
+Anthropic / Gemini / Groq / Cerebras key (stored locally). Then just **Start Interview**.
 
 **Auto-update (Windows & Linux):** new versions download silently in the background and install
 the next time you reopen MockMate — no re-download needed. **macOS updates are manual for now**
@@ -224,14 +224,15 @@ hard questions escalate to a strong model (GPT-5.4 / Claude Sonnet 5). Model def
 │    • the /api/* routes            → no CORS, no file:// breakage          │
 └───────────────┬───────────────────────────────────────────────────────────┘
                 │
-     ┌──────────┼─────────────────┬───────────────────────┐
-     ▼          ▼                 ▼                       ▼
-  /api/hint   /api/analyze-     /api/deepgram-token     /api/interview
-  (answers)    screen (vision)   (mint short-lived STT)  /api/evaluate (Solo)
+     ┌──────────┼─────────────────┬───────────────────┬───────────────────┐
+     ▼          ▼                 ▼                   ▼                   ▼
+  /api/hint   /api/analyze-     /api/deepgram-token  /api/interview     /api/token (LiveKit)
+  (answers)    screen (vision)   (mint STT token)    /api/evaluate (Solo) /api/embed (RAG)
      │            │
      ▼            ▼
-  LLM (auto-fallback): GPT-4o-mini → Gemini → Groq → GPT-4o
-  Vision: GPT-4o / Gemini      Web search: Tavily / Serper
+  LLM on Auto: fast tier (Gemini Flash-Lite / Cerebras / Groq / GPT-mini) for live hints,
+  escalates to a strong tier (GPT-5.4 / Claude) for DSA + system design — with auto-failover.
+  Vision: GPT-4o / Gemini      Web search: Tavily / Serper (time-boxed)   Embeddings: OpenAI / Gemini
 
   Audio pipeline:
     System audio ─▶ AudioWorklet thread (downsample → PCM16 16kHz)
@@ -272,6 +273,16 @@ here — they stay on the user's machine.
 ---
 
 ## Roadmap
+
+**Done (1.4.3)**
+- ✅ **Fixed the packaged-app regression** — the local server's CSP blocked the auth backend + LiveKit, so Solo/Live/sign-in failed in 1.4.2; loopback + LiveKit origins now allowlisted.
+- ✅ **Duo (Rooms)** — a friend joins live: shared transcript + screen, plus a private, capture-protected AI co-pilot (LiveKit).
+- ✅ **Document RAG** — chunk + embed uploaded docs, retrieve the relevant parts per question (replaces truncated-resume stuffing).
+- ✅ **AI Settings** — response length, screenshot Quality/Faster, auto-skip, doc-relevance threshold; **guest mode**, **collapse-to-pill**, **What's New**.
+- ✅ **Modernized model catalog** — GPT-5.4 / Gemini 3 Flash / Flash-Lite / Cerebras / Claude Sonnet 5; Auto routes fast-for-live, strong-for-hard with failover.
+
+**Done (1.4.2)**
+- ✅ **Live reliability** — blank-answer retry, faster time-to-first-token, reconnect through network blips, honored model choice on the non-streaming path.
 
 **Done (1.4.0)**
 - ✅ **Auth system** — Welcome / Signup / Login / 2-step Onboarding; the app is gated behind sign-in (everyone on `free`, no billing yet).
