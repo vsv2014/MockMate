@@ -337,7 +337,7 @@ if (!gotTheLock) {
   })
 }
 
-app.on('will-quit', () => { globalShortcut.unregisterAll(); apiServer?.kill(); backendServer?.kill() })
+app.on('will-quit', () => { globalShortcut.unregisterAll(); apiServer?.kill(); backendServer?.kill(); try { copilotWindow?.destroy() } catch {} })
 
 // Auto-detect, by open window/tab titles: (1) a video meeting, (2) a coding platform.
 const MEETING_RE = /zoom meeting|google meet|microsoft teams|webex|whereby/i
@@ -373,6 +373,66 @@ ipcMain.handle('capture-screen', () => captureScreen())   // "Solve it" button t
 // This confirms it to the renderer so it can warn honestly on Linux (no protection).
 ipcMain.handle('exclude-from-capture', () => ({ ok: process.platform !== 'linux', id: 'pip' }))
 ipcMain.on('get-userdata-path', e => { e.returnValue = app.getPath('userData') })
+
+// ── Duo co-pilot window (Phase 3) ───────────────────────────────────────────
+// A small, always-on-top, CONTENT-PROTECTED window that shows the candidate's private AI hints
+// during a Duo room — invisible to Zoom/Teams/Meet screen capture (WDA_EXCLUDEFROMCAPTURE), so a
+// partner sharing their screen never sees it. The renderer (src/Room.jsx) drives it via
+// setRoomActive(on) + sendHint(payload). No-op on Linux (no capture protection there).
+let copilotWindow = null
+const COPILOT_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
+  body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#0f0f1a;color:#e2e8f0;-webkit-app-region:drag;user-select:none}
+  #wrap{padding:14px;height:100vh;box-sizing:border-box;overflow:auto}
+  .hd{font-weight:700;font-size:14px;color:#a78bfa}
+  .sub{font-size:10px;color:#475569;margin-bottom:10px}
+  .q{color:#94a3b8;font-size:11px;margin:0 0 10px;border-left:2px solid #334155;padding-left:8px;font-style:italic}
+  ul{margin:0 0 10px;padding-left:18px} li{margin-bottom:3px;font-size:13px}
+  .badge{background:#14532d;color:#4ade80;border-radius:4px;padding:2px 7px;font-size:11px;display:inline-block;margin-bottom:8px}
+  .warn{color:#f59e0b;font-size:12px} .muted{color:#64748b;margin:0}
+</style></head><body><div id="wrap">
+  <div class="hd">🤖 AI Co-pilot</div><div class="sub">invisible to screen capture</div>
+  <div id="content"><p class="muted">Waiting for the first question…</p></div>
+</div><script>
+  window.renderHint=function(p){var c=document.getElementById('content');if(!c)return;
+    var esc=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')};
+    var h=p&&p.hint,q=p&&p.question,loading=p&&p.hintLoading,out='';
+    if(q)out+='<div class="q">'+esc(q)+'</div>';
+    if(loading)out+='<p class="muted">Generating hints…</p>';
+    else if(h){if(h.resumeRelevant)out+='<span class="badge">✓ Resume-relevant</span>';
+      out+='<div style="font-weight:600;margin:8px 0 4px">Key points:</div><ul>'+((h.keyPoints||[]).map(function(k){return '<li>'+esc(k)+'</li>'}).join(''))+'</ul>';
+      if(h.watchOut)out+='<div class="warn">⚠ '+esc(h.watchOut)+'</div>';}
+    else out+='<p class="muted">Waiting for next question…</p>';
+    c.innerHTML=out;};
+</script></body></html>`
+
+function createCopilotWindow() {
+  if (copilotWindow && !copilotWindow.isDestroyed()) return copilotWindow
+  const { width } = screen.getPrimaryDisplay().workAreaSize
+  copilotWindow = new BrowserWindow({
+    width: 400, height: 340, x: Math.max(0, width - 420), y: 60,
+    frame: false, transparent: false, alwaysOnTop: true, skipTaskbar: process.platform !== 'linux',
+    resizable: true, backgroundColor: '#0f0f1a', icon: iconPath(),
+    webPreferences: { contextIsolation: true, nodeIntegration: false }
+  })
+  try { copilotWindow.setContentProtection(process.platform !== 'linux') } catch {}
+  try { copilotWindow.setAlwaysOnTop(true, 'screen-saver') } catch {}
+  copilotWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(COPILOT_HTML))
+  copilotWindow.on('closed', () => { copilotWindow = null })
+  return copilotWindow
+}
+function sendHintToCopilot(payload) {
+  if (!copilotWindow || copilotWindow.isDestroyed()) return
+  const run = () => { try { copilotWindow.webContents.executeJavaScript(`window.renderHint(${JSON.stringify(payload || {})})`) } catch {} }
+  if (copilotWindow.webContents.isLoading()) copilotWindow.webContents.once('did-finish-load', run)
+  else run()
+}
+// Candidate entered/left a Duo room → open/close the protected co-pilot window.
+ipcMain.on('set-room-active', (_e, active) => {
+  if (active) createCopilotWindow()
+  else if (copilotWindow && !copilotWindow.isDestroyed()) { try { copilotWindow.close() } catch {} ; copilotWindow = null }
+})
+// Push the latest hint (or loading state) into the co-pilot window.
+ipcMain.on('send-hint', (_e, payload) => { if (copilotWindow && !copilotWindow.isDestroyed()) sendHintToCopilot(payload) })
 
 // ── Auth token storage (JWT) — encrypted at rest via OS keychain (safeStorage),
 // stored in userData. NEVER localStorage. Falls back to a userData file if the
@@ -428,7 +488,12 @@ ipcMain.on('set-window-mode', (_, mode) => {
   lastWindowMode = mode
   try {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize
-    if (mode === 'app') {
+    if (mode === 'pill') {
+      // Collapsed to a tiny logo pill docked top-right — a one-click way back that never fully
+      // disappears (and stays content-protected). Expanding returns to 'overlay'.
+      const s = 76
+      mainWindow.setSize(s, s); mainWindow.setPosition(Math.max(0, width - s - 20), 20)
+    } else if (mode === 'app') {
       const w = Math.min(1200, width - 80), h = Math.min(760, height - 80)
       mainWindow.setSize(w, h); mainWindow.center()
     } else {

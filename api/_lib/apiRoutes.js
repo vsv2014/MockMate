@@ -7,13 +7,18 @@
 //                 Omit locally. Metering errors are swallowed so they never break a response.
 //   opts.report — error reporter (e.g. Sentry.captureException). Optional.
 // Metadata routes (/providers, /models) are never gated — they expose no user data.
-import { makeReport, availableProviders, allProviders, listModels, deepgramConfigured, deepgramToken, searchConfigured } from './core.js'
+import { makeReport, availableProviders, allProviders, listModels, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed } from './core.js'
 import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen, streamHint } from './interview.js'
 import { findJobs } from './jobs.js'
 import { atsScore, tailorResume, referralMessage } from './career.js'
 
 export function registerApiRoutes(app, opts = {}) {
   const guard = opts.auth ? [].concat(opts.auth) : []
+  // STT (deepgram-token) needs auth in managed mode but must NOT be blocked by the LLM-call cap:
+  // transcription has to start — and re-mint tokens on every socket reconnect over a 60-90min
+  // session — even for a user who's exhausted their monthly AI-RESPONSE limit (STT is a separate
+  // meter). Callers that don't split the guards fall back to the full guard (no behavior change).
+  const guardLight = opts.authLight ? [].concat(opts.authLight) : guard
   const report = typeof opts.report === 'function' ? opts.report : () => {}
   const onLlm = typeof opts.onLlm === 'function' ? opts.onLlm : null
 
@@ -24,10 +29,25 @@ export function registerApiRoutes(app, opts = {}) {
     catch (e) { console.error('[api] GET /api/models:', e.message); res.json({ models: [] }) }
   })
 
-  app.post('/api/deepgram-token', ...guard, async (req, res) => {
+  app.post('/api/deepgram-token', ...guardLight, async (req, res) => {
     const host = req.headers.host || ''
     const local = host.startsWith('localhost') || host.startsWith('127.')
     try { res.json(await deepgramToken({ allowRawKey: local })) }
+    catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
+  })
+
+  // Duo room token (LiveKit). Auth-gated (candidate must be signed in) but NOT cap-metered — it's
+  // not an LLM call. 501 until LIVEKIT_* is configured. (Un-authed helper-join via invite is a
+  // follow-up; today both participants sign in.)
+  app.post('/api/token', ...guardLight, async (req, res) => {
+    try { res.json(await mintToken(req.body || {})) }
+    catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
+  })
+
+  // Document-RAG embeddings. Auth-gated, NOT cap-metered (embeddings are cheap and part of indexing,
+  // not an AI "response"). Client chunks docs + retrieves top-K locally (shared/retrieval.js).
+  app.post('/api/embed', ...guardLight, async (req, res) => {
+    try { res.json({ vectors: await embed((req.body || {}).input || []) }) }
     catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
   })
 

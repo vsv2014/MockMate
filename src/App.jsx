@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { apiFetch } from './lib/apiClient'
 import Solo from './Solo'
 import LiveCompanion from './LiveCompanion'
+import Duo from './Duo'
 import Jobs from './Jobs'
 import Career from './Career'
 import Account from './Account'
@@ -9,8 +10,10 @@ import AuthGate from './auth/AuthGate'
 import { T } from './auth/tokens'
 import { AppShell, DashboardHome, SessionsTable } from './Dashboard'
 import SoloFeedback from './SoloFeedback'
+import WhatsNew from './WhatsNew'
 import ApiKeysPanel from './ApiKeys'
 import { getAiMode } from './lib/aiMode'
+import { getAnswerStyle, setAnswerStyle, getScreenshotSpeed, setScreenshotSpeed, screenshotStyle, getAutoSkip, setAutoSkip, getDocThreshold, setDocThreshold } from './lib/aiSettings'
 import { loadSessions, deleteSession } from './history'
 import { scoreColor, TYPE_LABEL } from './lib/ui'
 import { CODING_LANGUAGES } from './lib/languages'
@@ -21,7 +24,7 @@ const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform ==
 // Views that render in the full windowed app shell (large window + sidebar). Solo runs
 // here too — there's no interviewer watching, so it gets the roomy dashboard, not the
 // overlay. ONLY the Live companion drops to the compact always-on-top overlay.
-const SHELL_VIEWS = ['home', 'solo', 'jobs', 'career', 'settings', 'account', 'history']
+const SHELL_VIEWS = ['home', 'solo', 'duo', 'jobs', 'career', 'settings', 'account', 'history']
 
 // ── Not in Electron — show landing page ──────────────────────────────────────
 function BrowserGate() {
@@ -33,6 +36,7 @@ function BrowserGate() {
 // ── Electron shell — wraps every screen in the floating overlay ───────────────
 function ElectronShell({ auth }) {
   const [view, setView] = useState('home')
+  const [whatsNewSignal, setWhatsNewSignal] = useState(0)   // bump to re-open the What's New modal
   const [report, setReport] = useState(null)
   const [panelSize, setPanelSize] = useState({ w: 420, h: 560 })
   const [opacity, setOpacity] = useState(1)   // solid by default for readability; the slider can dim it
@@ -96,7 +100,7 @@ function ElectronShell({ auth }) {
     try {
       const d = await apiFetch('/api/analyze-screen', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64, profile: profileRef.current, language })
+        body: JSON.stringify({ imageBase64: base64, profile: profileRef.current, language, style: screenshotStyle() })
       }).then(r => r.json())
       setScreenAnalysis(d.analysis || { error: d.error })
     } catch (e) {
@@ -175,13 +179,21 @@ function ElectronShell({ auth }) {
   const [companionPhase, setCompanionPhase] = useState('setup')
 
   // Resize the OS window: full dashboard for shell views + Live setup/feedback; compact
-  // invisible overlay for the live interview itself.
+  // invisible overlay for the live interview itself; a tiny logo pill when minimized.
   useEffect(() => {
     let mode
-    if (view === 'companion') mode = companionPhase === 'live' ? 'overlay' : 'app'
+    if (minimized) mode = 'pill'                          // collapsed → tiny click-to-expand pill
+    else if (view === 'companion') mode = companionPhase === 'live' ? 'overlay' : 'app'
     else mode = (!showWelcome && SHELL_VIEWS.includes(view)) ? 'app' : 'overlay'
     window.electronAPI?.setWindowMode?.(mode)
-  }, [view, showWelcome, companionPhase])
+  }, [view, showWelcome, companionPhase, minimized])
+
+  // Minimize-to-pill only makes sense in the live overlay. If we're anywhere else (dashboard, setup,
+  // notes) force it off — otherwise a leftover minimized=true would keep the window a 76px pill with
+  // no expand affordance on those screens (a lock-out).
+  useEffect(() => {
+    if (minimized && !(view === 'companion' && companionPhase === 'live')) setMinimized(false)
+  }, [view, companionPhase, minimized])
 
   // The sessions list is a snapshot — refresh it when the Sessions tab opens so a
   // just-finished interview shows up without navigating away and back.
@@ -203,7 +215,7 @@ function ElectronShell({ auth }) {
           style={{ width: '100%', marginTop: 12, height: 40, background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: T.font }}>
           Skip for now — I'll add keys later
         </button>
-        <div style={{ fontSize: 10, color: T.text3, textAlign: 'center', marginTop: 8 }}>You can always manage keys from Home → ⚙ API Keys &amp; Settings.</div>
+        <div style={{ fontSize: 10, color: T.text3, textAlign: 'center', marginTop: 8 }}>You can always manage keys from the ⚙ Settings tab.</div>
       </div>
     </OverlayPanel>
   )
@@ -214,23 +226,37 @@ function ElectronShell({ auth }) {
     let content = null
     if (view === 'home') content = (
       <>
+        {auth?.guest && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCard, padding: '11px 14px', marginBottom: 14 }}>
+            <span style={{ fontSize: 12.5, color: '#5eead4', flex: 1 }}>You're exploring as a guest — running on your own API key. <strong>Sign in</strong> to save sessions, sync across devices, and use MockMate AI (no key needed).</span>
+            <button onClick={() => auth.signIn?.()} style={{ height: 34, padding: '0 16px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Sign in</button>
+          </div>
+        )}
         <ScreenAnalysisPanel analysis={screenAnalysis} analyzing={screenAnalyzing} onDismiss={() => setScreenAnalysis(null)} onReanalyze={reanalyze} />
         <DashboardHome auth={auth} sessions={sessions} noProviders={noProviders}
           onNav={setView} onCapture={() => window.electronAPI?.captureScreen?.()} />
       </>
     )
-    else if (view === 'solo') content = <Solo onHome={goHome} />
-    else if (view === 'jobs') content = <div style={{ maxWidth: 820, margin: '0 auto' }}><div style={shellHeader}>Matching Jobs</div><Jobs onHome={goHome} noProviders={noProviders} /></div>
-    else if (view === 'career') content = <div style={{ maxWidth: 820, margin: '0 auto' }}><div style={shellHeader}>Resume Studio</div><Career onHome={goHome} noProviders={noProviders} onSettings={() => setView('settings')} /></div>
+    else if (view === 'solo') content = <Solo onHome={goHome} noProviders={noProviders} />
+    else if (view === 'duo') content = <Duo onHome={goHome} />
+    else if (view === 'jobs') content = <div style={{ maxWidth: 820, margin: '0 auto' }}><div style={shellHeader}>Job Matching</div><Jobs onHome={goHome} noProviders={noProviders} embedded /></div>
+    else if (view === 'career') content = <div style={{ maxWidth: 820, margin: '0 auto' }}><div style={shellHeader}>Resume Studio</div><Career onHome={goHome} noProviders={noProviders} onSettings={() => setView('settings')} embedded /></div>
     else if (view === 'settings') content = (
       <div style={{ maxWidth: 640, margin: '0 auto' }}>
         <div style={shellHeader}>Settings</div>
         <div style={{ fontSize: 13, color: T.text2, lineHeight: 1.5, marginBottom: 16 }}>Choose how MockMate gets its AI. <strong>MockMate AI</strong> is managed for you — nothing to set up. Power users can bring their own keys.</div>
+        {auth?.guest && (
+          <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCard, fontSize: 12.5, color: '#5eead4', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ flex: 1 }}>You're a guest — <strong>MockMate AI (managed)</strong> needs an account. Sign in to use it with no key, or add your own key below to keep using MockMate locally.</span>
+            <button onClick={() => auth.signIn?.()} style={{ height: 32, padding: '0 14px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Sign in</button>
+          </div>
+        )}
         <ApiKeysPanel showStatus onSaved={recheckProviders} onModeChange={recheckProviders} />
+        <AiAnswerSettings />
         <div style={{ marginTop: 18, padding: '14px 16px', background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: T.text1 }}>App updates</div>
-            <div style={{ fontSize: 11.5, color: T.text2, marginTop: 2 }}>MockMate updates automatically in the background. Check now to see what's available.</div>
+            <div style={{ fontSize: 11.5, color: T.text2, marginTop: 2 }}>MockMate updates automatically in the background. <button onClick={() => setWhatsNewSignal(n => n + 1)} style={{ background: 'none', border: 'none', color: T.accentFrom, cursor: 'pointer', padding: 0, fontSize: 11.5, fontFamily: T.font, textDecoration: 'underline' }}>See what's new</button>.</div>
           </div>
           <button onClick={() => window.electronAPI?.checkForUpdates?.()}
             style={{ height: 36, padding: '0 16px', background: 'transparent', color: T.text1, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Check for updates</button>
@@ -247,7 +273,7 @@ function ElectronShell({ auth }) {
           <>
             <div style={shellHeader}>Past Sessions</div>
             <SessionsTable sessions={sessions} onOpen={s => setOpenSession(s)}
-              onDelete={id => { deleteSession(id); refreshSessions() }} />
+              onDelete={id => { if (window.confirm('Delete this session permanently? Its transcript and feedback can\'t be recovered.')) { deleteSession(id); refreshSessions() } }} />
           </>
         )}
       </div>
@@ -257,6 +283,7 @@ function ElectronShell({ auth }) {
       <AppShell active={view} onNav={setView} auth={auth} meetingActive={meetingActive}
         stealth={stealth} onStealth={handleStealthToggle}
         onMinimize={() => window.electronAPI?.hideWindow?.()} onClose={() => window.close?.()}>
+        <WhatsNew openSignal={whatsNewSignal} />
         {content}
       </AppShell>
     )
@@ -265,7 +292,7 @@ function ElectronShell({ auth }) {
   // Live Interview is the only view that renders as the compact floating overlay — everything
   // else lives in the dashboard shell (handled above).
   if (view === 'companion') return (
-    <LiveCompanion onHome={goHome} onPhaseChange={setCompanionPhase} panelSize={panelSize} stealth={stealth} opacity={opacity} onOpacity={setOpacity}
+    <LiveCompanion onHome={goHome} onPhaseChange={setCompanionPhase} panelSize={panelSize} stealth={stealth} opacity={opacity} onOpacity={setOpacity} minimized={minimized}
       onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
       onResize={startResize} onDrag={startDrag}
       screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} onDismissScreen={() => setScreenAnalysis(null)}
@@ -344,7 +371,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
         </div>
       </div>
       {analyzing
-        ? <div style={{ fontSize: 12, color: '#92400e' }}>Analyzing screen…</div>
+        ? <div style={{ fontSize: 12, color: '#fbbf24' }}>Analyzing screen…</div>
         : analysis?.error
           ? <div style={{ fontSize: 12, color: '#f87171' }}>⚠ {analysis.error}</div>
           : isCoding
@@ -396,7 +423,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
                   <span style={{ fontSize: 9, padding: '1px 7px', background: 'rgba(234,179,8,0.15)', color: '#fbbf24', borderRadius: 10, fontWeight: 700 }}>{TYPE_LABEL[analysis.contentType] || analysis.contentType}</span>
                 </div>
-                {analysis.detectedText && <div style={{ fontSize: 11, color: '#a16207', fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(234,179,8,0.3)', paddingLeft: 7 }}>{analysis.detectedText}</div>}
+                {analysis.detectedText && <div style={{ fontSize: 11, color: '#fcd34d', fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(234,179,8,0.3)', paddingLeft: 7 }}>{analysis.detectedText}</div>}
                 {analysis.resumeStory && <div style={{ fontSize: 11, color: '#86efac', borderLeft: '2px solid #4ade80', paddingLeft: 7, marginBottom: 8 }}>{analysis.resumeStory}</div>}
                 <div style={{ fontSize: 14, color: '#fef3c7', lineHeight: 1.7, marginBottom: 8 }}>{analysis.fullAnswer}</div>
                 {analysis.watchOut && <div style={{ fontSize: 11, color: '#f59e0b' }}>⚠ {analysis.watchOut}</div>}
@@ -484,9 +511,92 @@ function ScoreTrend({ sessions }) {
   )
 }
 
+// ── AI answer settings (Response length + Screenshot replies) — persisted globally, read by
+// Live hints and screenshot analysis. Mirrors the competitor's AI-Settings surface. ──
+function Segmented({ label, hint, value, options, onChange }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: T.text1, marginBottom: hint ? 2 : 8 }}>{label}</div>
+      {hint && <div style={{ fontSize: 11.5, color: T.text2, marginBottom: 8, lineHeight: 1.4 }}>{hint}</div>}
+      <div style={{ display: 'flex', gap: 6 }}>
+        {options.map(o => {
+          const on = value === o.value
+          return (
+            <button key={o.value} onClick={() => onChange(o.value)}
+              style={{ flex: 1, height: 36, borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font, fontSize: 12.5, fontWeight: on ? 600 : 400,
+                background: on ? 'rgba(20,184,166,0.16)' : T.surface2, border: `1px solid ${on ? 'rgba(20,184,166,0.45)' : T.border}`, color: on ? T.text1 : T.text2 }}>
+              {o.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function AiAnswerSettings() {
+  const [style, setStyle] = useState(getAnswerStyle())
+  const [shot, setShot] = useState(getScreenshotSpeed())
+  const [skip, setSkip] = useState(getAutoSkip() ? 'on' : 'off')
+  return (
+    <div style={{ marginTop: 18, padding: 16, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard }}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: T.text1, marginBottom: 12 }}>AI answers</div>
+      <Segmented label="Response length"
+        hint="Concise streams the first word soonest and is easiest to glance at mid-interview; Detailed adds depth."
+        value={style} onChange={v => { setStyle(v); setAnswerStyle(v) }}
+        options={[{ value: 'balanced', label: 'Default' }, { value: 'concise', label: 'Concise' }, { value: 'detailed', label: 'Detailed' }]} />
+      <Segmented label="Screenshot replies"
+        hint="Faster gives quicker, more concise answers when solving from a screenshot; Quality keeps full depth."
+        value={shot} onChange={v => { setShot(v); setScreenshotSpeed(v) }}
+        options={[{ value: 'quality', label: 'Quality' }, { value: 'fast', label: 'Faster' }]} />
+      <Segmented label="Auto-skip noise"
+        hint="On: stay silent on small talk and non-questions during Live. Off: answer every line the interviewer says."
+        value={skip} onChange={v => { setSkip(v); setAutoSkip(v === 'on') }}
+        options={[{ value: 'on', label: 'Enable' }, { value: 'off', label: 'Disable' }]} />
+      <DocThreshold />
+    </div>
+  )
+}
+
+// "Filter document" — the RAG relevance cutoff for how strict document retrieval is.
+function DocThreshold() {
+  const [v, setV] = useState(getDocThreshold())
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: T.text1 }}>Filter documents</div>
+        <div style={{ marginLeft: 'auto', fontSize: 12, color: T.text2, fontVariantNumeric: 'tabular-nums' }}>{v.toFixed(2)}</div>
+      </div>
+      <div style={{ fontSize: 11.5, color: T.text2, marginBottom: 8, lineHeight: 1.4 }}>How strictly to match uploaded docs when grounding Live answers. Higher = fewer, more-relevant snippets. Default 0.20.</div>
+      <input type="range" min="0" max="0.6" step="0.05" value={v}
+        onChange={e => { const n = parseFloat(e.target.value); setV(n); setDocThreshold(n) }}
+        style={{ width: '100%', accentColor: T.accentFrom, cursor: 'pointer' }} />
+    </div>
+  )
+}
+
 export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, onResize, onStealth, onMinimize, onClose, title, extra, actions, opacity = 0.95, autoHeight, clickThrough, confirmClose }) {
   const [confirming, setConfirming] = useState(false)
   const confirmTimer = useRef(null)
+  const pillDragged = useRef(false)
+  // Drag the collapsed pill to reposition; a real drag suppresses the expand-click. Uses CUMULATIVE
+  // distance from the press (a slow drag has tiny per-event deltas but a large total), and resets the
+  // drag flag on the next tick after release so an off-button release can't swallow the next click.
+  function startPillDrag(e) {
+    if (e.button !== 0 || !inElectron) return
+    pillDragged.current = false
+    const startX = e.screenX, startY = e.screenY
+    let lastX = e.screenX, lastY = e.screenY
+    const onMove = ev => {
+      if (Math.abs(ev.screenX - startX) + Math.abs(ev.screenY - startY) > 4) pillDragged.current = true
+      window.electronAPI?.windowDrag?.(ev.screenX - lastX, ev.screenY - lastY); lastX = ev.screenX; lastY = ev.screenY
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp)
+      setTimeout(() => { pillDragged.current = false }, 0)   // clears AFTER any click fires; unblocks the next click even if release was off-button
+    }
+    document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp)
+  }
   // 📌 Pin — keep the overlay above full-screen Zoom/Meet. Persisted so it survives
   // view changes, and re-asserted on mount so the window matches the saved state.
   const [pinned, setPinned] = useState(() => { try { return localStorage.getItem('mm-pinned') === '1' } catch { return false } })
@@ -500,6 +610,24 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
     setConfirming(true)
     confirmTimer.current = setTimeout(() => setConfirming(false), 3000)
   }
+
+  // Collapsed → a tiny logo pill (the whole window shrinks to ~76px via set-window-mode 'pill').
+  // Always clickable (even in click-through mode) so there's a one-click way back, and it stays
+  // content-protected — never fully disappears.
+  if (minimized) return (
+    <div id="mockmate-overlay" style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }}>
+      <button onMouseDown={startPillDrag} onClick={() => { if (!pillDragged.current) onMinimize() }} title="Click to expand · drag to move"
+        style={{
+          position: 'absolute', top: 8, left: 8, width: 60, height: 60, pointerEvents: 'all', cursor: 'grab',
+          background: 'rgba(8,9,14,0.96)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 16,
+          boxShadow: '0 10px 30px rgba(0,0,0,0.7)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+          display: 'grid', placeItems: 'center', opacity: stealth ? 0.25 : 1, padding: 0,
+        }}>
+        <img src="/icon.png" alt="MockMate" width={34} height={34} style={{ borderRadius: 9, display: 'block', pointerEvents: 'none' }} />
+      </button>
+    </div>
+  )
+
   return (
     <div id="mockmate-overlay" style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }}>
       <div style={{

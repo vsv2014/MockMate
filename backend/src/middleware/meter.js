@@ -7,6 +7,11 @@ import { store, currentPeriod } from '../store.js'
 import { limitFor } from '../plans.js'
 
 export async function checkCap(req, res, next) {
+  // Local file-store deployment = a single-user desktop running on their OWN (or the bundled) keys.
+  // Metering a hard cap there is a dead-end — there's no way to upgrade locally, so a capped user
+  // hits a wall mid-interview with no exit. Only enforce the cap on the hosted multi-tenant backend
+  // (Mongo), where MockMate actually pays for managed usage and Upgrade/BYOK are real options.
+  if (!process.env.MONGO_URI) { req._plan = 'local'; return next() }
   try {
     const user = await store().findUserById(req.userId)
     if (!user) return res.status(401).json({ error: 'Account not found' })

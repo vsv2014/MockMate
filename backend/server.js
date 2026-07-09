@@ -43,6 +43,11 @@ if (process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_WEBHOOK_SECRET) {
   console.warn('[backend] STRIPE_SECRET_KEY is set but STRIPE_WEBHOOK_SECRET is missing — webhooks will 400 and plans will NOT upgrade. Set STRIPE_WEBHOOK_SECRET.')
 }
 
+// This process IS the managed-AI proxy (authed + metered, MockMate's own keys). Flag it so the
+// shared engine (api/_lib/core.js) shows managed-appropriate error wording — a user here owns no
+// key, so "check your API key in Settings" would be wrong. The local BYOK server never sets this.
+process.env.MOCKMATE_MANAGED = '1'
+
 const app = express()
 app.use(cors())                       // desktop renderer is a different origin (localhost:5174 / :3002 / file://)
 
@@ -59,7 +64,10 @@ app.use('/billing', billingRoutes)    // /billing/checkout + /billing/portal (au
 // Managed-AI proxy (Phase 2b): the SAME /api/* engine as the local server, but AUTHED (JWT)
 // and METERED (monthly cap → 402 "Upgrade or use your own key"). This is what makes managed AI
 // real for keyless users — the desktop points here in managed mode.
-registerApiRoutes(app, { auth: [requireAuth, checkCap], onLlm: recordLlm })
+// auth      = requireAuth + LLM-response cap (gates the LLM routes).
+// authLight = requireAuth only — for /api/deepgram-token, so transcription can start/reconnect
+//             even when the user has hit their monthly AI-response cap (STT is metered separately).
+registerApiRoutes(app, { auth: [requireAuth, checkCap], authLight: [requireAuth], onLlm: recordLlm })
 
 const PORT = Number(process.env.PORT) || 4000
 
@@ -76,6 +84,12 @@ initStore()
     const HOST = process.env.HOST || '127.0.0.1'
     const server = app.listen(PORT, HOST, () => {
       console.log(`[backend] auth${process.env.MONGO_URI ? '+managed AI' : ''} API on http://${HOST}:${PORT} (store: ${process.env.MONGO_URI ? 'mongo' : 'file'})`)
+      // Fail-open guard: without MONGO_URI, checkCap short-circuits (no usage caps) — safe for the
+      // loopback desktop fork, DANGEROUS on a public bind where it means uncapped managed AI billed
+      // to our keys with no upgrade wall. Shout loudly so a misconfigured deploy can't slip through.
+      if (!process.env.MONGO_URI && HOST !== '127.0.0.1' && HOST !== 'localhost') {
+        console.warn(`[backend] ⚠️  PUBLIC bind on ${HOST} with NO MONGO_URI — usage caps are DISABLED. Set MONGO_URI for the hosted backend, or bind to 127.0.0.1 for local use.`)
+      }
       process.send?.({ type: 'ready', port: PORT })   // tell the Electron parent we're up
     })
     server.on('error', e => {

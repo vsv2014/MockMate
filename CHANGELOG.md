@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.4.3 — 2026-07-09
+
+Big one: fixes the packaged-app regressions from 1.4.2, adds document RAG + live collaborative
+rooms (Duo), a proper AI-settings surface, and retires the legacy dual-UI. Doubles down on the
+wedge — invisible, private, best-answer — see docs/ROADMAP.md.
+
+### Fixed
+- **Backend unreachable in the packaged app** — the local server's CSP blocked the auth backend on :4000, so **Solo, Live, and sign-in all failed** in 1.4.2. `connect-src` now allows the loopback backend.
+- **Live transcription gated behind the AI-response cap** — STT couldn't start once you hit the monthly limit; decoupled (STT is metered separately).
+- **No more mid-interview dead end** — local managed usage is no longer hard-capped (metering only applies to the hosted multi-tenant backend).
+- **Web-search grounding could stall a live answer up to 10s** — now time-boxed (1.8s live / 2.5s solo); the answer never waits on a slow lookup.
+- **Cross-platform dev scripts** — `PORT=3002 …` was Unix-only and broke `npm run dev` / `electron:dev` on Windows; removed (the server defaults to 3002).
+- Added a real `.gitignore` (node_modules / dist / .env were leaking into git).
+
+### Added
+- **Duo (Rooms)** — a friend/mentor joins your interview live: shared transcript + screen, plus a **private, screen-capture-protected AI co-pilot window** (invisible to the interviewer's share).
+- **Document RAG** — upload resume / JD / notes; they're chunked + embedded and the most relevant parts are retrieved per question, replacing the old truncated-resume stuffing.
+- **AI Settings** — Response length (Concise / Balanced / Detailed), Screenshot replies (Quality / Faster), Auto-skip noise, and a Filter-documents relevance slider.
+- **Guest mode** — try the app before creating an account (local BYOK); sign in anytime to sync.
+- **Collapse-to-pill** — minimizing the overlay leaves a small, still-capture-protected logo pill you click to expand.
+- **What's New modal**, in-app version label.
+- **Modernized model catalog** — GPT-5.4, Gemini 3 Flash / 3.1 Flash-Lite, Cerebras, Claude Sonnet 5; Auto now routes to a current fast model on Live and a current strong model for hard questions.
+- **`npm run doctor`** (install/bin integrity) + `npm run verify`; release checklist & roadmap under `docs/`.
+
+### Changed
+- **Mode-aware error messages** — managed users no longer told to "check your API key" (they have none); BYOK users keep the key-oriented guidance.
+- **Retired the dual-paradigm UI** — deleted the legacy `Home.jsx` / `Report.jsx`, re-themed `Room.jsx` to the design tokens; every screen is now one system.
+
 ## v1.4.2 — 2026-07-08
 
 First real release since 1.4.0 (1.4.1 was never shipped properly). Hardens the live-interview

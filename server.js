@@ -19,7 +19,7 @@ if (process.env.SENTRY_DSN) {
     beforeSend(event) { if (event.request) delete event.request.data; return event }
   })
 }
-import { makeReport, availableProviders, allProviders, deepgramConfigured, deepgramToken, searchConfigured } from './api/_lib/core.js'
+import { makeReport, availableProviders, allProviders, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed } from './api/_lib/core.js'
 import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen, streamHint } from './api/_lib/interview.js'
 import { findJobs } from './api/_lib/jobs.js'
 import { atsScore, tailorResume, referralMessage } from './api/_lib/career.js'
@@ -37,6 +37,16 @@ const app = express()
 //   styles + the injected <style> keyframes) · connect to /api + Deepgram WSS + Sentry ingest.
 //   upgradeInsecureRequests is DISABLED — otherwise it would force http://localhost → https
 //   and blank the app.
+//   The renderer (served here on :3002) ALSO talks to the separate auth/managed backend on a
+//   different loopback port (default :4000, or MOCKMATE_API_BASE when hosted). Those cross-origin
+//   fetches (login/signup/me + managed /api/*) must be in connect-src or the browser blocks them —
+//   which is exactly why managed mode broke in the packaged app once the renderer started calling
+//   the backend (dev works because Vite serves with no CSP).
+const backendOrigin = process.env.MOCKMATE_API_BASE || null
+// Duo (LiveKit) connects a WebSocket to the room's signaling URL. Allow LiveKit Cloud (wss) + the
+// configured LIVEKIT_URL origin, else the packaged app's CSP blocks the room from ever connecting.
+let livekitOrigin = null
+try { if (process.env.LIVEKIT_URL) livekitOrigin = new URL(process.env.LIVEKIT_URL).origin } catch {}
 app.use(helmet({
   contentSecurityPolicy: {
     useDefaults: true,
@@ -44,7 +54,16 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'blob:'],
-      connectSrc: ["'self'", 'wss://api.deepgram.com', 'https://*.sentry.io', 'https://*.ingest.sentry.io', 'https://*.ingest.us.sentry.io'],
+      connectSrc: [
+        "'self'",
+        // Local auth/managed backend fork — any loopback port (default :4000, configurable).
+        'http://localhost:*', 'http://127.0.0.1:*',
+        // Hosted backend when MOCKMATE_API_BASE points at one (e.g. https://api.mockmate.app).
+        ...(backendOrigin ? [backendOrigin] : []),
+        'wss://api.deepgram.com', 'https://*.sentry.io', 'https://*.ingest.sentry.io', 'https://*.ingest.us.sentry.io',
+        // Duo rooms (LiveKit) — signaling WebSocket + media.
+        'wss://*.livekit.cloud', 'https://*.livekit.cloud', ...(livekitOrigin ? [livekitOrigin] : []),
+      ],
       workerSrc: ["'self'", 'blob:'],
       upgradeInsecureRequests: null,
     },
@@ -84,6 +103,8 @@ post('/api/jobs', findJobs)
 post('/api/ats-score', atsScore)
 post('/api/tailor-resume', tailorResume)
 post('/api/referral', referralMessage)
+post('/api/token', mintToken)   // LiveKit room token for Duo (501 until LIVEKIT_* is configured)
+post('/api/embed', async b => ({ vectors: await embed(b.input || []) }))   // document RAG embeddings
 
 // Server-Sent Events: stream the spoken answer token-by-token for <1s time-to-first-word.
 app.post('/api/hint-stream', async (req, res) => {

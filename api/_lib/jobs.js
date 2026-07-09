@@ -184,7 +184,7 @@ function rankHeuristic(jobs, resume, targetRole, max, tokens) {
 }
 
 // LLM ranker — scores each posting 0-100 against the resume with a reason + gap.
-async function rankWithLLM(jobs, resume, targetRole, location, provider, max) {
+async function rankWithLLM(jobs, resume, targetRole, location, provider, max, yearsExp = '') {
   const list = jobs.map((j, i) =>
     `[${i}] ${j.title} — ${j.company} (${j.location})${j.tags.length ? ` | tags: ${j.tags.join(', ')}` : ''}\n${j.snippet.slice(0, 400)}`
   ).join('\n\n')
@@ -194,10 +194,12 @@ async function rankWithLLM(jobs, resume, targetRole, location, provider, max) {
     + 'Be honest — a generic title match with missing core skills is a low score. '
     + (targetRole ? 'The TARGET ROLE is a HARD filter: a posting in a DIFFERENT discipline than the target — e.g. an AI/ML, Architect, or Data role when the target is a Test/QA Engineer — must score BELOW 40 even if some skills overlap. Only roles in the same job family as the target should score high. ' : '')
     + (location ? `The candidate is based in "${location}". A remote posting region-locked to a DIFFERENT region (not worldwide/anywhere and not open to the candidate's region) must score BELOW 40 — they cannot take it. Worldwide/anywhere or same-region roles are fine. ` : '')
+    + (yearsExp ? `The candidate has ${yearsExp} of experience. SENIORITY is a HARD filter: a posting clearly targeting a very different level (e.g. an entry/junior/intern role for a senior candidate, or a staff/principal/lead role for someone with little experience) must score BELOW 40. Match the seniority band, not just the discipline. ` : '')
     + 'Return ONLY JSON: {"ranked":[{"index":<number>,"score":<0-100>,"reason":"<=18 words why it fits","gaps":"<=12 words main gap or empty"}]}. '
     + `Include only jobs scoring >= 50, best first, at most ${max}.`
 
   const user = `TARGET ROLE: ${targetRole || '(not specified — infer from resume)'}\n`
+    + `CANDIDATE EXPERIENCE: ${yearsExp || '(not specified)'}\n`
     + `CANDIDATE LOCATION: ${location || '(not specified)'}\n\n`
     + `RESUME:\n${String(resume).slice(0, 6000)}\n\n`
     + `JOB POSTINGS (rank these by index):\n${list}`
@@ -214,7 +216,7 @@ async function rankWithLLM(jobs, resume, targetRole, location, provider, max) {
     .slice(0, max)
 }
 
-export async function findJobs({ resume = '', targetRole = '', query = '', location = '', max = 40 } = {}) {
+export async function findJobs({ resume = '', targetRole = '', query = '', location = '', yearsExp = '', max = 40 } = {}) {
   if (!resume.trim() && !targetRole.trim() && !query.trim()) {
     const e = new Error('Add your resume (or a target role) first — Solo Practice → setup is where you paste it.')
     e.status = 400; throw e
@@ -268,7 +270,7 @@ export async function findJobs({ resume = '', targetRole = '', query = '', locat
   const providers = availableProviders()
   if (providers.length) {
     try {
-      const ranked = await rankWithLLM(pool, resume, targetRole, location, providers[0].id, max)
+      const ranked = await rankWithLLM(pool, resume, targetRole, location, providers[0].id, max, yearsExp)
       if (ranked.length) return { search, jobs: ranked, ranker: 'ai', note, localEnabled }
     } catch { /* fall through to heuristic so the feature never hard-fails */ }
   }

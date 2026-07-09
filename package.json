@@ -1,6 +1,6 @@
 {
   "name": "mockmate",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "type": "module",
   "main": "electron/main.cjs",
   "description": "Real-Time AI Interview Companion — floats over Zoom/Teams/Meet, invisible to screen capture",
@@ -10,14 +10,17 @@
     "node": ">=18"
   },
   "scripts": {
-    "dev": "concurrently \"PORT=3002 node server.js\" \"vite\"",
+    "dev": "concurrently \"node server.js\" \"vite\"",
     "build": "vite build",
-    "electron:dev": "concurrently -k \"PORT=3002 node server.js\" \"vite\" \"wait-on http://localhost:5174 && electron .\"",
-    "electron:dev:nosandbox": "concurrently -k \"PORT=3002 node server.js\" \"vite\" \"wait-on http://localhost:5174 && electron . --no-sandbox\"",
+    "electron:dev": "concurrently -k \"node server.js\" \"vite\" \"wait-on http://localhost:5174 && electron .\"",
+    "electron:dev:nosandbox": "concurrently -k \"node server.js\" \"vite\" \"wait-on http://localhost:5174 && electron . --no-sandbox\"",
     "electron:win": "vite build && electron-builder --win",
     "electron:build": "vite build && electron-builder",
     "electron:build:win": "vite build && electron-builder --win",
     "server": "node server.js",
+    "smoke": "node scripts/smoke.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "verify": "node scripts/doctor.mjs && vite build && vitest run",
     "vite": "vite",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -123,6 +126,10 @@
     }
   },
   "dependencies": {
+    "@livekit/components-react": "^2.9.9",
+    "@livekit/components-styles": "^1.1.6",
+    "livekit-client": "^2.9.9",
+    "livekit-server-sdk": "^2.9.0",
     "@sentry/electron": "^7.14.0",
     "@sentry/node": "^10.60.0",
     "bcryptjs": "^2.4.3",

@@ -5,6 +5,10 @@ import { loadProfile, saveProfile } from './lib/profile'
 import { scoreColor } from './lib/ui'
 import { loadSavedJobs, saveJob, removeSavedJob, savedKeySet, savedKeyOf, SAVED_MAX } from './savedJobs'
 
+// Session-level cache of the last search (survives the view being unmounted/remounted). Keyed on the
+// inputs so it refetches only when the resume/role/location actually change — not on every reopen.
+let jobsCache = null   // { key, result }
+
 // "today" / "3d ago" — relative posting age.
 function ago(ts) {
   if (!ts) return ''
@@ -52,7 +56,9 @@ function JobCard({ j, saved, onToggleSave }) {
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 9 }}>
-        <a href={j.url} target="_blank" rel="noreferrer" style={applyLink}>Apply →</a>
+        {/^https?:\/\//.test(j.url || '')
+          ? <a href={j.url} target="_blank" rel="noreferrer" style={applyLink}>Apply →</a>
+          : <span style={{ ...applyLink, opacity: 0.5, cursor: 'default' }}>No link</span>}
         <button onClick={() => onToggleSave(j)} aria-pressed={saved}
           style={{ ...saveBtn, color: saved ? '#fbbf24' : '#64748b', borderColor: saved ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.12)' }}>
           {saved ? '★ Saved' : '☆ Save'}
@@ -75,9 +81,10 @@ export function NoKeysBanner({ onSettings, what }) {
 
 export default function Jobs({ onHome, noProviders, embedded }) {
   const [profile, setProfile] = useState(() => loadProfile())
+  const inputsKey = `${profile.resume || ''}|${profile.targetRole || ''}|${profile.location || ''}|${profile.yearsExp || ''}`
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [result, setResult] = useState(null)   // { search, jobs, ranker, note }
+  const [result, setResult] = useState(() => (jobsCache && jobsCache.key === inputsKey) ? jobsCache.result : null)   // restore last search
   const [visible, setVisible] = useState(8)     // how many results to show (Load more reveals more)
   const [sort, setSort] = useState('fit')       // fit | recent | salary
   const [tab, setTab] = useState('matches')     // matches | saved
@@ -93,11 +100,11 @@ export default function Jobs({ onHome, noProviders, embedded }) {
   }, [savedSet])
 
   const find = useCallback(async () => {
-    setError(''); setLoading(true); setResult(null); setVisible(8)
+    setError(''); setLoading(true)   // keep the prior list visible while loading (don't blank it)
     try {
       const res = await apiFetch('/api/jobs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resume: profile.resume || '', targetRole: profile.targetRole || '', location: profile.location || '' })
+        body: JSON.stringify({ resume: profile.resume || '', targetRole: profile.targetRole || '', location: profile.location || '', yearsExp: profile.yearsExp || '' })
       })
       // The server can answer with a non-JSON body (e.g. the rate-limiter's plain-text 429),
       // so parse defensively and surface the real status instead of a misleading "can't reach".
@@ -105,14 +112,14 @@ export default function Jobs({ onHome, noProviders, embedded }) {
       let d = null; try { d = JSON.parse(text) } catch {}
       if (!res.ok || d?.error) setError(d?.error || `Could not load jobs (${res.status})`)
       else if (!d) setError('Got an unexpected response from the job service. Please try again.')
-      else setResult(d)
+      else { setResult(d); setVisible(8); jobsCache = { key: inputsKey, result: d } }   // cache + reset pagination for the NEW search
     } catch (e) { setError(e.message || 'Could not reach the job service.') }
     finally { setLoading(false) }
-  }, [profile.resume, profile.targetRole, profile.location])
+  }, [inputsKey, profile.resume, profile.targetRole, profile.location, profile.yearsExp])
 
-  // Auto-run once on open if a resume is already saved. Jobs works WITHOUT an API key (keyless
-  // Remotive + keyword ranking); a key only upgrades ranking to AI — so this never needs a key gate.
-  useEffect(() => { if (hasResume) find() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Auto-run ONLY if we have a resume and nothing is already cached/restored — so reopening the view
+  // (or navigating back) doesn't re-hit the API, blank the list, and reset sort/scroll every time.
+  useEffect(() => { if (hasResume && !result) find() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ padding: embedded ? 0 : '12px 14px 16px' }}>

@@ -12,7 +12,7 @@ import { Field, FormError, PrimaryButton, TextLink } from './ui'
 //   onSubmit({ email, password })  async — resolves on success, throws Error(msg)
 //   onSwitchToSignup()             go to the Signup screen
 //   onForgot()                     "Forgot password?" (Phase 2; may be undefined)
-export default function Login({ onSubmit, onSwitchToSignup, onForgot }) {
+export default function Login({ onSubmit, onSwitchToSignup, onForgot, onGuest }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [show, setShow] = useState(false)
@@ -84,6 +84,12 @@ export default function Login({ onSubmit, onSwitchToSignup, onForgot }) {
         New to MockMate?{' '}
         <TextLink strong onClick={onSwitchToSignup}>Create an account</TextLink>
       </div>
+
+      {onGuest && (
+        <div style={{ textAlign: 'center', marginTop: 12 }}>
+          <TextLink onClick={onGuest}>Try it without an account →</TextLink>
+        </div>
+      )}
     </AuthShell>
   )
 }

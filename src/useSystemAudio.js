@@ -179,10 +179,12 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
       tokenRes = await r.json().catch(() => null)
     } catch (e) { return scheduleReconnect('token fetch failed') }
     if (!tokenRes?.access_token) {
-      // 401/403 = bad/missing key (config error) → stop, retrying won't help. Anything else
-      // (5xx grant blip, 429, transient) → reconnect: over a 60-90min session tokens are
-      // re-minted on every reconnect, so one transient failure must NOT kill the interview.
-      if (tokenStatus === 401 || tokenStatus === 403) return fail(tokenRes?.error || 'Deepgram auth failed — check your API key')
+      // 401/403 = bad/missing key (config error) → stop, retrying won't help.
+      // 402/429 = over the managed monthly cap → also permanent for this period; reconnecting
+      // would loop forever and silently hang Live. Surface the server's message instead.
+      // Anything else (5xx grant blip, transient) → reconnect: over a 60-90min session tokens
+      // are re-minted on every reconnect, so one transient failure must NOT kill the interview.
+      if ([401, 402, 403, 429].includes(tokenStatus)) return fail(tokenRes?.error || 'Deepgram auth failed — check your API key')
       return scheduleReconnect(`token grant ${tokenStatus || 'error'}`)
     }
     if (userStop.current) return

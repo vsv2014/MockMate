@@ -76,7 +76,7 @@ const TIPS_BY_TYPE = {
   Mixed: ['Structure the answer before you dive in', 'Be specific — numbers and examples land', 'Pause to think; silence is fine'],
 }
 
-export default function Solo({ onHome }) {
+export default function Solo({ onHome, noProviders }) {
   const [phase, setPhase] = useState('setup')   // setup | live | report
   const [profile, setProfile] = useState(loadProfile())
   const [interviewType, setInterviewType] = useState(() => loadProfile().interviewType || 'Technical')
@@ -266,6 +266,12 @@ export default function Solo({ onHome }) {
         <div style={{ fontSize: 13, color: T.text2, marginTop: 3 }}>Set the scene, then step into a full interview with an AI interviewer. It speaks, you answer out loud (or type), and it probes deeper — just like the real thing.</div>
       </div>
 
+      {noProviders && (
+        <div style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fca5a5' }}>
+          ⚠ No AI configured — the interviewer needs a model to run. Add an AI key in <strong>Settings</strong> (or switch to MockMate AI) before starting.
+        </div>
+      )}
+
       <Section title="Interview">
         <div>
           <Label>Role</Label>
@@ -385,12 +391,14 @@ export default function Solo({ onHome }) {
             </div>
           </div>
 
-          {/* Answer input */}
+          {/* Answer input — value is ONLY `answer`; interim is shown separately so editing mid-
+              dictation can't bake the interim words in (which duplicated them on the next result). */}
           <textarea rows={3} style={{ ...textInput, resize: 'none', flexShrink: 0 }}
             placeholder={speech.active ? 'Listening… speak your answer' : canSpeak ? 'Speak, or type your answer here' : 'Type your answer here, then Send'}
-            value={answer + (speech.interim ? ' ' + speech.interim : '')}
+            value={answer}
             onChange={e => setAnswer(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }} />
+          {speech.interim && <div style={{ fontSize: 12, color: T.text3, fontStyle: 'italic', flexShrink: 0, marginTop: -4 }}>{speech.interim}…</div>}
 
           {/* Controls */}
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>

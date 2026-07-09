@@ -40,6 +40,7 @@ export default function Account({ auth, onManageKeys }) {
   }, [auth])
 
   async function signOut() {
+    if (!window.confirm('Sign out of MockMate?')) return
     setSigningOut(true)
     try { await auth?.logout?.() } catch { setSigningOut(false) }
   }
