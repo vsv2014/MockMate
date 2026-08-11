@@ -7,12 +7,14 @@ here are **infra/signing**, not code (tests + reviews pass while an update silen
 
 | Platform | Auto-update on existing installs? | Why |
 |---|---|---|
-| **Windows** | ✅ Yes — silent background, installs on next launch | NSIS + `latest.yml` + `.blockmap`; works unsigned |
+| **Windows** | ✅ Yes — silent background, installs on next launch | NSIS + `latest.yml` + `.blockmap`; auto-update works unsigned, but **Smart App Control / SmartScreen block unsigned install+uninstall** until `WIN_CSC_*` secrets are set |
 | **Linux** | ✅ Yes (AppImage) | `latest-linux.yml` |
 | **macOS** | ❌ **No — users must manually re-download the `.dmg`** | Squirrel.Mac **refuses unsigned updates**; needs Apple Developer ID signing + notarization |
 
 > Do **not** tell macOS users it auto-updates until the Apple secrets below are set. The README and
 > landing page are written to reflect "Mac = manual" — keep them honest.
+>
+> Do **not** tell Windows users SmartScreen/SAC is gone until `WIN_CSC_LINK` is set — see [`SIGNING.md`](../SIGNING.md).
 
 ## Release steps
 
@@ -32,8 +34,11 @@ here are **infra/signing**, not code (tests + reviews pass while an update silen
    git push origin v1.3.0
    ```
    (Or run the workflow manually via **Actions → Release → Run workflow** and enter the tag.)
-5. CI builds Windows/Linux (always) + macOS (unsigned unless Apple secrets exist) and uploads the
-   installers **and the `latest*.yml` update feeds** to a public GitHub Release via softprops.
+5. CI builds Windows/Linux/macOS and uploads the installers **and the `latest*.yml` update feeds**
+   to a public GitHub Release via softprops. Signing is **optional per platform**:
+   - Windows signs when `WIN_CSC_LINK` + `WIN_CSC_KEY_PASSWORD` exist
+   - macOS signs + notarizes when `MAC_CSC_*` + `APPLE_*` exist
+   - Otherwise that platform still ships, unsigned
 
 ## Verify after the release
 
@@ -43,9 +48,18 @@ here are **infra/signing**, not code (tests + reviews pass while an update silen
 - Sanity-check auto-update on a real Windows install: open an older version, wait/relaunch, confirm
   it moves to the new version. (`%APPDATA%/MockMate/logs` or console shows `[updater] ready`.)
 
-## Enabling macOS auto-update later (one-time)
+## Enabling code signing (one-time)
 
-CI already auto-signs + notarizes **when these repo secrets exist** (no code change needed):
+Full steps: [`SIGNING.md`](../SIGNING.md). CI already wires these secrets (no workflow edit needed):
+
+### Windows (Smart App Control / SmartScreen / uninstall publisher)
+
+| Secret | What |
+|---|---|
+| `WIN_CSC_LINK` | Authenticode cert (`.pfx` / `.p12`) base64-encoded |
+| `WIN_CSC_KEY_PASSWORD` | password for that PKCS#12 |
+
+### macOS (Gatekeeper + auto-update)
 
 | Secret | What |
 |---|---|
@@ -55,9 +69,9 @@ CI already auto-signs + notarizes **when these repo secrets exist** (no code cha
 | `APPLE_APP_SPECIFIC_PASSWORD` | app-specific password (appleid.apple.com) |
 | `APPLE_TEAM_ID` | 10-char Team ID |
 
-Requires the **Apple Developer Program ($99/yr)**. Once set, the next tagged release produces a
-signed + notarized DMG/ZIP and macOS installs auto-update like Windows. Then update the README +
-landing page to say macOS auto-updates.
+Requires the **Apple Developer Program ($99/yr)** for Mac. Once Mac secrets are set, the next tagged
+release produces a signed + notarized DMG/ZIP and macOS installs auto-update like Windows — then
+update the README + landing page to say macOS auto-updates.
 
 ## Things that silently break updates (the checklist that matters)
 
@@ -65,5 +79,6 @@ landing page to say macOS auto-updates.
 - ❌ `latest*.yml` missing from the Release assets → clients can't see the new version.
 - ❌ Release left as **draft** → electron-updater can't read it.
 - ❌ macOS shipped unsigned but advertised as auto-updating → Mac users stuck on old version, silently.
+- ❌ Windows shipped unsigned while promising no SmartScreen/SAC friction → uninstall/install blocked on locked-down PCs.
 - ❌ `build.publish` owner/repo not matching the actual repo → updater 404s.
 - ❌ A committed `.env` → leaks keys **and** gets bundled. `.gitignore` covers it; double-check `git status`.

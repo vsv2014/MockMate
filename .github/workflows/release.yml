@@ -1,72 +1,84 @@
-  name: Build & Release MockMate
+name: Build & Release MockMate
 
-  on:
-    push:
-      tags:
-        - 'v*.*.*'
-    workflow_dispatch:
-      inputs:
-        tag:
-          description: 'Release tag to create (e.g. v1.0.1)'
-          required: true
-          default: 'v1.0.1'
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create (e.g. v1.0.1)'
+        required: true
+        default: 'v1.0.1'
 
-  permissions:
-    contents: write
+permissions:
+  contents: write
 
-  jobs:
-    build:
-      strategy:
-        matrix:
-          include:
-            - os: ubuntu-latest
-              platform: linux
-              artifact: |
-                release/*.AppImage
-                release/*.yml
-            - os: windows-latest
-              platform: win
-              artifact: |
-                release/*.exe
-                release/*.yml
-                release/*.blockmap
-            - os: macos-latest
-              platform: mac
-              artifact: |
-                release/*.dmg
-                release/*.yml
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            artifact: |
+              release/*.AppImage
+              release/*.yml
+          - os: windows-latest
+            platform: win
+            artifact: |
+              release/*.exe
+              release/*.yml
+              release/*.blockmap
+          - os: macos-latest
+            platform: mac
+            artifact: |
+              release/*.dmg
+              release/*.yml
 
-      runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
 
-      steps:
-        - name: Checkout code
-          uses: actions/checkout@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-        - name: Setup Node.js 20
-          uses: actions/setup-node@v4
-          with:
-            node-version: 20
-            cache: npm
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
 
-        - name: Install dependencies
-          run: npm install
+      - name: Install dependencies
+        run: npm install
 
-        - name: Build frontend (Vite)
-          run: npm run build
+      - name: Build frontend (Vite)
+        run: npm run build
 
-        - name: Build Electron installer (${{ matrix.platform }})
-          run: npx electron-builder --${{ matrix.platform }} --publish never
-          env:
-            CSC_IDENTITY_AUTO_DISCOVERY: false
+      # Signing is optional and per-platform:
+      # - Windows: WIN_CSC_LINK + WIN_CSC_KEY_PASSWORD (Authenticode .pfx/.p12, base64)
+      # - macOS:   MAC_CSC_LINK + MAC_CSC_KEY_PASSWORD + APPLE_* (see SIGNING.md)
+      # If secrets are missing, the build still ships — unsigned (SmartScreen / Gatekeeper warnings).
+      - name: Build Electron installer (${{ matrix.platform }})
+        run: npx electron-builder --${{ matrix.platform }} --publish never
+        env:
+          # Prefer explicit certs from secrets; don't hunt the runner keychain/store.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-        - name: Upload installers to GitHub Release
-          uses: softprops/action-gh-release@v2
-          with:
-            draft: false
-            prerelease: false
-            generate_release_notes: true
-            tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-            files: |
-              ${{ matrix.artifact }}
-          env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload installers to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            ${{ matrix.artifact }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -37,8 +37,11 @@ the next time you reopen MockMate — no re-download needed. **macOS updates are
 > (or `xattr -dr com.apple.quarantine /Applications/MockMate.app`). New versions are a manual
 > re-download for now; auto-update on macOS needs Apple Developer signing — see [`SIGNING.md`](SIGNING.md).
 >
-> **Windows:** the installer is **not** code-signed, so Windows SmartScreen may show
-> _"Windows protected your PC"_ on first run — click **More info → Run anyway**.
+> **Windows:** until Authenticode secrets (`WIN_CSC_*`) are configured — see [`SIGNING.md`](SIGNING.md) —
+> the installer is **not** code-signed. SmartScreen may show _"Windows protected your PC"_
+> (**More info → Run anyway**), and **Smart App Control** can also block install/uninstall because
+> Windows cannot verify the publisher. **Modify** in Installed apps stays greyed out on purpose
+> (NSIS has no MSI-style Modify).
 
 > **Launch MockMate _before_ you join the call.** It appears in the top-right corner; press `Alt+H` to hide/show.
 

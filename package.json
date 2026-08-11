@@ -65,13 +65,25 @@
         }
       ],
       "icon": "assets/icon.png",
-      "artifactName": "MockMate-Setup-${version}.${ext}"
+      "artifactName": "MockMate-Setup-${version}.${ext}",
+      "publisherName": "MockMate",
+      "signingHashAlgorithms": [
+        "sha256"
+      ],
+      "signAndEditExecutable": true,
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
       "createDesktopShortcut": true,
-      "shortcutName": "MockMate"
+      "createStartMenuShortcut": true,
+      "shortcutName": "MockMate",
+      "uninstallDisplayName": "MockMate ${version}",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "include": "build/installer.nsh"
     },
     "publish": [
       {

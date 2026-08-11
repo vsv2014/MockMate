@@ -1,18 +1,89 @@
-# macOS Code Signing & Notarization
+# Code Signing (Windows + macOS)
 
-The "Apple could not verify MockMate is free of malware" Gatekeeper block happens
-because the DMG was shipped **unsigned and un-notarized**. This is the one-time setup
-to fix it permanently so users can open MockMate with no warning.
+Unsigned builds trigger OS trust walls:
 
-You only need to do this once. After the secrets are in GitHub, every tagged release
-(`vX.Y.Z`) is automatically signed and notarized by CI.
+| Platform | What users see | Fix |
+|---|---|---|
+| **Windows** | SmartScreen / **Smart App Control** block install or **uninstall** ("could not verify its publisher") | Authenticode-sign the NSIS setup + `MockMate.exe` + uninstaller |
+| **macOS** | Gatekeeper: "Apple could not verify MockMate is free of malware" | Developer ID sign + notarize |
 
-## Prerequisites
+Do the setup once. After the secrets are in GitHub, every tagged release (`vX.Y.Z`) is signed by CI when the matching secrets exist. Missing secrets → build still succeeds, but ships **unsigned**.
+
+---
+
+## Windows Authenticode (fixes Smart App Control / SmartScreen)
+
+### Prerequisites
+
+1. An **Authenticode code-signing certificate** as a `.pfx` / `.p12`
+   - **OV** works; **EV** builds SmartScreen reputation much faster.
+   - Buy from a public CA (DigiCert, Sectigo, SSL.com, etc.). Azure Key Vault / cloud HSM certs also work if you can export or use a supported signing path.
+2. The cert subject / organization name should match what you want users to see as publisher (we set `publisherName: "MockMate"` in `package.json` — update both when you have a legal entity name on the cert).
+
+### Step 1 — Base64-encode the `.pfx`
+
+```powershell
+# PowerShell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes(".\codesign.pfx")) | Set-Clipboard
+```
+
+```bash
+# macOS / Linux
+base64 -i codesign.pfx | pbcopy   # or: base64 codesign.pfx
+```
+
+### Step 2 — Add GitHub repository secrets
+
+Repo → **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret name            | Value                                      |
+| ---------------------- | ------------------------------------------ |
+| `WIN_CSC_LINK`         | Base64 of the `.pfx` / `.p12`              |
+| `WIN_CSC_KEY_PASSWORD` | Password for that PKCS#12 file             |
+
+CI (`.github/workflows/release.yml`) already passes these into `electron-builder` on the Windows job. No workflow edit needed after the secrets exist.
+
+### Step 3 — Release
+
+```bash
+git tag v1.4.5
+git push origin v1.4.5
+```
+
+The Windows job will Authenticode-sign `MockMate-Setup-*.exe`, the app executable, and the bundled uninstaller. After that:
+
+- SmartScreen / Smart App Control can **verify the publisher**
+- Uninstall from **Settings → Installed apps** works without the "publisher" block
+- First-run "Windows protected your PC" warnings drop off as reputation builds (faster with EV)
+
+### Verifying a Windows build
+
+```powershell
+Get-AuthenticodeSignature .\MockMate-Setup-1.4.5.exe | Format-List Status, SignerCertificate, StatusMessage
+# Status should be Valid
+```
+
+### About "Modify" being greyed out
+
+That is **expected** for our NSIS installer. Windows Installer **Modify/Repair** is an MSI concept; electron-builder NSIS registers `NoModify=1`. Reinstall / uninstall + install is the supported path. Signing does not enable Modify — and we intentionally leave it disabled so Settings doesn't offer a broken Modify action.
+
+### Stuck unsigned uninstall (dev machine)
+
+If an old unsigned install is blocked by Smart App Control:
+
+1. **Settings → Privacy & security → Windows Security → App & browser control → Smart App Control** → Off (temporarily), then Uninstall, then turn SAC back on if desired.
+2. Or run `scripts/force-uninstall-windows.ps1` (removes the app folder + ARP registry entry without running the unsigned uninstaller).
+
+---
+
+## macOS Developer ID + notarization
+
+### Prerequisites
 
 1. **Apple Developer Program membership** — $99/year.
    Enroll at https://developer.apple.com/programs/ (individual or organization).
 
-## Step 1 — Create a "Developer ID Application" certificate
+### Step 1 — Create a "Developer ID Application" certificate
 
 > Do this on a Mac (Keychain Access is required to export the `.p12`).
 
@@ -24,26 +95,23 @@ You only need to do this once. After the secrets are in GitHub, every tagged rel
 4. In **Keychain Access**, find *"Developer ID Application: <Your Name> (TEAMID)"*,
    right-click → **Export** → save as `cert.p12` and set an export password.
 
-## Step 2 — Base64-encode the certificate
+### Step 2 — Base64-encode the certificate
 
 ```bash
 base64 -i cert.p12 | pbcopy   # copies the base64 blob to your clipboard
 ```
 
-## Step 3 — Create an app-specific password for notarization
+### Step 3 — Create an app-specific password for notarization
 
 1. Sign in at https://account.apple.com → **Sign-In and Security → App-Specific Passwords**.
 2. Generate one (label it e.g. "MockMate notarization"). Copy the value.
 
-## Step 4 — Find your Team ID
+### Step 4 — Find your Team ID
 
 It's the 10-character code shown at https://developer.apple.com/account
 (top-right, "Membership details") — also the `(TEAMID)` in your certificate name.
 
-## Step 5 — Add the GitHub repository secrets
-
-Repo → **Settings → Secrets and variables → Actions → New repository secret**.
-Add all five:
+### Step 5 — Add the GitHub repository secrets
 
 | Secret name                   | Value                                                        |
 | ----------------------------- | ------------------------------------------------------------ |
@@ -53,41 +121,28 @@ Add all five:
 | `APPLE_APP_SPECIFIC_PASSWORD` | The app-specific password from Step 3                        |
 | `APPLE_TEAM_ID`               | Your 10-character Team ID from Step 4                        |
 
-## Step 6 — Release
-
-Push a version tag (or run the workflow manually):
+### Step 6 — Release
 
 ```bash
-git tag v1.3.0
-git push origin v1.3.0
+git tag v1.4.5
+git push origin v1.4.5
 ```
 
-CI will build, **sign**, and **notarize** the macOS DMG. The notarization step adds a
-few minutes (Apple's service has to scan the build). Once done, the published DMG opens
-with no Gatekeeper warning.
+CI will build, **sign**, and **notarize** the macOS DMG when those secrets exist.
 
-> **Signing is conditional.** If the `MAC_CSC_LINK` + `APPLE_ID` secrets are **not** set,
-> the macOS build still succeeds — it just ships **unsigned** (users clear it once with
-> `xattr -dr com.apple.quarantine /Applications/MockMate.app`).
->
-> **Current CI note:** `.github/workflows/release.yml` sets `CSC_IDENTITY_AUTO_DISCOVERY: false`,
-> so builds stay unsigned until you (1) add the secrets above and (2) remove that env override
-> (or set CSC_* from secrets). Signing does **not** turn on from `package.json` alone.
+> **Signing is conditional.** If the platform secrets are **not** set, that platform still builds — it just ships **unsigned**.
+> (`CSC_IDENTITY_AUTO_DISCOVERY` stays `false` in CI; signing turns on only when `WIN_CSC_*` / `MAC_CSC_*` secrets are present.)
 
-## Verifying locally (optional, on a Mac)
+### Verifying locally (optional, on a Mac)
 
 ```bash
-# After downloading the released DMG and copying MockMate.app to /Applications:
 codesign --verify --deep --strict --verbose=2 /Applications/MockMate.app
-spctl --assess --type execute --verbose /Applications/MockMate.app   # should say: accepted, source=Notarized Developer ID
-xcrun stapler validate /Applications/MockMate.app                    # should say: validated
+spctl --assess --type execute --verbose /Applications/MockMate.app   # accepted, Notarized Developer ID
+xcrun stapler validate /Applications/MockMate.app                    # validated
 ```
 
-## Notes
+### Notes
 
-- The hardened runtime entitlements live in `build/entitlements.mac.plist`
-  (JIT for Electron + microphone access for the interview companion).
-- `notarize: true` in `package.json` uses Apple's modern `notarytool` (built into
-  electron-builder 24+). The legacy `altool` is not used.
-- Signing/notarization only runs on the macOS CI job; Windows and Linux builds are
-  unaffected.
+- Hardened runtime entitlements: `build/entitlements.mac.plist`
+- `notarize: true` in `package.json` uses Apple's `notarytool` (electron-builder 24+)
+- Windows and macOS use **different** secret prefixes (`WIN_CSC_*` vs `MAC_CSC_*`) so both can be configured at once
