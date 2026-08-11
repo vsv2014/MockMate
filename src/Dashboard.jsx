@@ -108,8 +108,8 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
           {isLinuxUA ? 'Stealth limited (Linux)' : 'Content protection on · Verify share preview'}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-          <TopBtn title="Dim / hide (Alt+H)" onClick={onStealth}>◐</TopBtn>
-          <TopBtn title="Minimize" onClick={onMinimize}>—</TopBtn>
+          <TopBtn title="Dim (does not close)" onClick={onStealth}>◐</TopBtn>
+          <TopBtn title="Hide to tray — click tray icon to restore" onClick={onMinimize}>—</TopBtn>
           <TopBtn title="Close" onClick={onClose} danger>✕</TopBtn>
         </div>
       </div>

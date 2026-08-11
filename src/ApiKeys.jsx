@@ -133,7 +133,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       <div style={card}>
         <KeyField name="Deepgram" hint="live transcription" added={dg}
           value={keyVals.DEEPGRAM_API_KEY} onChange={set('DEEPGRAM_API_KEY')}
-          note="Required for Live Interview. Needed to answer by voice in Solo. Free tier at" link={{ href: 'https://deepgram.com', label: 'deepgram.com' }} />
+          note="Required for Live Interview and Solo voice. Prefer a Project/Owner key (Member keys may fail token grant). Free tier at" link={{ href: 'https://console.deepgram.com', label: 'console.deepgram.com' }} />
         {mode === 'managed' && !dg && (
           <div role="status" style={{ fontSize: 11, color: '#fbbf24', lineHeight: 1.4 }}>Managed AI does not include voice — add a Deepgram key here (Live will not start without it).</div>
         )}

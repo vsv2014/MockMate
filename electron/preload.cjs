@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   getAudioSources: () => ipcRenderer.invoke('get-audio-sources'),
   windowDrag: (dx, dy) => ipcRenderer.send('window-drag', { dx, dy }),
-  windowResize: (w, h) => ipcRenderer.send('window-resize', { w, h }),
+  windowResize: (w, h, opts) => ipcRenderer.send('window-resize', { w, h, dx: opts?.dx || 0, dy: opts?.dy || 0 }),
   // 'app' = full windowed dashboard (large, centered); 'overlay' = compact floating panel.
   setWindowMode: mode => ipcRenderer.send('set-window-mode', mode),
   onScreenCaptured: cb => {
@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   hideWindow: () => ipcRenderer.send('hide-window'),
   setPin: on => ipcRenderer.send('set-pin', on),
+  getPin: () => ipcRenderer.invoke('get-pin'),
   setClickThrough: on => ipcRenderer.send('set-click-through', !!on),
   // Region-aware: when click-through is on, temporarily accept hits over interactive chrome.
   setIgnoreMouseEvents: (ignore, opts) => ipcRenderer.send('set-ignore-mouse-events', { ignore: !!ignore, forward: opts?.forward !== false }),

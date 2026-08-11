@@ -39,8 +39,24 @@ function ElectronShell({ auth }) {
   const [careerSeed, setCareerSeed] = useState(null)       // one-shot Jobs → Resume Studio handoff
   const [whatsNewSignal, setWhatsNewSignal] = useState(0)   // bump to re-open the What's New modal
   const [report, setReport] = useState(null)
-  const [panelSize, setPanelSize] = useState({ w: 420, h: 560 })
-  const [opacity, setOpacity] = useState(1)   // solid by default for readability; the slider can dim it
+  const [panelSize, setPanelSize] = useState(() => {
+    try {
+      const raw = localStorage.getItem('mm-overlay-size')
+      if (raw) {
+        const p = JSON.parse(raw)
+        if (p?.w >= 240 && p?.h >= 180) return { w: p.w, h: p.h }
+      }
+    } catch {}
+    // LockedIn-style: start as a compact glance HUD, not a dashboard panel.
+    return { w: 300, h: 360 }
+  })
+  const [opacity, setOpacity] = useState(() => {
+    try {
+      const v = parseFloat(localStorage.getItem('mm-overlay-opacity'))
+      if (Number.isFinite(v) && v >= 0.35 && v <= 1) return v
+    } catch {}
+    return 0.92
+  })   // slightly translucent by default (stealth apps expose a transparency slider)
   const [stealth, setStealth] = useState(false)
   const [clickThrough, setClickThrough] = useState(false)
   const [minimized, setMinimized] = useState(false)
@@ -79,12 +95,35 @@ function ElectronShell({ auth }) {
   const [openSession, setOpenSession] = useState(null)
   const refreshSessions = useCallback(() => setSessions(loadSessions()), [])
 
+  const [companionPhase, setCompanionPhase] = useState('setup')
+  const viewRef = useRef(view)
+  const companionPhaseRef = useRef(companionPhase)
+  const panelSizeRef = useRef(panelSize)
+  viewRef.current = view
+  companionPhaseRef.current = companionPhase
+  panelSizeRef.current = panelSize
+
   // Auto-detect meeting apps (Zoom, Teams, Meet) + coding platforms (LeetCode, etc.)
   useEffect(() => {
     const cleanups = []
     cleanups.push(window.electronAPI?.onMeetingDetected(active => setMeetingActive(active)))
     cleanups.push(window.electronAPI?.onCodingDetected?.(active => setCodingDetected(active)))
-    cleanups.push(window.electronAPI?.onShortcutStealth?.(() => setStealth(s => !s)))
+    // Alt+H from main: Live → collapse/expand on-screen pill (keep icon visible). Elsewhere → hide window.
+    cleanups.push(window.electronAPI?.onShortcutStealth?.(() => {
+      if (viewRef.current === 'companion' && companionPhaseRef.current === 'live') {
+        setClickThrough(false)
+        setMinimized(m => {
+          const next = !m
+          if (!next) {
+            const { w, h } = panelSizeRef.current || { w: 300, h: 360 }
+            queueMicrotask(() => window.electronAPI?.windowResize?.(w, h))
+          }
+          return next
+        })
+      } else {
+        window.electronAPI?.hideWindow?.()
+      }
+    }))
     // Browser mode: warn if screen capture is likely active (getDisplayMedia check)
     if (!window.electronAPI?.isElectron) {
       navigator.mediaDevices?.addEventListener?.('devicechange', () => setBrowserShareWarning(true))
@@ -126,10 +165,26 @@ function ElectronShell({ auth }) {
   useEffect(() => {
     const onMove = e => {
       if (!resizing.current) return
-      setPanelSize({
-        w: Math.max(360, resizeStart.current.w + e.clientX - resizeStart.current.x),
-        h: Math.max(200, resizeStart.current.h + e.clientY - resizeStart.current.y)
-      })
+      const start = resizeStart.current
+      const edge = start.edge || 'se'
+      const dw = e.screenX - start.x
+      const dh = e.screenY - start.y
+      const MIN_W = 240, MIN_H = 180
+      let newW = start.w
+      let newH = start.h
+      if (edge.includes('e')) newW = Math.max(MIN_W, start.w + dw)
+      if (edge.includes('w')) newW = Math.max(MIN_W, start.w - dw)
+      if (edge.includes('s')) newH = Math.max(MIN_H, start.h + dh)
+      if (edge.includes('n')) newH = Math.max(MIN_H, start.h - dh)
+
+      // Frame deltas so N/W resize moves the OS window instead of only growing SE.
+      const moveDx = edge.includes('w') ? (start._lastW - newW) : 0
+      const moveDy = edge.includes('n') ? (start._lastH - newH) : 0
+      start._lastW = newW
+      start._lastH = newH
+
+      setPanelSize({ w: newW, h: newH })
+      if (inElectron) window.electronAPI?.windowResize?.(newW, newH, { dx: moveDx, dy: moveDy })
     }
     const onUp = () => { resizing.current = false }
     // Alt+H in browser only (Electron handles it via global shortcut in main.cjs)
@@ -167,17 +222,56 @@ function ElectronShell({ auth }) {
     e.preventDefault()
   }
 
-  function startResize(e) {
+  function startResize(e, edge = 'se') {
     resizing.current = true
-    resizeStart.current = { x: e.clientX, y: e.clientY, w: panelSize.w, h: panelSize.h }
+    resizeStart.current = {
+      x: e.screenX, y: e.screenY,
+      w: panelSize.w, h: panelSize.h,
+      edge,
+      _lastW: panelSize.w, _lastH: panelSize.h,
+    }
     e.stopPropagation(); e.preventDefault()
+  }
+
+  function applySizePreset(preset) {
+    // Stealth-HUD sizes (LockedIn / Final Round class): small by default, expandable.
+    const sizes = { s: { w: 280, h: 320 }, m: { w: 320, h: 400 }, l: { w: 380, h: 520 } }
+    const next = sizes[preset] || sizes.s
+    setPanelSize(next)
+    try { localStorage.setItem('mm-overlay-size', JSON.stringify(next)) } catch {}
+    if (inElectron) window.electronAPI?.windowResize?.(next.w, next.h)
+  }
+
+  function setOverlayOpacity(v) {
+    const n = Math.min(1, Math.max(0.35, Number(v) || 0.92))
+    setOpacity(n)
+    try { localStorage.setItem('mm-overlay-opacity', String(n)) } catch {}
   }
 
   function goHome() { setReport(null); setOpenSession(null); refreshSessions(); setView('home') }
   function openHistory() { refreshSessions(); setOpenSession(null); setView('history') }
 
-  // Live sub-phase (setup | live | notes), reported by LiveCompanion — drives window sizing.
-  const [companionPhase, setCompanionPhase] = useState('setup')
+  // On Live start: restore last HUD size (compact), else default 300×360.
+  useEffect(() => {
+    if (view !== 'companion' || companionPhase !== 'live') return
+    let next = { w: 300, h: 360 }
+    try {
+      const raw = localStorage.getItem('mm-overlay-size')
+      if (raw) {
+        const p = JSON.parse(raw)
+        if (p?.w >= 240 && p?.h >= 180) next = { w: p.w, h: p.h }
+      }
+    } catch {}
+    setPanelSize(next)
+    if (inElectron) window.electronAPI?.windowResize?.(next.w, next.h)
+  }, [view, companionPhase])
+
+  // Persist manual edge-resizes so the next Live session opens at the same HUD size.
+  useEffect(() => {
+    if (view === 'companion' && companionPhase === 'live') {
+      try { localStorage.setItem('mm-overlay-size', JSON.stringify(panelSize)) } catch {}
+    }
+  }, [panelSize, view, companionPhase])
 
   // Resize the OS window: full dashboard for shell views + Live setup/feedback; compact
   // invisible overlay for the live interview itself; a tiny logo pill when minimized.
@@ -320,9 +414,21 @@ function ElectronShell({ auth }) {
   // Live Interview is the only view that renders as the compact floating overlay — everything
   // else lives in the dashboard shell (handled above).
   if (view === 'companion') return (
-    <LiveCompanion onHome={goHome} onPhaseChange={setCompanionPhase} panelSize={panelSize} stealth={stealth} opacity={opacity} onOpacity={setOpacity} minimized={minimized}
-      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
-      onResize={startResize} onDrag={startDrag}
+    <LiveCompanion onHome={goHome} onPhaseChange={setCompanionPhase} panelSize={panelSize} stealth={stealth} opacity={opacity} onOpacity={setOverlayOpacity} minimized={minimized}
+      onStealth={() => { setClickThrough(false); setMinimized(true) }}
+      onMinimize={() => {
+        setClickThrough(false)
+        setMinimized(m => {
+          const next = !m
+          if (!next && inElectron) {
+            // Expanding from pill — restore the user's HUD size (don't stay 72×72).
+            queueMicrotask(() => window.electronAPI?.windowResize?.(panelSize.w, panelSize.h))
+          }
+          return next
+        })
+      }}
+      clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
+      onResize={startResize} onDrag={startDrag} onSizePreset={applySizePreset}
       screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} onDismissScreen={() => setScreenAnalysis(null)}
       codingDetected={codingDetected} onCaptureScreen={() => window.electronAPI?.captureScreen?.()}
       onReanalyze={reanalyze}
@@ -607,7 +713,7 @@ function DocThreshold() {
   )
 }
 
-export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, onResize, onStealth, onMinimize, onClose, title, extra, actions, opacity = 0.95, autoHeight, clickThrough, onClickThrough, confirmClose }) {
+export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, onResize, onStealth, onMinimize, onClose, title, extra, actions, opacity = 0.95, onOpacity, autoHeight, clickThrough, onClickThrough, confirmClose, onSizePreset }) {
   const [confirming, setConfirming] = useState(false)
   const confirmTimer = useRef(null)
   const pillDragged = useRef(false)
@@ -690,19 +796,24 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
     confirmTimer.current = setTimeout(() => setConfirming(false), 3000)
   }
 
-  // Collapsed → a tiny logo pill (the whole window shrinks to ~76px via set-window-mode 'pill').
-  // Always clickable (even in click-through mode) so there's a one-click way back, and it stays
-  // content-protected — never fully disappears.
+  // Collapsed → on-screen logo pill (never a full close). Window stays visible & content-protected.
   if (minimized) return (
     <div id="mockmate-overlay" style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }}>
-      <button onMouseDown={startPillDrag} onClick={() => { if (!pillDragged.current) onMinimize() }} title="Click to expand · drag to move"
+      <button type="button" data-mm-hit="1"
+        onMouseDown={startPillDrag}
+        onClick={() => { if (!pillDragged.current) onMinimize?.() }}
+        title="MockMate — click to expand · drag to move"
         style={{
-          position: 'absolute', top: 8, left: 8, width: 60, height: 60, pointerEvents: 'all', cursor: 'grab',
-          background: 'rgba(8,9,14,0.96)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 16,
-          boxShadow: '0 10px 30px rgba(0,0,0,0.7)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
-          display: 'grid', placeItems: 'center', opacity: stealth ? 0.25 : 1, padding: 0,
+          position: 'absolute', top: 6, left: 6, width: 56, height: 56, pointerEvents: 'all', cursor: 'grab',
+          background: 'linear-gradient(145deg, #0f766e, #115e59)',
+          border: '2px solid rgba(45,212,191,0.65)', borderRadius: 16,
+          boxShadow: '0 8px 28px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.08)',
+          display: 'grid', placeItems: 'center', padding: 0,
         }}>
-        <img src="/icon.png" alt="MockMate" width={34} height={34} style={{ borderRadius: 9, display: 'block', pointerEvents: 'none' }} />
+        <img src="/icon.png" alt="" width={30} height={30}
+          style={{ borderRadius: 8, display: 'block', pointerEvents: 'none' }}
+          onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling && (e.currentTarget.nextSibling.style.display = 'grid') }} />
+        <span style={{ display: 'none', placeItems: 'center', width: 30, height: 30, borderRadius: 8, background: 'rgba(0,0,0,0.35)', color: '#5eead4', fontWeight: 800, fontSize: 16, fontFamily: T.font, pointerEvents: 'none' }}>M</span>
       </button>
     </div>
   )
@@ -711,12 +822,14 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
     <div id="mockmate-overlay" style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }}>
       <div style={{
         position: 'absolute', left: 0, top: 0,
-        width: panelSize.w,
-        height: (minimized || autoHeight) ? 'auto' : panelSize.h,
-        background: 'rgba(8,9,14,0.96)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 14,
-        boxShadow: '0 16px 64px rgba(0,0,0,0.85)',
+        // Electron: fill the OS window so edge-resize matches the real window chrome.
+        // Browser: keep the floating CSS panel size.
+        width: inElectron ? '100%' : panelSize.w,
+        height: (minimized || autoHeight) ? 'auto' : (inElectron ? '100%' : panelSize.h),
+        background: 'rgba(8,9,14,0.88)',
+        border: '1px solid rgba(255,255,255,0.10)',
+        borderRadius: 12,
+        boxShadow: '0 10px 36px rgba(0,0,0,0.55)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
         display: 'flex', flexDirection: 'column',
@@ -726,7 +839,8 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         pointerEvents: clickThrough ? 'none' : 'all',
         fontFamily: 'system-ui, sans-serif',
         color: T.text1,
-        userSelect: 'none'
+        userSelect: 'none',
+        boxSizing: 'border-box',
       }}>
         {/* Header — status/title on the left, a tidy icon toolbar on the right */}
         <div onMouseDown={onDrag} style={{
@@ -739,10 +853,31 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
             : <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.88)', fontWeight: 600, fontFamily: T.font }}>{title || 'MockMate'}</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }} onMouseDown={e => e.stopPropagation()} data-mm-hit="1">
             {actions}
+            {onSizePreset && (
+              <>
+                <button type="button" onClick={() => onSizePreset('s')} title="HUD · compact (LockedIn-style)"
+                  style={{ height: 28, minWidth: 28, padding: '0 6px', display: 'grid', placeItems: 'center', background: panelSize?.w <= 300 ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>S</button>
+                <button type="button" onClick={() => onSizePreset('m')} title="Medium HUD"
+                  style={{ height: 28, minWidth: 28, padding: '0 6px', display: 'grid', placeItems: 'center', background: panelSize?.w > 300 && panelSize?.w < 360 ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>M</button>
+                <button type="button" onClick={() => onSizePreset('l')} title="Large HUD"
+                  style={{ height: 28, minWidth: 28, padding: '0 6px', display: 'grid', placeItems: 'center', background: panelSize?.w >= 360 ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>L</button>
+              </>
+            )}
+            {typeof onOpacity === 'function' && (
+              <label title="Transparency (like LockedIn) — lower = more see-through"
+                style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 4px', cursor: 'pointer' }}
+                onMouseDown={e => e.stopPropagation()}>
+                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>◐</span>
+                <input type="range" min="0.35" max="1" step="0.05" value={opacity}
+                  onChange={e => onOpacity(e.target.value)}
+                  style={{ width: 56, accentColor: '#2dd4bf', cursor: 'pointer' }}
+                  aria-label="Overlay transparency" />
+              </label>
+            )}
             {inElectron && (
               <button onClick={togglePin} onMouseDown={e => e.stopPropagation()}
-                title={pinned ? 'Pinned above full-screen apps — click to unpin' : 'Pin above full-screen apps (Zoom/Meet)'}
-                aria-label={pinned ? 'Unpin overlay from above full-screen apps' : 'Pin overlay above full-screen apps'} aria-pressed={pinned}
+                title={pinned ? 'Pinned — stays open when you switch to Zoom/Meet. Click to unpin (then switching away hides MockMate).' : 'Unpinned — hides when you click another window. Click to pin above Zoom/Meet.'}
+                aria-label={pinned ? 'Unpin — allow hide when switching windows' : 'Pin — keep overlay when switching windows'} aria-pressed={pinned}
                 style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: pinned ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, opacity: pinned ? 1 : 0.6 }}>📌</button>
             )}
             {inElectron && onClickThrough && (
@@ -751,8 +886,8 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
                 aria-label={clickThrough ? 'Disable click-through' : 'Enable click-through'} aria-pressed={!!clickThrough}
                 style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: clickThrough ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 12, opacity: clickThrough ? 1 : 0.6, fontWeight: 700 }}>🖱️</button>
             )}
-            <IconBtn icon="eye" onClick={onStealth} title={inElectron ? 'Hide overlay  (Alt+H)' : 'Dim  (Alt+H)'} />
-            <IconBtn icon={minimized ? 'expand' : 'minimize'} onClick={onMinimize} title={minimized ? 'Expand' : 'Minimize'} />
+            <IconBtn icon="eye" onClick={onStealth} title="Collapse to pill icon (stays on screen) · Alt+H" />
+            <IconBtn icon={minimized ? 'expand' : 'minimize'} onClick={onMinimize} title={minimized ? 'Expand overlay' : 'Collapse to pill icon'} />
             {confirming
               ? <button onClick={handleClose} onMouseDown={e => e.stopPropagation()} title="Confirm end"
                   style={{ height: 28, padding: '0 10px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>End?</button>
@@ -762,14 +897,27 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
 
         {!minimized && children}
 
-        {/* Resize handle */}
-        {!minimized && (
-          <div onMouseDown={onResize} style={{
-            position: 'absolute', bottom: 0, right: 0, width: 14, height: 14,
-            cursor: 'se-resize',
-            background: 'linear-gradient(135deg,transparent 50%,rgba(255,255,255,0.08) 50%)',
-            borderRadius: '0 0 12px 0'
-          }} />
+        {/* Full-perimeter resize — thick hit zones on every border + corner of the Electron window */}
+        {!minimized && onResize && (
+          <>
+            {[
+              { edge: 'n',  cursor: 'ns-resize', style: { top: 0, left: 14, right: 14, height: 10 } },
+              { edge: 's',  cursor: 'ns-resize', style: { bottom: 0, left: 14, right: 14, height: 10 } },
+              { edge: 'e',  cursor: 'ew-resize', style: { top: 14, right: 0, bottom: 14, width: 10 } },
+              { edge: 'w',  cursor: 'ew-resize', style: { top: 14, left: 0, bottom: 14, width: 10 } },
+              { edge: 'nw', cursor: 'nwse-resize', style: { top: 0, left: 0, width: 16, height: 16 } },
+              { edge: 'ne', cursor: 'nesw-resize', style: { top: 0, right: 0, width: 16, height: 16 } },
+              { edge: 'sw', cursor: 'nesw-resize', style: { bottom: 0, left: 0, width: 16, height: 16 } },
+              { edge: 'se', cursor: 'nwse-resize', style: { bottom: 0, right: 0, width: 18, height: 18, background: 'linear-gradient(135deg,transparent 50%,rgba(255,255,255,0.18) 50%)', borderRadius: '0 0 12px 0' } },
+            ].map(h => (
+              <div key={h.edge} data-mm-hit="1" title="Drag border to resize"
+                onMouseDown={e => { e.stopPropagation(); onResize(e, h.edge) }}
+                style={{
+                  position: 'absolute', zIndex: 5, pointerEvents: 'all',
+                  cursor: h.cursor, ...h.style,
+                }} />
+            ))}
+          </>
         )}
       </div>
 

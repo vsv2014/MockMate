@@ -20,6 +20,8 @@ const DEV_URL = 'http://localhost:5174'
 const PROD_URL = 'http://localhost:3002'
 
 let mainWindow, setupWindow, apiServer, backendServer
+// Pin default ON — Live overlay stays when switching to Zoom; unpin → hide on blur.
+let pinnedState = true
 
 // Auth/SaaS backend. Base URL is env-configurable so we can point the app at a
 // hosted backend later with no code change; default is the local fork.
@@ -265,7 +267,7 @@ function createMainWindow() {
     // Launch at app (dashboard) size, centered; the renderer switches to the compact
     // overlay via set-window-mode when entering Live/Solo.
     width: Math.min(1200, width - 80), height: 760, center: true,
-    minWidth: 420, minHeight: 560,
+    minWidth: 280, minHeight: 180,
     alwaysOnTop: true,
     frame: isLinux,                                   // Linux: normal window chrome so it's visible + movable
     transparent: !isLinux,                            // transparent overlay only on Win/macOS
@@ -275,6 +277,27 @@ function createMainWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   })
   mainWindow.setContentProtection(true)
+  // Default pinned (matches renderer mm-pinned default) so Live stays when switching to Zoom.
+  pinnedState = true
+  try {
+    mainWindow.setAlwaysOnTop(true, 'screen-saver')
+    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  } catch {}
+
+  // Pin policy: pinned → stay on screen when switching to Zoom/etc; unpinned → hide on blur.
+  mainWindow.on('blur', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (pinnedState) {
+      try {
+        mainWindow.setAlwaysOnTop(true, 'screen-saver')
+        if (!mainWindow.isVisible()) {
+          try { mainWindow.showInactive() } catch { mainWindow.show() }
+        }
+      } catch {}
+    } else {
+      try { mainWindow.hide() } catch {}
+    }
+  })
 
   // External links (e.g. "get a free API key" in Settings) must open in the user's real browser,
   // never inside the app window. Handle both target=_blank/window.open and plain <a href> clicks.
@@ -308,13 +331,24 @@ function createMainWindow() {
 }
 
 function launchTrayAndShortcuts() {
+  const showMain = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.show(); mainWindow.focus()
+  }
   const toggleVisibility = () => {
     if (!mainWindow || mainWindow.isDestroyed()) return
     if (mainWindow.isVisible()) mainWindow.hide()
-    else { mainWindow.show(); mainWindow.focus() }
+    else showMain()
   }
-  globalShortcut.register('Alt+H', toggleVisibility)
-  globalShortcut.register('CommandOrControl+Shift+H', toggleVisibility)
+  // Alt+H: ask the renderer first (Live → collapse to on-screen pill; elsewhere → hide).
+  // If the window is already hidden, always restore.
+  const stealthOrToggle = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (!mainWindow.isVisible()) { showMain(); return }
+    try { mainWindow.webContents.send('shortcut-stealth') } catch { toggleVisibility() }
+  }
+  globalShortcut.register('Alt+H', stealthOrToggle)
+  globalShortcut.register('CommandOrControl+Shift+H', stealthOrToggle)
   // Force-disable click-through when the overlay traps the user (region miss / stuck ignore).
   globalShortcut.register('Alt+C', () => {
     if (!mainWindow || mainWindow.isDestroyed()) return
@@ -329,13 +363,13 @@ function launchTrayAndShortcuts() {
     tray.setToolTip('MockMate — Click to show/hide')
     tray.on('click', toggleVisibility)
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'Show MockMate', click: () => { mainWindow?.show(); mainWindow?.focus() } },
+      { label: 'Show MockMate', click: showMain },
       { label: 'Quit', click: () => app.quit() }
     ]))
     if (Notification.isSupported()) {
       new Notification({
         title: 'MockMate is running',
-        body: 'Overlay is top-right of your screen. Click the tray icon or press Alt+H to show/hide.',
+        body: 'Live: — collapses to a pill icon. Alt+H toggles. Tray icon always works.',
         icon: trayIcon
       }).show()
     }
@@ -598,15 +632,24 @@ ipcMain.handle('auth-clear-token', () => { try { fs.rmSync(AUTH_TOKEN_FILE(), { 
 // Auth API base URL for the renderer (env-configurable; local fork by default).
 ipcMain.on('get-api-base', e => { e.returnValue = API_BASE })
 ipcMain.on('hide-window', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide() })
-// Pin: raise to the highest always-on-top level so the overlay stays ABOVE a
-// full-screen Zoom/Meet (normal always-on-top sits below full-screen apps).
+// Pin: stay above Zoom/Meet when switching windows. Unpin: hide when MockMate loses focus.
 ipcMain.on('set-pin', (_, on) => {
+  pinnedState = !!on
   if (!mainWindow || mainWindow.isDestroyed()) return
   try {
-    mainWindow.setAlwaysOnTop(true, on ? 'screen-saver' : 'floating')
-    mainWindow.setVisibleOnAllWorkspaces(!!on, { visibleOnFullScreen: true })
+    if (on) {
+      mainWindow.setAlwaysOnTop(true, 'screen-saver')
+      mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+      if (!mainWindow.isVisible()) {
+        try { mainWindow.showInactive() } catch { mainWindow.show() }
+      }
+    } else {
+      mainWindow.setAlwaysOnTop(false)
+      try { mainWindow.setVisibleOnAllWorkspaces(false) } catch {}
+    }
   } catch {}
 })
+ipcMain.handle('get-pin', () => pinnedState)
 // Click-through: forward mouse events to apps underneath; pill/header still need
 // setIgnoreMouseEvents(false) when interacting — renderer toggles this.
 ipcMain.on('set-click-through', (_, on) => {
@@ -629,9 +672,18 @@ ipcMain.on('window-drag', (_, { dx, dy }) => {
   const [x, y] = mainWindow.getPosition(); mainWindow.setPosition(x + dx, y + dy)
   lastWindowMode = null   // geometry changed manually — let the next set-window-mode re-apply
 })
-ipcMain.on('window-resize', (_, { w, h }) => {
+ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  mainWindow.setSize(Math.max(320, w), Math.max(200, h))
+    const nw = Math.max(240, Math.round(Number(w) || 280))
+  const nh = Math.max(180, Math.round(Number(h) || 200))
+  try {
+    if (dx || dy) {
+      const [x, y] = mainWindow.getPosition()
+      mainWindow.setBounds({ x: x + Math.round(dx), y: y + Math.round(dy), width: nw, height: nh })
+    } else {
+      mainWindow.setSize(nw, nh)
+    }
+  } catch {}
   lastWindowMode = null
 })
 // Switch between the full windowed dashboard ('app') and the compact overlay ('overlay').
@@ -642,16 +694,20 @@ ipcMain.on('set-window-mode', (_, mode) => {
   try {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize
     if (mode === 'pill') {
-      // Collapsed to a tiny logo pill docked top-right — a one-click way back that never fully
-      // disappears (and stays content-protected). Expanding returns to 'overlay'.
-      const s = 76
-      mainWindow.setSize(s, s); mainWindow.setPosition(Math.max(0, width - s - 20), 20)
+      // Collapsed to a tiny logo pill docked top-right — stays on screen (not closed).
+      // Content-protected; click expands back to 'overlay'.
+      const s = 72
+      try { mainWindow.setIgnoreMouseEvents(false) } catch {}
+      mainWindow.setSize(s, s)
+      mainWindow.setPosition(Math.max(0, width - s - 16), 16)
+      if (!mainWindow.isVisible()) mainWindow.show()
+      try { mainWindow.setAlwaysOnTop(true, 'screen-saver') } catch { try { mainWindow.setAlwaysOnTop(true) } catch {} }
     } else if (mode === 'app') {
       const w = Math.min(1200, width - 80), h = Math.min(760, height - 80)
       mainWindow.setSize(w, h); mainWindow.center()
     } else {
       // Clamp to the work area so the compact overlay is never pushed off-screen on small/scaled displays.
-      const w = Math.min(460, width - 40), h = Math.min(680, height - 40)
+      const w = Math.min(300, width - 40), h = Math.min(360, height - 40)
       mainWindow.setSize(w, h); mainWindow.setPosition(Math.max(0, width - w - 20), 20)
     }
   } catch {}

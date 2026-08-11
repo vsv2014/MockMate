@@ -378,7 +378,7 @@ function Section({ n, title, subtitle, defaultOpen = true, children }) {
 }
 
 // ── Live overlay ──────────────────────────────────────────────────────────────
-function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, pip: initialPip, clickThrough, onClickThrough }) {
+function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, onSizePreset, opacity, onOpacity, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, pip: initialPip, clickThrough, onClickThrough }) {
   const [transcript, setTranscript] = useState([])
   const [hint, setHint] = useState(null)
   const [hintLoading, setHintLoading] = useState(false)
@@ -1016,7 +1016,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   if (ending) {
     return (
       <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} onStealth={onStealth}
-        onMinimize={onMinimize} onResize={onResize} onDrag={onDrag}
+        onMinimize={onMinimize} onResize={onResize} onDrag={onDrag} onSizePreset={onSizePreset}
+        opacity={opacity} onOpacity={onOpacity}
         clickThrough={false} onClickThrough={onClickThrough}
         onClose={() => {}} extra={<span style={{ fontSize: 11, fontWeight: 600, color: '#5eead4' }}>Ending…</span>}>
         <div role="status" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24, textAlign: 'center' }}>
@@ -1029,7 +1030,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   return (
     <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} onStealth={onStealth} actions={liveActions} confirmClose
-      onMinimize={onMinimize} onResize={onResize} onDrag={onDrag}
+      onMinimize={onMinimize} onResize={onResize} onDrag={onDrag} onSizePreset={onSizePreset}
+      opacity={opacity} onOpacity={onOpacity}
       clickThrough={clickThrough} onClickThrough={onClickThrough}
       onClose={endSession} extra={titleExtra}>
       {/* ── Single scrollable chat feed ── */}
@@ -1131,9 +1133,12 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[
-                ['Ctrl+Shift+U', 'Capture a coding question on screen'],
-                ['Alt+H', 'Instantly hide the overlay'],
-                ['Alt+C', 'Turn click-through off'],
+                ['Alt+H', 'Collapse / expand pill (icon stays on screen)'],
+                ['— / eye', 'Collapse to pill · click pill to restore'],
+                ['S / M / L', 'HUD sizes · compact by default'],
+                ['◐ slider', 'Transparency'],
+                ['Ctrl+Shift+U', 'Screenshot → solve coding question'],
+                ['📌 pin', 'Pinned: stays when switching apps · Unpinned: hides on blur'],
               ].map(([key, desc]) => (
                 <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 10, color: '#2dd4bf', background: 'rgba(13,148,136,0.15)', padding: '2px 7px', borderRadius: 5, fontFamily: 'monospace', fontWeight: 600, minWidth: 92, textAlign: 'center' }}>{key}</span>
@@ -1280,7 +1285,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, clickThrough, onClickThrough }) {
+export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, onSizePreset, opacity, onOpacity, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, clickThrough, onClickThrough }) {
   const [phase, setPhase] = useState('setup')
   const [sessionConfig, setSessionConfig] = useState(null)
   const [sessionNotes, setSessionNotes] = useState(null)
@@ -1319,7 +1324,8 @@ export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealt
       {...sessionConfig}
       panelSize={panelSize} stealth={stealth} minimized={minimized}
       onStealth={onStealth} onMinimize={onMinimize}
-      onResize={onResize} onDrag={onDrag}
+      onResize={onResize} onDrag={onDrag} onSizePreset={onSizePreset}
+      opacity={opacity} onOpacity={onOpacity}
       onEnd={data => {
         setSessionNotes(data); setPhase('notes')
         // Persist to Sessions only when we actually scored candidate speech.

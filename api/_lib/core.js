@@ -532,18 +532,32 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
 export function deepgramConfigured() { return !!process.env.DEEPGRAM_API_KEY }
 
 // Mint a short-lived grant token so the browser can stream audio to Deepgram
-// without ever seeing the real API key. Raw-key fallback was removed (P0) —
-// any localhost process could otherwise exfiltrate DEEPGRAM_API_KEY.
-// Requires an Owner-scoped Deepgram key that can mint grants.
+// without ever seeing the real API key.
+// Requires an Owner-scoped Deepgram key that can mint grants. Member / scoped
+// keys often return 403 on /v1/auth/grant — for local Electron BYOK we fall back
+// to the API key as the WS token (key already lives on this machine). Never do
+// that when MOCKMATE_HOSTED=1 (remote clients must not receive the project key).
 export async function deepgramToken(_opts = {}) {
   if (!process.env.DEEPGRAM_API_KEY) { const e = new Error('Deepgram not configured (set DEEPGRAM_API_KEY).'); e.status = 500; throw e }
+  const key = process.env.DEEPGRAM_API_KEY
   const r = await fetchWithTimeout('https://api.deepgram.com/v1/auth/grant', {
     method: 'POST',
-    headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Token ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ ttl_seconds: 300 })   // 5 min — long enough to (re)establish the stream on reconnects
   }, 8000)
   if (r.ok) return await r.json()   // { access_token, expires_in }
-  const e = new Error(`Deepgram token grant failed (${r.status}). Use an Owner-scoped Deepgram key that can mint short-lived tokens (Settings → Voice).`)
+
+  const hosted = process.env.MOCKMATE_HOSTED === '1' || process.env.MOCKMATE_HOSTED === 'true'
+  if (!hosted && (r.status === 403 || r.status === 401)) {
+    // Member keys can't mint grants; Deepgram still accepts the project key on the WS.
+    return { access_token: key, expires_in: 3600, fallback: 'api_key' }
+  }
+
+  const e = new Error(
+    r.status === 403 || r.status === 401
+      ? `Deepgram token grant failed (${r.status}). Use an Owner-scoped API key (Deepgram Console → API Keys → create with Member/Owner that can create keys), or a Project key that can mint grants (Settings → Voice).`
+      : `Deepgram token grant failed (${r.status}). Check your Deepgram key in Settings → Voice.`
+  )
   e.status = r.status
   throw e
 }
