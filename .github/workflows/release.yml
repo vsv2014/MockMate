@@ -54,6 +54,41 @@ jobs:
       - name: Build frontend (Vite)
         run: npm run build
 
+      # Bake runtime keys into the installer so downloaders can use Live/Solo without setup.
+      # Keys come from GitHub Actions secrets (never committed). Missing secrets → empty .env →
+      # users fall back to in-app Settings / BYOK.
+      - name: Write bundled .env for packaging
+        shell: bash
+        env:
+          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const keys = [
+            'DEEPGRAM_API_KEY',
+            'GROQ_API_KEY',
+            'GEMINI_API_KEY',
+            'OPENAI_API_KEY',
+            'ANTHROPIC_API_KEY',
+            'CEREBRAS_API_KEY',
+          ]
+          const lines = []
+          for (const k of keys) {
+            const v = (process.env[k] || '').trim()
+            if (v) lines.push(`${k}=${v}`)
+          }
+          fs.writeFileSync('.env', lines.length ? lines.join('\n') + '\n' : '')
+          console.log(`Bundled ${lines.length} runtime key(s) into .env (values not logged).`)
+          if (!process.env.DEEPGRAM_API_KEY) {
+            console.warn('WARN: DEEPGRAM_API_KEY secret missing — Live voice will require BYOK after install.')
+          }
+          NODE
+
       # Signing is optional and per-platform:
       # - Windows: WIN_CSC_LINK + WIN_CSC_KEY_PASSWORD (Authenticode .pfx/.p12, base64)
       # - macOS:   MAC_CSC_LINK + MAC_CSC_KEY_PASSWORD + APPLE_* (see SIGNING.md)

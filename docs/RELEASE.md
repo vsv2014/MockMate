@@ -34,11 +34,14 @@ here are **infra/signing**, not code (tests + reviews pass while an update silen
    git push origin v1.3.0
    ```
    (Or run the workflow manually via **Actions → Release → Run workflow** and enter the tag.)
-5. CI builds Windows/Linux/macOS and uploads the installers **and the `latest*.yml` update feeds**
-   to a public GitHub Release via softprops. Signing is **optional per platform**:
+5. CI writes a temporary bundled `.env` from Actions secrets (so downloaders get Live/voice
+   without setup), then builds Windows/Linux/macOS and uploads installers **and the
+   `latest*.yml` update feeds** to a public GitHub Release via softprops. Signing is
+   **optional per platform**:
    - Windows signs when `WIN_CSC_LINK` + `WIN_CSC_KEY_PASSWORD` exist
    - macOS signs + notarizes when `MAC_CSC_*` + `APPLE_*` exist
-   - Otherwise that platform still ships, unsigned
+   - Runtime keys bundle when `DEEPGRAM_API_KEY` (+ optional LLM secrets) exist
+   - Otherwise that platform still ships (unsigned / BYOK required for voice)
 
 ## Verify after the release
 

@@ -16,13 +16,31 @@
 - Successful reset bumps `tokenVersion` (revokes prior JWTs).
 - Never log full reset URLs in production (see `backend/src/mailer.js`).
 
+## Bundled runtime keys (out-of-box Live/Solo for downloaders)
+
+MockMate can ship provider keys **inside the installer** so end users can try Live without
+opening Settings. That is intentional for a personal/distribution build.
+
+**How (safe):** put keys in **GitHub Actions secrets**. CI writes a temporary `.env` at
+package time; `.env` stays gitignored and is never committed.
+
+| Secret | Required for |
+|---|---|
+| `DEEPGRAM_API_KEY` | Live + Solo voice (everyone who installs) |
+| `GROQ_API_KEY` / `GEMINI_API_KEY` / `OPENAI_API_KEY` / … | At least one LLM for answers |
+
+Rotate by updating the secret and cutting a new release. Anyone can still extract keys from
+the installed `resources/app/.env` — treat them as **shared product keys**, set billing caps
+in each provider console, and rotate if abused.
+
 ## Provider API keys (BYOK)
 - Stored encrypted at rest in `userData/.env.enc` via Electron `safeStorage` (OS keychain) when available.
 - Legacy plaintext `userData/.env` is migrated to `.env.enc` on first launch after upgrade, then deleted.
 - Headless / no-keychain environments fall back to `userData/.env` mode `0600`.
 - Rotate by replacing keys in Settings; old keys remain valid at the provider until revoked in that provider’s console.
-- **Do not ship bundled vendor keys** in release artifacts.
+- User BYOK **overrides** bundled keys for that install.
 
 ## Deepgram
-- App uses short-lived **grant tokens** only (raw key never returned to the renderer).
-- Rotate the Owner-scoped key in Deepgram console + update Settings / host env.
+- Prefer short-lived **grant tokens** (Owner-scoped key). Local desktop may fall back to the
+  project key on the websocket when grant minting returns 403 (Member keys).
+- Rotate the key in Deepgram console + update the `DEEPGRAM_API_KEY` GitHub secret + rebuild.

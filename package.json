@@ -45,6 +45,7 @@
       "server-entry.cjs",
       "setup.html",
       "package.json",
+      ".env",
       "node_modules/**/*",
       "!node_modules/electron/**/*",
       "!node_modules/.cache/**/*"

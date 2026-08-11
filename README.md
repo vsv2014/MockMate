@@ -367,6 +367,7 @@ English, Spanish, French, German, Portuguese, Hindi, Japanese, Chinese, Korean, 
 ## Privacy
 
 - **BYOK mode:** your provider API keys stay in local `userData` / `.env` and are sent only to the providers you configure (OpenAI, Anthropic, Deepgram, etc.) — not to a MockMate key vault.
+- **Shipped builds** may also include **bundled** provider keys (injected at release time from GitHub Actions secrets, never committed) so Live works out of the box; user BYOK still overrides.
 - **Interview content leaves the device** when features need it: audio → **Deepgram**; resume/JD/transcript → your chosen **LLM**; screenshots → **OpenAI / Gemini** when you press `Ctrl+Shift+U`.
 - **Managed MockMate AI** (when hosted): prompts and context go through MockMate’s authenticated proxy; platform keys stay on the server. Until that hosted path is enabled for your build, “Managed” may still use keys on the machine — check Settings.
 - Optional accounts backend can store profile/resume/history if you choose — separate from API keys.
