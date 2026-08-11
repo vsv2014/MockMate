@@ -34,6 +34,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   hideWindow: () => ipcRenderer.send('hide-window'),
   setPin: on => ipcRenderer.send('set-pin', on),
   getPin: () => ipcRenderer.invoke('get-pin'),
+  onBlurCollapse: cb => {
+    const handler = () => cb()
+    ipcRenderer.on('blur-collapse', handler)
+    return () => ipcRenderer.removeListener('blur-collapse', handler)
+  },
   setClickThrough: on => ipcRenderer.send('set-click-through', !!on),
   // Region-aware: when click-through is on, temporarily accept hits over interactive chrome.
   setIgnoreMouseEvents: (ignore, opts) => ipcRenderer.send('set-ignore-mouse-events', { ignore: !!ignore, forward: opts?.forward !== false }),

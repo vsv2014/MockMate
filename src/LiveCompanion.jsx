@@ -1138,7 +1138,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                 ['S / M / L', 'HUD sizes · compact by default'],
                 ['◐ slider', 'Transparency'],
                 ['Ctrl+Shift+U', 'Screenshot → solve coding question'],
-                ['📌 pin', 'Pinned: stays when switching apps · Unpinned: hides on blur'],
+                ['📌 pin', 'Pinned: stays on switch · Unpinned: collapses to pill (not close)'],
               ].map(([key, desc]) => (
                 <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 10, color: '#2dd4bf', background: 'rgba(13,148,136,0.15)', padding: '2px 7px', borderRadius: 5, fontFamily: 'monospace', fontWeight: 600, minWidth: 92, textAlign: 'center' }}>{key}</span>

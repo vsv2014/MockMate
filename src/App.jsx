@@ -124,6 +124,11 @@ function ElectronShell({ auth }) {
         window.electronAPI?.hideWindow?.()
       }
     }))
+    // Unpinned + switched to another app → collapse to pill (never vanish).
+    cleanups.push(window.electronAPI?.onBlurCollapse?.(() => {
+      setClickThrough(false)
+      setMinimized(true)
+    }))
     // Browser mode: warn if screen capture is likely active (getDisplayMedia check)
     if (!window.electronAPI?.isElectron) {
       navigator.mediaDevices?.addEventListener?.('devicechange', () => setBrowserShareWarning(true))
@@ -876,8 +881,8 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
             )}
             {inElectron && (
               <button onClick={togglePin} onMouseDown={e => e.stopPropagation()}
-                title={pinned ? 'Pinned — stays open when you switch to Zoom/Meet. Click to unpin (then switching away hides MockMate).' : 'Unpinned — hides when you click another window. Click to pin above Zoom/Meet.'}
-                aria-label={pinned ? 'Unpin — allow hide when switching windows' : 'Pin — keep overlay when switching windows'} aria-pressed={pinned}
+                title={pinned ? 'Pinned — stays open when you switch to Zoom/Meet. Click to unpin.' : 'Unpinned — collapses to the pill icon when you switch apps (never vanishes). Click to pin.'}
+                aria-label={pinned ? 'Unpin — collapse to pill when switching windows' : 'Pin — keep overlay when switching windows'} aria-pressed={pinned}
                 style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: pinned ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, opacity: pinned ? 1 : 0.6 }}>📌</button>
             )}
             {inElectron && onClickThrough && (

@@ -20,8 +20,40 @@ const DEV_URL = 'http://localhost:5174'
 const PROD_URL = 'http://localhost:3002'
 
 let mainWindow, setupWindow, apiServer, backendServer
-// Pin default ON — Live overlay stays when switching to Zoom; unpin → hide on blur.
+// Pin default ON — Live overlay stays when switching to Zoom; unpin → collapse to pill on blur.
 let pinnedState = true
+// Ignore blur-hide/collapse during screenshot, mode switches, and brief focus handoffs.
+let suppressBlurUntil = 0
+function suppressBlurHide(ms = 1200) { suppressBlurUntil = Date.now() + ms }
+let lastWindowMode = null
+let copilotWindow = null
+
+function isOwnWindowFocused() {
+  try {
+    const focused = BrowserWindow.getFocusedWindow()
+    if (!focused || focused.isDestroyed()) return false
+    if (mainWindow && focused.id === mainWindow.id) return true
+    if (setupWindow && !setupWindow.isDestroyed() && focused.id === setupWindow.id) return true
+    if (copilotWindow && !copilotWindow.isDestroyed() && focused.id === copilotWindow.id) return true
+    return false
+  } catch { return false }
+}
+
+function applyPillGeometry() {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  const { width } = screen.getPrimaryDisplay().workAreaSize
+  const s = 72
+  try { mainWindow.setIgnoreMouseEvents(false) } catch {}
+  mainWindow.setSize(s, s)
+  mainWindow.setPosition(Math.max(0, width - s - 16), 16)
+  if (!mainWindow.isVisible()) {
+    try { mainWindow.showInactive() } catch { mainWindow.show() }
+  }
+  try { mainWindow.setAlwaysOnTop(true, pinnedState ? 'screen-saver' : 'floating') } catch {
+    try { mainWindow.setAlwaysOnTop(true) } catch {}
+  }
+  lastWindowMode = 'pill'
+}
 
 // Auth/SaaS backend. Base URL is env-configurable so we can point the app at a
 // hosted backend later with no code change; default is the local fork.
@@ -284,19 +316,34 @@ function createMainWindow() {
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   } catch {}
 
-  // Pin policy: pinned → stay on screen when switching to Zoom/etc; unpinned → hide on blur.
+  // Pin policy:
+  // - pinned: stay above Zoom (reassert always-on-top; do NOT showInactive every blur — avoids flicker)
+  // - unpinned: collapse to on-screen pill (never vanish); ignore child windows / screenshots / mode switches
   mainWindow.on('blur', () => {
     if (!mainWindow || mainWindow.isDestroyed()) return
-    if (pinnedState) {
-      try {
-        mainWindow.setAlwaysOnTop(true, 'screen-saver')
-        if (!mainWindow.isVisible()) {
-          try { mainWindow.showInactive() } catch { mainWindow.show() }
-        }
-      } catch {}
-    } else {
-      try { mainWindow.hide() } catch {}
-    }
+    setTimeout(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      if (Date.now() < suppressBlurUntil) return
+      if (mainWindow.isFocused()) return
+      if (isOwnWindowFocused()) return
+
+      if (pinnedState) {
+        try { mainWindow.setAlwaysOnTop(true, 'screen-saver') } catch {}
+        return
+      }
+
+      // Already a pill — leave the icon on screen.
+      if (lastWindowMode === 'pill') return
+
+      // Live overlay: collapse to on-screen pill (visible restore). Dashboard/app: hide to tray.
+      if (lastWindowMode === 'overlay') {
+        try { mainWindow.webContents.send('blur-collapse') } catch {}
+        suppressBlurHide(600)
+        applyPillGeometry()
+      } else {
+        try { mainWindow.hide() } catch {}
+      }
+    }, 60)
   })
 
   // External links (e.g. "get a free API key" in Settings) must open in the user's real browser,
@@ -388,6 +435,7 @@ async function captureScreen() {
     try { if (Notification.isSupported()) new Notification({ title: 'Screen capture unavailable on Linux', body: 'The screenshot-solve feature needs Windows or macOS (Wayland blocks it).' }).show() } catch {}
     return
   }
+  suppressBlurHide(2500)
   try {
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } })
     if (!sources.length) return
@@ -398,6 +446,7 @@ async function captureScreen() {
     const base64 = chosen.thumbnail.toPNG().toString('base64')
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('screen-captured', base64)
   } catch (e) { console.error('Screen capture failed:', e.message) }
+  finally { suppressBlurHide(800) }
 }
 
 // Protect EVERY window from screen capture — including the Document Picture-in-
@@ -549,7 +598,6 @@ ipcMain.on('get-userdata-path', e => { e.returnValue = app.getPath('userData') }
 // during a Duo room — invisible to Zoom/Teams/Meet screen capture (WDA_EXCLUDEFROMCAPTURE), so a
 // partner sharing their screen never sees it. The renderer (src/Room.jsx) drives it via
 // setRoomActive(on) + sendHint(payload). No-op on Linux (no capture protection there).
-let copilotWindow = null
 const COPILOT_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#0f0f1a;color:#e2e8f0;-webkit-app-region:drag;user-select:none}
   #wrap{padding:14px;height:100vh;box-sizing:border-box;overflow:auto}
@@ -640,11 +688,9 @@ ipcMain.on('set-pin', (_, on) => {
     if (on) {
       mainWindow.setAlwaysOnTop(true, 'screen-saver')
       mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-      if (!mainWindow.isVisible()) {
-        try { mainWindow.showInactive() } catch { mainWindow.show() }
-      }
     } else {
-      mainWindow.setAlwaysOnTop(false)
+      // Stay floating lightly so the pill can remain visible; blur collapses instead of closing.
+      mainWindow.setAlwaysOnTop(true, 'floating')
       try { mainWindow.setVisibleOnAllWorkspaces(false) } catch {}
     }
   } catch {}
@@ -687,21 +733,14 @@ ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
   lastWindowMode = null
 })
 // Switch between the full windowed dashboard ('app') and the compact overlay ('overlay').
-let lastWindowMode = null
 ipcMain.on('set-window-mode', (_, mode) => {
   if (!mainWindow || mainWindow.isDestroyed() || mode === lastWindowMode) return
+  suppressBlurHide(900)
   lastWindowMode = mode
   try {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize
     if (mode === 'pill') {
-      // Collapsed to a tiny logo pill docked top-right — stays on screen (not closed).
-      // Content-protected; click expands back to 'overlay'.
-      const s = 72
-      try { mainWindow.setIgnoreMouseEvents(false) } catch {}
-      mainWindow.setSize(s, s)
-      mainWindow.setPosition(Math.max(0, width - s - 16), 16)
-      if (!mainWindow.isVisible()) mainWindow.show()
-      try { mainWindow.setAlwaysOnTop(true, 'screen-saver') } catch { try { mainWindow.setAlwaysOnTop(true) } catch {} }
+      applyPillGeometry()
     } else if (mode === 'app') {
       const w = Math.min(1200, width - 80), h = Math.min(760, height - 80)
       mainWindow.setSize(w, h); mainWindow.center()
