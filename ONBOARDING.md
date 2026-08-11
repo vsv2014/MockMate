@@ -1,9 +1,10 @@
 # MockMate — Architecture & Onboarding
 
 > A desktop **AI interview copilot**: a full dashboard app for prep (Solo practice, Resume Studio,
-> Job matching) **and** an invisible live overlay that listens during real interviews and streams
+> Job matching, Sessions) **and** a live overlay that listens during real interviews and streams
 > resume-grounded answers. Built with **Electron + React (Vite)** + a small **Express** API and a
-> **JWT auth backend**. Invisible to screen-share on Windows/macOS (content protection).
+> **JWT auth backend**. On Windows/macOS, Electron `setContentProtection` can exclude the overlay
+> from common capture APIs — **always verify share preview**; not supported on Linux.
 
 This doc is written so a new dev (or an AI coding agent — Claude Code / Codex) can be productive fast.
 
@@ -25,7 +26,7 @@ npm run electron:dev:nosandbox
   `~/.config/mockmate/.env`), or for dev put them in a project `.env` (see `.env.example`).
 - **Logs:** the API server tees everything to **`logs/server.log`** — `tail -n 40 logs/server.log`
   is the fastest way to see LLM errors / provider failover. **Check it first when debugging.**
-- **Tests:** `npx vitest run` (46 tests). **Build UI:** `npm run build`. **Package app:**
+- **Tests:** `npx vitest run`. **Build UI:** `npm run build`. **Package app:**
   `npm run electron:build` (`:win` for Windows).
 
 ---

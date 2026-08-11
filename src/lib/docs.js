@@ -15,10 +15,25 @@ export function listDocs() {
   return load().map(d => ({ id: d.id, name: d.name, type: d.type, addedAt: d.addedAt, chars: (d.text || '').length }))
 }
 export function hasDocs() { return load().length > 0 }
+// Resume/JD are profile-derived materials: upsert by type so Begin/Start never stacks stale copies.
+// Other uploads (type "document") still append — the user may keep multiple notes/files.
 export function addDoc({ name, type = 'document', text }) {
   if (!text || !String(text).trim()) return null
   const docs = load()
-  const doc = { id: 'd' + Math.random().toString(36).slice(2, 9), name: name || 'Untitled', type, text: String(text), addedAt: new Date().toISOString() }
+  const body = String(text)
+  const upsert = type === 'resume' || type === 'jd'
+  if (upsert) {
+    const i = docs.findIndex(d => d.type === type)
+    if (i >= 0) {
+      const prev = docs[i]
+      indexCache.delete(prev.id)
+      const doc = { ...prev, name: name || prev.name || 'Untitled', text: body, addedAt: new Date().toISOString() }
+      docs[i] = doc
+      save(docs)
+      return { id: doc.id, name: doc.name, type: doc.type, addedAt: doc.addedAt, chars: doc.text.length }
+    }
+  }
+  const doc = { id: 'd' + Math.random().toString(36).slice(2, 9), name: name || 'Untitled', type, text: body, addedAt: new Date().toISOString() }
   docs.push(doc); save(docs)
   return { id: doc.id, name: doc.name, type: doc.type, addedAt: doc.addedAt, chars: doc.text.length }
 }

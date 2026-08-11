@@ -315,6 +315,12 @@ function launchTrayAndShortcuts() {
   }
   globalShortcut.register('Alt+H', toggleVisibility)
   globalShortcut.register('CommandOrControl+Shift+H', toggleVisibility)
+  // Force-disable click-through when the overlay traps the user (region miss / stuck ignore).
+  globalShortcut.register('Alt+C', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    try { mainWindow.setIgnoreMouseEvents(false) } catch {}
+    try { mainWindow.webContents.send('shortcut-clickthrough-off') } catch {}
+  })
 
   const { Tray, Menu, nativeImage } = require('electron')
   const trayIcon = (() => { try { return nativeImage.createFromPath(iconPath()) } catch { return nativeImage.createEmpty() } })()
@@ -605,7 +611,18 @@ ipcMain.on('set-pin', (_, on) => {
 // setIgnoreMouseEvents(false) when interacting — renderer toggles this.
 ipcMain.on('set-click-through', (_, on) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  try { mainWindow.setIgnoreMouseEvents(!!on, { forward: true }) } catch {}
+  try {
+    if (on) mainWindow.setIgnoreMouseEvents(true, { forward: true })
+    else mainWindow.setIgnoreMouseEvents(false)
+  } catch {}
+})
+// Fine-grained region control while click-through is ON (hover interactive chrome → accept hits).
+ipcMain.on('set-ignore-mouse-events', (_, { ignore, forward } = {}) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  try {
+    if (ignore) mainWindow.setIgnoreMouseEvents(true, { forward: forward !== false })
+    else mainWindow.setIgnoreMouseEvents(false)
+  } catch {}
 })
 ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return

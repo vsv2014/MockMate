@@ -4,10 +4,16 @@ const get = (k, d) => { try { return localStorage.getItem(k) || d } catch { retu
 const set = (k, v) => { try { localStorage.setItem(k, v) } catch {} }
 
 // Response length → maps to the engine `style` param (balanced | concise | detailed).
-// NOTE: the Live overlay's inline pill uses this same key, so the two stay in sync.
+// ONE default for Settings + Live overlay (Live-first: concise is the glanceable default).
 export const ANSWER_STYLE_KEY = 'mm-answer-style'
-export const getAnswerStyle = () => get(ANSWER_STYLE_KEY, 'balanced')
-export const setAnswerStyle = v => set(ANSWER_STYLE_KEY, v)
+export const ANSWER_STYLE_DEFAULT = 'concise'
+export const getAnswerStyle = () => {
+  const v = get(ANSWER_STYLE_KEY, ANSWER_STYLE_DEFAULT)
+  return (v === 'balanced' || v === 'concise' || v === 'detailed') ? v : ANSWER_STYLE_DEFAULT
+}
+export const setAnswerStyle = v => {
+  if (v === 'balanced' || v === 'concise' || v === 'detailed') set(ANSWER_STYLE_KEY, v)
+}
 
 // Screenshot replies: 'quality' (full depth) or 'fast' (concise, answer-first). Maps to analyzeScreen `style`.
 export const getScreenshotSpeed = () => get('mm-screenshot-speed', 'quality')

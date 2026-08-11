@@ -1,11 +1,12 @@
 # MockMate — Real-Time AI Interview Companion
 
 A desktop app for interview prep **and** live help: a full **dashboard workspace** (Solo practice,
-Resume Studio, Job matching, Past sessions) plus a **live overlay** that floats over your
+Resume Studio, Job matching, Sessions) plus a **live overlay** that floats over your
 screen during real interviews, listens to the interviewer, and gives natural, resume-grounded
-answers in seconds. On **Windows & macOS**, the overlay uses OS content-protection APIs so it is
-**excluded from common screen-share / recording paths** — always verify in your meeting app before
-a real interview. **Not supported on Linux.** See [Screen Protection](#screen-protection).
+answers in seconds. On **Windows & macOS**, the overlay uses OS content-protection APIs so it can be
+**excluded from common screen-share / recording paths** — always verify in your meeting app’s share
+preview before a real interview. Treat stealth as **partial / matrix UNKNOWN** until you’ve proven
+it for your stack. **Not supported on Linux.** See [Screen Protection](#screen-protection).
 
 AI runs in one of two modes: **MockMate AI** (managed — when the hosted proxy is configured: no keys
 to manage, automatic routing + failover) or **Bring your own key** (OpenAI / Anthropic / Gemini /
@@ -25,7 +26,7 @@ Grab the latest build from the [**Releases page**](https://github.com/vsv2014/Mo
 
 On first launch you sign in and land on the **dashboard**. AI is **managed by default** (MockMate
 AI — nothing to configure), or open **Settings → Bring your own key** to use your own OpenAI /
-Anthropic / Gemini / Groq / Cerebras key (stored locally). Then just **Start Interview**.
+Anthropic / Gemini / Groq / Cerebras key (stored locally). Then **Begin interview** (Solo) or **Start Live**.
 
 **Auto-update (Windows & Linux):** new versions download silently in the background and install
 the next time you reopen MockMate — no re-download needed. **macOS updates are manual for now**
@@ -89,8 +90,8 @@ answer matches it.
 ## Modes
 
 ### 🎯 Live Interview Companion
-- Floats over **Zoom / Google Meet / Microsoft Teams** — always on top, only you see it
-- Captures **system audio** and transcribes the interviewer in real time via **Deepgram nova-2**
+- Floats over **Zoom / Google Meet / Microsoft Teams** — always on top
+- Captures **system audio** and transcribes the interviewer in real time via **Deepgram** (Voice)
 - Streams a natural, **resume-grounded** answer — references your actual projects, never generic
 - **Custom voice prompt** — set your persona/tone/seniority once; it shapes every answer
 - Auto-detects coding platforms (LeetCode, HackerRank, CoderPad…) → one-tap **Coding mode**
@@ -99,13 +100,13 @@ answer matches it.
 - **Documents (RAG)** — upload your resume / JD / notes; they're chunked + embedded and the most
   relevant parts are retrieved *per question* (no more truncated-resume stuffing)
 - **Answer controls** — Concise / Balanced / Detailed length, Answer vs Coach mode, Auto-skip noise
-- **Minimize to a pill** — collapses to a small, still-capture-protected logo you click to reopen
-- Post-session AI notes
+- **Minimize to a pill** — collapses to a small logo; content protection still applies where the OS allows — **verify share preview**
+- Post-session AI notes (not a fake live score)
 
 ### 👥 Duo (Beta)
 - A friend/mentor **joins your interview room live** — shared transcript + screen share
 - The candidate gets a **private AI co-pilot** the partner never sees — rendered in a
-  **screen-capture-protected window** (invisible to the interviewer's share), not just remote control
+  **content-protected window** where the OS supports it (always verify share preview)
 - Needs LiveKit configured (`LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`)
 
 ### 🤖 Solo Practice
@@ -116,18 +117,18 @@ answer matches it.
 - Press **`Ctrl+Shift+U`** (or tap the auto-detected "Solve it" prompt) on a coding question
 - GPT-4o vision reads the screen → **working code + approach + complexity + edge cases**
 - **Language switcher** — re-solve the same problem in Python/Java/C++/JS/Go/TS instantly
-- Syntax-highlighted, one-tap **copy**, hidden from screen share
+- Syntax-highlighted, one-tap **copy** (same content-protection caveats as Live — verify share preview)
 
-### 💼 Matching Jobs
+### 💼 Job Matching
 - Live roles (Remotive + Adzuna) **ranked against your resume** — why-it-fits + skill gaps
 - Location filter, sort by fit / newest / salary, on-site vs remote badges, Load-more
-- **★ Save** any role to a local **Saved-jobs dashboard** for later
+- **★ Save** any role to a local **Saved-jobs** list for later
 
-### 🎯 Resume & Career Tools
-- **ATS resume score** — graded 0–100 the way ATS software + a recruiter would (20+ checks: keywords,
-  impact metrics, parse-safety, seniority…), with missing keywords, prioritized fixes, and red flags
+### 📄 Resume Studio
+- **ATS resume score** — graded **/100** with checks (keywords, impact metrics, parse-safety, seniority…),
+  missing keywords, prioritized fixes, and red flags
 - **Tailor resume** — rewrites summary + bullets for a target role/JD and surfaces keywords you
-  genuinely match (**never fabricates** experience)
+  genuinely match (**never fabricates** experience). Analysis JD on this screen stays local to Resume Studio.
 - **Referral DM drafter** — a personalized, non-cringe referral request from your resume + role
 
 ---
@@ -214,7 +215,8 @@ hard questions escalate to a strong model (GPT-5.4 / Claude Sonnet 5). Model def
 ┌────────────────────────────────────────────────────────────────────────┐
 │  Electron main  (electron/main.cjs)                                       │
 │   • Frameless · always-on-top · transparent overlay window                │
-│   • setContentProtection(true) on every window → hidden from capture      │
+│   • setContentProtection(true) on every window → common capture APIs      │
+│       (Win/macOS; NOT all tools — always verify share preview)             │
 │       Windows: WDA_EXCLUDEFROMCAPTURE  ·  macOS: NSWindowSharingNone       │
 │   • Global shortcuts (Alt+H hide, Ctrl+Shift+U capture)                    │
 │   • Auto-detects meeting + coding-platform windows                        │
@@ -242,7 +244,7 @@ hard questions escalate to a strong model (GPT-5.4 / Claude Sonnet 5). Model def
     System audio ─▶ AudioWorklet thread (downsample → PCM16 16kHz)
                  ─▶ Deepgram WebSocket ─▶ live transcript
                  ─▶ question detect ─▶ /api/hint ─▶ streamed answer
-    (auto-reconnect + KeepAlive keep the stream alive for 1h+ sessions)
+    (auto-reconnect + KeepAlive for long sessions; continuous 120m not claimed / not verified)
 
 ────────────────────────────────────────────────────────────────────────────
   Accounts backend  (backend/, optional, separate service — early)
@@ -293,7 +295,7 @@ here — they stay on the user's machine.
 - ✅ **Account screen** — plan badge, monthly usage bars (display-only until metering ships), *Use my own API keys* toggle, Sign out.
 - ✅ **Home overlay redesigned** — Kanit, `#0c0c0c`, accent-gradient Live hero, Practice grid, single Career row, quiet footer; shortcuts moved behind the ⌨ button.
 - ✅ **Kanit self-hosted** — woff2 bundled, no Google Fonts CDN (privacy + offline-safe).
-- ✅ **Job match in Career** — Matching Jobs is now a tab inside the Career suite (Home → Career → Jobs).
+- ✅ **Job Matching + Resume Studio** — separate workspace screens (sidebar); share resume/role profile.
 - ✅ **Auth backend wired** — forked from Electron main; **file-store default**, **Mongo opt-in** (`MONGO_URI`), **env-configurable base** (`MOCKMATE_API_BASE`); JWT stored via `safeStorage`.
 - ✅ **Solo voice reliability** — Deepgram-primary with a text-mode fallback; never silently fails on browser STT inside Electron.
 - ✅ **Auto-update CI guards** — release fails loudly if the tag ≠ `package.json` version or `latest*.yml` is missing.
@@ -311,7 +313,7 @@ here — they stay on the user's machine.
 - ✅ **Resilience**: retry + **instant auto-failover across providers**, transient-503 handling, bounded long-session context, timeouts on all external calls, vision (screen-analysis) failover OpenAI↔Gemini.
 - ✅ **Telugu + Indian languages**; browser STT now transcribes in the chosen language.
 - ✅ **Codebase cleanup**: dead code removed, shared `src/lib/` + `shared/` modules (single source for colors/languages/profile/banned-words/timeout), backend no longer imports from the frontend.
-- ✅ **Resume & Career Tools**: **ATS resume score** (20+ checks), **per-role resume tailoring** (never fabricates), and a **referral-message drafter** — all from your existing resume + LLM (`api/_lib/career.js`).
+- ✅ **Resume Studio**: **ATS resume score** (/100), **per-role resume tailoring** (never fabricates), and a **referral-message drafter** — from your resume + LLM (`api/_lib/career.js`).
 - ✅ **Saved-jobs dashboard**: ★ Save any match to a local, persistent saved list (`src/savedJobs.js`).
 
 **Next — Managed backend (the path to compete with LockedIn AI / FinalRound)**

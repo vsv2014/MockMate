@@ -3,7 +3,7 @@
 // One score→color scale so a given score looks the same everywhere (previously three
 // different thresholds: 75/50, 80/60/45, 75/50). Hex so it works in the dark overlay.
 export function scoreColor(p) {
-  if (p == null) return '#64748b'
+  if (p == null) return '#71717A'   // T.text3
   if (p >= 75) return '#22c55e'   // strong
   if (p >= 50) return '#fbbf24'   // mixed
   return '#f87171'                // weak

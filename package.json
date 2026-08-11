@@ -1,9 +1,9 @@
 {
   "name": "mockmate",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "type": "module",
   "main": "electron/main.cjs",
-  "description": "Real-Time AI Interview Companion \u2014 floats over Zoom/Teams/Meet, invisible to screen capture",
+  "description": "Real-Time AI Interview Companion \u2014 Solo practice + Live overlay for Zoom/Teams/Meet (content protection on Win/macOS; verify share preview)",
   "author": "MockMate",
   "license": "MIT",
   "engines": {

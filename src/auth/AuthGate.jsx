@@ -76,6 +76,7 @@ export default function AuthGate({ children }) {
       name: session?.user?.name || prof.name || '',
       currentRole: currentRole || prof.currentRole || '',
       targetRole: targetRole || prof.targetRole || '',
+      yearsExp: yearsExp || prof.yearsExp || '',
       resume: resumeText || prof.resume || '',
     })
     // Backend: role/experience only (never the resume — that's local unless synced).

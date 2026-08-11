@@ -11,9 +11,10 @@ rule below. Where the current app deviates, the **Fixes** section says exactly w
 Two experiences, one goal — *help you prepare, and assist you live, without being detected.*
 
 - **Workspace** — the full desktop window (sidebar + content). Everything *before/after* an
-  interview: Home, Solo Practice, Resume Studio, Job Matching, Past Sessions, Settings, Account.
-- **Overlay** — a compact, always-on-top, screen-share-invisible panel. ONLY during a **Live**
-  interview. Invisibility comes from `setContentProtection(true)` (Win/macOS), not size.
+  interview: Home, Solo Practice, Resume Studio, Job Matching, Sessions, Settings, Account.
+- **Overlay** — a compact, always-on-top panel. ONLY during a **Live**
+  interview. Content protection comes from `setContentProtection(true)` (Win/macOS), not size —
+  treat as partial until share-preview verified; never claim “invisible to all capture.”
 
 Flow: `Website → Login → Open app → Dashboard → {Solo | Live | Resume | Jobs} → Feedback → Dashboard`.
 Live specifically: `Dashboard → Live Setup (in window) → Start → window minimizes + overlay opens → interview → overlay closes → feedback in window`.
@@ -68,21 +69,18 @@ window/tray icon (`build/icon.png`, `iconPath()`), so the taskbar icon matches t
 | Solo Feedback | ✅ good | tokens only |
 | API & Settings | ✅ good rows | rename to **Settings**; fold in app settings; see Fix #2 |
 | Account | ⚠️ dup keys | remove the BYO-keys block; see Fix #2 |
-| **Past Sessions** | ❌ still overlay | bring into the shell as a **table** (Fix #1) |
-| Jobs | ⚠️ old teal | reskin to tokens (Fix #4) |
-| Resume & Career | ⚠️ old teal | reskin to tokens; drop redundant "← Back" (Fix #4) |
-| Live Companion | ❌ old overlay | Phase 3 rebuild (Fix #5) |
+| **Sessions** | ✅ in-shell table | naming locked to **Sessions** (not “Past Sessions”) |
+| Jobs | ✅ tokenized secondary UI | keep parity with `secondaryUi.jsx` |
+| Resume Studio | ✅ tokenized secondary UI | analysis JD is this-screen only; resume/role shared |
+| Live Companion | ✅ glance-first overlay | honesty on stealth + ending notes; no Phase-3 rewrite unless soak demands |
 
 ---
 
 ## 4. Fixes (concrete)
 
-### Fix #1 — Past Sessions must live in the Workspace (not an overlay)
-`history` is missing from `SHELL_VIEWS`, so "Sessions" shrinks to the compact overlay.
-- Add `'history'` to `SHELL_VIEWS`; render it in the shell content area.
-- Design: a **table** — Session · Role/Type · Date · Score · Duration · Actions (view / export / delete),
-  matching the reference "PAST SESSIONS" panel. Row click → open that session's feedback (reuse `SoloFeedback`).
-- Empty state: friendly, in-shell (no floating box).
+### Fix #1 — Sessions in the Workspace (done)
+Sessions live in the shell as a table (`history` in `SHELL_VIEWS`). Naming: **Sessions**.
+Row click → session feedback (`SoloFeedback`). Keep empty state in-shell.
 
 ### Fix #2 — De-duplicate API keys (Account vs Settings)
 Keys currently render in BOTH `Settings` and `Account`. One home only.
@@ -121,7 +119,7 @@ Rebuild `LiveCompanion` around the architecture:
 ---
 
 ## 5. Reusable pieces to add (from the reference)
-- **System Status** panel (Home): provider connected states + Mic + Stealth, "All systems go".
+- **System Status** panel (Home): provider + Voice + stealth honesty — never "All systems go" without Voice (Deepgram) when Live needs it.
 - **Performance Overview** (Home): the score-trend sparkline (we already have `ScoreTrend`; restyle).
 - **Provider row** with **Test** + **status** (Connected / Free tier) + **Add Provider** (Settings).
 - Shared components worth extracting: `Sidebar`, `TopBar`, `Panel`, `StatPill`, `SessionRow`, `ScoreRing`.
@@ -130,7 +128,7 @@ Rebuild `LiveCompanion` around the architecture:
 
 ## 6. Build order
 1. **Tokens + logo** (Fix #2 visual base) — update `tokens.js`, add the M mark + export the icon.
-2. **Fix #1** Past Sessions → shell table.
+2. **Fix #1** Sessions → shell table (done).
 3. **Fix #2** dedupe Account/Settings.
 4. **Fix #3** CSS/scroll/stealth pass.
 5. **Fix #4** reskin Jobs + Resume.

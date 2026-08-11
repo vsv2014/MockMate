@@ -102,9 +102,10 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: `1px solid ${T.border}`, flexShrink: 0, background: T.surface1 }}>
         <img src="/icon.png" alt="" width={26} height={26} style={{ borderRadius: 7, display: 'block' }} />
         <span style={{ fontWeight: 600, fontSize: 14, letterSpacing: '0.2px' }}>MockMate</span>
-        <div style={{ marginLeft: 14, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: isLinuxUA ? '#fdba74' : T.success, background: isLinuxUA ? 'rgba(249,115,22,0.1)' : 'rgba(34,197,94,0.1)', border: `1px solid ${isLinuxUA ? 'rgba(249,115,22,0.3)' : 'rgba(34,197,94,0.3)'}`, padding: '3px 9px', borderRadius: 999 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: isLinuxUA ? '#fdba74' : T.success }} />
-          {isLinuxUA ? 'Stealth limited (Linux)' : 'Stealth Mode active'}
+        <div title={isLinuxUA ? 'Overlay stealth is not supported on Linux' : 'Content protection may exclude the overlay from capture APIs — always verify in your meeting share preview. Browser matrix UNKNOWN.'}
+          style={{ marginLeft: 14, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: isLinuxUA ? '#fdba74' : '#fbbf24', background: isLinuxUA ? 'rgba(249,115,22,0.1)' : 'rgba(251,191,36,0.1)', border: `1px solid ${isLinuxUA ? 'rgba(249,115,22,0.3)' : 'rgba(251,191,36,0.35)'}`, padding: '3px 9px', borderRadius: 999 }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: isLinuxUA ? '#fdba74' : '#fbbf24' }} />
+          {isLinuxUA ? 'Stealth limited (Linux)' : 'Content protection on · Verify share preview'}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
           <TopBtn title="Dim / hide (Alt+H)" onClick={onStealth}>◐</TopBtn>
@@ -225,7 +226,8 @@ export function UpdateToast() {
 function TopBtn({ children, onClick, title, danger }) {
   const [h, setH] = useState(false)
   return (
-    <button onClick={onClick} title={title} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
+    <button type="button" onClick={onClick} title={title} aria-label={title}
+      onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
       style={{ width: 28, height: 28, display: 'grid', placeItems: 'center', border: 'none', borderRadius: 7, cursor: 'pointer',
         background: h ? (danger ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.1)') : 'transparent',
         color: danger && h ? '#f87171' : T.text2, fontSize: 13 }}>{children}</button>
@@ -236,12 +238,21 @@ function TopBtn({ children, onClick, title, danger }) {
 export function DashboardHome({ auth, sessions = [], noProviders, onNav, onCapture }) {
   const name = (auth?.user?.name || '').split(' ')[0] || ''
   const scored = sessions.filter(s => typeof s.score === 'number')
-  const avg = scored.length ? Math.round(scored.reduce((a, s) => a + s.score, 0) / scored.length) : null
+  const [readyInfo, setReadyInfo] = useState(null)
+  useEffect(() => {
+    apiFetch('/api/providers').then(r => r.json()).then(setReadyInfo).catch(() => setReadyInfo({}))
+  }, [])
+  const aiReady = isManaged() || !noProviders || (readyInfo?.providers || []).length > 0
+  const voiceReady = !!readyInfo?.deepgram
+  // Live needs AI + Voice; Solo can run with AI alone (typed answers).
+  const liveReady = aiReady && voiceReady
 
-  const ACTIONS = [
-    { id: 'companion', icon: '🎯', title: 'Live Interview', desc: 'Real-time AI help during interviews', cta: 'Start Live', accent: '#ef4444' },
-    { id: 'solo', icon: '🤖', title: 'Solo Practice', desc: 'Practice with an AI interviewer', cta: 'Start Practice', accent: T.accentFrom },
-    { id: 'duo', icon: '👥', title: 'Duo (Beta)', desc: 'A friend joins your interview live to help', cta: 'Start Duo', accent: '#a78bfa' },
+  const PRIMARY = [
+    { id: 'companion', icon: '🎯', title: 'Live Interview', desc: 'Glanceable help during a real Zoom/Meet interview', cta: 'Start Live', accent: '#ef4444' },
+    { id: 'solo', icon: '🤖', title: 'Solo Practice', desc: 'Practice with an AI interviewer who knows your materials', cta: 'Begin Practice', accent: T.accentFrom },
+  ]
+  const SECONDARY = [
+    { id: 'duo', icon: '👥', title: 'Duo (Beta)', desc: 'A friend joins your interview live to help', cta: 'Open Duo', accent: '#a78bfa' },
     { id: 'jobs', icon: '💼', title: 'Job Matching', desc: 'Find roles that match your profile', cta: 'Find Jobs', accent: '#22c55e' },
     { id: 'career', icon: '📄', title: 'Resume Studio', desc: 'Improve resume & career tools', cta: 'Open Tools', accent: '#eab308' },
   ]
@@ -251,31 +262,58 @@ export function DashboardHome({ auth, sessions = [], noProviders, onNav, onCaptu
       {/* Greeting */}
       <div>
         <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>{greeting()}{name ? `, ${name}` : ''}! 👋</div>
-        <div style={{ fontSize: 13, color: T.text2, marginTop: 3 }}>What would you like to do today?</div>
+        <div style={{ fontSize: 13, color: T.text2, marginTop: 3 }}>Practice Solo, or get help in Live — pick one to start.</div>
       </div>
 
       {isManaged() ? (
-        <div style={{ background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: T.rCard, padding: '10px 14px', fontSize: 12.5, color: T.success, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>✓</span><span><strong>MockMate AI ready</strong> — models are managed for you. Just start an interview.</span>
-        </div>
+        liveReady ? (
+          <div role="status" style={{ background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: T.rCard, padding: '10px 14px', fontSize: 12.5, color: T.success, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>✓</span><span><strong>AI + Voice ready</strong> — you can start Solo or Live.</span>
+          </div>
+        ) : aiReady && !voiceReady ? (
+          <button type="button" onClick={() => onNav('settings')}
+            style={{ ...bannerBtn, background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.35)', color: '#fbbf24' }}>
+            <span>✓</span>
+            <span><strong>AI ready</strong> — Voice needed for Live (add Deepgram in Settings). Solo works with typing. <span style={{ textDecoration: 'underline', color: '#fde68a' }}>Add Voice in Settings</span></span>
+          </button>
+        ) : (
+          <button type="button" onClick={() => onNav('settings')}
+            style={{ ...bannerBtn, background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', color: '#fca5a5' }}>
+            ⚠ <strong>Not ready yet</strong> — check AI and Voice in Settings.
+          </button>
+        )
       ) : noProviders ? (
-        <div onClick={() => onNav('settings')}
-          style={{ background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCard, padding: '11px 14px', fontSize: 12.5, color: '#5eead4', cursor: 'pointer' }}>
-          ⚠ <strong>No AI key connected yet</strong> — click to add one, or switch to MockMate AI in Settings.
-        </div>
+        <button type="button" onClick={() => onNav('settings')}
+          style={{ ...bannerBtn, background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.35)', color: '#5eead4' }}>
+          ⚠ <strong>No AI key connected yet</strong> — open Settings to add one, or switch to MockMate AI.
+        </button>
       ) : (
-        // BYOK with keys configured — make the mode visible (was silent before).
-        <div onClick={() => onNav('settings')}
-          style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '10px 14px', fontSize: 12.5, color: T.text2, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>🔑</span><span>Running on <strong style={{ color: T.text1 }}>your own API key</strong> (BYOK) — manage in Settings.</span>
-        </div>
+        <button type="button" onClick={() => onNav('settings')}
+          style={{ ...bannerBtn, background: T.surface1, border: `1px solid ${T.border}`, color: T.text2, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>🔑</span>
+          <span>
+            Running on <strong style={{ color: T.text1 }}>your own API key</strong>
+            {voiceReady ? ' · Voice ready' : ' · Voice off (needed for Live)'}
+            {' — manage in Settings.'}
+          </span>
+        </button>
       )}
 
-      {/* Action cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-        {ACTIONS.map(a => (
-          <ActionCard key={a.id} {...a} onClick={() => onNav(a.id)} />
+      {/* Primary jobs — Solo + Live */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
+        {PRIMARY.map(a => (
+          <ActionCard key={a.id} {...a} primary onClick={() => onNav(a.id)} />
         ))}
+      </div>
+
+      {/* Secondary tools — quieter */}
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: T.text3, letterSpacing: '0.06em', marginBottom: 8 }}>MORE</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+          {SECONDARY.map(a => (
+            <ActionCard key={a.id} {...a} onClick={() => onNav(a.id)} />
+          ))}
+        </div>
       </div>
 
       {/* Two-column: recent + insights */}
@@ -285,14 +323,15 @@ export function DashboardHome({ auth, sessions = [], noProviders, onNav, onCaptu
           {sessions.length === 0
             ? <Empty>No sessions yet. Finish a Solo practice and it'll show here.</Empty>
             : sessions.slice(0, 3).map(s => (
-              <div key={s.id} onClick={() => onNav('history')} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 4px', cursor: 'pointer', borderBottom: `1px solid ${T.border}` }}>
+              <button type="button" key={s.id} onClick={() => onNav('history')}
+                style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 4px', cursor: 'pointer', borderBottom: `1px solid ${T.border}`, width: '100%', background: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none', textAlign: 'left', font: 'inherit', color: 'inherit' }}>
                 <div style={{ width: 30, height: 30, borderRadius: 8, background: T.surface2, display: 'grid', placeItems: 'center', fontSize: 14, flexShrink: 0 }}>📄</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12.5, fontWeight: 500, color: T.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label || 'Practice session'}</div>
                   <div style={{ fontSize: 10.5, color: T.text3 }}>{new Date(s.ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{s.transcript ? ` · ${s.transcript.length} msgs` : ''}</div>
                 </div>
                 {typeof s.score === 'number' && <span style={{ fontSize: 12, fontWeight: 600, color: scoreColor(s.score) }}>{(s.score / 10).toFixed(1)}<span style={{ color: T.text3, fontWeight: 400 }}>/10</span></span>}
-              </div>
+              </button>
             ))}
         </Panel>
 
@@ -307,13 +346,16 @@ export function DashboardHome({ auth, sessions = [], noProviders, onNav, onCaptu
         <SystemStatus />
       </div>
 
-      {/* Reassurance strip — reinforces the managed model (subtle, no clutter) */}
+      {/* Reassurance strip — managed AI only (Voice is separate) */}
       {isManaged() && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 11, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '12px 16px' }}>
           <span style={{ fontSize: 16 }}>✨</span>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: T.text1 }}>You're using MockMate AI</div>
-            <div style={{ fontSize: 11.5, color: T.text2, marginTop: 1 }}>We automatically pick the best model for each part of your interview — with instant failover. Nothing to set up.</div>
+            <div style={{ fontSize: 11.5, color: T.text2, marginTop: 1 }}>
+              Models are managed for you with failover.
+              {voiceReady ? ' Voice is connected for Live.' : ' Add Voice (Deepgram) in Settings before Live.'}
+            </div>
           </div>
         </div>
       )}
@@ -328,16 +370,22 @@ export function DashboardHome({ auth, sessions = [], noProviders, onNav, onCaptu
   )
 }
 
-function ActionCard({ icon, title, desc, cta, accent, onClick }) {
+function ActionCard({ icon, title, desc, cta, accent, onClick, primary }) {
   const [h, setH] = useState(false)
   return (
-    <div onClick={onClick} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
-      style={{ background: T.surface1, border: `1px solid ${h ? accent : T.border}`, borderRadius: T.rCard, padding: '16px', cursor: 'pointer', transition: 'border-color .14s, transform .14s', transform: h ? 'translateY(-2px)' : 'none' }}>
-      <div style={{ width: 34, height: 34, borderRadius: 9, display: 'grid', placeItems: 'center', fontSize: 17, background: `${accent}22`, border: `1px solid ${accent}44`, marginBottom: 12 }}>{icon}</div>
-      <div style={{ fontSize: 14.5, fontWeight: 600, color: T.text1 }}>{title}</div>
-      <div style={{ fontSize: 11.5, color: T.text2, marginTop: 3, lineHeight: 1.4, minHeight: 32 }}>{desc}</div>
-      <div style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: accent }}>{cta} →</div>
-    </div>
+    <button type="button" onClick={onClick} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
+      aria-label={`${title}. ${cta}`}
+      style={{
+        display: 'block', width: '100%', textAlign: 'left', fontFamily: T.font,
+        background: T.surface1, border: `1px solid ${h ? accent : T.border}`, borderRadius: T.rCard,
+        padding: primary ? '18px 18px 16px' : '12px 14px', cursor: 'pointer',
+        transition: 'border-color .14s, transform .14s', transform: h ? 'translateY(-2px)' : 'none',
+      }}>
+      <div style={{ width: primary ? 38 : 30, height: primary ? 38 : 30, borderRadius: 9, display: 'grid', placeItems: 'center', fontSize: primary ? 18 : 15, background: `${accent}22`, border: `1px solid ${accent}44`, marginBottom: primary ? 12 : 8 }}>{icon}</div>
+      <div style={{ fontSize: primary ? 16 : 13.5, fontWeight: 600, color: T.text1 }}>{title}</div>
+      <div style={{ fontSize: primary ? 12.5 : 11, color: T.text2, marginTop: 3, lineHeight: 1.4, minHeight: primary ? 36 : 28 }}>{desc}</div>
+      <div style={{ marginTop: primary ? 12 : 8, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: primary ? 13 : 11.5, fontWeight: 600, color: accent }}>{cta} →</div>
+    </button>
   )
 }
 
@@ -357,7 +405,20 @@ function Empty({ children }) {
   return <div style={{ fontSize: 12, color: T.text3, lineHeight: 1.6, padding: '10px 2px' }}>{children}</div>
 }
 
-// ── Past Sessions table (Workspace) ──
+const bannerBtn = {
+  width: '100%',
+  borderRadius: T.rCard,
+  padding: '10px 14px',
+  fontSize: 12.5,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  textAlign: 'left',
+  fontFamily: 'inherit',
+}
+
+// ── Sessions table (Workspace) ──
 export function SessionsTable({ sessions = [], onOpen, onDelete }) {
   if (!sessions.length) {
     return (
@@ -376,8 +437,11 @@ export function SessionsTable({ sessions = [], onOpen, onDelete }) {
         ))}
       </div>
       {sessions.map((s, i) => (
-        <div key={s.id} style={{ display: 'grid', gridTemplateColumns: cols, borderBottom: i < sessions.length - 1 ? `1px solid ${T.border}` : 'none', cursor: 'pointer' }}
+        <div key={s.id} role="button" tabIndex={0}
+          aria-label={`Open session ${s.label || 'Interview'}`}
+          style={{ display: 'grid', gridTemplateColumns: cols, borderBottom: i < sessions.length - 1 ? `1px solid ${T.border}` : 'none', cursor: 'pointer' }}
           onClick={() => onOpen(s)}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(s) } }}
           onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
           <div style={{ ...cell, flexDirection: 'column', alignItems: 'flex-start', gap: 2, minWidth: 0 }}>
@@ -385,7 +449,7 @@ export function SessionsTable({ sessions = [], onOpen, onDelete }) {
             {s.verdict && <span style={{ fontSize: 11, color: T.text3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{s.verdict}</span>}
           </div>
           <div style={cell}>{new Date(s.ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</div>
-          <div style={cell}>{typeof s.score === 'number' ? <span style={{ color: scoreColor(s.score), fontWeight: 600 }}>{(s.score / 10).toFixed(1)}</span> : <span style={{ color: T.text3 }}>—</span>}</div>
+          <div style={cell}>{typeof s.score === 'number' ? <span style={{ color: scoreColor(s.score), fontWeight: 600 }}>{(s.score / 10).toFixed(1)}</span> : <span style={{ color: s.report?.error || s.note === 'evaluate_error' ? '#fca5a5' : T.text3 }}>{s.report?.error || s.note === 'evaluate_error' ? 'Err' : '—'}</span>}</div>
           <div style={cell}>{s.transcript?.length || 0}</div>
           <div style={{ ...cell, gap: 4 }}>
             <button onClick={e => { e.stopPropagation(); onOpen(s) }} title="View" style={iconBtn}>👁</button>
@@ -414,17 +478,23 @@ function SystemStatus() {
   useEffect(() => { apiFetch('/api/providers').then(r => r.json()).then(setD).catch(() => setD({})) }, [])
   const managed = isManaged()
   const providers = d?.providers || []
-  const ready = managed || providers.length > 0
+  const aiReady = managed || providers.length > 0
   const dg = !!d?.deepgram
+  const liveReady = aiReady && dg
   const linux = typeof navigator !== 'undefined' && /linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent)
   const failover = managed || providers.length >= 2
+  const footer = !aiReady
+    ? 'Add an AI key or switch to MockMate AI in Settings.'
+    : !dg
+      ? 'AI ready · Voice off — Solo works with typing; Live needs Deepgram in Settings → Voice.'
+      : 'AI + Voice ready — you can start Solo or Live.'
   return (
     <Panel title="System Status">
-      <StatusRow label="AI service" ok={ready} warn={!ready} value={ready ? 'Operational' : 'No key'} />
-      <StatusRow label="Voice" ok={dg || managed} warn={!dg && !managed} value={dg ? 'Connected' : managed ? 'Managed' : 'Off'} />
-      <StatusRow label="Stealth" ok={!linux} warn={linux} value={linux ? 'Limited (Linux)' : 'Active'} />
+      <StatusRow label="AI service" ok={aiReady} warn={!aiReady} value={aiReady ? 'Operational' : 'No key'} />
+      <StatusRow label="Voice" ok={dg} warn={!dg} value={dg ? 'Deepgram connected' : 'Off — add Deepgram in Settings → Voice'} />
+      <StatusRow label="Stealth" ok={false} warn={true} value={linux ? 'NOT supported (Linux)' : 'Verify in share preview (browser matrix UNKNOWN)'} />
       <StatusRow label="Failover" ok={failover} warn={!failover} value={failover ? 'Ready' : 'Single provider'} />
-      <div style={{ fontSize: 10.5, color: T.text3, marginTop: 8 }}>{ready ? 'All systems go — just start an interview.' : 'Add a key or switch to MockMate AI in Settings.'}</div>
+      <div role="status" style={{ fontSize: 10.5, color: liveReady ? T.text3 : '#fbbf24', marginTop: 8 }}>{footer}</div>
     </Panel>
   )
 }

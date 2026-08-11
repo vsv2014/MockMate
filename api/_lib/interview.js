@@ -80,10 +80,13 @@ export function packCandidateContext(profile = {}, extraContext = '') {
 
 const ANSWER_LOOP_RE = /\b(please\s+answer|go\s+ahead\s+and\s+answer|your\s+answer\s*(please)?|can\s+you\s+answer|answer\s+the\s+question|provide\s+your\s+answer|i('m| am)\s+waiting\s+for\s+your\s+answer)\b/i
 
-function buildPrompt(config = {}, profile = {}) {
-  const ctx = profileBlock(profile)
+function buildPrompt(config = {}, profile = {}, extraContext = '') {
+  // Prefer packCandidateContext (RAG hierarchy + fact card) over a raw resume dump.
+  const ctx = packCandidateContext(profile, extraContext) || profileBlock(profile)
   const hasResume = !!(profile.resume && String(profile.resume).trim().length > 40)
   const hasJd = !!(profile.jobDescription && String(profile.jobDescription).trim().length > 40)
+  const hasRag = /RELEVANT FROM YOUR DOCUMENTS/i.test(String(extraContext || ''))
+  const hasGrounding = hasResume || hasJd || hasRag
   const track = [config.domainLabel, config.roundLabel].filter(Boolean).join(' — ') || 'general interview'
   const depth = config.followupDepth
   const followLine = depth === 'light'
@@ -92,10 +95,10 @@ function buildPrompt(config = {}, profile = {}) {
       ? 'After each answer, ask 2–3 probing follow-ups, drilling into specifics (real numbers, the tradeoff they rejected, what broke, why not the alternative) before moving on.'
       : 'After each answer, you may ask 0–2 natural follow-ups (about reasoning, complexity, tradeoffs, or how it scales) before moving on.'
 
-  const groundingRules = (hasResume || hasJd)
+  const groundingRules = hasGrounding
     ? `
 GROUNDING (mandatory — this is a practice interview for THIS candidate):
-- Main questions (kind:"question") MUST reference something concrete from the resume and/or JD when provided (a project name, tech, metric, requirement, or responsibility). Do not ask generic bank questions that ignore their materials.
+- Main questions (kind:"question") MUST reference something concrete from the resume, JD, and/or retrieved document snippets when provided (a project name, tech, metric, requirement, or responsibility). Do not ask generic bank questions that ignore their materials.
 - Follow-ups (kind:"followup") MUST react to what the candidate just said — quote or paraphrase a detail they used — never jump to an unrelated topic until probes for the current beat are done.
 - Prefer a natural conversation arc: open → 1–2 probes → next grounded topic. Vary openings; never sound like a quizmaster.
 - Ban robotic filler: never say "please answer", "go ahead and answer", "your answer please", "can you answer that", or similar.`
@@ -134,13 +137,11 @@ export async function interviewerTurn({ config = {}, transcript = [], profile = 
   if (messages.length === 0) messages.push({ role: 'user', content: "I'm ready. Please begin the interview with your first question." })
   const langNote = language && language !== 'English' ? `\n\nConduct this interview entirely in ${language}.` : ''
   const lastInterviewer = [...recent].reverse().find(t => t.role === 'interviewer')?.text || ''
-  const docBlock = String(extraContext || '').trim()
-    ? `\n\nRELEVANT DOCUMENT SNIPPETS (ground MAIN questions in these when natural):\n${String(extraContext).trim().slice(0, 2000)}`
-    : ''
+  // extraContext is folded into packCandidateContext inside buildPrompt (RAG hierarchy).
 
   const runOnce = async (extraSystem = '') => completeJSON({
     maxTokens: 700, provider,
-    messages: [{ role: 'system', content: buildPrompt(config, profile) + langNote + docBlock + extraSystem }, ...messages]
+    messages: [{ role: 'system', content: buildPrompt(config, profile, extraContext) + langNote + extraSystem }, ...messages]
   })
 
   let turn = await runOnce()

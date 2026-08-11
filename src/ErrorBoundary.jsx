@@ -12,9 +12,9 @@ export default class ErrorBoundary extends React.Component {
   render() {
     if (!this.state.err) return this.props.children
     return (
-      <div style={{ padding: 20, color: '#e2e8f0', fontFamily: 'system-ui, sans-serif', maxWidth: 420 }}>
+      <div style={{ padding: 20, color: '#E8E8EC', fontFamily: "'Kanit', system-ui, -apple-system, sans-serif", maxWidth: 420, background: '#08080C' }}>
         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>⚠ Something broke</div>
-        <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6, marginBottom: 10 }}>
+        <div style={{ fontSize: 12, color: '#8A8A8E', lineHeight: 1.6, marginBottom: 10 }}>
           The overlay hit an unexpected error. Your API keys and saved sessions are safe — reloading usually fixes it.
         </div>
         {this.state.err && (
@@ -24,7 +24,7 @@ export default class ErrorBoundary extends React.Component {
           </pre>
         )}
         <button onClick={() => this.setState({ err: null })}
-          style={{ padding: '8px 14px', background: '#0d9488', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+          style={{ padding: '8px 14px', background: '#14B8A6', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
           Reload
         </button>
       </div>

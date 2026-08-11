@@ -1,10 +1,31 @@
 # Changelog
 
+## v1.4.4 — 2026-08-11
+
+Reliability + trust UX for Solo/Live, Resume Studio ↔ Jobs depth, design-token parity, and an honest landing page. Stealth share-preview matrix and continuous 120-minute usage remain **not verified** on this build — always dry-run before a real interview.
+
+### Added
+- **Jobs → Resume Studio handoff** — score or tailor against a matched listing (analysis JD stays screen-local).
+- **Apply tailor to resume** — write summary + rewritten bullets into the shared profile resume.
+- **Saved-job tracking** — local status chips + notes on the Saved tab.
+- **Solo interview turn timeout** (60s) with retry / orphan recovery.
+- Unit coverage for answer-style SOT, docs upsert, apiFetch timeout, tailor apply, saved-job updates, jobs handoff.
+
+### Changed
+- **Home readiness** truthful (AI + Voice); stealth copy is verify-first, never “invisible to all capture.”
+- **Begin Practice** / **Start Live** CTA consistency; Sessions naming; glance-first Live overlay.
+- **Landing page** brand-first hero, OS-aware Linux stealth honesty, glance mockup.
+- Design tokens applied across Account, App chrome, Room PiP, Live accents.
+
+### Fixed
+- yearsExp persisted from onboarding; answer style single SOT (`concise` default); resume/JD RAG upserts.
+- Evaluate errors persist in Sessions; WhatsNew dialog a11y (Escape + focus trap).
+
 ## v1.4.3 — 2026-07-09
 
 Big one: fixes the packaged-app regressions from 1.4.2, adds document RAG + live collaborative
 rooms (Duo), a proper AI-settings surface, and retires the legacy dual-UI. Doubles down on the
-wedge — invisible, private, best-answer — see docs/ROADMAP.md.
+wedge — private live help + content-protected overlay (verify share preview) — see docs/ROADMAP.md.
 
 ### Fixed
 - **Backend unreachable in the packaged app** — the local server's CSP blocked the auth backend on :4000, so **Solo, Live, and sign-in all failed** in 1.4.2. `connect-src` now allows the loopback backend.
@@ -15,11 +36,11 @@ wedge — invisible, private, best-answer — see docs/ROADMAP.md.
 - Added a real `.gitignore` (node_modules / dist / .env were leaking into git).
 
 ### Added
-- **Duo (Rooms)** — a friend/mentor joins your interview live: shared transcript + screen, plus a **private, screen-capture-protected AI co-pilot window** (invisible to the interviewer's share).
+- **Duo (Rooms)** — a friend/mentor joins your interview live: shared transcript + screen, plus a **private, content-protected AI co-pilot window** (verify share preview; not invisible to all capture).
 - **Document RAG** — upload resume / JD / notes; they're chunked + embedded and the most relevant parts are retrieved per question, replacing the old truncated-resume stuffing.
 - **AI Settings** — Response length (Concise / Balanced / Detailed), Screenshot replies (Quality / Faster), Auto-skip noise, and a Filter-documents relevance slider.
 - **Guest mode** — try the app before creating an account (local BYOK); sign in anytime to sync.
-- **Collapse-to-pill** — minimizing the overlay leaves a small, still-capture-protected logo pill you click to expand.
+- **Collapse-to-pill** — minimizing the overlay leaves a small logo pill (content protection where OS allows — verify share preview).
 - **What's New modal**, in-app version label.
 - **Modernized model catalog** — GPT-5.4, Gemini 3 Flash / 3.1 Flash-Lite, Cerebras, Claude Sonnet 5; Auto now routes to a current fast model on Live and a current strong model for hard questions.
 - **`npm run doctor`** (install/bin integrity) + `npm run verify`; release checklist & roadmap under `docs/`.
@@ -55,7 +76,7 @@ The SaaS foundation: accounts, a redesigned Home, and a more reliable Solo voice
 ### Added
 - **Full auth system** — Welcome, Signup, Login, and a 2-step Onboarding (role setup + optional resume upload), gating the app behind sign-in.
 - **Account screen** — avatar, plan badge (Free/Pro), monthly usage bars (AI responses + live transcription), an *Upgrade to Pro* CTA (disabled until billing ships), a *Use my own API keys* toggle, and Sign out.
-- **Job match in the Career suite** — Matching Jobs is now a tab inside Career (Home → Career → Jobs), reusing the existing job-match logic unchanged.
+- **Job Matching** — resume-ranked roles (later: separate workspace nav alongside Resume Studio).
 
 ### Changed
 - **Home overlay redesigned** to the new design system — Kanit, `#0c0c0c` surfaces, accent-gradient Live hero, 2-column Practice grid, single Career row, and a quiet Settings / API keys / Shortcuts footer. Keyboard shortcuts now live behind the ⌨ button instead of cluttering the main surface.

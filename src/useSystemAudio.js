@@ -28,7 +28,11 @@ export function shouldTriggerHint(text, meta = {}) {
   if (meta?.isCandidate) return false
   const t = String(text || '').trim()
   const words = t.split(/\s+/).filter(Boolean).length
-  if (words < 3) return false
+  if (words < 1) return false
+  // Short follow-ups ("Why?", "And then?") after a prior interviewer Q — word gate ≥3 was too strict.
+  if (words < 3) {
+    if (!(meta?.hadPriorQuestion && (/\?\s*$/.test(t) || looksLikeQuestion(t)))) return false
+  }
   if (meta?.isQuestion || looksLikeQuestion(t)) return true
   if (/\?\s*$/.test(t)) return true
   return /\b(tell me|describe|explain|how would|what is|walk me|can you|why|have you|give me|what are|how do|could you|would you|and then|what about|how about)\b/i.test(t)
@@ -90,10 +94,31 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const [active, setActive] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
   const [interim, setInterim] = useState('')
+  const [diarizationLocked, setDiarizationLocked] = useState(false)
+  const [degraded, setDegraded] = useState(false)
 
   const ws = useRef(null), ctx = useRef(null), proc = useRef(null), stream = useRef(null), srcNode = useRef(null)
   const keepAlive = useRef(null), reconnectTimer = useRef(null), reconnectAttempts = useRef(0)
   const userStop = useRef(false)
+  // Single-flight socket ownership: only the socket whose connectGen matches AND equals
+  // activeSocketRef may deliver transcripts / schedule reconnects. Overlapping wake +
+  // onclose must never leave two live listeners.
+  const connectGen = useRef(0)
+  const activeSocketRef = useRef(null)
+  const connecting = useRef(false)
+  const suspendPaused = useRef(false)   // sleep: pause reconnect budget so long sleep doesn't burn MAX_RECONNECTS
+  const attemptsAtSuspend = useRef(0)
+
+  function abandonSocket(sock) {
+    if (!sock) return
+    try {
+      sock.onclose = null; sock.onerror = null; sock.onmessage = null; sock.onopen = null
+      if (sock.readyState === 1) sock.send(JSON.stringify({ type: 'CloseStream' }))
+    } catch {}
+    try { sock.close() } catch {}
+    if (activeSocketRef.current === sock) activeSocketRef.current = null
+    if (ws.current === sock) ws.current = null
+  }
   // PCM captured while the socket is down — flushed in order on reopen (see sendPCM).
   const pcmQueue = useRef([]), pcmQueueBytes = useRef(0), pcmDroppedBytes = useRef(0)
   // Keyterms (resume/role jargon) boosted in Deepgram, + speaker tracking for diarization.
@@ -113,8 +138,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const teardown = useCallback(() => {
     clearInterval(keepAlive.current); keepAlive.current = null
     clearTimeout(reconnectTimer.current); reconnectTimer.current = null
-    try { if (ws.current?.readyState === 1) ws.current.send(JSON.stringify({ type: 'CloseStream' })) } catch {}
-    try { ws.current?.close() } catch {}
+    abandonSocket(activeSocketRef.current || ws.current)
+    activeSocketRef.current = null
     try { proc.current?.disconnect() } catch {}
     try { srcNode.current?.disconnect() } catch {}
     try { ctx.current?.close() } catch {}
@@ -122,13 +147,21 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     ws.current = ctx.current = proc.current = stream.current = srcNode.current = null
     pcmQueue.current = []; pcmQueueBytes.current = 0; pcmDroppedBytes.current = 0
     setActive(false); setReconnecting(false); setInterim('')
-  }, [])
+    setDiarizationLocked(false); setDegraded(false)
+    connecting.current = false
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const stop = useCallback(() => { userStop.current = true; teardown() }, [teardown])
+  const stop = useCallback(() => {
+    userStop.current = true
+    connectGen.current += 1
+    clearTimeout(reconnectTimer.current); reconnectTimer.current = null
+    teardown()
+  }, [teardown])
 
   // Hard failure — give up and notify the UI.
   const fail = useCallback(reason => {
     if (userStop.current) return
+    connectGen.current += 1   // invalidate any in-flight connect ownership
     teardown()
     onFailRef.current?.(reason)
   }, [teardown])
@@ -136,7 +169,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   // Build the audio graph once. PCM is sent to ws.current (a ref) so it keeps
   // working across socket reconnects without rewiring.
   // Preferred: AudioWorklet — runs on a dedicated audio thread, so capture is
-  // never starved by React renders / answer streaming (durable for 1h+ sessions).
+  // never starved by React renders / answer streaming (helps long sessions; 120m not claimed).
   // Fallback: deprecated ScriptProcessorNode for runtimes without AudioWorklet.
   const buildAudioGraph = useCallback(async (audioStream) => {
     // Pin the context to 16 kHz so the PCM we send matches the sample_rate=16000
@@ -183,14 +216,31 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
 
   // Open (or reopen) the Deepgram socket. Reuses the existing audio graph.
   const connectSocket = useCallback(async () => {
-    if (userStop.current) return
+    if (userStop.current || suspendPaused.current) return
+    if (connecting.current) return   // single-flight — wake + onclose must not overlap
+    connecting.current = true
+    const gen = ++connectGen.current
+    // Close any prior owned socket before opening a new one (prevents double listeners).
+    abandonSocket(activeSocketRef.current || ws.current)
+    activeSocketRef.current = null
+    ws.current = null
+
     let tokenRes, tokenStatus
     try {
       const r = await apiFetch('/api/deepgram-token', { method: 'POST' })
       tokenStatus = r.status
       tokenRes = await r.json().catch(() => null)
-    } catch (e) { return scheduleReconnect('token fetch failed') }
+    } catch (e) {
+      connecting.current = false
+      if (gen !== connectGen.current) return
+      return scheduleReconnect('token fetch failed')
+    }
+    if (gen !== connectGen.current || userStop.current || suspendPaused.current) {
+      connecting.current = false
+      return
+    }
     if (!tokenRes?.access_token) {
+      connecting.current = false
       // 401/403 = bad/missing key (config error) → stop, retrying won't help.
       // 402/429 = over the managed monthly cap → also permanent for this period; reconnecting
       // would loop forever and silently hang Live. Surface the server's message instead.
@@ -199,12 +249,23 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       if ([401, 402, 403, 429].includes(tokenStatus)) return fail(tokenRes?.error || 'Deepgram auth failed — check your API key')
       return scheduleReconnect(`token grant ${tokenStatus || 'error'}`)
     }
-    if (userStop.current) return
 
     const sock = new WebSocket(buildDgUrl(keytermsRef.current, degradedAudio.current, langRef.current), ['token', tokenRes.access_token])
+    if (gen !== connectGen.current || suspendPaused.current) {
+      abandonSocket(sock)
+      connecting.current = false
+      return
+    }
+    // Ownership: this socket is the only one allowed to mutate STT state for `gen`.
+    // Stay "connecting" until open/close so a parallel wake cannot open a second socket.
     ws.current = sock
+    activeSocketRef.current = sock
+
+    const owns = () => gen === connectGen.current && activeSocketRef.current === sock
 
     sock.onopen = () => {
+      if (!owns()) { abandonSocket(sock); return }
+      connecting.current = false
       everConnected.current = true
       reconnectAttempts.current = 0
       setActive(true); setReconnecting(false)
@@ -224,11 +285,12 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       // KeepAlive: text frame every 4s so a silence gap never trips the 10s idle close.
       clearInterval(keepAlive.current)
       keepAlive.current = setInterval(() => {
-        if (ws.current?.readyState === 1) { try { ws.current.send(JSON.stringify({ type: 'KeepAlive' })) } catch {} }
+        if (owns() && sock.readyState === 1) { try { sock.send(JSON.stringify({ type: 'KeepAlive' })) } catch {} }
       }, KEEPALIVE_MS)
     }
 
     sock.onmessage = ev => {
+      if (!owns()) return
       let m; try { m = JSON.parse(ev.data) } catch { return }
       if (m.type === 'Error' || m.err_code) {
         // Fatal Deepgram errors (auth/quota) shouldn't loop forever.
@@ -242,8 +304,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       if (m.is_final) {
         // Update per-speaker stats and (re)derive the interviewer = whoever asks the
         // most question-shaped utterances. We only mark a candidate once the
-        // interviewer is positively identified (>=2 questions), so until then behavior
-        // matches today — we never suppress a real interviewer question.
+        // interviewer is positively identified (>=2 questions), so until then Mic mode
+        // stays auto-hint suppressed (see LiveCompanion).
         if (sp != null) {
           const st = speakerStats.current.get(sp) || { total: 0, questions: 0 }
           st.total++; if (looksLikeQuestion(text)) st.questions++
@@ -255,25 +317,37 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
             let topT = -1, cand = null
             for (const [s, v] of speakerStats.current) if (s !== intv && v.total > topT) { topT = v.total; cand = s }
             candidateSpeaker.current = cand
+            setDiarizationLocked(true)
           }
         }
         lastEarlyTrigger.current = ''
-        onFinalRef.current?.(text, { speaker: sp, isCandidate, isQuestion: looksLikeQuestion(text) })
+        // Never hint on candidate speech — even if question-shaped ("Can you repeat?").
+        onFinalRef.current?.(text, {
+          speaker: sp,
+          isCandidate: !!isCandidate,
+          isQuestion: looksLikeQuestion(text),
+          diarizationLocked: !!interviewerSpeaker.current,
+          degraded: !!degradedAudio.current,
+        })
         setInterim('')
       } else {
         setInterim(text)
         const confidence = alt?.confidence ?? 0
         if (!isCandidate && confidence > 0.82 && looksLikeQuestion(text) && text !== lastEarlyTrigger.current) {
           lastEarlyTrigger.current = text
-          onEarlyRef.current?.(text, { speaker: sp, isCandidate })
+          onEarlyRef.current?.(text, { speaker: sp, isCandidate: !!isCandidate, diarizationLocked: !!interviewerSpeaker.current })
         }
       }
     }
 
     sock.onerror = () => { /* onclose will follow and trigger reconnect */ }
     sock.onclose = (ev) => {
+      if (gen !== connectGen.current) return
+      if (activeSocketRef.current === sock) activeSocketRef.current = null
+      if (ws.current === sock) ws.current = null
+      connecting.current = false
       clearInterval(keepAlive.current); keepAlive.current = null
-      if (userStop.current) return
+      if (userStop.current || suspendPaused.current) return
       // Auth/quota/policy failures can arrive as a WebSocket close code rather than
       // an in-band Error frame — those won't fix themselves, so fail fast instead of
       // looping "Reconnecting…" forever. Transient drops (1006/1011/network) still retry.
@@ -288,6 +362,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   function failOrDegrade(reason) {
     if (!degradedAudio.current && !everConnected.current) {
       degradedAudio.current = true
+      setDegraded(true)
       reconnectAttempts.current = 0
       console.warn('[audio] enhanced transcription failed pre-connect — falling back to plain config:', reason)
       connectSocket()
@@ -304,7 +379,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   // code (FATAL_CLOSE) or in-band Error frame, a missing token, or MAX_RECONNECTS
   // consecutive failures with no success in between (a genuinely broken stream).
   function scheduleReconnect(reason) {
-    if (userStop.current) return
+    if (userStop.current || suspendPaused.current) return
     reconnectAttempts.current += 1
     try { onReconnectRef.current?.(reconnectAttempts.current, reason) } catch {}
     if (reconnectAttempts.current > MAX_RECONNECTS) {
@@ -320,8 +395,10 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const start = useCallback(async (sourceId = 'microphone', opts = {}) => {
     if (ws.current || stream.current) return  // already running — a 2nd start() would orphan the live mic/socket
     userStop.current = false
+    suspendPaused.current = false
     reconnectAttempts.current = 0
     everConnected.current = false; degradedAudio.current = false
+    setDegraded(false); setDiarizationLocked(false)
     keytermsRef.current = sanitizeKeyterms(opts.keyterms)
     if (opts.language) langRef.current = opts.language
     speakerStats.current = new Map(); interviewerSpeaker.current = null; candidateSpeaker.current = null
@@ -348,6 +425,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   // Mid-session source switch or manual retry: tear down cleanly then start again.
   const restart = useCallback(async (sourceId = 'microphone', opts = {}) => {
     userStop.current = true
+    connectGen.current += 1
+    clearTimeout(reconnectTimer.current); reconnectTimer.current = null
     teardown()
     await new Promise(r => setTimeout(r, 200))
     return start(sourceId, opts)
@@ -359,23 +438,44 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     const resumeAudio = () => { try { if (ctx.current?.state === 'suspended') ctx.current.resume() } catch {} }
     const afterWake = () => {
       resumeAudio()
+      const wasSuspended = suspendPaused.current
+      suspendPaused.current = false
       if (userStop.current) return
       if (!ctx.current) return   // session not live
-      const sock = ws.current
-      if (sock && sock.readyState === 1) return
-      if (sock && (sock.readyState === 0 || sock.readyState === 2)) return
-      // Closed or missing — scheduleReconnect path via a synthetic close nudge.
+      // Sleep must not permanently burn the reconnect budget — always reset on resume.
+      reconnectAttempts.current = 0
+      attemptsAtSuspend.current = 0
+      const sock = activeSocketRef.current || ws.current
+      if (sock && sock.readyState === 1 && !wasSuspended) return
+      if (connecting.current && sock && sock.readyState === 0) return
+      // After sleep (or a dead socket): single-flight reconnect under a fresh generation.
+      setActive(false)
       setReconnecting(true)
       clearTimeout(reconnectTimer.current)
       reconnectTimer.current = setTimeout(() => {
-        if (!userStop.current) connectSocket().catch(() => {})
+        if (!userStop.current && !suspendPaused.current) connectSocket().catch(() => {})
       }, 400)
+    }
+    const onSuspend = () => {
+      // Pause reconnect budget + abandon ownership so mid-sleep onclose cannot schedule
+      // retries that burn MAX_RECONNECTS across a long lid-close.
+      suspendPaused.current = true
+      attemptsAtSuspend.current = reconnectAttempts.current
+      clearTimeout(reconnectTimer.current); reconnectTimer.current = null
+      connectGen.current += 1          // invalidate in-flight connect / stale listeners
+      connecting.current = false
+      abandonSocket(activeSocketRef.current || ws.current)
+      activeSocketRef.current = null
+      clearInterval(keepAlive.current); keepAlive.current = null
+      setActive(false)
+      setReconnecting(false)
     }
     navigator.mediaDevices?.addEventListener?.('devicechange', afterWake)
     const onVis = () => { if (document.visibilityState === 'visible') afterWake() }
     document.addEventListener('visibilitychange', onVis)
     const offPower = window.electronAPI?.onPowerEvent?.(ev => {
-      if (ev === 'resume' || ev === 'unlock') afterWake()
+      if (ev === 'suspend') onSuspend()
+      else if (ev === 'resume' || ev === 'unlock') afterWake()
     })
     const offDisplay = window.electronAPI?.onDisplayChanged?.(() => afterWake())
     return () => {
@@ -386,6 +486,6 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     }
   }, [connectSocket])
 
-  useEffect(() => () => { userStop.current = true; teardown() }, [teardown])
-  return { supported: true, active, reconnecting, interim, start, stop, restart }
+  useEffect(() => () => { userStop.current = true; connectGen.current += 1; teardown() }, [teardown])
+  return { supported: true, active, reconnecting, interim, diarizationLocked, degraded, start, stop, restart }
 }

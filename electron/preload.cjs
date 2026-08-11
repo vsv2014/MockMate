@@ -34,6 +34,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   hideWindow: () => ipcRenderer.send('hide-window'),
   setPin: on => ipcRenderer.send('set-pin', on),
   setClickThrough: on => ipcRenderer.send('set-click-through', !!on),
+  // Region-aware: when click-through is on, temporarily accept hits over interactive chrome.
+  setIgnoreMouseEvents: (ignore, opts) => ipcRenderer.send('set-ignore-mouse-events', { ignore: !!ignore, forward: opts?.forward !== false }),
+  onShortcutClickThroughOff: cb => {
+    const handler = () => cb()
+    ipcRenderer.on('shortcut-clickthrough-off', handler)
+    return () => ipcRenderer.removeListener('shortcut-clickthrough-off', handler)
+  },
   // Duo co-pilot: open/close the protected hint window + push hints into it (see main.cjs).
   setRoomActive: on => ipcRenderer.send('set-room-active', on),
   sendHint: payload => ipcRenderer.send('send-hint', payload),

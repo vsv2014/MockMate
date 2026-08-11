@@ -36,6 +36,7 @@ function BrowserGate() {
 // ── Electron shell — wraps every screen in the floating overlay ───────────────
 function ElectronShell({ auth }) {
   const [view, setView] = useState('home')
+  const [careerSeed, setCareerSeed] = useState(null)       // one-shot Jobs → Resume Studio handoff
   const [whatsNewSignal, setWhatsNewSignal] = useState(0)   // bump to re-open the What's New modal
   const [report, setReport] = useState(null)
   const [panelSize, setPanelSize] = useState({ w: 420, h: 560 })
@@ -239,8 +240,35 @@ function ElectronShell({ auth }) {
     )
     else if (view === 'solo') content = <Solo onHome={goHome} noProviders={noProviders} />
     else if (view === 'duo') content = <Duo onHome={goHome} />
-    else if (view === 'jobs') content = <div style={{ maxWidth: 820, margin: '0 auto' }}><div style={shellHeader}>Job Matching</div><Jobs onHome={goHome} noProviders={noProviders} embedded /></div>
-    else if (view === 'career') content = <div style={{ maxWidth: 820, margin: '0 auto' }}><div style={shellHeader}>Resume Studio</div><Career onHome={goHome} noProviders={noProviders} onSettings={() => setView('settings')} embedded /></div>
+    else if (view === 'jobs') content = (
+      <div style={{ maxWidth: 820, margin: '0 auto' }}>
+        <div style={shellHeader}>Job Matching</div>
+        <Jobs
+          onHome={goHome}
+          noProviders={noProviders}
+          onSettings={() => setView('settings')}
+          onOpenCareer={seed => { setCareerSeed(seed); setView('career') }}
+          embedded
+        />
+      </div>
+    )
+    else if (view === 'career') content = (
+      <div style={{ maxWidth: 820, margin: '0 auto' }}>
+        <div style={shellHeader}>Resume Studio</div>
+        <Career
+          onHome={goHome}
+          noProviders={noProviders}
+          onSettings={() => setView('settings')}
+          embedded
+          initialJd={careerSeed?.initialJd}
+          initialRole={careerSeed?.initialRole}
+          initialCompany={careerSeed?.initialCompany}
+          initialTab={careerSeed?.initialTab}
+          limitedJd={careerSeed?.limitedJd}
+          onSeedConsumed={() => setCareerSeed(null)}
+        />
+      </div>
+    )
     else if (view === 'settings') content = (
       <div style={{ maxWidth: 640, margin: '0 auto' }}>
         <div style={shellHeader}>Settings</div>
@@ -271,7 +299,7 @@ function ElectronShell({ auth }) {
             onAgain={() => setOpenSession(null)} onAgainLabel="← Back to sessions" />
         ) : (
           <>
-            <div style={shellHeader}>Past Sessions</div>
+            <div style={shellHeader}>Sessions</div>
             <SessionsTable sessions={sessions} onOpen={s => setOpenSession(s)}
               onDelete={id => { if (window.confirm('Delete this session permanently? Its transcript and feedback can\'t be recovered.')) { deleteSession(id); refreshSessions() } }} />
           </>
@@ -342,7 +370,7 @@ export function CodeBlock({ code, language }) {
     <div style={{ background: '#0d1117', border: '1px solid #1f2733', borderRadius: 8, marginBottom: 8, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderBottom: '1px solid #1f2733', background: 'rgba(255,255,255,0.02)' }}>
         <span style={{ fontSize: 10, color: '#7d8590', fontFamily: 'monospace' }}>{language || 'code'}</span>
-        <button onClick={copy} style={{ marginLeft: 'auto', background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copied ? '#4ade80' : '#94a3b8', border: 'none', borderRadius: 5, padding: '2px 9px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+        <button onClick={copy} style={{ marginLeft: 'auto', background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copied ? '#4ade80' : T.text2, border: 'none', borderRadius: 5, padding: '2px 9px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
           {copied ? '✓ Copied' : '⧉ Copy'}
         </button>
       </div>
@@ -364,10 +392,10 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
     <div style={{ background: accentBg, border: `1px solid ${accent}`, borderRadius: 10, padding: '12px', marginBottom: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: isCoding ? '#4ade80' : '#fbbf24' }}>{isCoding ? '💻 Coding Solution' : '📸 Screen Analysis'}</span>
-        <span style={{ fontSize: 9, color: '#64748b', background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 8 }}>Ctrl+Shift+U</span>
+        <span style={{ fontSize: 9, color: T.text3, background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 8 }}>Ctrl+Shift+U</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          {onRecapture && <button onClick={onRecapture} title="Re-capture the screen" style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13 }}>↻</button>}
-          <button onClick={onDismiss} title="Dismiss" style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 13 }}>✕</button>
+          {onRecapture && <button onClick={onRecapture} title="Re-capture the screen" style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 13 }}>↻</button>}
+          <button onClick={onDismiss} title="Dismiss" style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 13 }}>✕</button>
         </div>
       </div>
       {analyzing
@@ -380,9 +408,9 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
                   {analysis.pattern && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(20,184,166,0.3)', color: '#99f6e4', borderRadius: 10, fontWeight: 700 }}>⚡ {analysis.pattern}</span>}
                   {analysis.complexity && <span style={{ fontSize: 9, padding: '2px 8px', background: '#0d1117', color: '#7ee787', borderRadius: 10, fontFamily: 'monospace' }}>{analysis.complexity}</span>}
-                  {analysis.language && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(255,255,255,0.06)', color: '#94a3b8', borderRadius: 10 }}>{analysis.language}</span>}
+                  {analysis.language && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(255,255,255,0.06)', color: T.text2, borderRadius: 10 }}>{analysis.language}</span>}
                 </div>
-                {analysis.detectedText && <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(34,197,94,0.3)', paddingLeft: 7 }}>{analysis.detectedText}</div>}
+                {analysis.detectedText && <div style={{ fontSize: 11, color: T.text2, fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(34,197,94,0.3)', paddingLeft: 7 }}>{analysis.detectedText}</div>}
                 {/* Language switcher — re-solve the same screen in another language, no re-capture */}
                 {onReanalyze && (
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -391,16 +419,16 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
                       return (
                         <button key={lang} onClick={() => onReanalyze(lang)} title={`Solve in ${lang}`}
                           style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer', border: 'none', fontWeight: 600,
-                            background: on ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.05)', color: on ? '#4ade80' : '#64748b' }}>{lang}</button>
+                            background: on ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.05)', color: on ? '#4ade80' : T.text3 }}>{lang}</button>
                       )
                     })}
                   </div>
                 )}
                 {Array.isArray(analysis.approach) && analysis.approach.length > 0 && (
                   <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 9, color: '#475569', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>APPROACH</div>
+                    <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>APPROACH</div>
                     {analysis.approach.map((step, i) => (
-                      <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 3, fontSize: 12, color: '#cbd5e1' }}>
+                      <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 3, fontSize: 12, color: T.text1 }}>
                         <span style={{ color: '#4ade80', flexShrink: 0 }}>{i + 1}.</span><span>{step}</span>
                       </div>
                     ))}
@@ -409,9 +437,9 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
                 {analysis.code && <CodeBlock code={analysis.code} language={analysis.language} />}
                 {Array.isArray(analysis.edgeCases) && analysis.edgeCases.length > 0 && (
                   <div style={{ marginBottom: 6 }}>
-                    <div style={{ fontSize: 9, color: '#475569', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>EDGE CASES</div>
+                    <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>EDGE CASES</div>
                     {analysis.edgeCases.map((ec, i) => (
-                      <div key={i} style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>• {ec}</div>
+                      <div key={i} style={{ fontSize: 11, color: T.text2, marginBottom: 2 }}>• {ec}</div>
                     ))}
                   </div>
                 )}
@@ -453,7 +481,7 @@ function Glyph({ name }) {
 
 export function IconBtn({ icon, title, onClick, active, danger }) {
   const [hover, setHover] = useState(false)
-  const base = danger ? '#f87171' : active ? '#4ade80' : '#94a3b8'
+  const base = danger ? '#f87171' : active ? '#4ade80' : T.text2
   const bg = hover ? (danger ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.1)')
     : active ? 'rgba(34,197,94,0.14)' : 'transparent'
   return (
@@ -487,25 +515,25 @@ function ScoreTrend({ sessions }) {
   return (
     <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 12px' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>Score trend</span>
-        <span style={{ fontSize: 10, color: '#64748b' }}>avg {avg}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: T.text1 }}>Score trend</span>
+        <span style={{ fontSize: 10, color: T.text3 }}>avg {avg}</span>
         <span style={{ fontSize: 10, color: delta >= 0 ? '#4ade80' : '#f87171' }}>{delta >= 0 ? '▲' : '▼'} {Math.abs(delta)} since {truncated ? 'shown start' : 'first'}</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
         {[75, 50].map(g => (
           <g key={g}>
             <line x1={padX} x2={W - padX} y1={yAt(g)} y2={yAt(g)} stroke="rgba(255,255,255,0.07)" strokeDasharray="3 3" />
-            <text x={W - padX} y={yAt(g) - 2} fontSize="7" fill="#475569" textAnchor="end">{g}</text>
+            <text x={W - padX} y={yAt(g) - 2} fontSize="7" fill={T.text3} textAnchor="end">{g}</text>
           </g>
         ))}
         <path d={line} fill="none" stroke="rgba(45,212,191,0.75)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
         {pts.map((p, i) => (
           <circle key={i} cx={p.x} cy={p.y} r="2.6" fill={scoreColor(p.s.score)} stroke="#0a0a12" strokeWidth="1">
-            <title>{`${p.s.score}/100 · ${fmt(p.s.ts)}${p.s.label ? ' · ' + p.s.label : ''}`}</title>
+            <title>{`${(p.s.score / 10).toFixed(1)}/10 · ${fmt(p.s.ts)}${p.s.label ? ' · ' + p.s.label : ''}`}</title>
           </circle>
         ))}
-        <text x={padX} y={H - 3} fontSize="7" fill="#475569" textAnchor="start">{fmt(scored[0].ts)}</text>
-        <text x={W - padX} y={H - 3} fontSize="7" fill="#475569" textAnchor="end">{fmt(scored[n - 1].ts)}</text>
+        <text x={padX} y={H - 3} fontSize="7" fill={T.text3} textAnchor="start">{fmt(scored[0].ts)}</text>
+        <text x={W - padX} y={H - 3} fontSize="7" fill={T.text3} textAnchor="end">{fmt(scored[n - 1].ts)}</text>
       </svg>
     </div>
   )
@@ -539,22 +567,26 @@ function AiAnswerSettings() {
   const [shot, setShot] = useState(getScreenshotSpeed())
   const [skip, setSkip] = useState(getAutoSkip() ? 'on' : 'off')
   return (
-    <div style={{ marginTop: 18, padding: 16, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard }}>
-      <div style={{ fontSize: 14, fontWeight: 600, color: T.text1, marginBottom: 12 }}>AI answers</div>
-      <Segmented label="Response length"
-        hint="Concise streams the first word soonest and is easiest to glance at mid-interview; Detailed adds depth."
-        value={style} onChange={v => { setStyle(v); setAnswerStyle(v) }}
-        options={[{ value: 'balanced', label: 'Default' }, { value: 'concise', label: 'Concise' }, { value: 'detailed', label: 'Detailed' }]} />
-      <Segmented label="Screenshot replies"
-        hint="Faster gives quicker, more concise answers when solving from a screenshot; Quality keeps full depth."
-        value={shot} onChange={v => { setShot(v); setScreenshotSpeed(v) }}
-        options={[{ value: 'quality', label: 'Quality' }, { value: 'fast', label: 'Faster' }]} />
-      <Segmented label="Auto-skip noise"
-        hint="On: stay silent on small talk and non-questions during Live. Off: answer every line the interviewer says."
-        value={skip} onChange={v => { setSkip(v); setAutoSkip(v === 'on') }}
-        options={[{ value: 'on', label: 'Enable' }, { value: 'off', label: 'Disable' }]} />
-      <DocThreshold />
-    </div>
+    <details style={{ marginTop: 18, padding: 16, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard }}>
+      <summary style={{ fontSize: 14, fontWeight: 600, color: T.text1, cursor: 'pointer', fontFamily: T.font }}>
+        AI answers · advanced
+      </summary>
+      <div style={{ marginTop: 12 }}>
+        <Segmented label="Response length"
+          hint="Concise (default) streams the first word soonest and is easiest to glance at mid-interview; Detailed adds depth. Same preference as Live."
+          value={style} onChange={v => { setStyle(v); setAnswerStyle(v) }}
+          options={[{ value: 'concise', label: 'Concise' }, { value: 'balanced', label: 'Balanced' }, { value: 'detailed', label: 'Detailed' }]} />
+        <Segmented label="Screenshot replies"
+          hint="Faster gives quicker, more concise answers when solving from a screenshot; Quality keeps full depth."
+          value={shot} onChange={v => { setShot(v); setScreenshotSpeed(v) }}
+          options={[{ value: 'quality', label: 'Quality' }, { value: 'fast', label: 'Faster' }]} />
+        <Segmented label="Auto-skip noise"
+          hint="On: stay silent on small talk and non-questions during Live. Off: answer every line the interviewer says."
+          value={skip} onChange={v => { setSkip(v); setAutoSkip(v === 'on') }}
+          options={[{ value: 'on', label: 'Enable' }, { value: 'off', label: 'Disable' }]} />
+        <DocThreshold />
+      </div>
+    </details>
   )
 }
 
@@ -597,14 +629,53 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
     }
     document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp)
   }
-  // 📌 Pin — keep the overlay above full-screen Zoom/Meet. Persisted so it survives
-  // view changes, and re-asserted on mount so the window matches the saved state.
-  const [pinned, setPinned] = useState(() => { try { return localStorage.getItem('mm-pinned') === '1' } catch { return false } })
+  // 📌 Pin — keep the overlay above full-screen Zoom/Meet. Default ON for Live trust.
+  // Persisted so it survives view changes, and re-asserted on mount so the window matches the saved state.
+  const [pinned, setPinned] = useState(() => {
+    try {
+      const v = localStorage.getItem('mm-pinned')
+      return v === null ? true : v === '1'
+    } catch { return true }
+  })
   useEffect(() => { if (inElectron) window.electronAPI?.setPin?.(pinned) }, [pinned])
   useEffect(() => {
     if (!inElectron) return
     window.electronAPI?.setClickThrough?.(!!clickThrough)
     return () => { window.electronAPI?.setClickThrough?.(false) }
+  }, [clickThrough])
+  // Alt+C force-off click-through (global shortcut → renderer)
+  useEffect(() => {
+    if (!inElectron || !onClickThrough) return
+    const off = window.electronAPI?.onShortcutClickThroughOff?.(() => {
+      if (clickThrough) onClickThrough()
+    })
+    return () => { try { off?.() } catch {} }
+  }, [clickThrough, onClickThrough])
+  // Region-aware: while click-through is on, accept mouse over interactive chrome only.
+  useEffect(() => {
+    if (!inElectron || !clickThrough) return
+    const root = document.getElementById('mockmate-overlay')
+    if (!root) return
+    const isInteractive = el => {
+      if (!el || !root.contains(el)) return false
+      return !!el.closest?.('[data-mm-hit],button,a,input,textarea,select,[role="button"]')
+    }
+    let accepting = false
+    const setAccept = on => {
+      if (on === accepting) return
+      accepting = on
+      window.electronAPI?.setIgnoreMouseEvents?.(!on, { forward: true })
+    }
+    const onMove = e => setAccept(isInteractive(e.target))
+    const onLeave = () => setAccept(false)
+    root.addEventListener('mousemove', onMove, true)
+    root.addEventListener('mouseleave', onLeave, true)
+    setAccept(false)
+    return () => {
+      root.removeEventListener('mousemove', onMove, true)
+      root.removeEventListener('mouseleave', onLeave, true)
+      window.electronAPI?.setClickThrough?.(true)
+    }
   }, [clickThrough])
   function togglePin() {
     setPinned(p => { const v = !p; try { localStorage.setItem('mm-pinned', v ? '1' : '0') } catch {} ; return v })
@@ -654,7 +725,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         transition: 'opacity 0.1s',
         pointerEvents: clickThrough ? 'none' : 'all',
         fontFamily: 'system-ui, sans-serif',
-        color: '#e2e8f0',
+        color: T.text1,
         userSelect: 'none'
       }}>
         {/* Header — status/title on the left, a tidy icon toolbar on the right */}
@@ -666,7 +737,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
           {extra
             ? <div onMouseDown={e => e.stopPropagation()}>{extra}</div>
             : <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.88)', fontWeight: 600, fontFamily: T.font }}>{title || 'MockMate'}</span>}
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }} onMouseDown={e => e.stopPropagation()}>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }} onMouseDown={e => e.stopPropagation()} data-mm-hit="1">
             {actions}
             {inElectron && (
               <button onClick={togglePin} onMouseDown={e => e.stopPropagation()}
@@ -676,7 +747,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
             )}
             {inElectron && onClickThrough && (
               <button onClick={toggleClickThrough} onMouseDown={e => e.stopPropagation()}
-                title={clickThrough ? 'Click-through ON — clicks pass to the meeting (click pill/header icons to interact)' : 'Click-through OFF — click to let clicks pass through the overlay'}
+                title={clickThrough ? 'Click-through ON — clicks pass to the meeting. Hover this toolbar to interact, or press Alt+C to turn off.' : 'Click-through OFF — click to let clicks pass through the overlay (Alt+C force-off when on)'}
                 aria-label={clickThrough ? 'Disable click-through' : 'Enable click-through'} aria-pressed={!!clickThrough}
                 style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: clickThrough ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 12, opacity: clickThrough ? 1 : 0.6, fontWeight: 700 }}>🖱️</button>
             )}

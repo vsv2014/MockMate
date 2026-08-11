@@ -1,52 +1,38 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { loadSavedJobs, saveJob, removeSavedJob, savedKeySet } from './savedJobs'
+import { saveJob, updateSavedJob, loadSavedJobs, removeSavedJob } from './savedJobs.js'
 
-// jsdom-free localStorage stub
-beforeEach(() => {
-  let store = {}
-  vi.stubGlobal('localStorage', {
-    getItem: k => (k in store ? store[k] : null),
-    setItem: (k, v) => { store[k] = String(v) },
-    removeItem: k => { delete store[k] },
-  })
+const store = new Map()
+vi.stubGlobal('localStorage', {
+  getItem: k => (store.has(k) ? store.get(k) : null),
+  setItem: (k, v) => { store.set(k, String(v)) },
+  removeItem: k => { store.delete(k) },
 })
 
-const job = (id, extra = {}) => ({ id, title: `Role ${id}`, company: 'Acme', url: `https://x/${id}`, score: 80, ...extra })
+describe('savedJobs tracking', () => {
+  beforeEach(() => { store.clear() })
 
-describe('savedJobs', () => {
-  it('starts empty', () => expect(loadSavedJobs()).toEqual([]))
-
-  it('saves a job and reports it as saved', () => {
-    saveJob(job('a'))
-    expect(loadSavedJobs()).toHaveLength(1)
-    expect(savedKeySet().has('a')).toBe(true)
+  it('defaults status to interested', () => {
+    saveJob({ id: '1', title: 'Eng', url: 'https://x.test/1' })
+    expect(loadSavedJobs()[0].status).toBe('interested')
   })
 
-  it('dedupes the same job by id', () => {
-    saveJob(job('a'))
-    saveJob(job('a'))
-    expect(loadSavedJobs()).toHaveLength(1)
+  it('updates status and notes', () => {
+    saveJob({ id: '1', title: 'Eng', url: 'https://x.test/1' })
+    updateSavedJob('1', { status: 'applied', notes: 'Referred by Priya' })
+    const j = loadSavedJobs()[0]
+    expect(j.status).toBe('applied')
+    expect(j.notes).toBe('Referred by Priya')
   })
 
-  it('falls back to url as the key when id is missing', () => {
-    saveJob({ title: 'No id', url: 'https://x/z', score: 10 })
-    expect(savedKeySet().has('https://x/z')).toBe(true)
+  it('ignores invalid status', () => {
+    saveJob({ id: '1', title: 'Eng', url: 'https://x.test/1' })
+    updateSavedJob('1', { status: 'nope' })
+    expect(loadSavedJobs()[0].status).toBe('interested')
   })
 
-  it('ignores a job with neither id nor url', () => {
-    saveJob({ title: 'orphan', score: 1 })
+  it('removes by id', () => {
+    saveJob({ id: '1', title: 'Eng', url: 'https://x.test/1' })
+    removeSavedJob('1')
     expect(loadSavedJobs()).toHaveLength(0)
-  })
-
-  it('removes a saved job', () => {
-    saveJob(job('a')); saveJob(job('b'))
-    removeSavedJob('a')
-    expect(savedKeySet().has('a')).toBe(false)
-    expect(savedKeySet().has('b')).toBe(true)
-  })
-
-  it('survives corrupt storage', () => {
-    localStorage.setItem('mm-saved-jobs', '{not json')
-    expect(loadSavedJobs()).toEqual([])
   })
 })

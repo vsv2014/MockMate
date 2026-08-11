@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MockMate — Real-Time AI Interview Assistant</title>
-  <meta name="description" content="Get real-time AI answers during your interviews. MockMate listens to questions and generates answers instantly — overlay excluded from common screen-share APIs on Windows & macOS (verify before a real interview)." />
+  <title>MockMate — AI interview companion</title>
+  <meta name="description" content="MockMate is a private AI copilot for live interviews and Solo practice. Resume-grounded answers in about a second. On Windows & macOS, content protection can exclude the overlay from common screen-share APIs — always verify share preview. Not supported on Linux." />
   <meta name="theme-color" content="#f4f0e9" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -167,19 +167,25 @@
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       padding: 150px 24px 80px; text-align: center; position: relative;
     }
-    .hero-eyebrow {
-      display: inline-flex; align-items: center; gap: 9px;
-      background: var(--surface); border: 1px solid var(--border);
-      color: var(--accent-deep);
-      font-size: 13px; font-weight: 500; padding: 7px 16px 7px 12px; border-radius: 100px;
-      margin-bottom: 30px; box-shadow: var(--shadow-sm);
+    .hero-brand {
+      font-family: 'Inter Tight', sans-serif;
+      font-size: clamp(40px, 6.5vw, 72px);
+      font-weight: 800; letter-spacing: -0.04em; line-height: 1; color: var(--ink);
+      margin-bottom: 18px;
+      display: inline-flex; align-items: center; gap: 14px;
     }
-    .hero-eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .hero-brand .mark {
+      width: clamp(36px, 5vw, 52px); height: clamp(36px, 5vw, 52px); border-radius: 14px;
+      background: linear-gradient(150deg, var(--accent), var(--accent-deep));
+      box-shadow: 0 1px 0 rgba(255,255,255,0.35) inset, 0 10px 28px rgba(13,148,136,0.35);
+      display: grid; place-items: center; color: #fff; font-size: clamp(16px, 2.2vw, 22px);
+      flex-shrink: 0;
+    }
     .hero h1 {
       font-family: 'Inter Tight', sans-serif;
-      font-size: clamp(44px, 7.5vw, 86px);
-      font-weight: 700; letter-spacing: -0.045em; line-height: 0.98; color: var(--ink);
-      margin-bottom: 26px;
+      font-size: clamp(28px, 4.2vw, 42px);
+      font-weight: 650; letter-spacing: -0.03em; line-height: 1.15; color: var(--ink);
+      margin-bottom: 16px; max-width: 720px;
     }
     .hero h1 .highlight {
       font-family: 'Instrument Serif', Georgia, serif;
@@ -187,10 +193,15 @@
       color: var(--accent);
     }
     .hero-sub {
-      font-size: clamp(16px, 2.2vw, 20px);
-      color: var(--muted); max-width: 600px; margin: 0 auto 44px; line-height: 1.65;
+      font-size: clamp(15px, 2vw, 18px);
+      color: var(--muted); max-width: 520px; margin: 0 auto 36px; line-height: 1.55;
     }
-    .hero-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 60px; }
+    .hero-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 18px; }
+    .hero-trust {
+      margin-top: 8px; margin-bottom: 48px; font-size: 13px; color: var(--muted);
+      display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; max-width: 720px;
+    }
+    .hero-trust span { max-width: 280px; }
 
     .btn-hero {
       position: relative; overflow: hidden;
@@ -465,13 +476,15 @@
 
   <!-- HERO -->
   <section class="hero">
-    <div class="hero-eyebrow reveal"><span class="dot"></span>Real-time interview copilot · Private · Free to start</div>
+    <div class="hero-brand reveal" aria-label="MockMate">
+      <span class="mark" aria-hidden="true">◆</span>
+      <span>MockMate</span>
+    </div>
     <h1 class="reveal">
-      Never get caught off-guard<br />
-      <span class="highlight">in an interview again.</span>
+      Never get caught <span class="highlight">off-guard</span> again.
     </h1>
     <p class="hero-sub reveal">
-      A private AI copilot for live interviews and practice. It hears each question and puts a structured, resume-grounded answer on your screen in about a second — <strong>excluded from common screen-share APIs on Windows &amp; macOS</strong> (always verify in Zoom/Meet/Teams before a real interview). Behavioral, system design, and coding rounds, plus resume tools and practice.
+      Private AI for Live interviews and Solo practice — resume-grounded answers in about a second.
     </p>
     <div class="hero-ctas reveal">
       <a href="https://github.com/vsv2014/MockMate/releases/latest" class="btn-hero" id="hero-download" target="_blank">
@@ -479,13 +492,13 @@
       </a>
       <a href="#how" class="btn-secondary">See how it works</a>
     </div>
-    <div class="hero-trust reveal" style="margin-top:20px;font-size:13px;color:var(--muted);display:flex;gap:18px;justify-content:center;flex-wrap:wrap">
+    <div class="hero-trust reveal" id="hero-trust">
       <span>✓ Free to start — no credit card</span>
-      <span>✓ BYOK keys stay on your machine (interview audio/text still goes to your AI providers)</span>
-      <span>✓ Overlay excluded from common screen share on Windows &amp; macOS</span>
+      <span>✓ BYOK keys stay on your machine (audio/text still goes to your AI providers)</span>
+      <span id="hero-stealth-chip">✓ Win/macOS: verify share preview before a real interview</span>
     </div>
 
-    <!-- Live app mockup (dark — matches the real overlay) -->
+    <!-- Live app mockup (dark — glance-first overlay) -->
     <div class="mockup-wrap reveal">
       <div class="mockup-glow"></div>
       <div class="mockup">
@@ -504,10 +517,15 @@
               <span class="m-badge m-b-resume">🟢 YOUR RESUME</span>
               <span class="m-badge m-b-type">🧩 Behavioral</span>
             </div>
-            <div class="m-text">
-              Yeah so at Kore we had this queue backing up during peak hours. What I did was rebuild the scoring logic — skill-weighted matching instead of FIFO. Cut wait times by around 40% and the ops team noticed immediately<span class="m-cursor"></span>
+            <div class="m-text" style="font-weight:600;margin-bottom:8px">
+              Yeah so at Kore we rebuilt scoring when the queue backed up<span class="m-cursor"></span>
             </div>
-            <div class="m-watch">⚠ Say "I decided" — not "we decided"</div>
+            <div class="m-text" style="opacity:.92;font-size:13px;line-height:1.55">
+              • Skill-weighted matching instead of FIFO<br />
+              • Cut wait times ~40% — ops noticed immediately<br />
+              • Say “I decided,” not “we decided”
+            </div>
+            <div class="m-watch" style="margin-top:10px;opacity:.75">Expand for full answer</div>
           </div>
         </div>
       </div>
@@ -611,12 +629,12 @@
     <div class="protection-wrap reveal">
       <div class="protection-text">
         <h3>Private to you,<br />distraction-free.</h3>
-        <p>Your prep notes and coaching stay on a discreet overlay only you can see — it won't clutter a screen share or recording when you're rehearsing with others. Your data stays on your machine.</p>
+        <p>Live coaching sits in a compact overlay. On Windows &amp; macOS, OS content protection can exclude it from common screen-share APIs — always confirm in Zoom/Meet/Teams share preview. Not supported on Linux. BYOK keys stay on your machine.</p>
         <div class="protection-items">
-          <div class="pitem">A private coaching panel, just for you</div>
-          <div class="pitem">Doesn't interfere with Zoom / Teams / Meet</div>
+          <div class="pitem">Glance-first notes — opener + bullets, not a script</div>
+          <div class="pitem">Win/macOS: verify share preview before a real interview</div>
+          <div class="pitem">Linux: overlay is visible in screen share</div>
           <div class="pitem">BYOK keys stay local; content goes only to providers you choose</div>
-          <div class="pitem">Hide instantly with a hotkey</div>
         </div>
       </div>
       <div class="shield-visual">🛡️</div>
@@ -864,24 +882,28 @@
       ctas.appendChild(badge)
     }
 
+    const stealthChip = document.getElementById('hero-stealth-chip')
     if (isWindows) {
       setHref(ALL_URL)
       document.getElementById('hero-download').innerHTML = '↓ Download for Windows'
       document.getElementById('nav-download').textContent = 'Download for Windows →'
       document.getElementById('cta-download').innerHTML = '↓ Download for Windows'
       addBadge('Windows 10/11 · pick the .exe on the releases page')
+      if (stealthChip) stealthChip.textContent = '✓ Content protection available — always verify Zoom/Meet/Teams share preview'
     } else if (isLinux) {
       setHref(ALL_URL)
       document.getElementById('hero-download').innerHTML = '↓ Download for Linux'
       document.getElementById('nav-download').textContent = 'Download for Linux →'
       document.getElementById('cta-download').innerHTML = '↓ Download for Linux'
-      addBadge('Linux 64-bit · grab the .AppImage on the releases page')
+      addBadge('Linux 64-bit · .AppImage · overlay is visible in screen share (stealth not supported)')
+      if (stealthChip) stealthChip.textContent = '⚠ Linux: overlay shows in screen share — use Solo, or Win/macOS for Live stealth'
     } else if (isMac) {
       setHref(ALL_URL)
       document.getElementById('hero-download').innerHTML = '↓ Download for macOS'
       document.getElementById('nav-download').textContent = 'Download for macOS →'
       document.getElementById('cta-download').innerHTML = '↓ Download for macOS'
       addBadge('macOS · arm64 (Apple Silicon) or x64 (Intel) .dmg · first run: right-click → Open')
+      if (stealthChip) stealthChip.textContent = '✓ Content protection available — always verify Zoom/Meet/Teams share preview'
     }
   </script>
 

@@ -5,7 +5,8 @@ import { Field, FormError, PrimaryButton, TextLink, ProgressSteps, Spinner } fro
 import { extractPdfText } from '../pdf'
 
 const TARGET_ROLES = ['Full-stack', 'AI Engineer', 'Frontend', 'Backend', 'Other']
-const YEARS = ['0–2', '3–5', '6–10', '10+']
+// Keep in sync with Solo Practice experience chips (same profile.yearsExp field).
+const YEARS = ['Student / New grad', '1–3 years', '4–6 years', '7+ years']
 const MAX_BYTES = 5 * 1024 * 1024
 const ACCEPT = '.pdf,.docx'
 
@@ -34,15 +35,18 @@ export default function Onboarding({ onComplete }) {
     if (!okType) { setFileError('Please choose a PDF or DOCX file'); return }
     if (file.size > MAX_BYTES) { setFileError('That file is over 5MB — please choose a smaller one'); return }
 
-    setResume({ name: file.name, status: 'parsing', text: '' })
+    setResume({ name: file.name, status: 'parsing', text: '', kind: /\.docx$/i.test(file.name) ? 'docx' : 'pdf' })
     let text = ''
-    if (/\.pdf$/i.test(file.name)) {
-      // Parsed entirely on-device; the file never leaves the machine.
+    const isDocx = /\.docx$/i.test(file.name)
+    if (!isDocx) {
+      // PDF parsed entirely on-device; the file never leaves the machine.
       try { text = await extractPdfText(file) } catch { text = '' }
     }
-    // DOCX has no client-side parser yet — we keep the file as "added" and the user
-    // can paste resume text later in Career. (No silent failure: it's still accepted.)
-    setResume({ name: file.name, status: 'ready', text })
+    // DOCX has no client-side parser yet — never claim "Ready" with empty text.
+    const status = isDocx
+      ? 'needs_paste'
+      : (text && text.length > 20 ? 'ready' : 'empty')
+    setResume({ name: file.name, status, text, kind: isDocx ? 'docx' : 'pdf' })
   }
 
   function onDrop(e) {
@@ -138,10 +142,11 @@ export default function Onboarding({ onComplete }) {
                 <div style={{ fontSize: 13, fontWeight: 500, color: T.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {resume.name}
                 </div>
-                <div style={{ fontSize: 11, fontWeight: 400, color: resume.status === 'ready' ? T.success : T.text3, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  {resume.status === 'parsing'
-                    ? <><Spinner /> Reading…</>
-                    : <><CheckIcon /> Ready</>}
+                <div style={{ fontSize: 11, fontWeight: 400, color: resume.status === 'ready' ? T.success : (resume.status === 'parsing' ? T.text3 : '#fbbf24'), display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {resume.status === 'parsing' && <><Spinner /> Reading…</>}
+                  {resume.status === 'ready' && <><CheckIcon /> Ready · text extracted</>}
+                  {resume.status === 'empty' && <>⚠ No text found — paste your resume in Solo or Career</>}
+                  {resume.status === 'needs_paste' && <>⚠ DOCX saved as file only — paste resume text in Solo or Career</>}
                 </div>
               </div>
               <button

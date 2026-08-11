@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { T } from './auth/tokens'
 import changelog from '../CHANGELOG.md?raw'
 
@@ -35,23 +35,54 @@ export default function WhatsNew({ openSignal = 0 }) {
   const [open, setOpen] = useState(() => {
     try { return localStorage.getItem(SEEN_KEY) !== VERSION } catch { return false }
   })
+  const dialogRef = useRef(null)
+  const closeBtnRef = useRef(null)
   // Re-open on demand (e.g. a "What's new" button in Settings bumps openSignal).
   useEffect(() => { if (openSignal > 0) setOpen(true) }, [openSignal])
-  const data = open ? parseLatest(changelog) : null
-  if (!open || !data) return null
 
   const dismiss = () => { try { localStorage.setItem(SEEN_KEY, VERSION) } catch {} ; setOpen(false) }
 
+  useEffect(() => {
+    if (!open) return
+    const prev = document.activeElement
+    closeBtnRef.current?.focus?.()
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); dismiss(); return }
+      if (e.key !== 'Tab' || !dialogRef.current) return
+      const focusable = dialogRef.current.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+      const list = Array.from(focusable).filter(el => !el.disabled)
+      if (!list.length) return
+      const first = list[0], last = list[list.length - 1]
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      try { prev?.focus?.() } catch {}
+    }
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const data = open ? parseLatest(changelog) : null
+  if (!open || !data) return null
+
   return (
     <div onClick={dismiss} style={{ position: 'fixed', inset: 0, zIndex: 100001, background: 'rgba(0,0,0,0.55)', display: 'grid', placeItems: 'center', padding: 20 }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, maxHeight: '80vh', overflowY: 'auto', background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', fontFamily: T.font }}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mm-whatsnew-title"
+        onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 460, maxHeight: '80vh', overflowY: 'auto', background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', fontFamily: T.font }}
+      >
         <div style={{ padding: '16px 18px', borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: T.surface1 }}>
-          <span style={{ fontSize: 18 }}>🎉</span>
+          <span style={{ fontSize: 18 }} aria-hidden="true">🎉</span>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>What's new</div>
+            <div id="mm-whatsnew-title" style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>What's new</div>
             <div style={{ fontSize: 11.5, color: T.text3 }}>{data.title}</div>
           </div>
-          <button onClick={dismiss} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.border}`, background: 'transparent', color: T.text2, cursor: 'pointer', fontSize: 14 }}>✕</button>
+          <button ref={closeBtnRef} onClick={dismiss} aria-label="Close what's new" style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.border}`, background: 'transparent', color: T.text2, cursor: 'pointer', fontSize: 14 }}>✕</button>
         </div>
         <div style={{ padding: '14px 18px' }}>
           {data.groups.map((g, i) => (
@@ -59,7 +90,7 @@ export default function WhatsNew({ openSignal = 0 }) {
               {g.header && <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', color: '#5eead4', textTransform: 'uppercase', marginBottom: 6 }}>{g.header}</div>}
               {g.items.map((it, j) => (
                 <div key={j} style={{ display: 'flex', gap: 8, marginBottom: 5, fontSize: 12.5, color: T.text2, lineHeight: 1.5 }}>
-                  <span style={{ color: T.accentFrom, flexShrink: 0 }}>•</span><span>{clean(it)}</span>
+                  <span style={{ color: T.accentFrom, flexShrink: 0 }} aria-hidden="true">•</span><span>{clean(it)}</span>
                 </div>
               ))}
             </div>

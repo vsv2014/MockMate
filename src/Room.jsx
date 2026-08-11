@@ -79,16 +79,16 @@ function RoomInner({ session, onEnd, onLeave }) {
 
   function renderHintToPip(pip, { hint: h, hintLoading: loading, question }) {
     pip.document.body.innerHTML = `
-      <div style="font-family:system-ui,sans-serif;font-size:13px;color:#e2e8f0;padding:14px;height:100%;box-sizing:border-box;background:#0f0f1a;">
+      <div style="font-family:${T.font};font-size:13px;color:${T.text1};padding:14px;height:100%;box-sizing:border-box;background:${T.bg};">
         <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:#a78bfa;">🤖 AI Co-pilot</div>
-        <div style="font-size:10px;color:#475569;margin-bottom:10px;">excluded from common screen-share APIs — verify preview</div>
-        ${question ? `<div style="color:#94a3b8;font-size:11px;margin-bottom:10px;border-left:2px solid #334155;padding-left:8px;font-style:italic">${escapeHtml(question)}</div>` : ''}
-        ${loading ? '<p style="color:#64748b;margin:0">Generating hints…</p>' : h ? `
+        <div style="font-size:10px;color:${T.text3};margin-bottom:10px;">excluded from common screen-share APIs — verify preview</div>
+        ${question ? `<div style="color:${T.text2};font-size:11px;margin-bottom:10px;border-left:2px solid ${T.borderStrong};padding-left:8px;font-style:italic">${escapeHtml(question)}</div>` : ''}
+        ${loading ? `<p style="color:${T.text3};margin:0">Generating hints…</p>` : h ? `
           ${h.resumeRelevant ? '<span style="background:#14532d;color:#4ade80;border-radius:4px;padding:2px 7px;font-size:11px;margin-bottom:8px;display:inline-block">✓ Resume-relevant</span>' : ''}
-          <div style="font-weight:600;margin:8px 0 4px;color:#cbd5e1">Key points:</div>
-          <ul style="margin:0 0 10px;padding-left:18px;color:#e2e8f0">${(h.keyPoints || []).map(p => `<li style="margin-bottom:3px">${escapeHtml(p)}</li>`).join('')}</ul>
+          <div style="font-weight:600;margin:8px 0 4px;color:${T.text1}">Key points:</div>
+          <ul style="margin:0 0 10px;padding-left:18px;color:${T.text1}">${(h.keyPoints || []).map(p => `<li style="margin-bottom:3px">${escapeHtml(p)}</li>`).join('')}</ul>
           ${h.watchOut ? `<div style="color:#f59e0b;font-size:12px">⚠ ${escapeHtml(h.watchOut)}</div>` : ''}
-        ` : '<p style="color:#64748b;margin:0">Waiting for next question…</p>'}
+        ` : `<p style="color:${T.text3};margin:0">Waiting for next question…</p>`}
       </div>`
   }
 
@@ -96,7 +96,7 @@ function RoomInner({ session, onEnd, onLeave }) {
     if (!window.documentPictureInPicture) return
     try {
       const pip = await window.documentPictureInPicture.requestWindow({ width: 400, height: 320 })
-      pip.document.body.style.cssText = 'margin:0;padding:0;background:#0f0f1a;'
+      pip.document.body.style.cssText = `margin:0;padding:0;background:${T.bg};`
       pip.addEventListener('pagehide', () => { setPipWindow(null); setMeetingMode(false) })
       renderHintToPip(pip, { hint, hintLoading, question: lastHintQuestion.current })
       setPipWindow(pip)
@@ -306,7 +306,7 @@ function RoomInner({ session, onEnd, onLeave }) {
               : pipWindow
               ? (
                 // PiP is open — hints are in the protected floating window
-                <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: T.text3, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ background: T.surface1, border: `1px solid ${T.borderStrong}`, borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: T.text3, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span>🛡️ AI hints are in the <strong style={{ color: '#a78bfa' }}>protected floating window</strong> — excluded from common screen-share APIs — verify preview.</span>
                   <button style={{ ...smallGhost, marginLeft: 'auto' }} onClick={() => { pipWindow.close(); setPipWindow(null) }}>Close</button>
                 </div>
@@ -323,7 +323,7 @@ function RoomInner({ session, onEnd, onLeave }) {
                   // Normal in-page panel (not sharing, no PiP)
                   <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <span style={{ fontWeight: 600, fontSize: 13 }}>🤖 AI Co-pilot <span style={{ color: T.text3, fontWeight: 400, fontSize: 12 }}>· only you see this</span></span>
+                      <span style={{ fontWeight: 600, fontSize: 13 }}>🤖 AI Co-pilot <span style={{ color: T.text3, fontWeight: 400, fontSize: 12 }}>· private to you · verify share preview</span></span>
                       <div style={{ display: 'flex', gap: 6 }}>
                         {pipSupported && <button style={smallGhost} title="Move to a floating window excluded from common screen-share APIs — verify preview" onClick={openPip}>🪟 Pop out</button>}
                         <button style={smallGhost} onClick={() => setHintOpen(v => !v)}>{hintOpen ? 'Hide' : 'Show'}</button>

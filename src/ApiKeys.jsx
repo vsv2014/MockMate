@@ -60,10 +60,13 @@ function KeyField({ name, hint, value, onChange, added, free, secret = true, not
 // Big selectable AI-provider card (Managed vs BYOK) — the design #37 chooser.
 function ProviderCard({ selected, onSelect, icon, accent, title, subtitle, recommended, desc, checks, cta }) {
   return (
-    <div onClick={onSelect} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 12, cursor: 'pointer',
-      background: T.surface1, border: `1.5px solid ${selected ? accent : T.border}`, borderRadius: T.rCard, padding: '16px' }}>
+    <div role="radio" aria-checked={selected} tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect() } }}
+      style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 12, cursor: 'pointer',
+        background: T.surface1, border: `1.5px solid ${selected ? accent : T.border}`, borderRadius: T.rCard, padding: '16px' }}>
       {recommended && <span style={{ position: 'absolute', top: 12, right: 12, fontSize: 10, fontWeight: 600, color: T.success, background: 'rgba(16,185,129,0.14)', padding: '2px 9px', borderRadius: 999 }}>Recommended</span>}
-      <div style={{ width: 40, height: 40, borderRadius: 10, display: 'grid', placeItems: 'center', fontSize: 18, background: `${accent}1f`, border: `1px solid ${accent}44` }}>{icon}</div>
+      <div style={{ width: 40, height: 40, borderRadius: 10, display: 'grid', placeItems: 'center', fontSize: 18, background: `${accent}1f`, border: `1px solid ${accent}44` }} aria-hidden="true">{icon}</div>
       <div>
         <div style={{ fontSize: 16, fontWeight: 600, color: T.text1 }}>{title}</div>
         <div style={{ fontSize: 12, color: accent, marginTop: 1 }}>{subtitle}</div>
@@ -72,36 +75,11 @@ function ProviderCard({ selected, onSelect, icon, accent, title, subtitle, recom
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
         {checks.map(c => <div key={c} style={{ display: 'flex', gap: 8, fontSize: 12, color: T.text2 }}><span style={{ color: T.success, flexShrink: 0 }}>✓</span><span>{c}</span></div>)}
       </div>
-      <button onClick={e => { e.stopPropagation(); onSelect() }}
+      <button type="button" onClick={e => { e.stopPropagation(); onSelect() }}
         style={{ marginTop: 'auto', height: 42, borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font, fontSize: 13, fontWeight: 600,
           background: selected ? accent : 'transparent', color: selected ? '#fff' : accent, border: `1px solid ${accent}` }}>
         {selected ? `✓ ${cta}` : cta}
       </button>
-    </div>
-  )
-}
-
-// Compact "How MockMate AI works" flow (design #37).
-function HowItWorks() {
-  const steps = [['💬', 'You ask a question'], ['☁️', 'MockMate receives it'], ['🧠', 'Smart router picks the best model'], ['⚡', 'Auto failover if needed'], ['✓', 'Instant answer delivered']]
-  return (
-    <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '14px 16px' }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: T.text1, marginBottom: 12 }}>How MockMate AI works</div>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, flexWrap: 'wrap' }}>
-        {steps.map(([ic, label], i) => (
-          <React.Fragment key={i}>
-            <div style={{ flex: 1, minWidth: 84, textAlign: 'center' }}>
-              <div style={{ fontSize: 18 }}>{ic}</div>
-              <div style={{ fontSize: 10.5, color: T.text2, marginTop: 4, lineHeight: 1.3 }}>{label}</div>
-            </div>
-            {i < steps.length - 1 && <div style={{ color: T.text3, alignSelf: 'center', fontSize: 12 }}>→</div>}
-          </React.Fragment>
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 6, marginTop: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-        {['GPT', 'Claude', 'Gemini', 'Groq'].map(p => <span key={p} style={{ fontSize: 10, color: T.text3, background: T.surface2, border: `1px solid ${T.border}`, padding: '2px 8px', borderRadius: 999 }}>{p}</span>)}
-      </div>
-      <div style={{ fontSize: 10.5, color: T.text3, marginTop: 12, textAlign: 'center' }}>🔒 Your interview data is encrypted and never used to train models.</div>
     </div>
   )
 }
@@ -145,28 +123,50 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   const sectionLabel = { fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', color: T.text3, textTransform: 'uppercase', margin: '2px 0 -2px' }
   const card = { display: 'flex', flexDirection: 'column', gap: 12, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '13px 14px' }
 
+  const byokRecommended = !MANAGED_AVAILABLE || mode === 'byok'
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontFamily: T.font }}>
 
-      {/* ── AI provider — two-card chooser (design #37) ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+      {/* Voice first — required for Live; prevents “AI ready but Live blocked” surprise */}
+      <div style={sectionLabel}>Voice · required for Live · needed for Solo voice</div>
+      <div style={card}>
+        <KeyField name="Deepgram" hint="live transcription" added={dg}
+          value={keyVals.DEEPGRAM_API_KEY} onChange={set('DEEPGRAM_API_KEY')}
+          note="Required for Live Interview. Needed to answer by voice in Solo. Free tier at" link={{ href: 'https://deepgram.com', label: 'deepgram.com' }} />
+        {mode === 'managed' && !dg && (
+          <div role="status" style={{ fontSize: 11, color: '#fbbf24', lineHeight: 1.4 }}>Managed AI does not include voice — add a Deepgram key here (Live will not start without it).</div>
+        )}
+      </div>
+
+      {/* ── AI provider — two-card chooser ── */}
+      <div style={sectionLabel}>AI · how MockMate gets models</div>
+      <div role="radiogroup" aria-label="AI mode" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
         <ProviderCard selected={mode === 'managed'} onSelect={() => setMode('managed')}
           icon="✨" accent={T.accentFrom} title="Managed AI" subtitle="Hosted proxy (when configured)"
+          recommended={MANAGED_AVAILABLE}
           desc="Routes through MockMate’s authenticated backend with platform keys. Requires sign-in and a configured hosted API. Until then, add BYOK keys so Live/Solo still work."
-          checks={['No personal API keys (when hosted)', 'Automatic model routing', 'Built-in failover', 'Usage caps may apply', 'Needs account + MOCKMATE_API_BASE']}
+          checks={['No personal API keys (when hosted)', 'Automatic model routing', 'Built-in failover', 'Usage caps may apply', 'Needs account + hosted API']}
           cta="Use Managed AI" />
         <ProviderCard selected={mode === 'byok'} onSelect={() => setMode('byok')}
-          icon="🔑" accent="#8b5cf6" title="Bring your own API key" subtitle="Recommended until Managed is hosted"
+          icon="🔑" accent="#8b5cf6" title="Bring your own API key" subtitle={byokRecommended ? 'Best choice until Managed is hosted' : 'Use your own provider keys'}
+          recommended={!MANAGED_AVAILABLE}
           desc="Use your OpenAI, Anthropic, Gemini, Groq, or Cerebras keys. Keys stay in local app storage; interview content still goes to those providers."
           checks={['Pick your own models', 'Use your existing credits', 'Keys encrypted at rest on this device', 'Test keys before a real interview']}
           cta="Use my own API key" />
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, padding: '9px 12px', fontSize: 11.5, color: T.text2 }}>
-        <span>ⓘ</span><span>You can switch anytime. BYOK keys stay local; audio/resume/screenshots still go to the providers you call — not “never leave the device.”</span>
+        <span aria-hidden="true">ⓘ</span><span>You can switch anytime. BYOK keys stay local; audio/resume/screenshots still go to the providers you call — not “never leave the device.”</span>
       </div>
 
-      {mode === 'managed' && <HowItWorks />}
+      {showStatus && (
+        <div role="status" style={{ ...card, fontSize: 12, color: T.text2 }}>
+          <div style={{ fontWeight: 600, color: T.text1, marginBottom: 4 }}>Currently configured</div>
+          <div>AI: {configured.length ? configured.map(p => p.label || p.id).join(', ') : (mode === 'managed' ? 'Managed (when hosted)' : 'None yet')}</div>
+          <div style={{ marginTop: 2 }}>Voice: {dg ? 'Deepgram connected' : 'Off'}</div>
+        </div>
+      )}
 
       {mode === 'byok' && (<>
       {/* ── AI model ── */}
@@ -178,18 +178,12 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
             value={keyVals[p.k]} onChange={set(p.k)} />
         ))}
         <div style={{ fontSize: 10.5, color: '#86efac', lineHeight: 1.45, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: T.rCtrl, padding: '8px 10px' }}>
-          💡 Start free with <strong>Groq</strong> or <strong>Gemini</strong> — no card needed. Add a second key and MockMate auto-switches if one is rate-limited mid-interview. (A ChatGPT Plus subscription is <strong>not</strong> an API key.)
+          Start free with <strong>Groq</strong> or <strong>Gemini</strong> — no card needed. Add a second key for failover if one is rate-limited. (ChatGPT Plus is <strong>not</strong> an API key.)
         </div>
       </div>
+      </>)}
 
-      {/* ── Voice ── */}
-      <div style={sectionLabel}>Voice · optional</div>
-      <div style={card}>
-        <KeyField name="Deepgram" hint="live transcription" added={dg}
-          value={keyVals.DEEPGRAM_API_KEY} onChange={set('DEEPGRAM_API_KEY')}
-          note="Needed to answer by voice in Solo & Live. Free tier at" link={{ href: 'https://deepgram.com', label: 'deepgram.com' }} />
-      </div>
-
+      {mode === 'byok' && (<>
       {/* ── Advanced (collapsed) ── */}
       <button onClick={() => setShowAdv(a => !a)}
         style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: T.text2, fontSize: 11, fontWeight: 500, cursor: 'pointer', padding: 0, fontFamily: T.font }}>
@@ -208,8 +202,9 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
           <KeyField name="Adzuna App Key" value={keyVals.ADZUNA_APP_KEY} onChange={set('ADZUNA_APP_KEY')} />
         </div>
       )}
+      </>)}
 
-      {/* ── Save ── */}
+      {/* ── Save (BYOK fields + always-visible Deepgram) ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <button onClick={save} disabled={saving}
           style={{ flex: 1, height: 42, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: T.font }}>
@@ -218,7 +213,6 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
         {msg && <span style={{ fontSize: 11, fontWeight: 500, color: msg.startsWith('⚠') ? T.danger : T.success }}>{msg}</span>}
       </div>
       <div style={{ fontSize: 10, color: T.text3, textAlign: 'center' }}>Keys are encrypted at rest on this machine (OS keychain when available).</div>
-      </>)}
     </div>
   )
 }

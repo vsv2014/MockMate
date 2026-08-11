@@ -1,40 +1,79 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { apiFetch } from './lib/apiClient'
-import { loadProfile, saveProfile } from './lib/profile'
+import { loadProfile, saveProfile, applyTailorToResume } from './lib/profile'
 import { scoreColor } from './lib/ui'
-import { NoKeysBanner } from './Jobs'
+import { T } from './auth/tokens'
+import { S, tabStyle, NoKeysBanner, ResumeMaterials } from './lib/secondaryUi'
 
-// AI career toolkit (the "legit", sellable side): ATS resume score, per-role tailoring,
-// and referral-message drafting — all from the resume the user already has + the LLM.
-const TABS = [['ats', '📊 ATS Score'], ['tailor', '✏️ Tailor Resume'], ['referral', '🤝 Referral DM']]
+// Resume Studio — ATS score, tailor, referral DM.
+
+const TABS = [
+  ['ats', 'ATS Score'],
+  ['tailor', 'Tailor Resume'],
+  ['referral', 'Referral DM'],
+]
 
 function CopyBtn({ text }) {
   const [done, setDone] = useState(false)
   if (!text) return null
-  return <button onClick={() => { navigator.clipboard?.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500) }}
-    style={{ ...chip, cursor: 'pointer', border: 'none', color: done ? '#4ade80' : '#5eead4' }}>{done ? '✓ Copied' : '📋 Copy'}</button>
+  return (
+    <button type="button"
+      onClick={() => { navigator.clipboard?.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500) }}
+      style={{ ...S.chip, cursor: 'pointer', border: 'none', color: done ? T.success : T.accentFrom, fontFamily: T.font }}>
+      {done ? 'Copied' : 'Copy'}
+    </button>
+  )
 }
 
-export default function Career({ onHome, noProviders, onSettings, embedded }) {
+export default function Career({
+  onHome, noProviders, onSettings, embedded,
+  initialJd, initialRole, initialCompany, initialTab, limitedJd, onSeedConsumed,
+}) {
   const [profile, setProfile] = useState(() => loadProfile())
-  const [tab, setTab] = useState('ats')
+  const [tab, setTab] = useState(() => (['ats', 'tailor', 'referral'].includes(initialTab) ? initialTab : 'ats'))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
-  // JD is kept in LOCAL state (not written to the shared profile): the Career JD is per-analysis
-  // and must not clobber profile.jobDescription, which LiveCompanion uses for the live interview.
-  // Seeded from any existing JD as a convenience.
-  const [jd, setJd] = useState(() => loadProfile().jobDescription || '')
-  // referral-only extra fields
-  const [company, setCompany] = useState(profile.targetCompany || '')
+  // JD is local only — must not clobber profile.jobDescription used by Live.
+  const [jd, setJd] = useState(() => initialJd ?? (loadProfile().jobDescription || ''))
+  const [company, setCompany] = useState(() => initialCompany || profile.targetCompany || '')
   const [person, setPerson] = useState('')
+  const [seedNote, setSeedNote] = useState(() => !!limitedJd)
+  const [applyMsg, setApplyMsg] = useState('')
+  const seedDone = useRef(false)
+
+  // One-shot seed from Jobs handoff
+  useEffect(() => {
+    if (seedDone.current) return
+    if (initialJd == null && !initialRole && !initialCompany && !initialTab) return
+    seedDone.current = true
+    if (initialJd != null) setJd(initialJd)
+    if (limitedJd) setSeedNote(true)
+    if (['ats', 'tailor', 'referral'].includes(initialTab)) {
+      setTab(initialTab)
+      setResult(null)
+      setError('')
+    }
+    const patch = {}
+    if (initialRole) patch.targetRole = initialRole
+    if (initialCompany) patch.targetCompany = initialCompany
+    if (Object.keys(patch).length) {
+      setProfile(prev => {
+        const next = { ...prev, ...patch }
+        saveProfile(next)
+        return next
+      })
+      if (initialCompany) setCompany(initialCompany)
+    }
+    onSeedConsumed?.()
+  }, [initialJd, initialRole, initialCompany, initialTab, limitedJd, onSeedConsumed])
 
   const hasResume = !!(profile.resume && profile.resume.trim())
   const patch = p => { const next = { ...profile, ...p }; setProfile(next); saveProfile(next) }
-  const setTabReset = t => { setTab(t); setResult(null); setError('') }
+  const setTabReset = t => { setTab(t); setResult(null); setError(''); setApplyMsg('') }
 
   async function run(path, body) {
-    setError(''); setLoading(true); setResult(null)
+    setError(''); setLoading(true); setResult(null); setApplyMsg('')
     try {
       const res = await apiFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const text = await res.text()
@@ -45,68 +84,123 @@ export default function Career({ onHome, noProviders, onSettings, embedded }) {
     } catch (e) { setError(e.message || 'Could not reach the service.') } finally { setLoading(false) }
   }
 
+  function applyTailor(r) {
+    if (!window.confirm('Updates the resume shared with Solo, Live, and Jobs. Continue?')) return
+    const nextResume = applyTailorToResume(profile.resume || '', r)
+    patch({ resume: nextResume })
+    setApplyMsg('Resume updated — shared with Solo, Live, and Job Matching.')
+  }
+
   const base = { resume: profile.resume || '', targetRole: profile.targetRole || '', jobDescription: jd }
+  const canRun = hasResume && !noProviders && !loading
+  const primaryLabel = loading
+    ? 'Working…'
+    : tab === 'ats' ? 'Score my resume'
+    : tab === 'tailor' ? 'Tailor my resume'
+    : 'Draft referral message'
 
   return (
-    <div style={{ padding: embedded ? 0 : '12px 14px 16px' }}>
+    <div style={{ padding: embedded ? 0 : '12px 14px 16px', fontFamily: T.font, color: T.text1 }}>
       {!embedded && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          <button onClick={onHome} style={btnGhost}>← Back</button>
-          <div style={{ fontWeight: 700, fontSize: 13 }}>🎯 Resume &amp; Career Tools</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <button type="button" onClick={onHome} style={S.btnGhost}>← Back</button>
+          <div style={{ fontWeight: 600, fontSize: 15, color: T.text1 }}>Resume Studio</div>
         </div>
       )}
 
-      {/* Tabs */}
-      <div role="tablist" style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+      <div role="tablist" aria-label="Resume Studio tools" style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         {TABS.map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTabReset(k)}
-            style={{ flex: 1, fontSize: 11, fontWeight: 700, padding: '6px 4px', borderRadius: 7, cursor: 'pointer', border: '1px solid',
-              borderColor: tab === k ? 'rgba(20,184,166,0.6)' : 'rgba(255,255,255,0.1)',
-              background: tab === k ? 'rgba(20,184,166,0.22)' : 'transparent', color: tab === k ? '#5eead4' : '#94a3b8' }}>{label}</button>
+          <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTabReset(k)} style={tabStyle(tab === k)}>
+            {label}
+          </button>
         ))}
       </div>
 
-      {noProviders && <NoKeysBanner onSettings={onSettings} what="Resume scoring & tailoring" />}
+      {noProviders && (
+        <NoKeysBanner onSettings={onSettings} what="ATS scoring, tailoring, and referral drafts need an AI key." />
+      )}
 
-      {!hasResume && (
-        <div style={{ ...note, borderColor: '#7f1d1d', background: '#450a0a', color: '#fca5a5' }}>
-          No resume yet. Paste it in <strong>Solo Practice → setup</strong> (or upload a PDF in Live Companion) — it's reused here.
+      {seedNote && (
+        <div role="status" style={{ ...S.note, borderColor: 'rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.08)', color: '#fbbf24' }}>
+          Limited JD from the job listing — paste a fuller description below for better ATS / tailor results.
         </div>
       )}
 
-      <label style={lbl}>Target role</label>
-      <input style={input} value={profile.targetRole || ''} placeholder="e.g. Senior Backend Engineer"
-        onChange={e => patch({ targetRole: e.target.value })} />
+      <div style={S.panel}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: T.text1, marginBottom: 4 }}>Your materials</div>
+        <div style={{ fontSize: 12, color: T.text3, marginBottom: 12, lineHeight: 1.45 }}>
+          <strong style={{ color: T.text2 }}>Resume and target role</strong> are shared with Solo, Live, and Job Matching.
+          The job description below is for <strong style={{ color: T.text2 }}>this analysis only</strong> — it does not change your Live/Solo JD.
+        </div>
+        <ResumeMaterials resume={profile.resume} onPatch={patch} />
+        {!hasResume && (
+          <div role="status" style={{ ...S.note, borderColor: 'rgba(244,63,94,0.35)', background: 'rgba(244,63,94,0.08)', color: '#fca5a5', marginBottom: 0 }}>
+            Paste a resume or upload a PDF to use these tools.
+          </div>
+        )}
+      </div>
 
-      {tab !== 'referral' && (
-        <>
-          <label style={lbl}>Job description (optional — sharpens it)</label>
-          <textarea rows={3} style={{ ...input, resize: 'vertical' }} value={jd} placeholder="Paste the JD…"
-            onChange={e => setJd(e.target.value)} />
-        </>
-      )}
+      <div style={S.panel}>
+        <label style={S.lbl}>Target role</label>
+        <input style={S.input} value={profile.targetRole || ''} placeholder="e.g. Senior Backend Engineer"
+          onChange={e => patch({ targetRole: e.target.value })} />
 
-      {tab === 'referral' && (
-        <>
-          <label style={lbl}>Company</label>
-          <input style={input} value={company} placeholder="e.g. Stripe"
-            onChange={e => { setCompany(e.target.value); patch({ targetCompany: e.target.value }) }} />
-          <label style={lbl}>Person you're asking (optional)</label>
-          <input style={input} value={person} placeholder="e.g. Priya, EM on the Payments team" onChange={e => setPerson(e.target.value)} />
-        </>
-      )}
+        {tab !== 'referral' && (
+          <>
+            <label style={S.lbl}>Job description for this analysis (optional — not saved to Live/Solo)</label>
+            <textarea rows={3} style={{ ...S.input, resize: 'vertical' }} value={jd} placeholder="Paste a JD to score or tailor against…"
+              onChange={e => { setJd(e.target.value); setSeedNote(false) }} />
+          </>
+        )}
 
-      <button disabled={loading || !hasResume || noProviders} style={btnPrimary}
+        {tab === 'referral' && (
+          <>
+            <label style={S.lbl}>Company</label>
+            <input style={S.input} value={company} placeholder="e.g. Stripe"
+              onChange={e => { setCompany(e.target.value); patch({ targetCompany: e.target.value }) }} />
+            <label style={S.lbl}>Person you’re asking (optional)</label>
+            <input style={{ ...S.input, marginBottom: 0 }} value={person} placeholder="e.g. Priya, EM on the Payments team"
+              onChange={e => setPerson(e.target.value)} />
+          </>
+        )}
+      </div>
+
+      <button
+        type="button"
+        disabled={!canRun}
+        style={{
+          ...S.btnPrimary,
+          opacity: canRun ? 1 : 0.55,
+          cursor: canRun ? 'pointer' : 'default',
+          marginBottom: 12,
+        }}
         onClick={() => tab === 'ats' ? run('/api/ats-score', base)
           : tab === 'tailor' ? run('/api/tailor-resume', base)
-          : run('/api/referral', { resume: base.resume, targetRole: base.targetRole, company, person })}>
-        {loading ? 'Working…' : tab === 'ats' ? '📊 Score my resume' : tab === 'tailor' ? '✏️ Tailor my resume' : '🤝 Draft referral message'}
+          : run('/api/referral', { resume: base.resume, targetRole: base.targetRole, company, person })}
+      >
+        {primaryLabel}
       </button>
+      {!hasResume && !noProviders && (
+        <div role="status" style={{ fontSize: 12, color: T.text3, marginTop: -4, marginBottom: 12 }}>
+          Add a resume above to enable this action.
+        </div>
+      )}
 
-      {error && <div style={{ ...note, borderColor: '#7f1d1d', background: '#450a0a', color: '#fca5a5' }} role="alert">{error}</div>}
+      {loading && <div role="status" style={S.note}>Working…</div>}
+
+      {error && (
+        <div role="alert" style={{ ...S.note, borderColor: 'rgba(244,63,94,0.4)', background: 'rgba(244,63,94,0.08)', color: '#fca5a5' }}>
+          {error}
+        </div>
+      )}
+      {applyMsg && (
+        <div role="status" style={{ ...S.note, borderColor: 'rgba(16,185,129,0.35)', background: 'rgba(16,185,129,0.08)', color: T.success }}>
+          {applyMsg}
+        </div>
+      )}
 
       {result && tab === 'ats' && <AtsResult r={result} />}
-      {result && tab === 'tailor' && <TailorResult r={result} />}
+      {result && tab === 'tailor' && <TailorResult r={result} onApply={() => applyTailor(result)} />}
       {result && tab === 'referral' && <ReferralResult r={result} />}
     </div>
   )
@@ -115,77 +209,92 @@ export default function Career({ onHome, noProviders, onSettings, embedded }) {
 function AtsResult({ r }) {
   const pct = Math.max(0, Math.min(100, r.overallScore ?? 0))
   return (
-    <div style={{ marginTop: 12 }} aria-live="polite">
-      <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 14 }}>
-        <div style={{ fontSize: 30, fontWeight: 800, color: scoreColor(pct) }}>{pct}<span style={{ fontSize: 13, color: '#475569' }}>/100</span></div>
-        <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.5 }}>{r.verdict}</div>
+    <div style={{ marginTop: 4 }} aria-live="polite">
+      <div style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ textAlign: 'center', flexShrink: 0 }}>
+          <div style={{ fontSize: 32, fontWeight: 700, color: scoreColor(pct), lineHeight: 1 }}>{pct}</div>
+          <div style={{ fontSize: 11, color: T.text3, marginTop: 4 }}>ATS score /100</div>
+        </div>
+        <div style={{ fontSize: 13, color: T.text2, lineHeight: 1.55 }}>{r.verdict}</div>
       </div>
       {r.dimensions?.length > 0 && (
-        <div style={card}>
-          <div style={sectionLbl}>SCORECARD</div>
+        <div style={S.card}>
+          <div style={S.sectionLbl}>Scorecard (each /5)</div>
           {r.dimensions.map((d, i) => {
-            const ds = Math.max(0, Math.min(5, Number(d.score) || 0))   // LLM scores aren't enforced 0-5
+            const ds = Math.max(0, Math.min(5, Number(d.score) || 0))
             return (
-              <div key={i} style={{ marginBottom: 7 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span style={{ fontWeight: 600 }}>{d.name}</span><span style={{ color: scoreColor((ds / 5) * 100) }}>{ds}/5</span></div>
-                <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, margin: '3px 0' }}><div style={{ height: '100%', width: `${(ds / 5) * 100}%`, background: scoreColor((ds / 5) * 100), borderRadius: 2 }} /></div>
-                <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{d.comment}</div>
+              <div key={i} style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                  <span style={{ fontWeight: 600, color: T.text1 }}>{d.name}</span>
+                  <span style={{ color: scoreColor((ds / 5) * 100) }}>{ds} / 5</span>
+                </div>
+                <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, margin: '5px 0' }}>
+                  <div style={{ height: '100%', width: `${(ds / 5) * 100}%`, background: scoreColor((ds / 5) * 100), borderRadius: 2 }} />
+                </div>
+                {d.comment && <div style={{ fontSize: 12, color: T.text3 }}>{d.comment}</div>}
               </div>
             )
           })}
         </div>
       )}
-      {r.missingKeywords?.length > 0 && <Block title="MISSING KEYWORDS">{r.missingKeywords.map((k, i) => <span key={i} style={chip}>{k}</span>)}</Block>}
-      {r.topFixes?.length > 0 && <Block title="TOP FIXES">{r.topFixes.map((f, i) => <li key={i} style={li}>{f}</li>)}</Block>}
-      {r.redFlags?.length > 0 && <Block title="⚠ AUTO-REJECT RISKS">{r.redFlags.map((f, i) => <li key={i} style={{ ...li, color: '#fca5a5' }}>{f}</li>)}</Block>}
+      {r.missingKeywords?.length > 0 && <Block title="Missing keywords">{r.missingKeywords.map((k, i) => <span key={i} style={S.chip}>{k}</span>)}</Block>}
+      {r.topFixes?.length > 0 && <Block title="Top fixes">{r.topFixes.map((f, i) => <li key={i} style={li}>{f}</li>)}</Block>}
+      {r.redFlags?.length > 0 && <Block title="Auto-reject risks">{r.redFlags.map((f, i) => <li key={i} style={{ ...li, color: '#fca5a5' }}>{f}</li>)}</Block>}
     </div>
   )
 }
 
-function TailorResult({ r }) {
+function TailorResult({ r, onApply }) {
   const full = [r.summary && `SUMMARY:\n${r.summary}`, r.rewrittenBullets?.length && 'REWRITTEN BULLETS:\n' + r.rewrittenBullets.map(b => `• ${b.after}`).join('\n'), r.keywordsToAdd?.length && `KEYWORDS TO ADD: ${r.keywordsToAdd.join(', ')}`].filter(Boolean).join('\n\n')
   return (
-    <div style={{ marginTop: 12 }} aria-live="polite">
-      <div style={{ marginBottom: 8 }}><CopyBtn text={full} /></div>
-      {r.summary && <Block title="TAILORED SUMMARY"><div style={para}>{r.summary}</div></Block>}
+    <div style={{ marginTop: 4 }} aria-live="polite">
+      <div style={{ marginBottom: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <CopyBtn text={full} />
+        <button type="button" onClick={onApply}
+          style={{
+            fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
+            background: 'rgba(20,184,166,0.15)', border: '1px solid rgba(20,184,166,0.4)', color: T.accentFrom,
+          }}>
+          Apply summary + bullets to my resume
+        </button>
+      </div>
+      {r.summary && <Block title="Tailored summary"><div style={para}>{r.summary}</div></Block>}
       {r.rewrittenBullets?.length > 0 && (
-        <div style={card}><div style={sectionLbl}>STRONGER BULLETS</div>
+        <div style={S.card}>
+          <div style={S.sectionLbl}>Stronger bullets</div>
           {r.rewrittenBullets.map((b, i) => (
-            <div key={i} style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 10.5, color: '#64748b', textDecoration: 'line-through' }}>{b.before}</div>
-              <div style={{ fontSize: 12, color: '#dcfce7', marginTop: 2 }}>→ {b.after}</div>
+            <div key={i} style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 12, color: T.text3, textDecoration: 'line-through' }}>{b.before}</div>
+              <div style={{ fontSize: 13, color: '#dcfce7', marginTop: 3 }}>→ {b.after}</div>
             </div>
           ))}
         </div>
       )}
-      {r.keywordsToAdd?.length > 0 && <Block title="KEYWORDS TO ADD">{r.keywordsToAdd.map((k, i) => <span key={i} style={chip}>{k}</span>)}</Block>}
-      {r.sectionOrder?.length > 0 && <Block title="SECTION ORDER"><div style={para}>{r.sectionOrder.join(' → ')}</div></Block>}
-      {r.notes?.length > 0 && <Block title="NOTES">{r.notes.map((n, i) => <li key={i} style={li}>{n}</li>)}</Block>}
+      {r.keywordsToAdd?.length > 0 && <Block title="Keywords to add">{r.keywordsToAdd.map((k, i) => <span key={i} style={S.chip}>{k}</span>)}</Block>}
+      {r.sectionOrder?.length > 0 && <Block title="Section order"><div style={para}>{r.sectionOrder.join(' → ')}</div></Block>}
+      {r.notes?.length > 0 && <Block title="Notes">{r.notes.map((n, i) => <li key={i} style={li}>{n}</li>)}</Block>}
     </div>
   )
 }
 
 function ReferralResult({ r }) {
   return (
-    <div style={{ marginTop: 12 }} aria-live="polite">
-      {r.short && <Block title="CONNECTION NOTE (short)"><div style={para}>{r.short}</div><div style={{ marginTop: 6 }}><CopyBtn text={r.short} /></div></Block>}
-      {r.message && <Block title="FULL REFERRAL MESSAGE"><div style={{ ...para, whiteSpace: 'pre-wrap' }}>{r.message}</div><div style={{ marginTop: 6 }}><CopyBtn text={r.message} /></div></Block>}
-      {r.why && <div style={{ fontSize: 10.5, color: '#5eead4', marginTop: 4 }}>✓ {r.why}</div>}
+    <div style={{ marginTop: 4 }} aria-live="polite">
+      {r.short && <Block title="Connection note (short)"><div style={para}>{r.short}</div><div style={{ marginTop: 8 }}><CopyBtn text={r.short} /></div></Block>}
+      {r.message && <Block title="Full referral message"><div style={{ ...para, whiteSpace: 'pre-wrap' }}>{r.message}</div><div style={{ marginTop: 8 }}><CopyBtn text={r.message} /></div></Block>}
+      {r.why && <div style={{ fontSize: 12, color: T.accentFrom, marginTop: 4 }}>✓ {r.why}</div>}
     </div>
   )
 }
 
 function Block({ title, children }) {
-  return <div style={card}><div style={sectionLbl}>{title}</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{children}</div></div>
+  return (
+    <div style={S.card}>
+      <div style={S.sectionLbl}>{title}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>{children}</div>
+    </div>
+  )
 }
 
-const lbl = { display: 'block', fontSize: 10, color: '#475569', fontWeight: 700, letterSpacing: '0.05em', marginBottom: 4 }
-const input = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, padding: '8px 10px', color: '#e2e8f0', fontSize: 12, marginBottom: 10, boxSizing: 'border-box' }
-const btnPrimary = { width: '100%', background: '#14B8A6', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', marginTop: 2 }
-const btnGhost = { background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer' }
-const note = { fontSize: 11, color: '#94a3b8', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 7, padding: '8px 10px', margin: '10px 0', lineHeight: 1.5 }
-const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 9, padding: '11px 12px', marginBottom: 8 }
-const sectionLbl = { fontSize: 9, color: '#475569', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 6 }
-const chip = { fontSize: 10, color: '#5eead4', background: 'rgba(20,184,166,0.15)', padding: '2px 8px', borderRadius: 10, display: 'inline-block' }
-const li = { fontSize: 11.5, color: '#cbd5e1', lineHeight: 1.5, marginBottom: 4, listStylePosition: 'inside' }
-const para = { fontSize: 12, color: '#cbd5e1', lineHeight: 1.6 }
+const li = { fontSize: 12.5, color: T.text2, lineHeight: 1.5, marginBottom: 4, listStylePosition: 'inside', width: '100%' }
+const para = { fontSize: 13, color: T.text2, lineHeight: 1.6 }

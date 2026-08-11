@@ -13,10 +13,28 @@ function managedBase() {
 }
 
 export async function apiFetch(path, opts = {}) {
+  const { timeoutMs, signal: outerSignal, ...rest } = opts
   const base = isManaged() ? managedBase() : ''
-  const headers = { ...(opts.headers || {}) }
+  const headers = { ...(rest.headers || {}) }
   if (base) {   // managed → attach the JWT so the backend can auth + meter this user
     try { const t = await getToken(); if (t) headers.Authorization = `Bearer ${t}` } catch {}
   }
-  return fetch(`${base}${path}`, { ...opts, headers })
+
+  let signal = outerSignal
+  let timer
+  if (timeoutMs > 0 && typeof AbortController !== 'undefined') {
+    const ac = new AbortController()
+    if (outerSignal) {
+      if (outerSignal.aborted) ac.abort()
+      else outerSignal.addEventListener('abort', () => ac.abort(), { once: true })
+    }
+    timer = setTimeout(() => ac.abort(), timeoutMs)
+    signal = ac.signal
+  }
+
+  try {
+    return await fetch(`${base}${path}`, { ...rest, headers, signal })
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }

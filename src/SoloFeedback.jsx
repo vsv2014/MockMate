@@ -47,8 +47,13 @@ function pairs(transcript) {
   const out = []
   for (let i = 0; i < transcript.length; i++) {
     if (transcript[i].role === 'interviewer') {
-      const ans = transcript[i + 1] && transcript[i + 1].role !== 'interviewer' ? transcript[i + 1].text : null
-      out.push({ q: transcript[i].text, a: ans })
+      const next = transcript[i + 1] && transcript[i + 1].role !== 'interviewer' ? transcript[i + 1] : null
+      out.push({
+        q: transcript[i].text,
+        a: next?.text ?? null,
+        spoken: next?.meta?.spoken,
+        hasMeta: !!(next && next.meta && typeof next.meta.spoken === 'boolean'),
+      })
     }
   }
   return out
@@ -58,12 +63,21 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
   const [openQ, setOpenQ] = useState(null)
 
   if (!report || report.error) {
+    const qa = pairs(transcript)
     return (
       <div style={{ maxWidth: 720, margin: '0 auto', fontFamily: T.font, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>No feedback yet</div>
-        <div style={{ ...panel, borderColor: 'rgba(248,113,113,0.35)', background: 'rgba(248,113,113,0.08)', color: '#fca5a5', fontSize: 13 }}>
-          {report?.error || 'The session ended without enough answers to score.'}
+        <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>Scoring unavailable</div>
+        <div role="alert" style={{ ...panel, borderColor: 'rgba(248,113,113,0.35)', background: 'rgba(248,113,113,0.08)', color: '#fca5a5', fontSize: 13, lineHeight: 1.5 }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Session saved — evaluation failed</div>
+          <div>{report?.error || 'The session ended without enough answers to score.'}</div>
+          <div style={{ marginTop: 8, color: '#fda4af', fontSize: 12 }}>Your transcript is kept in Sessions. You can practice again when ready.</div>
         </div>
+        {qa.length > 0 && (
+          <div style={panel}>
+            <div style={h2}>WHAT YOU PRACTICED</div>
+            <div style={{ fontSize: 12.5, color: T.text2 }}>{qa.length} question{qa.length === 1 ? '' : 's'} · transcript kept locally</div>
+          </div>
+        )}
         <button onClick={onAgain} style={{ alignSelf: 'flex-start', height: 44, padding: '0 22px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>← {onAgainLabel}</button>
       </div>
     )
@@ -74,6 +88,10 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
   const qa = pairs(transcript)
   const recs = report.improvements || []
   const strengths = report.strengths || []
+  const answered = qa.filter(x => x.hasMeta)
+  const spokenN = answered.filter(x => x.spoken).length
+  const typedN = answered.length - spokenN
+  const mostlyTyped = answered.length > 0 && typedN >= spokenN
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', fontFamily: T.font, display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
@@ -88,6 +106,11 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
         <div style={{ flex: 1, minWidth: 240 }}>
           {report.verdict && <div style={{ fontSize: 16, fontWeight: 600, color: T.text1, marginBottom: 6 }}>{report.verdict}</div>}
           {report.summary && <div style={{ fontSize: 13.5, color: T.text2, lineHeight: 1.6 }}>{report.summary}</div>}
+          {answered.length > 0 && (
+            <div style={{ fontSize: 12, color: T.text3, marginTop: 8 }}>
+              Answers: {spokenN} spoken · {typedN} typed
+            </div>
+          )}
         </div>
       </div>
 
@@ -95,6 +118,9 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
       {report.dimensions?.length > 0 && (
         <div style={panel}>
           <div style={h2}>SCORE BREAKDOWN</div>
+          <div style={{ fontSize: 11.5, color: T.text3, marginBottom: 12, lineHeight: 1.4 }}>
+            Overall above is out of 10. Each dimension below is scored out of 5.
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {report.dimensions.map((dim, i) => {
               const s = Math.max(0, Math.min(5, Number(dim.score) || 0))
@@ -102,7 +128,7 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
                 <div key={i}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 5 }}>
                     <span style={{ color: T.text1, fontWeight: 500 }}>{dim.name}</span>
-                    <span style={{ color: scoreColor((s / 5) * 100), fontWeight: 600 }}>{s}/5</span>
+                    <span style={{ color: scoreColor((s / 5) * 100), fontWeight: 600 }}>{s} / 5</span>
                   </div>
                   <div style={{ height: 6, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${(s / 5) * 100}%`, background: scoreColor((s / 5) * 100), borderRadius: 3 }} />
@@ -141,14 +167,21 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
       {d && (
         <div style={panel}>
           <div style={h2}>DELIVERY</div>
+          {mostlyTyped && (
+            <div role="status" style={{ fontSize: 12, color: '#fbbf24', marginBottom: 10, lineHeight: 1.45 }}>
+              Most answers were typed — pace/filler stats reflect text, not spoken delivery.
+            </div>
+          )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <Stat>{d.words} words</Stat>
-            {d.wpm != null && <Stat>{d.wpm} wpm</Stat>}
+            {d.wpm != null && !mostlyTyped && <Stat>{d.wpm} wpm</Stat>}
             <Stat>{d.fillers.count} fillers</Stat>
             {d.jargon?.count > 0 && <Stat>{d.jargon.count} buzzwords</Stat>}
             {d.hedges?.count > 0 && <Stat>{d.hedges.count} hedges</Stat>}
           </div>
-          {report.delivery?.tip && <div style={{ fontSize: 12.5, color: '#fbbf24', marginTop: 12, lineHeight: 1.5 }}>🎯 Next time: {report.delivery.tip}</div>}
+          {report.delivery?.tip && !mostlyTyped && (
+            <div style={{ fontSize: 12.5, color: '#fbbf24', marginTop: 12, lineHeight: 1.5 }}>Next time: {report.delivery.tip}</div>
+          )}
         </div>
       )}
 
@@ -165,11 +198,23 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
                     style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: open ? T.surface2 : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: T.font }}>
                     <span style={{ width: 24, height: 24, flexShrink: 0, borderRadius: 6, background: 'rgba(20,184,166,0.16)', color: T.accentFrom, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>Q{i + 1}</span>
                     <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: T.text1, whiteSpace: open ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.q}</span>
+                    {item.hasMeta && (
+                      <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 600, color: item.spoken ? '#5eead4' : T.text3, background: item.spoken ? 'rgba(20,184,166,0.12)' : T.surface2, border: `1px solid ${item.spoken ? 'rgba(20,184,166,0.3)' : T.border}`, borderRadius: 999, padding: '2px 8px' }}>
+                        {item.spoken ? 'Spoken' : 'Typed'}
+                      </span>
+                    )}
                     <span style={{ color: T.text3, fontSize: 12 }}>{open ? '▾' : '▸'}</span>
                   </button>
                   {open && (
                     <div style={{ padding: '2px 14px 14px 46px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div style={{ fontSize: 10.5, fontWeight: 600, color: T.text3, letterSpacing: '0.04em' }}>YOUR ANSWER</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 600, color: T.text3, letterSpacing: '0.04em' }}>YOUR ANSWER</div>
+                        {item.hasMeta && (
+                          <span style={{ fontSize: 10, color: item.spoken ? '#5eead4' : T.text3 }}>
+                            {item.spoken ? 'Spoken (voice contributed)' : 'Typed'}
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontSize: 13, color: T.text2, lineHeight: 1.6 }}>{item.a || <span style={{ color: T.text3, fontStyle: 'italic' }}>No answer recorded.</span>}</div>
                     </div>
                   )}

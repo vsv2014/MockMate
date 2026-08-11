@@ -17,18 +17,21 @@ export function loadSessions() {
 }
 
 // Persist one completed session. Returns the stored entry (with id + ts) or null.
-export function saveSession({ report, transcript = [], config = {}, profile = {} } = {}) {
-  if (!report || report.error) return null   // nothing useful to store
+// Error reports are kept so a failed evaluate does not make the attempt vanish.
+export function saveSession({ report, transcript = [], config = {}, profile = {}, note } = {}) {
+  if (!report) return null
   try {
     const ts = Date.now()
+    const isError = !!report.error
     const entry = {
       id: `s_${ts}`,
       ts,
       label: config.domainLabel || profile.targetRole || 'Interview',
       score: typeof report.overallScore === 'number' ? report.overallScore : null,
-      verdict: report.verdict || null,
+      verdict: report.verdict || (isError ? 'Evaluation failed' : null),
       report,
       transcript,
+      note: note || (isError ? 'evaluate_error' : undefined),
     }
     const next = [entry, ...loadSessions()].slice(0, MAX_SESSIONS)
     localStorage.setItem(KEY, JSON.stringify(next))
@@ -43,12 +46,16 @@ export function deleteSession(id) {
 
 // Plain-text exports — used by the "Copy" buttons.
 export function feedbackToText(report) {
-  if (!report || report.error) return ''
+  if (!report) return ''
+  if (report.error) return `Evaluation failed: ${report.error}`
   const L = []
-  if (report.overallScore != null) L.push(`Overall: ${report.overallScore}/100${report.verdict ? `  —  ${report.verdict}` : ''}`)
+  if (report.overallScore != null) {
+    const outOf10 = (Math.max(0, Math.min(100, report.overallScore)) / 10).toFixed(1)
+    L.push(`Overall: ${outOf10}/10${report.verdict ? `  —  ${report.verdict}` : ''}`)
+  }
   if (report.summary) L.push('', report.summary)
   if (report.dimensions?.length) {
-    L.push('', 'Scorecard:')
+    L.push('', 'Scorecard (each dimension /5):')
     report.dimensions.forEach(d => L.push(`  • ${d.name}: ${d.score}/5 — ${d.comment || ''}`.trimEnd()))
   }
   if (report.strengths?.length) { L.push('', 'Strengths:'); report.strengths.forEach(s => L.push(`  • ${s}`)) }

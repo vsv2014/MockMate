@@ -9,7 +9,7 @@ describe('scoreColor', () => {
     expect(scoreColor(50)).toBe('#fbbf24')   // boundary → mixed
     expect(scoreColor(20)).toBe('#f87171')   // weak
   })
-  it('returns a neutral color for null', () => expect(scoreColor(null)).toBe('#64748b'))
+  it('returns a neutral color for null', () => expect(scoreColor(null)).toBe('#71717A'))
 })
 
 describe('fmtClock', () => {

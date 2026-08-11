@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { apiFetch } from './lib/apiClient'
-// Resume/profile is shared with Solo & LiveCompanion via the same store.
 import { loadProfile, saveProfile } from './lib/profile'
 import { scoreColor } from './lib/ui'
-import { loadSavedJobs, saveJob, removeSavedJob, savedKeySet, savedKeyOf, SAVED_MAX } from './savedJobs'
+import { T } from './auth/tokens'
+import { loadSavedJobs, saveJob, removeSavedJob, updateSavedJob, savedKeySet, savedKeyOf, SAVED_MAX, SAVED_STATUSES } from './savedJobs'
+import { S, tabStyle, NoKeysBanner, YearsChips, ResumeMaterials } from './lib/secondaryUi'
+import { jobAnalysisJd } from './lib/jobsHandoff'
 
-// Session-level cache of the last search (survives the view being unmounted/remounted). Keyed on the
-// inputs so it refetches only when the resume/role/location actually change — not on every reopen.
+// Session-level cache of the last search (survives the view being unmounted/remounted).
 let jobsCache = null   // { key, result }
 
-// "today" / "3d ago" — relative posting age.
 function ago(ts) {
   if (!ts) return ''
   const d = Date.now() - ts
@@ -20,47 +20,104 @@ function ago(ts) {
   return n >= 30 ? `${Math.floor(n / 30)}mo ago` : `${n}d ago`
 }
 
+export { jobAnalysisJd }
+
 const SORTS = [['fit', 'Best fit'], ['recent', 'Newest'], ['salary', 'Salary']]
 function sortJobs(jobs, sort) {
   const arr = [...jobs]
   if (sort === 'salary') return arr.sort((a, b) => (b.salaryNum || 0) - (a.salaryNum || 0) || b.score - a.score)
   if (sort === 'recent') return arr.sort((a, b) => (b.postedTs || 0) - (a.postedTs || 0) || b.score - a.score)
-  return arr.sort((a, b) => b.score - a.score)   // best fit
+  return arr.sort((a, b) => b.score - a.score)
 }
 
-// One job row — reused by both the Matches results and the Saved dashboard.
-function JobCard({ j, saved, onToggleSave }) {
+const STATUS_LABEL = {
+  interested: 'Interested',
+  applied: 'Applied',
+  interviewing: 'Interviewing',
+  offer: 'Offer',
+  passed: 'Passed',
+}
+
+function JobCard({ j, saved, onToggleSave, onOpenCareer, showTracking, onUpdateSaved }) {
   return (
-    <div style={card}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-        <div style={{ ...scorePill, color: scoreColor(j.score), borderColor: scoreColor(j.score) }}>{j.score}</div>
+    <div style={S.card}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{
+          minWidth: 34, height: 34, borderRadius: 9, border: `1.5px solid ${scoreColor(j.score)}`,
+          color: scoreColor(j.score), display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0,
+        }}>{j.score}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontWeight: 700, fontSize: 12.5, lineHeight: 1.3, flex: 1, minWidth: 0 }}>{j.title}</span>
-            <span style={{ flexShrink: 0, fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8,
-              color: j.source === 'local' ? '#4ade80' : '#7dd3fc',
-              background: j.source === 'local' ? 'rgba(34,197,94,0.12)' : 'rgba(56,189,248,0.12)' }}>
-              {j.source === 'local' ? '🏢 On-site' : '🌐 Remote'}
+            <span style={{ fontWeight: 600, fontSize: 13.5, lineHeight: 1.35, flex: 1, minWidth: 0, color: T.text1 }}>{j.title}</span>
+            <span style={{
+              flexShrink: 0, fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+              color: j.source === 'local' ? T.success : '#7dd3fc',
+              background: j.source === 'local' ? 'rgba(16,185,129,0.12)' : 'rgba(56,189,248,0.12)',
+              border: `1px solid ${j.source === 'local' ? 'rgba(16,185,129,0.3)' : 'rgba(56,189,248,0.3)'}`,
+            }}>
+              {j.source === 'local' ? 'On-site' : 'Remote'}
             </span>
           </div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>
-            {j.company}{j.location ? ` · ${j.location}` : ''}{j.jobType ? ` · ${j.jobType}` : ''}{j.salary ? ` · 💰 ${j.salary}` : ''}{j.postedTs ? ` · ${ago(j.postedTs)}` : ''}
+          <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>
+            {j.company}{j.location ? ` · ${j.location}` : ''}{j.jobType ? ` · ${j.jobType}` : ''}{j.salary ? ` · ${j.salary}` : ''}{j.postedTs ? ` · ${ago(j.postedTs)}` : ''}
           </div>
         </div>
       </div>
-      {j.reason && <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 7, lineHeight: 1.5 }}>✓ {j.reason}</div>}
-      {j.gaps && <div style={{ fontSize: 10.5, color: '#f59e0b', marginTop: 3, lineHeight: 1.5 }}>△ Gap: {j.gaps}</div>}
+      {j.reason && <div style={{ fontSize: 12.5, color: T.text2, marginTop: 8, lineHeight: 1.5 }}>✓ {j.reason}</div>}
+      {j.gaps && <div style={{ fontSize: 12, color: T.warning, marginTop: 4, lineHeight: 1.5 }}>Gap: {j.gaps}</div>}
       {j.tags?.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7 }}>
-          {j.tags.slice(0, 5).map(t => <span key={t} style={tag}>{t}</span>)}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
+          {j.tags.slice(0, 5).map(t => <span key={t} style={S.chip}>{t}</span>)}
         </div>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 9 }}>
+
+      {showTracking && (
+        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {SAVED_STATUSES.map(st => (
+              <button key={st} type="button" onClick={() => onUpdateSaved?.(j, { status: st })}
+                style={{
+                  fontSize: 11, fontWeight: 600, padding: '4px 9px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
+                  border: `1px solid ${(j.status || 'interested') === st ? 'rgba(20,184,166,0.45)' : T.border}`,
+                  background: (j.status || 'interested') === st ? 'rgba(20,184,166,0.16)' : 'transparent',
+                  color: (j.status || 'interested') === st ? T.accentFrom : T.text3,
+                }}>
+                {STATUS_LABEL[st]}
+              </button>
+            ))}
+          </div>
+          <textarea
+            rows={2}
+            value={j.notes || ''}
+            placeholder="Notes (local only)…"
+            onChange={e => onUpdateSaved?.(j, { notes: e.target.value })}
+            style={{ ...S.input, resize: 'vertical', marginBottom: 0, fontSize: 12 }}
+          />
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
         {/^https?:\/\//.test(j.url || '')
-          ? <a href={j.url} target="_blank" rel="noreferrer" style={applyLink}>Apply →</a>
-          : <span style={{ ...applyLink, opacity: 0.5, cursor: 'default' }}>No link</span>}
-        <button onClick={() => onToggleSave(j)} aria-pressed={saved}
-          style={{ ...saveBtn, color: saved ? '#fbbf24' : '#64748b', borderColor: saved ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.12)' }}>
+          ? <a href={j.url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: T.accentFrom, textDecoration: 'none' }}>Apply →</a>
+          : <span style={{ fontSize: 12.5, color: T.text3 }}>No link</span>}
+        {onOpenCareer && (
+          <>
+            <button type="button" onClick={() => onOpenCareer(j, 'ats')}
+              style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
+              Score in Resume Studio
+            </button>
+            <button type="button" onClick={() => onOpenCareer(j, 'tailor')}
+              style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
+              Tailor for this role
+            </button>
+          </>
+        )}
+        <button type="button" onClick={() => onToggleSave(j)} aria-pressed={saved} aria-label={saved ? 'Unsave job' : 'Save job'}
+          style={{
+            marginLeft: 'auto', fontSize: 12, fontWeight: 600, background: 'transparent', border: '1px solid',
+            borderRadius: T.rCtrl, padding: '5px 12px', cursor: 'pointer', fontFamily: T.font,
+            color: saved ? '#fbbf24' : T.text3, borderColor: saved ? 'rgba(251,191,36,0.4)' : T.border,
+          }}>
           {saved ? '★ Saved' : '☆ Save'}
         </button>
       </div>
@@ -68,30 +125,26 @@ function JobCard({ j, saved, onToggleSave }) {
   )
 }
 
-// Shown across Jobs & Career when no API key is configured — a real CTA into Settings instead of
-// firing a request that fails with a raw provider error.
-export function NoKeysBanner({ onSettings, what }) {
-  return (
-    <div style={{ ...note, borderColor: 'rgba(20,184,166,0.45)', background: 'rgba(20,184,166,0.1)', color: '#5eead4' }}>
-      <div style={{ marginBottom: 8 }}>⚠ <strong>No API key yet.</strong> {what} needs an AI key — add one (OpenAI / Claude / Gemini / Groq; Gemini &amp; Groq have free tiers).</div>
-      <button onClick={onSettings} style={{ ...btnPrimary, width: 'auto', padding: '6px 14px', fontSize: 11.5 }}>⚙ Open Settings</button>
-    </div>
-  )
-}
+// Re-export for Career (and any other consumer).
+export { NoKeysBanner }
 
-export default function Jobs({ onHome, noProviders, embedded }) {
+export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, embedded }) {
   const [profile, setProfile] = useState(() => loadProfile())
   const inputsKey = `${profile.resume || ''}|${profile.targetRole || ''}|${profile.location || ''}|${profile.yearsExp || ''}`
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [result, setResult] = useState(() => (jobsCache && jobsCache.key === inputsKey) ? jobsCache.result : null)   // restore last search
-  const [visible, setVisible] = useState(8)     // how many results to show (Load more reveals more)
-  const [sort, setSort] = useState('fit')       // fit | recent | salary
-  const [tab, setTab] = useState('matches')     // matches | saved
+  const [result, setResult] = useState(() => (jobsCache && jobsCache.key === inputsKey) ? jobsCache.result : null)
+  const [visible, setVisible] = useState(8)
+  const [sort, setSort] = useState('fit')
+  const [tab, setTab] = useState('matches')
   const [savedJobs, setSavedJobs] = useState(loadSavedJobs)
   const [savedSet, setSavedSet] = useState(savedKeySet)
 
   const hasResume = !!(profile.resume && profile.resume.trim())
+  const canSearch = hasResume || !!(profile.targetRole && profile.targetRole.trim())
+  const hasSalaryData = !!(result?.jobs?.some(j => (j.salaryNum || 0) > 0))
+
+  const patch = p => { const next = { ...profile, ...p }; setProfile(next); saveProfile(next) }
 
   const toggleSave = useCallback(job => {
     const list = savedSet.has(savedKeyOf(job)) ? removeSavedJob(job) : saveJob(job)
@@ -99,141 +152,223 @@ export default function Jobs({ onHome, noProviders, embedded }) {
     setSavedSet(new Set(list.map(savedKeyOf)))
   }, [savedSet])
 
+  const patchSaved = useCallback((job, patchFields) => {
+    const list = updateSavedJob(job, patchFields)
+    setSavedJobs(list)
+    setSavedSet(new Set(list.map(savedKeyOf)))
+  }, [])
+
+  const openCareer = useCallback((job, careerTab) => {
+    if (!onOpenCareer) return
+    const { jd, limited } = jobAnalysisJd(job)
+    onOpenCareer({
+      initialJd: jd,
+      initialRole: job.title || profile.targetRole || '',
+      initialCompany: job.company || '',
+      initialTab: careerTab,
+      limitedJd: limited,
+    })
+  }, [onOpenCareer, profile.targetRole])
+
   const find = useCallback(async () => {
-    setError(''); setLoading(true)   // keep the prior list visible while loading (don't blank it)
+    setError(''); setLoading(true)
     try {
       const res = await apiFetch('/api/jobs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resume: profile.resume || '', targetRole: profile.targetRole || '', location: profile.location || '', yearsExp: profile.yearsExp || '' })
+        body: JSON.stringify({
+          resume: profile.resume || '',
+          targetRole: profile.targetRole || '',
+          location: profile.location || '',
+          yearsExp: profile.yearsExp || '',
+        }),
       })
-      // The server can answer with a non-JSON body (e.g. the rate-limiter's plain-text 429),
-      // so parse defensively and surface the real status instead of a misleading "can't reach".
       const text = await res.text()
       let d = null; try { d = JSON.parse(text) } catch {}
       if (!res.ok || d?.error) setError(d?.error || `Could not load jobs (${res.status})`)
       else if (!d) setError('Got an unexpected response from the job service. Please try again.')
-      else { setResult(d); setVisible(8); jobsCache = { key: inputsKey, result: d } }   // cache + reset pagination for the NEW search
+      else { setResult(d); setVisible(8); jobsCache = { key: inputsKey, result: d } }
     } catch (e) { setError(e.message || 'Could not reach the job service.') }
     finally { setLoading(false) }
   }, [inputsKey, profile.resume, profile.targetRole, profile.location, profile.yearsExp])
 
-  // Auto-run ONLY if we have a resume and nothing is already cached/restored — so reopening the view
-  // (or navigating back) doesn't re-hit the API, blank the list, and reset sort/scroll every time.
   useEffect(() => { if (hasResume && !result) find() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (sort === 'salary' && result && !hasSalaryData) setSort('fit')
+  }, [sort, result, hasSalaryData])
+
   return (
-    <div style={{ padding: embedded ? 0 : '12px 14px 16px' }}>
+    <div style={{ padding: embedded ? 0 : '12px 14px 16px', fontFamily: T.font, color: T.text1 }}>
       {!embedded && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          <button onClick={onHome} style={btnGhost}>← Back</button>
-          <div style={{ fontWeight: 700, fontSize: 13 }}>💼 Matching Jobs</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <button type="button" onClick={onHome} style={S.btnGhost}>← Back</button>
+          <div style={{ fontWeight: 600, fontSize: 15, color: T.text1 }}>Job Matching</div>
         </div>
       )}
 
-      {/* Matches / Saved tabs */}
-      <div role="tablist" style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        {[['matches', '🔍 Matches'], ['saved', `★ Saved${savedJobs.length ? ` (${savedJobs.length})` : ''}`]].map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
-            style={{ flex: 1, fontSize: 11, fontWeight: 700, padding: '6px 4px', borderRadius: 7, cursor: 'pointer', border: '1px solid',
-              borderColor: tab === k ? 'rgba(20,184,166,0.6)' : 'rgba(255,255,255,0.1)',
-              background: tab === k ? 'rgba(20,184,166,0.22)' : 'transparent', color: tab === k ? '#5eead4' : '#94a3b8' }}>{label}</button>
+      <div role="tablist" aria-label="Job Matching sections" style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        {[
+          ['matches', 'Matches'],
+          ['saved', `Saved${savedJobs.length ? ` (${savedJobs.length})` : ''}`],
+        ].map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} style={tabStyle(tab === k)}>
+            {label}
+          </button>
         ))}
       </div>
 
       {tab === 'saved' ? (
         savedJobs.length === 0 ? (
-          <div style={note}>No saved jobs yet. Tap <strong style={{ color: '#fbbf24' }}>☆ Save</strong> on any match to bookmark it here for later.</div>
+          <div role="status" style={S.note}>
+            No saved jobs yet. On Matches, tap <strong style={{ color: '#fbbf24' }}>Save</strong> to bookmark a role here.
+          </div>
         ) : (
-          <div style={{ marginTop: 2 }}>
+          <div>
             {savedJobs.length >= SAVED_MAX && (
-              <div style={{ ...note, borderColor: '#4a3a18', background: '#2a1f12', color: '#f5c66b' }}>
-                Saved list is full ({SAVED_MAX} max). Saving another will drop the oldest — remove some to keep them.
+              <div role="status" style={{ ...S.note, borderColor: 'rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#fbbf24' }}>
+                Saved list is full ({SAVED_MAX} max). Saving another drops the oldest.
               </div>
             )}
+            <div style={{ fontSize: 12, color: T.text3, marginBottom: 10, lineHeight: 1.45 }}>
+              Status and notes stay on this device. Open Resume Studio from a card to score or tailor against the listing.
+            </div>
             {savedJobs.map(j => (
               <div key={savedKeyOf(j)}>
-                <div style={{ fontSize: 9, color: '#475569', marginBottom: 2 }}>Saved {ago(j.savedTs) || 'today'}</div>
-                <JobCard j={j} saved onToggleSave={toggleSave} />
+                <div style={{ fontSize: 11, color: T.text3, marginBottom: 4 }}>
+                  Saved {ago(j.savedTs) || 'today'}
+                  {j.status ? ` · ${STATUS_LABEL[j.status] || j.status}` : ''}
+                </div>
+                <JobCard j={j} saved showTracking onToggleSave={toggleSave} onUpdateSaved={patchSaved}
+                  onOpenCareer={onOpenCareer ? openCareer : undefined} />
               </div>
             ))}
           </div>
         )
       ) : (
         <>
-          {/* Target role — refines the search; resume comes from your profile */}
-          <label style={lbl}>Target role (sharpens the match — overrides the resume's field)</label>
-          <input
-            type="text" value={profile.targetRole || ''} placeholder="e.g. Senior Test Engineer"
-            onChange={e => { const p = { ...profile, targetRole: e.target.value }; setProfile(p); saveProfile(p) }}
-            style={input} />
+          <div style={S.panel}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: T.text1, marginBottom: 4 }}>Your materials</div>
+            <div style={{ fontSize: 12, color: T.text3, marginBottom: 12, lineHeight: 1.45 }}>
+              Shared with Solo and Live. Paste or upload a PDF so matches reflect your background.
+            </div>
+            <ResumeMaterials resume={profile.resume} onPatch={patch} />
+            {!hasResume && (
+              <div role="status" style={{ ...S.note, borderColor: 'rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.08)', color: '#fbbf24', marginBottom: 0 }}>
+                Add a resume for stronger matches — or enter a target role below to search anyway.
+              </div>
+            )}
+          </div>
 
-          {/* Location — filters remote roles to those open to your region */}
-          <label style={lbl}>Location (filters roles open to your region)</label>
-          <input
-            type="text" value={profile.location || ''} placeholder="e.g. Hyderabad, India"
-            onChange={e => { const p = { ...profile, location: e.target.value }; setProfile(p); saveProfile(p) }}
-            style={input} />
+          <div style={S.panel}>
+            <label style={S.lbl}>Target role</label>
+            <input
+              type="text" value={profile.targetRole || ''} placeholder="e.g. Senior Backend Engineer"
+              onChange={e => patch({ targetRole: e.target.value })}
+              style={S.input}
+            />
+            <label style={S.lbl}>Location</label>
+            <input
+              type="text" value={profile.location || ''} placeholder="e.g. Hyderabad, India"
+              onChange={e => patch({ location: e.target.value })}
+              style={S.input}
+            />
+            <label style={S.lbl}>Experience</label>
+            <YearsChips value={profile.yearsExp || ''} onChange={v => patch({ yearsExp: v })} />
+          </div>
 
           {noProviders && (
-            <div style={{ ...note, borderColor: 'rgba(20,184,166,0.3)', color: '#5eead4' }}>
-              💡 Add an API key in ⚙ Settings to upgrade from keyword matching to <strong>AI ranking</strong> (smarter fit + reasons). Jobs still work without one.
-            </div>
+            <NoKeysBanner
+              onSettings={onSettings}
+              what="AI ranking (fit scores + reasons) needs an AI key."
+              allowContinue
+            />
           )}
 
-          {!hasResume && (
-            <div style={{ ...note, borderColor: '#7f1d1d', background: '#450a0a', color: '#fca5a5' }}>
-              No resume saved yet. Open <strong>Solo Practice</strong> and paste your resume in setup — it's reused here automatically.
-            </div>
-          )}
-
-          <button onClick={find} disabled={loading || (!hasResume && !profile.targetRole)} style={btnPrimary}>
-            {loading ? 'Finding roles…' : result ? '↻ Refresh matches' : '🔍 Find matching jobs'}
+          <button
+            type="button"
+            onClick={find}
+            disabled={loading || !canSearch}
+            style={{
+              ...S.btnPrimary,
+              opacity: loading || !canSearch ? 0.55 : 1,
+              cursor: loading || !canSearch ? 'default' : 'pointer',
+              marginBottom: 12,
+            }}
+          >
+            {loading ? 'Finding roles…' : result ? 'Refresh matches' : 'Find matching jobs'}
           </button>
+          {!canSearch && (
+            <div role="status" style={{ fontSize: 12, color: T.text3, marginTop: -4, marginBottom: 12 }}>
+              Add a resume or target role to search.
+            </div>
+          )}
 
-          {error && <div style={{ ...note, borderColor: '#7f1d1d', background: '#450a0a', color: '#fca5a5' }}>{error}</div>}
+          {error && (
+            <div role="alert" style={{ ...S.note, borderColor: 'rgba(244,63,94,0.4)', background: 'rgba(244,63,94,0.08)', color: '#fca5a5' }}>
+              {error}
+            </div>
+          )}
+
+          {loading && !result && (
+            <div role="status" style={S.note}>Searching roles…</div>
+          )}
 
           {result && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 10, color: '#475569', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
-                <span>Searched: <strong style={{ color: '#94a3b8' }}>{result.search}</strong></span>
-                <span>{result.ranker === 'ai' ? '✨ AI-ranked' : 'keyword-ranked'}</span>
+            <div>
+              <div style={{ fontSize: 12, color: T.text3, marginBottom: 10, display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <span>Searched: <strong style={{ color: T.text2 }}>{result.search}</strong></span>
+                <span>{result.ranker === 'ai' ? 'AI-ranked' : 'Keyword-ranked'}</span>
               </div>
 
               {result.jobs.length > 1 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                  <span style={{ fontSize: 10, color: '#475569' }}>Sort:</span>
-                  {SORTS.map(([k, label]) => (
-                    <button key={k} onClick={() => setSort(k)}
-                      style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 6, cursor: 'pointer', border: '1px solid',
-                        borderColor: sort === k ? 'rgba(20,184,166,0.6)' : 'rgba(255,255,255,0.1)',
-                        background: sort === k ? 'rgba(20,184,166,0.25)' : 'transparent',
-                        color: sort === k ? '#5eead4' : '#64748b' }}>{label}</button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11.5, color: T.text3 }}>Sort:</span>
+                  {SORTS.filter(([k]) => k !== 'salary' || hasSalaryData).map(([k, label]) => (
+                    <button key={k} type="button" onClick={() => setSort(k)}
+                      style={{
+                        fontSize: 11.5, fontWeight: 600, padding: '5px 10px', borderRadius: 999, cursor: 'pointer',
+                        border: `1px solid ${sort === k ? 'rgba(20,184,166,0.45)' : T.border}`,
+                        background: sort === k ? 'rgba(20,184,166,0.16)' : 'transparent',
+                        color: sort === k ? T.accentFrom : T.text3, fontFamily: T.font,
+                      }}>{label}</button>
                   ))}
+                  {!hasSalaryData && (
+                    <span title="No salary data in these results" style={{ fontSize: 11, color: T.text3 }}>
+                      Salary sort unavailable
+                    </span>
+                  )}
                 </div>
               )}
 
-              {result.note && <div style={note}>{result.note}</div>}
-              {result.localEnabled === false && !result.note && (
-                <div style={{ ...note, borderColor: 'rgba(20,184,166,0.3)', color: '#5eead4' }}>
-                  💡 Showing remote roles. Add free <strong>Adzuna keys</strong> in ⚙ Settings to also include <strong>local on-site jobs</strong> for your city.
+              {result.note && <div role="status" style={S.note}>{result.note}</div>}
+              {result.localEnabled === false && (
+                <div role="status" style={{ ...S.note, borderColor: 'rgba(20,184,166,0.3)', color: '#5eead4' }}>
+                  Showing remote roles (Remotive). Add free <strong style={{ color: T.text1 }}>Adzuna</strong> keys in Settings for local on-site listings — without them we won’t invent local jobs.
+                  {onSettings && (
+                    <button type="button" onClick={onSettings}
+                      style={{ display: 'block', marginTop: 8, background: 'none', border: 'none', color: T.accentFrom, cursor: 'pointer', padding: 0, fontSize: 12.5, fontFamily: T.font, textDecoration: 'underline' }}>
+                      Open Settings → Adzuna
+                    </button>
+                  )}
                 </div>
               )}
 
               {sortJobs(result.jobs, sort).slice(0, visible).map(j => (
-                <JobCard key={savedKeyOf(j) || j.id} j={j} saved={savedSet.has(savedKeyOf(j))} onToggleSave={toggleSave} />
+                <JobCard key={savedKeyOf(j) || j.id} j={j} saved={savedSet.has(savedKeyOf(j))} onToggleSave={toggleSave}
+                  onOpenCareer={onOpenCareer ? openCareer : undefined} />
               ))}
 
               {visible < result.jobs.length && (
-                <button onClick={() => setVisible(v => v + 8)} style={btnLoadMore}>
-                  ↓ Load more ({result.jobs.length - visible} more)
+                <button type="button" onClick={() => setVisible(v => v + 8)} style={{ ...S.btnSecondary, width: '100%', marginTop: 4 }}>
+                  Load more ({result.jobs.length - visible} more)
                 </button>
               )}
               {result.jobs.length > 0 && visible >= result.jobs.length && result.jobs.length > 8 && (
-                <div style={{ fontSize: 10, color: '#475569', textAlign: 'center', marginTop: 6 }}>That's all {result.jobs.length} matches.</div>
+                <div style={{ fontSize: 11.5, color: T.text3, textAlign: 'center', marginTop: 8 }}>That’s all {result.jobs.length} matches.</div>
               )}
 
               {result.jobs.length === 0 && !result.note && (
-                <div style={note}>No strong matches found. Try a broader target role, or clear the location filter.</div>
+                <div role="status" style={S.note}>No strong matches found. Try a broader target role, or clear the location filter.</div>
               )}
             </div>
           )}
@@ -242,15 +377,3 @@ export default function Jobs({ onHome, noProviders, embedded }) {
     </div>
   )
 }
-
-const lbl = { display: 'block', fontSize: 10, color: '#475569', fontWeight: 700, letterSpacing: '0.05em', marginBottom: 4 }
-const input = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, padding: '8px 10px', color: '#e2e8f0', fontSize: 12, marginBottom: 10, boxSizing: 'border-box' }
-const btnPrimary = { width: '100%', background: '#14B8A6', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }
-const btnGhost = { background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer' }
-const note = { fontSize: 11, color: '#94a3b8', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 7, padding: '8px 10px', margin: '10px 0', lineHeight: 1.5 }
-const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 9, padding: '11px 12px', marginBottom: 8, position: 'relative' }
-const scorePill = { minWidth: 30, height: 30, borderRadius: 7, border: '1.5px solid', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 800, flexShrink: 0 }
-const tag = { fontSize: 9, color: '#5eead4', background: 'rgba(20,184,166,0.15)', padding: '2px 7px', borderRadius: 10 }
-const applyLink = { display: 'inline-block', fontSize: 11, fontWeight: 700, color: '#5eead4', textDecoration: 'none' }
-const saveBtn = { fontSize: 11, fontWeight: 700, background: 'transparent', border: '1px solid', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }
-const btnLoadMore = { width: '100%', background: 'rgba(20,184,166,0.15)', color: '#5eead4', border: '1px solid rgba(20,184,166,0.4)', borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginTop: 4 }
