@@ -60,10 +60,32 @@ export function createSessionMetrics(kind = 'live') {
   function markError(code) { counters.errors += 1; event('error', { code: String(code || 'unknown').slice(0, 80) }) }
   function markSttReconnect() { counters.sttReconnects += 1; event('stt_reconnect') }
 
+  function markQuestionCapture(payload = {}) {
+    counters.questionCommits = (counters.questionCommits || 0) + 1
+    if (payload.captureLatencyMs != null) {
+      counters.timeToCommitMs = counters.timeToCommitMs || []
+      counters.timeToCommitMs.push(Number(payload.captureLatencyMs))
+    }
+    event('question_committed', {
+      captureLatencyMs: payload.captureLatencyMs,
+      revisions: payload.revisions,
+      reason: payload.reason,
+    })
+  }
+  function markQuestionReject(reason) {
+    counters.questionRejects = (counters.questionRejects || 0) + 1
+    event('question_reject', { reason: String(reason || 'unknown').slice(0, 80) })
+  }
+  function markGenerationCancelled() {
+    counters.cancelledGenerations = (counters.cancelledGenerations || 0) + 1
+    event('generation_cancelled')
+  }
+
   function summary() {
     const ttft = counters.ttftMs
     const sorted = [...ttft].sort((a, b) => a - b)
     const p95 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] : null
+    const ttc = counters.timeToCommitMs || []
     return sanitizeMetric({
       sessionId,
       kind,
@@ -77,6 +99,10 @@ export function createSessionMetrics(kind = 'live') {
       incompleteStreams: counters.incompleteStreams,
       skips: counters.skips,
       errors: counters.errors,
+      questionCommits: counters.questionCommits || 0,
+      questionRejects: counters.questionRejects || 0,
+      cancelledGenerations: counters.cancelledGenerations || 0,
+      avgTimeToCommitMs: ttc.length ? Math.round(ttc.reduce((a, b) => a + b, 0) / ttc.length) : null,
     })
   }
 
@@ -89,5 +115,9 @@ export function createSessionMetrics(kind = 'live') {
   }
 
   event('session_start')
-  return { sessionId, startHint, markFirstToken, markFallback, markIncomplete, markSkip, markError, markSttReconnect, summary, end, event }
+  return {
+    sessionId, startHint, markFirstToken, markFallback, markIncomplete, markSkip, markError,
+    markSttReconnect, markQuestionCapture, markQuestionReject, markGenerationCancelled,
+    summary, end, event,
+  }
 }

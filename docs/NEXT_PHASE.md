@@ -134,9 +134,11 @@ Net: `localStorage` → (optional) `userData` file/SQLite for durability → (wi
 
 ## What NOT to change
 - The **AI engine** (`api/_lib/core.js` provider/retry/failover, `interview.js`, `jobs.js`) and the
-  **shared** logic (`shared/delivery.js`) are solid — reuse them behind the auth layer, don't rewrite.
+  **shared** Live/interview modules (`shared/interviewState.js`, `generationManager.js`,
+  `questionCapture.js`, `delivery.js` filler/pace, etc.) are the wedge — reuse them behind the auth
+  layer, don't rewrite for billing.
 - BYO-key mode stays as a first-class option.
-
+- Referral stays **copy-only** until ROADMAP § P6 phases B/C; do not bolt on silent email agents.
 ---
 
 ## Job-application automation (LinkedIn auto-apply, referrals) — read before building
@@ -176,13 +178,21 @@ building the wrong thing.
   product, with clear in-product disclosure — not a bolt-on MockMate feature.
 
 ### What's already done in-app (no LinkedIn needed)
-The high-synergy, ToS-safe pieces that leverage MockMate's resume + LLM **already ship** (v1.3.0),
+The high-synergy, ToS-safe pieces that leverage MockMate's resume + LLM **already ship** (v1.3.0+),
 in `api/_lib/career.js` + `src/Career.jsx`:
-- **ATS resume score** (20+ checks), **per-role resume tailoring**, **referral-message drafter**, and a
+- **ATS resume score** (20+ checks), **per-role resume tailoring**, **referral-message drafter**
+  (**copy-only** — MockMate does not email or message LinkedIn), tailored **PDF** export, and a
   **saved-jobs dashboard** (`src/savedJobs.js`).
 
 The extension's job is only the part that **requires** the user's live LinkedIn session: discovering
 referral contacts and submitting applications. Everything else stays in the app.
+
+### In-app referral follow-up (next phases — not LinkedIn automation)
+Copy-only is the right v1. Multi-agent “trigger emails for me” is a **valid later idea** when framed as
+**assisted outreach** (drafts + reminders + user-confirmed send via the user’s own mail), not MockMate
+SMTP or silent agents. Phased plan lives in [`ROADMAP.md` § P6](ROADMAP.md#p6--referral-outreach-career--phased-not-multi-agent-first):
+local follow-up reminders → optional Gmail/Outlook user-confirmed send → LinkedIn automation stays
+extension-only (above).
 
 ---
 

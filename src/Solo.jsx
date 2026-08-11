@@ -11,7 +11,9 @@ import { isTransient } from '../shared/llm-errors.js'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { createSessionId, createGeneration, hasEnoughAnswerLength } from './lib/sessionGen'
-import { retrieveContext, warmDocs, addDoc } from './lib/docs'
+import { retrieveContext, warmDocs, addDoc, getSelectedDocIds } from './lib/docs'
+import { buildInterviewConfig } from './lib/interviewConfig'
+import Documents from './Documents'
 import { extractPdfText } from './pdf'
 
 function speak(text, on, onDone, lang = 'en-US') {
@@ -119,6 +121,7 @@ export default function Solo({ onHome, noProviders }) {
 
   const [transcript, setTranscript] = useState([])
   const [answer, setAnswer] = useState('')
+  const [practiceQ, setPracticeQ] = useState('')
   const [thinking, setThinking] = useState(false)
   const [evaluating, setEvaluating] = useState(false)
   const [report, setReport] = useState(null)
@@ -143,6 +146,7 @@ export default function Solo({ onHome, noProviders }) {
 
   // Wave B — generation identity & locks
   const sessionIdRef = useRef(null)
+  const interviewConfigRef = useRef(null)
   const sessionActiveRef = useRef(false)
   const turnGen = useRef(createGeneration('turn'))
   const ttsGen = useRef(createGeneration('tts'))
@@ -339,7 +343,11 @@ export default function Solo({ onHome, noProviders }) {
     try {
       const lastAsk = [...current].reverse().find(t => t.role === 'interviewer')?.text
         || [profile.targetRole, profile.targetCompany, 'interview start'].filter(Boolean).join(' ')
-      const extraContext = await retrieveContext(lastAsk, { budgetMs: 1800 }).catch(() => '')
+      const cfg = interviewConfigRef.current
+      const extraContext = await retrieveContext(lastAsk, {
+        budgetMs: 1800,
+        docIds: Array.isArray(cfg?.selectedDocumentIds) ? cfg.selectedDocumentIds : getSelectedDocIds(),
+      }).catch(() => '')
       if (!isCurrent()) return null
 
       const res = await apiFetch('/api/interview', {
@@ -409,7 +417,12 @@ export default function Solo({ onHome, noProviders }) {
     const jd = String(profile.jobDescription || '').trim()
     if (resume.length > 40) addDoc({ name: 'Resume (pasted)', type: 'resume', text: resume })
     if (jd.length > 40) addDoc({ name: 'Job Description (pasted)', type: 'jd', text: jd })
-    warmDocs()
+    interviewConfigRef.current = buildInterviewConfig({
+      profile,
+      selectedDocumentIds: getSelectedDocIds(),
+      source: 'solo',
+    })
+    warmDocs(interviewConfigRef.current.selectedDocumentIds)
 
     setPhase('live')
     phaseRef.current = 'live'
@@ -603,7 +616,10 @@ export default function Solo({ onHome, noProviders }) {
         </span>
       </div>
 
-      <Section title="Your materials" hint="Required — pasted at Begin so the interviewer can ground questions in your projects & role.">
+      <Section title="Your materials" hint="Resume + JD for the interviewer · optional knowledge bank for grounding.">
+        <div style={{ fontSize: 11.5, color: T.text3, lineHeight: 1.45, marginBottom: 4 }}>
+          Paste resume &amp; JD here (required for good questions). Extra knowledge banks go below — checked items are retrieved during the session.
+        </div>
         <div>
           <Label>Resume</Label>
           <textarea rows={5} style={{ ...textInput, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste your resume text…" onChange={e => patchProfile({ resume: e.target.value })} />
@@ -632,8 +648,9 @@ export default function Solo({ onHome, noProviders }) {
         {!hasContext && (
           <div role="status" style={{ fontSize: 12, color: '#fbbf24' }}>Add a resume or JD so questions stay practical and conversational.</div>
         )}
-        <div style={{ fontSize: 11.5, color: T.text3, lineHeight: 1.45 }}>
-          At Begin, MockMate indexes this text for the session (same materials idea as Live Documents). You don’t need a separate Documents screen for Solo.
+        <div>
+          <Label>Knowledge & notes (optional)</Label>
+          <Documents hideBioTypes />
         </div>
       </Section>
 
@@ -811,8 +828,37 @@ export default function Solo({ onHome, noProviders }) {
             </div>
           </div>
 
+          <form
+            onSubmit={e => {
+              e.preventDefault()
+              const q = practiceQ.trim()
+              if (!q || busyUi) return
+              setPracticeQ('')
+              cancelAutoSubmit()
+              setTranscript(t => [...t, { role: 'interviewer', text: q, kind: 'question', ts: Date.now() }])
+              setAnswer('')
+              endConfirmRef.current = false
+              setEndingEmpty(false)
+            }}
+            style={{ display: 'flex', gap: 8, flexShrink: 0 }}
+          >
+            <input
+              type="text"
+              value={practiceQ}
+              onChange={e => setPracticeQ(e.target.value)}
+              placeholder="Type a question to practice · Enter"
+              disabled={busyUi}
+              aria-label="Type a practice question"
+              style={{ ...textInput, flex: 1, height: 40 }}
+            />
+            <button type="submit" disabled={!practiceQ.trim() || busyUi}
+              style={{ height: 40, padding: '0 14px', flexShrink: 0, background: practiceQ.trim() && !busyUi ? T.accent : T.surface2, color: practiceQ.trim() && !busyUi ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 600, cursor: practiceQ.trim() && !busyUi ? 'pointer' : 'default', fontFamily: T.font }}>
+              Ask
+            </button>
+          </form>
+
           <textarea rows={3} style={{ ...textInput, resize: 'none', flexShrink: 0 }}
-            placeholder={speech.active ? 'Listening…' : canSpeak ? 'Speak, or type your reply' : 'Type your reply, then Continue'}
+            placeholder={speech.active ? 'Listening…' : canSpeak ? 'Type your answer · Enter to submit' : 'Type your answer · Enter to submit'}
             value={answer}
             onChange={e => { setAnswer(e.target.value); if (endingEmpty) { endConfirmRef.current = false; setEndingEmpty(false) } }}
             onKeyDown={e => {

@@ -87,6 +87,25 @@ function Sparkline({ sessions }) {
 export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealth, onMinimize, onClose, children }) {
   const name = (auth?.user?.name || auth?.user?.email || '?')
   const initials = name.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase()).join('') || '?'
+  // After login: left nav can hide/show (persisted). Collapsed = icon rail; hidden = gone.
+  const [sidebarMode, setSidebarMode] = useState(() => {
+    try {
+      const v = localStorage.getItem('mm-sidebar')
+      if (v === 'hidden' || v === 'icons' || v === 'full') return v
+    } catch {}
+    return 'full'
+  })
+  function cycleSidebar() {
+    setSidebarMode(m => {
+      const next = m === 'full' ? 'icons' : m === 'icons' ? 'hidden' : 'full'
+      try { localStorage.setItem('mm-sidebar', next) } catch {}
+      return next
+    })
+  }
+  const sidebarHidden = sidebarMode === 'hidden'
+  const sidebarIcons = sidebarMode === 'icons'
+  const sidebarW = sidebarHidden ? 0 : sidebarIcons ? 64 : 216
+
   return (
     <div className="mm-shell" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: T.bg, color: T.text1, fontFamily: T.font, overflow: 'hidden' }}>
       <style>{`
@@ -100,6 +119,10 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
 
       {/* Top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: `1px solid ${T.border}`, flexShrink: 0, background: T.surface1 }}>
+        <TopBtn
+          title={sidebarMode === 'full' ? 'Collapse sidebar to icons' : sidebarMode === 'icons' ? 'Hide sidebar' : 'Show sidebar'}
+          onClick={cycleSidebar}
+        >{sidebarHidden ? '☰' : '◂'}</TopBtn>
         <img src="/icon.png" alt="" width={26} height={26} style={{ borderRadius: 7, display: 'block' }} />
         <span style={{ fontWeight: 600, fontSize: 14, letterSpacing: '0.2px' }}>MockMate</span>
         <div title={isLinuxUA ? 'Overlay stealth is not supported on Linux' : 'Content protection may exclude the overlay from capture APIs — always verify in your meeting share preview. Browser matrix UNKNOWN.'}
@@ -108,48 +131,72 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
           {isLinuxUA ? 'Stealth limited (Linux)' : 'Content protection on · Verify share preview'}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-          <TopBtn title="Dim (does not close)" onClick={onStealth}>◐</TopBtn>
-          <TopBtn title="Hide to tray — click tray icon to restore" onClick={onMinimize}>—</TopBtn>
+          <TopBtn title="Collapse to pill icon (stays on screen) · Alt+H" onClick={onStealth}>◐</TopBtn>
+          <TopBtn title="Collapse to pill — click pill to restore" onClick={onMinimize}>—</TopBtn>
           <TopBtn title="Close" onClick={onClose} danger>✕</TopBtn>
         </div>
       </div>
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {/* Sidebar */}
-        <div style={{ width: 216, flexShrink: 0, borderRight: `1px solid ${T.border}`, background: T.surface1, display: 'flex', flexDirection: 'column', padding: '12px 10px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {NAV.map(n => {
-              const on = active === n.id
-              return (
-                <button key={n.id} onClick={() => onNav(n.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 11, padding: '9px 11px', borderRadius: T.rCtrl,
-                    background: on ? 'rgba(20,184,166,0.16)' : 'transparent',
-                    border: `1px solid ${on ? 'rgba(20,184,166,0.4)' : 'transparent'}`,
-                    color: on ? T.text1 : T.text2, cursor: 'pointer', fontFamily: T.font, fontSize: 13, fontWeight: on ? 600 : 400,
-                    textAlign: 'left', width: '100%',
-                  }}>
-                  <span style={{ fontSize: 15, width: 18, textAlign: 'center' }}>{n.icon}</span>
-                  <span style={{ flex: 1 }}>{n.label}</span>
-                  {n.id === 'companion' && meetingActive && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444' }} />}
-                </button>
-              )
-            })}
-          </div>
-          <div style={{ marginTop: 'auto' }}>
-            <button onClick={() => onNav('account')}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', width: '100%', background: 'transparent', border: `1px solid ${T.border}`, borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font, textAlign: 'left' }}>
-              <span style={{ width: 28, height: 28, borderRadius: '50%', background: T.accent, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>{initials}</span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: T.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{auth?.user?.name || auth?.user?.email || 'Account'}</span>
-                <span style={{ display: 'block', fontSize: 10, color: T.text3 }}>{auth?.guest ? 'Guest' : auth?.plan === 'pro' ? 'Pro plan' : 'Free plan'}</span>
-              </span>
-            </button>
-            <div style={{ textAlign: 'center', fontSize: 10, color: T.text3, marginTop: 8 }}>
-              MockMate v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''}
+        {/* Sidebar — full labels → icon rail → hidden (cycle via top-bar ☰ / ◂) */}
+        {!sidebarHidden && (
+          <div style={{
+            width: sidebarW, flexShrink: 0, borderRight: `1px solid ${T.border}`, background: T.surface1,
+            display: 'flex', flexDirection: 'column', padding: sidebarIcons ? '12px 8px' : '12px 10px',
+            transition: 'width 0.15s ease', overflow: 'hidden',
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {NAV.map(n => {
+                const on = active === n.id
+                return (
+                  <button key={n.id} type="button" onClick={() => onNav(n.id)}
+                    title={sidebarIcons ? n.label : undefined}
+                    aria-label={n.label}
+                    style={{
+                      position: 'relative',
+                      display: 'flex', alignItems: 'center', gap: sidebarIcons ? 0 : 11,
+                      justifyContent: sidebarIcons ? 'center' : 'flex-start',
+                      padding: sidebarIcons ? '10px 0' : '9px 11px', borderRadius: T.rCtrl,
+                      background: on ? 'rgba(20,184,166,0.16)' : 'transparent',
+                      border: `1px solid ${on ? 'rgba(20,184,166,0.4)' : 'transparent'}`,
+                      color: on ? T.text1 : T.text2, cursor: 'pointer', fontFamily: T.font, fontSize: 13, fontWeight: on ? 600 : 400,
+                      textAlign: 'left', width: '100%',
+                    }}>
+                    <span style={{ fontSize: 15, width: sidebarIcons ? 'auto' : 18, textAlign: 'center' }}>{n.icon}</span>
+                    {!sidebarIcons && <span style={{ flex: 1 }}>{n.label}</span>}
+                    {!sidebarIcons && n.id === 'companion' && meetingActive && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444' }} />}
+                    {sidebarIcons && n.id === 'companion' && meetingActive && (
+                      <span style={{ position: 'absolute', top: 8, right: 10, width: 6, height: 6, borderRadius: '50%', background: '#ef4444' }} />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+            <div style={{ marginTop: 'auto' }}>
+              <button type="button" onClick={() => onNav('account')}
+                title={sidebarIcons ? (auth?.user?.name || auth?.user?.email || 'Account') : undefined}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: sidebarIcons ? 0 : 10,
+                  justifyContent: sidebarIcons ? 'center' : 'flex-start',
+                  padding: sidebarIcons ? '8px 0' : '9px 10px', width: '100%', background: 'transparent',
+                  border: `1px solid ${T.border}`, borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font, textAlign: 'left',
+                }}>
+                <span style={{ width: 28, height: 28, borderRadius: '50%', background: T.accent, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>{initials}</span>
+                {!sidebarIcons && (
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: T.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{auth?.user?.name || auth?.user?.email || 'Account'}</span>
+                    <span style={{ display: 'block', fontSize: 10, color: T.text3 }}>{auth?.guest ? 'Guest' : auth?.plan === 'pro' ? 'Pro plan' : 'Free plan'}</span>
+                  </span>
+                )}
+              </button>
+              {!sidebarIcons && (
+                <div style={{ textAlign: 'center', fontSize: 10, color: T.text3, marginTop: 8 }}>
+                  MockMate v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''}
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        )}
 
         {/* Content */}
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '22px 26px' }}>{children}</div>
@@ -235,7 +282,7 @@ function TopBtn({ children, onClick, title, danger }) {
 }
 
 // ── Dashboard / Home content ──
-export function DashboardHome({ auth, sessions = [], noProviders, onNav, onCapture }) {
+export function DashboardHome({ auth, sessions = [], noProviders, onNav }) {
   const name = (auth?.user?.name || '').split(' ')[0] || ''
   const scored = sessions.filter(s => typeof s.score === 'number')
   const [readyInfo, setReadyInfo] = useState(null)
@@ -360,9 +407,8 @@ export function DashboardHome({ auth, sessions = [], noProviders, onNav, onCaptu
         </div>
       )}
 
-      {/* Quick actions */}
+      {/* Quick actions — Settings / history only. Screen solve lives in Live (F7), not Home clutter. */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <QuickAction onClick={onCapture}>📸 Screenshot + solve</QuickAction>
         <QuickAction onClick={() => onNav('history')}>📚 Transcripts</QuickAction>
         <QuickAction onClick={() => onNav('settings')}>⚙️ Settings</QuickAction>
       </div>

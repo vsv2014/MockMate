@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { apiFetch } from './lib/apiClient'
-import { useSystemAudio, shouldTriggerHint } from './useSystemAudio'
+import { useSystemAudio } from './useSystemAudio'
 import SoloFeedback from './SoloFeedback'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { getAutoSkip, getAnswerStyle, setAnswerStyle as persistAnswerStyle } from './lib/aiSettings'
-import { retrieveContext, warmDocs, addDoc } from './lib/docs'
+import { retrieveContext, warmDocs, addDoc, getSelectedDocIds } from './lib/docs'
 import Documents from './Documents'
+import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import { OverlayPanel, ScreenAnalysisPanel, IconBtn } from './App'
 import ApiKeysPanel from './ApiKeys'
 import { saveSession } from './history'
@@ -16,10 +17,35 @@ import { LANGUAGES, STT_LANG, CODING_LANGUAGES } from './lib/languages'
 import { estimateCost } from './cost'
 import { extractPdfText } from './pdf'
 import { mountPip } from './pip'
-import { mergeTurns, normalizeQ, isStragglerDuplicate } from './lib/transcript'
-import { glanceLayers } from '../shared/hintLayers.js'
+import { mergeTurns } from './lib/transcript'
+import { glanceLayers, stripHintMeta } from '../shared/hintLayers.js'
+import { classifyTurn, shouldRetrieveDocs } from '../shared/interviewClassify.js'
+import { evaluateScreenRelevance, formatScreenDebugTrace } from '../shared/screenContext.js'
 import { createSessionMetrics } from './lib/sessionMetrics'
-import { createSessionId, createGeneration } from './lib/sessionGen'
+import { createSessionId } from './lib/sessionGen'
+import { createInterviewState } from '../shared/interviewState.js'
+import { createGenerationManager } from '../shared/generationManager.js'
+import { resolveContextSources, formatInterviewDevTrace } from '../shared/contextSelection.js'
+import { createTranscriptBuffer } from '../shared/transcriptBuffer.js'
+import { createQuestionCaptureController, formatCaptureDebugLine } from '../shared/questionCapture.js'
+import { streamLiveHint, fetchLiveHintFallback } from './live/hintTransport.js'
+
+function newQuestionId() {
+  return `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+/** RAG options for this turn — session document selection is the only hard gate. */
+function liveRagOpts(_classification, interviewConfig, budgetMs = 600) {
+  const ids = interviewConfig?.selectedDocumentIds
+  // Large knowledge banks need more than 600ms on first cold embed.
+  const n = Array.isArray(ids) ? ids.length : 0
+  const ms = Math.max(budgetMs, n >= 2 ? 1800 : 1200)
+  return {
+    budgetMs: ms,
+    docIds: Array.isArray(ids) ? ids : undefined,
+    // Soft policy: do not hard-filter by classifier ragTypes (that hid knowledge banks).
+  }
+}
 
 // Pull boostable terms (tech, tools, acronyms, proper nouns) from the resume + target
 // role so Deepgram recognizes the candidate's domain jargon and names accurately.
@@ -264,7 +290,9 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
         <button disabled={!canStart} onClick={() => {
           if (profile.resume?.trim()) addDoc({ name: 'Resume', type: 'resume', text: profile.resume })
           if (profile.jobDescription?.trim()) addDoc({ name: 'Job Description', type: 'jd', text: profile.jobDescription })
-          onStart({ profile, sourceId, provider: managed ? '' : provider })
+          const selectedDocumentIds = getSelectedDocIds()
+          const interviewConfig = buildInterviewConfig({ profile, selectedDocumentIds, source: 'live' })
+          onStart({ profile, sourceId, provider: managed ? '' : provider, interviewConfig })
         }}
           style={{ height: 48, background: canStart ? T.accent : T.surface2, color: canStart ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: 15, fontWeight: 600, cursor: canStart ? 'pointer' : 'default', fontFamily: T.font }}>
           Start Live →
@@ -285,7 +313,10 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
         <Field label="Target company (sharpens 'why us' answers + web search)"><input style={inp} value={profile.targetCompany || ''} placeholder="e.g. Stripe" onChange={e => patch({ targetCompany: e.target.value })} /></Field>
         </Section>
 
-        <Section n={2} title="Documents & context" subtitle="Optional — resume, JD, files" defaultOpen={false}>
+        <Section n={2} title="Documents & context" subtitle="Resume + JD for bio · extras for RAG" defaultOpen={false}>
+        <div style={{ fontSize: 11, color: T.text3, lineHeight: 1.45, marginBottom: 4 }}>
+          Resume &amp; JD below feed identity answers. Knowledge banks / notes go in the library — check what to use. They are not duplicated in the list.
+        </div>
         <Field label="Resume (optional — answers reference your projects)">
           <textarea rows={3} style={{ ...inp, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste resume text…" onChange={e => patch({ resume: e.target.value })} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
@@ -308,14 +339,39 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
         </Field>
         <Field label="Job description (optional — sharpens answers to this role)">
           <textarea rows={2} style={{ ...inp, resize: 'vertical' }} value={profile.jobDescription || ''} placeholder="Paste job description…" onChange={e => patch({ jobDescription: e.target.value })} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px' }}>
+              📄 Upload PDF
+              <input type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
+                onChange={async e => {
+                  const file = e.target.files?.[0]; e.target.value = ''
+                  if (!file) return
+                  setPdfMsg('Reading JD PDF…')
+                  try {
+                    const text = await extractPdfText(file)
+                    if (text && text.length > 20) { patch({ jobDescription: text }); setPdfMsg(`✓ JD loaded ${text.length.toLocaleString()} chars`) }
+                    else setPdfMsg('⚠ No text found (scanned image?) — paste it instead')
+                  } catch { setPdfMsg('⚠ Could not read that PDF — please paste the text') }
+                }} />
+            </label>
+          </div>
         </Field>
-        <Field label="Documents (retrieves relevant parts per question)">
-          <Documents />
+        <Field label="Knowledge & notes (checked = used for retrieval)">
+          <Documents hideBioTypes />
         </Field>
         <Field label="Your voice & instructions (optional — shapes every answer)">
-          <textarea rows={2} style={{ ...inp, resize: 'vertical' }} value={profile.customPrompt || ''}
+          <textarea
+            rows={3}
+            maxLength={CUSTOM_INSTRUCTIONS_STORE_MAX}
+            style={{ ...inp, resize: 'vertical' }}
+            value={profile.customPrompt || ''}
             placeholder="e.g. 'Senior eng, talk like I'm chatting with a peer — casual, confident, short. Lean on my fintech work. Avoid buzzwords.'"
-            onChange={e => patch({ customPrompt: e.target.value })} />
+            onChange={e => patch({ customPrompt: e.target.value.slice(0, CUSTOM_INSTRUCTIONS_STORE_MAX) })}
+          />
+          <div style={{ fontSize: 10, color: T.text3, marginTop: 4 }}>
+            {(profile.customPrompt || '').length.toLocaleString()} / {CUSTOM_INSTRUCTIONS_STORE_MAX.toLocaleString()} stored
+            {' · '}Live injects up to {CUSTOM_INSTRUCTIONS_PACK_MAX.toLocaleString()} chars (cannot override honesty rules)
+          </div>
         </Field>
         </Section>
 
@@ -378,12 +434,18 @@ function Section({ n, title, subtitle, defaultOpen = true, children }) {
 }
 
 // ── Live overlay ──────────────────────────────────────────────────────────────
-function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, onSizePreset, opacity, onOpacity, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, pip: initialPip, clickThrough, onClickThrough }) {
+function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, pip: initialPip, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId, interviewConfig: initialInterviewConfig }) {
+  const interviewConfigRef = useRef(initialInterviewConfig || buildInterviewConfig({
+    profile,
+    selectedDocumentIds: getSelectedDocIds(),
+    source: 'live',
+  }))
   const [transcript, setTranscript] = useState([])
   const [hint, setHint] = useState(null)
   const [hintLoading, setHintLoading] = useState(false)
   const [buyTimePhrase, setBuyTimePhrase] = useState('') // holds thinkingLabel only (never a scripted "Say:" line)
   const [manualQ, setManualQ] = useState('') // last candidate/interviewer text awaiting Answer this
+  const [typedQ, setTypedQ] = useState('')   // user-typed question → Enter submits to LLM
   const [switchingAudio, setSwitchingAudio] = useState(false)
   const [pipWindow, setPipWindow] = useState(initialPip || null)
   const [pipProtected, setPipProtected] = useState(true)  // false → show warning banner
@@ -399,17 +461,31 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const [clock, setClock] = useState(0)
   const [error, setError] = useState('')
   const [extraContext, setExtraContext] = useState('')
-  const [expandedAnswers, setExpandedAnswers] = useState(() => new Set()) // question text → full expand
+  const [expandedAnswers, setExpandedAnswers] = useState(() => new Set())
   const extraContextRef = useRef('')
+  const [verifyTip, setVerifyTip] = useState(false)
+  const inElectronLive = typeof window !== 'undefined' && !!window.electronAPI
 
   const sessionIdRef = useRef(createSessionId())
-  const hintGen = useRef(createGeneration('hint'))
+  const interviewStateRef = useRef(null)
+  if (!interviewStateRef.current) {
+    interviewStateRef.current = createInterviewState({ sessionId: sessionIdRef.current, profile })
+  }
+  const genManagerRef = useRef(null)
+  if (!genManagerRef.current) genManagerRef.current = createGenerationManager()
   const sessionActiveRef = useRef(true)
-  const pendingManualQ = useRef('')
+  const pendingManualQ = useRef(null) // { text, questionId } | null — never lose id on mic flush
   const lastHintText = useRef('')
+  const lastClassificationRef = useRef(null)
+  const recentScreenRef = useRef(null)
+  const [screenAttachHint, setScreenAttachHint] = useState(null) // attached | irrelevant | null
+  const [liveCaptureText, setLiveCaptureText] = useState('') // STATE A — subtle live fragments
+  const [captureStatus, setCaptureStatus] = useState('listening') // listening | unclear | stabilizing | committed
+  const activeQuestionIdRef = useRef(null)
+  const activeGenerationRef = useRef(null)
+  const pendingSpeakerRef = useRef(null)
   const hintInFlight = useRef(false)  // prevent double API calls
   const hintIncompleteRef = useRef(false)
-  const hintAbortRef = useRef(null)   // aborts the in-flight /api/hint when a new question arrives
   const lockTimerRef = useRef(null)   // replaces the window._mockmateLockTimeout global
   const postMetaTimerRef = useRef(null)
   const profileRef = useRef(profile)
@@ -420,18 +496,114 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const startedAt = useRef(Date.now())
   const streamTimer = useRef(null)
   const bottomRef = useRef(null)
-  // Coalesce a question that Deepgram delivers as several "final" segments into ONE
-  // answer — fire only after a short pause, so the UI doesn't thrash (loader flicker +
-  // superseded/skipped answers) when the interviewer's question arrives in pieces.
-  const finalDebounce = useRef(null)
-  const pendingQ = useRef('')
-  const ragSpec = useRef({ q: '', p: null })   // speculative RAG embed started during the debounce, reused by generateHint
-  const convoRef = useRef([])   // the REAL conversation: interviewer questions + what YOU said (not AI answers)
+  const topRef = useRef(null)
+  const ragSpec = useRef({ q: '', p: null })
   const metricsRef = useRef(null)
   const hintTimingRef = useRef(null)
+  const captureRef = useRef(null)
+  const handleCommittedRef = useRef(null)
+
+  // M2 question capture pipeline — commit BEFORE generate.
+  if (!captureRef.current) {
+    const buffer = createTranscriptBuffer()
+    captureRef.current = createQuestionCaptureController({
+      buffer,
+      getHadPriorQuestion: () => {
+        const snap = interviewStateRef.current?.getSnapshot?.()
+        return !!(snap?.questionHistory?.length || snap?.questions?.some(q => q.committedAt))
+      },
+      getLastCommittedText: () => {
+        const snap = interviewStateRef.current?.getSnapshot?.()
+        const hist = snap?.questionHistory || []
+        return hist[hist.length - 1]?.text || lastHintText.current || ''
+      },
+      onLive: ({ text, status, reason }) => {
+        setLiveCaptureText(text || '')
+        setCaptureStatus(status || 'listening')
+        interviewStateRef.current?.setLiveCapture?.({ text, status, reason })
+      },
+      onCandidate: (c) => {
+        interviewStateRef.current?.upsertCaptureCandidate?.({
+          questionId: c.id,
+          text: c.text,
+          rawTranscript: c.rawTranscript,
+          speaker: c.speaker,
+          status: c.status || 'candidate',
+          revisionCount: c.revisionCount,
+          source: 'stt',
+        })
+      },
+      onCommitted: (c) => { handleCommittedRef.current?.(c) },
+      onReject: (reason) => { metricsRef.current?.markQuestionReject?.(reason) },
+      onDebug: (evt) => {
+        if (typeof localStorage !== 'undefined' && localStorage.getItem('mm-debug-live') === '1') {
+          // eslint-disable-next-line no-console
+          console.info(formatCaptureDebugLine(evt))
+        }
+      },
+    })
+  }
 
   useEffect(() => { extraContextRef.current = extraContext }, [extraContext])
   useEffect(() => { coachModeRef.current = coachMode }, [coachMode])   // so generateHint (a [] useCallback closure) reads the live value
+  useEffect(() => {
+    interviewStateRef.current?.setProfile?.(profile)
+    profileRef.current = profile
+  }, [profile])
+
+  // Bound recent screen context for spoken fusion (replaces older capture).
+  useEffect(() => {
+    if (!screenAnalysis) return
+    recentScreenRef.current = screenAnalysis
+    interviewStateRef.current?.setScreenContext?.(screenAnalysis)
+    const a = screenAnalysis.analysis
+    const isCode = !screenAnalysis.error && (
+      screenAnalysis.contentType === 'screen_code'
+      || a?.contentType === 'coding'
+      || a?.screenFamily === 'screen_code'
+    )
+    if (!isCode || !a) return
+    // Seed coding thread so "do it without X" keeps House Robber context after F7.
+    lastClassificationRef.current = {
+      questionType: 'screen_code',
+      playbookKey: 'dsa',
+      isFollowUp: false,
+      parentType: null,
+      parentTopic: a.detectedText || 'Screen coding problem',
+      contextNeeds: { identity: true, resume: 'short', jd: 'none', rag: true, ragTypes: null, customPrompt: true, codingLanguage: true, history: true },
+      classifierVersion: 'screen_f7_seed',
+      question: a.detectedText || 'Screen coding problem',
+    }
+    const seedText = [
+      a.detectedText && `Problem: ${a.detectedText}`,
+      a.pattern && `Pattern: ${a.pattern}`,
+      Array.isArray(a.approach) && a.approach.length ? `Approach: ${a.approach.slice(0, 5).join(' | ')}` : '',
+      a.code ? `Code:\n${String(a.code).slice(0, 900)}` : '',
+      a.complexity && `Complexity: ${a.complexity}`,
+    ].filter(Boolean).join('\n')
+    if (!seedText.trim()) return
+    const state = interviewStateRef.current
+    if (!state?.commitQuestion || !state?.commitAnswer) return
+    const qid = screenAnalysis.screenContextId || `f7_${Date.now().toString(36)}`
+    let q = state.getSnapshot?.()?.questions?.find?.(x => x.id === qid)
+    if (!q) {
+      q = state.commitQuestion(a.detectedText || 'Screen solve (F7)', null, {
+        questionId: qid,
+        source: 'screen_f7',
+      })
+    }
+    if (q?.id) {
+      state.attachClassification?.(q.id, lastClassificationRef.current)
+      state.commitAnswer({
+        questionId: q.id,
+        generationId: `f7_${qid}`,
+        text: seedText.slice(0, 1400),
+        hint: { ...a, fullAnswer: seedText },
+        incomplete: false,
+      })
+    }
+  }, [screenAnalysis])
+
   useEffect(() => { answerStyleRef.current = answerStyle; persistAnswerStyle(answerStyle) }, [answerStyle])
 
   useEffect(() => {
@@ -439,16 +611,13 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     sessionActiveRef.current = true
     return () => {
       sessionActiveRef.current = false
-      hintGen.current.bump()
+      try { genManagerRef.current?.cancelCurrent?.('unmount') } catch {}
+      try { captureRef.current?.reset?.() } catch {}
       bcRef.current?.close()
       try { pipWindow?.close() } catch {}
       clearInterval(streamTimer.current)
-      // Abort any in-flight /api/hint so its .then() can't setState after unmount
-      // (e.g. ending the session while an answer is still streaming/loading).
-      try { hintAbortRef.current?.abort() } catch {}
       clearTimeout(lockTimerRef.current)
       clearTimeout(postMetaTimerRef.current)
-      clearTimeout(finalDebounce.current)
       stopSpeaking()
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -486,30 +655,108 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     return () => clearInterval(id)
   }, [])
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [transcript])
+  useEffect(() => { topRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [transcript, hintLoading])
 
-  // Hint generation — generation ids so superseded/unmounted work never lands.
-  async function generateHint(question, { force } = {}) {
+  // Hint generation — only after QUESTION_COMMITTED (or manual Answer this).
+  async function generateHint(question, { force, questionId: existingQuestionId } = {}) {
     if (!question) return
     const sameQ = question === lastHintText.current
     if (!force && sameQ && hintInFlight.current) return
     if (!force && sameQ && !hintIncompleteRef.current) return
     if (force) hintIncompleteRef.current = false
 
-    // Bump first so prior in-flight work fails isCurrent(); capture gen AFTER bump.
-    const gen = hintGen.current.bump()
-    const isCurrent = () => sessionActiveRef.current && hintGen.current.isCurrent(gen)
+    const state = interviewStateRef.current
+    const gm = genManagerRef.current
 
-    // Cancel previous request/timers
+    // Classify AFTER durable capture (M2). Never classify unstable fragments here.
+    const priorTurns = () => state.getLlmHistory({ limit: 12, includeLastAnswer: true })
+
+    const prevClassification = lastClassificationRef.current
+    let qRec = existingQuestionId ? state.getQuestion(existingQuestionId) : null
+    if (!qRec || qRec.status === 'candidate' || qRec.status === 'stabilizing') {
+      qRec = state.commitQuestion(question, null, {
+        questionId: existingQuestionId || newQuestionId(),
+        source: existingQuestionId ? 'stt_capture' : 'manual',
+      })
+    }
+
+    // STATE B — question must be visible before thinking / generation.
+    setTranscript(t => {
+      if (t.some(s => s.questionId === qRec.id)) {
+        return t.map(s => (s.questionId === qRec.id ? { ...s, text: qRec.text, status: 'committed' } : s))
+      }
+      return [...t, {
+        text: qRec.text,
+        questionId: qRec.id,
+        ts: qRec.committedAt || Date.now(),
+        isQuestion: true,
+        answer: '',
+        status: 'committed',
+      }]
+    })
+    lastHintText.current = qRec.text
+    setLiveCaptureText('')
+    setCaptureStatus('committed')
+
+    const classification = classifyTurn({
+      question: qRec.text,
+      profile: profileRef.current,
+      conversationHistory: priorTurns().filter(t => t.role === 'interviewer' || t.role === 'candidate'),
+      lastClassification: prevClassification,
+      recentScreen: recentScreenRef.current,
+    })
+    state.attachClassification(qRec.id, classification)
+    lastClassificationRef.current = classification
+    try { onLiveSpokenQuestion?.(qRec.text) } catch {}
+
+    const relevance = evaluateScreenRelevance({
+      question: qRec.text, classification, screen: recentScreenRef.current,
+    })
+    const ctx = resolveContextSources({
+      classification,
+      screenRelevant: relevance.attach,
+      hasPriorTopicDiscussion: !!classification.isFollowUp,
+    })
+    state.setContextDecision(qRec.id, {
+      contextSources: ctx.allowed,
+      screenRelevant: relevance.attach,
+      screenReason: relevance.reason,
+      screenContextId: recentScreenRef.current?.screenContextId || null,
+    })
+    setScreenAttachHint(relevance.attach ? 'attached' : (recentScreenRef.current && !recentScreenRef.current.error ? 'irrelevant' : null))
+
+    // Trust evaluateScreenRelevance (career types already neverAttach unless deictic).
+    // Do not double-strip screen here — that deleted valid "this/code" evidence.
+    const attachScreen = relevance.attach
+
+    const prevType = prevClassification?.questionType === 'follow_up'
+      ? prevClassification?.parentType
+      : prevClassification?.questionType
+    const topicSwitch = !classification.isFollowUp
+      && ['behavioral', 'experience', 'intro', 'situational'].includes(classification.questionType)
+      && ['system_design', 'dsa', 'coding', 'product_case'].includes(prevType)
+
+    const questionId = qRec.id
+    const qText = qRec.text
+    activeQuestionIdRef.current = questionId
+    state.supersedeOpenQuestions?.(questionId, 'new_question')
+
+    if (activeGenerationRef.current?.canCommit?.()) {
+      metricsRef.current?.markGenerationCancelled?.()
+    }
+    const gen = gm.start({
+      questionId,
+      reason: topicSwitch ? 'topic_switch' : 'new_question',
+    })
+    activeGenerationRef.current = gen
+    const isCurrent = () => sessionActiveRef.current && gen.canCommit()
+
     clearTimeout(lockTimerRef.current)
     clearTimeout(postMetaTimerRef.current)
-    try { hintAbortRef.current?.abort() } catch {}
-    const abort = new AbortController()
-    hintAbortRef.current = abort
-    lastHintText.current = question
     hintInFlight.current = true
     setManualQ('')
-    pendingManualQ.current = ''
+    pendingManualQ.current = null
+    gen.markGenerating()
 
     let incomplete = false
     let gotToken = false
@@ -525,12 +772,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       else upsert({ hint: h })
       setHint(prev => (prev ? { ...prev, incomplete: true } : h))
       setError(`Hint timed out — tap Retry`)
+      state.commitAnswer({
+        questionId, generationId: gen.generationId, text: answer || '', hint: h, incomplete: true,
+        validation: { status: 'incomplete', reason },
+      })
     }
 
-    // Hard backstop: abort fetch + clear loading; mark incomplete if any answer.
+    // Hard backstop: mark incomplete while still authoritative, then fail the generation.
     const lockTimeout = setTimeout(() => {
       if (!isCurrent()) return
-      try { abort.abort() } catch {}
       hintInFlight.current = false
       setHintLoading(false); setStreaming(false); setBuyTimePhrase('')
       if (gotToken || incomplete) markIncomplete(lastAnswer, lastHintObj, 'timed out')
@@ -540,6 +790,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         setError('Hint timed out — tap Retry')
         upsert({ hint: { confidence: 'general', fullAnswer: '', incomplete: true } })
       }
+      try { gen.fail('timed_out') } catch {}
     }, 30000)
     lockTimerRef.current = lockTimeout
 
@@ -555,25 +806,34 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       setError(e => (e === 'Hint timed out — tap Retry' ? '' : e))
     }
 
-    // Prior conversation turns (interviewer Qs + what YOU said) for LLM context — excludes
-    // the current question (already pushed to convoRef) so it isn't sent twice.
-    const priorTurns = () => {
-      const h = convoRef.current
-      const prior = (h.length && h[h.length - 1]?.text === question) ? h.slice(0, -1) : h
-      return prior.slice(-12)
-    }
-
-    // Upsert the feed entry for this question (covers the early-trigger-then-onFinal case).
+    // Upsert the feed entry for this question by questionId (avoids same-text collisions).
     const upsert = patch => {
       if (!isCurrent()) return
-      setTranscript(t => t.some(s => s.text === question)
-        ? t.map(s => s.text === question ? { ...s, ...patch } : s)
-        : [...t, { text: question, ts: Date.now(), isQuestion: true, answer: '', ...patch }])
+      setTranscript(t => {
+        const idx = t.findIndex(s => s.questionId === questionId || (!s.questionId && s.text === question && !s.answer))
+        if (idx >= 0) {
+          const next = t.slice()
+          next[idx] = { ...next[idx], questionId, ...patch }
+          return next
+        }
+        return [...t, { text: question, questionId, ts: Date.now(), isQuestion: true, answer: '', ...patch }]
+      })
     }
 
     const clearTimers = () => {
       clearTimeout(lockTimeout)
       clearTimeout(postMetaTimerRef.current)
+    }
+
+    const logTrace = (status) => {
+      if (typeof localStorage === 'undefined' || localStorage.getItem('mm-debug-live') !== '1') return
+      const trace = state.getDevTrace(questionId, { generationId: gen.generationId, status })
+      // eslint-disable-next-line no-console
+      console.info(formatInterviewDevTrace({
+        ...trace,
+        contextSources: ctx.allowed,
+        generationStatus: status || gen.status,
+      }))
     }
 
     const finalize = (answer, hintObj) => {
@@ -593,6 +853,25 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         incomplete: false,
       }
       setHint(finalHint)
+      if (hintObj?._routing || hintObj?.questionType) {
+        lastClassificationRef.current = {
+          questionType: hintObj._routing?.questionType || hintObj.questionType,
+          parentType: hintObj._routing?.parentType,
+          parentTopic: question,
+          playbookKey: hintObj._routing?.playbook,
+          question,
+        }
+      }
+      // Authoritative answer commit — do NOT push AI text into interviewer/candidate convo.
+      state.commitAnswer({
+        questionId,
+        generationId: gen.generationId,
+        text: layers.fullAnswer || answer,
+        hint: finalHint,
+        validation: { status: 'ok' },
+      })
+      gen.complete()
+      logTrace('completed')
       upsert({ isQuestion: true, answer: layers.fullAnswer || answer, hint: finalHint })
     }
     const resetSkip = () => {
@@ -600,43 +879,64 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       clearTimers()
       setHintLoading(false); setStreaming(false); hintInFlight.current = false
       lastHintText.current = ''; setBuyTimePhrase(''); hintIncompleteRef.current = false
+      state.markQuestionCancelled?.(questionId, 'skip')
+      gen.complete()
     }
 
     const armPostMetaWatchdog = () => {
       clearTimeout(postMetaTimerRef.current)
       postMetaTimerRef.current = setTimeout(() => {
         if (!isCurrent() || gotToken) return
-        try { abort.abort() } catch {}
         hintInFlight.current = false
         setHintLoading(false); setStreaming(false); setBuyTimePhrase('')
         markIncomplete('', lastHintObj, 'no tokens after meta')
+        try { gen.fail('no_tokens_after_meta') } catch {}
       }, 20000)
     }
 
-    // Document RAG — reuse speculative embed from debounce when the question matches.
-    const spec = ragSpec.current
-    const ragContext = (spec.q === question && spec.p)
-      ? await spec.p.catch(() => '')
-      : await retrieveContext(question, { budgetMs: 600 }).catch(() => '')
-    if (ragSpec.current === spec) ragSpec.current = { q: '', p: null }
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('mm-debug-screen') === '1') {
+      // eslint-disable-next-line no-console
+      console.info('[MockMate screen]', formatScreenDebugTrace({
+        capture: recentScreenRef.current,
+        classification,
+        relevance,
+        playbook: classification.playbookKey,
+        attached: relevance.attach,
+      }))
+    }
+    logTrace('generating')
+
+    let ragContext = ''
+    if (shouldRetrieveDocs(classification)) {
+      const spec = ragSpec.current
+      const opts = liveRagOpts(classification, interviewConfigRef.current, 600)
+      ragContext = (spec.q === question && spec.p)
+        ? await spec.p.catch(() => '')
+        : await retrieveContext(question, opts).catch(() => '')
+    }
+    if (ragSpec.current?.q === question) ragSpec.current = { q: '', p: null }
     if (!isCurrent()) return
     const mergedContext = () => [extraContextRef.current, ragContext].filter(Boolean).join('\n\n') || undefined
+
+    const hintBody = () => ({
+      question: qText, profile: profileRef.current, conversationHistory: priorTurns(),
+      provider: providerRef.current, language: profileRef.current?.language || 'English',
+      extraContext: mergedContext(), mode: coachModeRef.current ? 'coach' : 'answer',
+      style: answerStyleRef.current, autoSkip: getAutoSkip(),
+      lastClassification: prevClassification,
+      classification, // one authority — server must not re-classify when present
+      recentScreen: attachScreen ? recentScreenRef.current : null,
+    })
 
     // SAFETY NET — proven non-streaming endpoint (must pass mode + style).
     const runFallback = async () => {
       if (!isCurrent()) return
-      const res = await apiFetch('/api/hint', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: abort.signal,
-        body: JSON.stringify({
-          question, profile: profileRef.current, conversationHistory: priorTurns(),
-          provider: providerRef.current, language: profileRef.current?.language || 'English',
-          extraContext: mergedContext(), mode: coachModeRef.current ? 'coach' : 'answer',
-          style: answerStyleRef.current, autoSkip: getAutoSkip(),
-        })
+      const d = await fetchLiveHintFallback({
+        body: hintBody(),
+        signal: gen.signal,
+        isCurrent,
       })
-      const d = await res.json()
-      if (!isCurrent()) return
-      if (d.error) throw new Error(d.error)
+      if (!d || !isCurrent()) return
       const h = d.hint
       if (!h || h.skip) { metricsRef.current?.markSkip?.(); resetSkip(); return }
       metricsRef.current?.markFirstToken?.(hintTimingRef.current)
@@ -646,74 +946,76 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
     hintTimingRef.current = metricsRef.current?.startHint?.() || null
     try {
-      const res = await apiFetch('/api/hint-stream', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: abort.signal,
-        body: JSON.stringify({
-          question, profile: profileRef.current, conversationHistory: priorTurns(),
-          provider: providerRef.current, language: profileRef.current?.language || 'English',
-          extraContext: mergedContext(), mode: coachModeRef.current ? 'coach' : 'answer',
-          style: answerStyleRef.current, autoSkip: getAutoSkip(),
-        })
-      })
-      if (!isCurrent()) return
-      if (!res.ok || !res.body) { metricsRef.current?.markFallback?.(); await runFallback(); return }
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let sseBuf = '', answer = '', hintObj = null
-
-      reading: while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        if (!isCurrent()) { try { await reader.cancel() } catch {}; return }
-        sseBuf += decoder.decode(value, { stream: true })
-        let nn
-        while ((nn = sseBuf.indexOf('\n\n')) !== -1) {
-          const raw = sseBuf.slice(0, nn); sseBuf = sseBuf.slice(nn + 2)
-          const ev = raw.match(/^event: (.*)$/m)?.[1]
-          let data; try { data = JSON.parse(raw.match(/^data: ([\s\S]*)$/m)?.[1] ?? 'null') } catch { data = null }
-          if (!isCurrent()) { try { await reader.cancel() } catch {}; return }
-
+      let rawAnswer = '', answer = '', hintObj = null
+      const mode = await streamLiveHint({
+        body: hintBody(),
+        signal: gen.signal,
+        isCurrent,
+        onFallback: async () => {
+          metricsRef.current?.markFallback?.()
+          await runFallback()
+        },
+        onEvent: async ({ event: ev, data }) => {
           if (ev === 'meta') {
             clearTimeout(lockTimeout)
             hintObj = {
               confidence: data?.confidence === 'resume' ? 'resume' : 'general',
               questionType: data?.type, pattern: data?.pattern || null,
               complexity: data?.complexity || null, watchOut: data?.watch || null,
-              _searchSources: data?.searchSources, fullAnswer: '', sampleAnswer: ''
+              _searchSources: data?.searchSources,
+              _routing: data?._routing || null,
+              fullAnswer: '', sampleAnswer: ''
             }
             lastHintObj = hintObj
+            if (data?._routing) {
+              lastClassificationRef.current = {
+                ...classification,
+                playbookKey: data._routing.playbook || classification.playbookKey,
+                parentTopic: classification.parentTopic || qText,
+                question: qText,
+              }
+            }
             if (isCurrent()) {
               setHint(hintObj); setHintLoading(false); setStreaming(true)
               upsert({ isQuestion: true, answer: '', hint: hintObj })
               armPostMetaWatchdog()
             }
           } else if (ev === 'token') {
-            if (!isCurrent()) { try { await reader.cancel() } catch {}; return }
-            if (!answer) metricsRef.current?.markFirstToken?.(hintTimingRef.current)
+            if (!rawAnswer) metricsRef.current?.markFirstToken?.(hintTimingRef.current)
             gotToken = true
             clearTimeout(postMetaTimerRef.current)
-            answer += typeof data === 'string' ? data : ''
+            rawAnswer += typeof data === 'string' ? data : ''
+            const cleaned = stripHintMeta(rawAnswer)
+            if (Object.keys(cleaned.meta).length) {
+              hintObj = {
+                ...(hintObj || { confidence: 'general' }),
+                confidence: cleaned.meta.confidence === 'resume' ? 'resume' : (hintObj?.confidence || 'general'),
+                questionType: cleaned.meta.type || hintObj?.questionType,
+                pattern: cleaned.meta.pattern ?? hintObj?.pattern ?? null,
+                complexity: cleaned.meta.complexity ?? hintObj?.complexity ?? null,
+                watchOut: cleaned.meta.watch || cleaned.meta.watchOut || hintObj?.watchOut || null,
+              }
+              lastHintObj = hintObj
+            }
+            answer = cleaned.pending ? '' : cleaned.prose
             lastAnswer = answer
-            // Glance layers on every token so main + PiP stay opener-first while streaming.
             const layers = glanceLayers(answer, hintObj || {})
             const liveHint = {
               ...(hintObj || { confidence: 'general' }),
               opener: layers.opener,
               keyPoints: layers.keyPoints,
-              fullAnswer: answer,
+              fullAnswer: layers.fullAnswer || answer,
+              watchOut: layers.watchOut || hintObj?.watchOut || null,
             }
-            upsert({ answer, hint: liveHint })
+            upsert({ answer: layers.fullAnswer || answer, hint: liveHint })
             setHint(liveHint)
           } else if (ev === 'usage') {
-            if (!isCurrent()) continue
             const u = data || {}
             setUsage(s => ({ tokens: s.tokens + (u.input || 0) + (u.output || 0), cost: s.cost + estimateCost(u.model, u.input || 0, u.output || 0) }))
           } else if (ev === 'skip') {
-            if (!isCurrent()) { try { await reader.cancel() } catch {}; return }
             metricsRef.current?.markSkip?.()
             resetSkip()
-            try { await reader.cancel() } catch {}; return
+            return 'stop'
           } else if (ev === 'error') {
             if (answer.trim()) {
               incomplete = true
@@ -726,16 +1028,16 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                   hint: { ...(hintObj || { confidence: 'general' }), opener: layers.opener, keyPoints: layers.keyPoints, fullAnswer: answer, incomplete: true },
                 })
                 setHint(h => h ? { ...h, incomplete: true } : { confidence: 'general', incomplete: true })
+                gen.fail('sse_error')
               }
             }
-            try { await reader.cancel() } catch {}
-            break reading
+            return 'stop'
           }
-        }
-      }
+        },
+      })
 
       if (!isCurrent()) return
-      // If incomplete already upserted, skip finalize that would clear incomplete.
+      if (mode === 'aborted' || mode === 'fallback' || mode === 'stopped') return
       if (incomplete || hintIncompleteRef.current) {
         hintInFlight.current = false
         if (isCurrent()) {
@@ -748,8 +1050,6 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       finalize(answer, hintObj)
     } catch (e) {
       if (e.name === 'AbortError') {
-        // Superseded / unmounted: never touch UI (new gen owns it).
-        // Timed-out current gen: incomplete path already mutated under isCurrent.
         if (!isCurrent()) return
         if (incomplete) {
           hintInFlight.current = false
@@ -768,69 +1068,133 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         setBuyTimePhrase('')
         metricsRef.current?.markError?.(e2.message || e.message)
         setError(e2.message || e.message)
+        gen.fail(e2.message || e.message)
+        state.markQuestionFailed?.(questionId, e2.message || e.message)
+        upsert({
+          answer: 'Answer unavailable — tap Retry',
+          hint: { confidence: 'general', fullAnswer: '', incomplete: true, failed: true },
+        })
+        logTrace('failed')
       }
     }
   }
 
+  // Durable commit handler — question visible before any generation.
+  handleCommittedRef.current = (captured) => {
+    if (!sessionActiveRef.current || !captured?.text) return
+    const state = interviewStateRef.current
+    const q = state.commitQuestion(captured.text, null, {
+      questionId: captured.id || newQuestionId(),
+      rawTranscript: captured.rawTranscript,
+      speaker: captured.speaker || 'interviewer',
+      confidence: captured.confidence,
+      source: 'stt_capture',
+    })
+    metricsRef.current?.markQuestionCapture?.({
+      captureLatencyMs: captured.captureLatencyMs,
+      revisions: captured.revisionCount,
+      reason: captured.commitReason,
+    })
+    setTranscript(t => {
+      if (t.some(s => s.questionId === q.id)) {
+        return t.map(s => (s.questionId === q.id ? { ...s, text: q.text, status: 'committed' } : s))
+      }
+      return [...t, {
+        text: q.text,
+        questionId: q.id,
+        ts: q.committedAt || Date.now(),
+        isQuestion: true,
+        answer: '',
+        status: 'committed',
+      }]
+    })
+    setLiveCaptureText('')
+    setCaptureStatus('committed')
+    lastHintText.current = q.text
+
+    // Speculative RAG after commit — same classify inputs as generateHint (incl. screen).
+    const peek = classifyTurn({
+      question: q.text,
+      profile: profileRef.current,
+      conversationHistory: state.getLlmHistory({ includeLastAnswer: false }),
+      lastClassification: lastClassificationRef.current,
+      recentScreen: recentScreenRef.current,
+    })
+    if (shouldRetrieveDocs(peek)) {
+      ragSpec.current = {
+        q: q.text,
+        p: retrieveContext(q.text, liveRagOpts(peek, interviewConfigRef.current, 600)).catch(() => ''),
+      }
+    }
+
+    const isMic = liveSourceIdRef.current === 'microphone'
+    if (isMic && !(diarizationLockedRef.current && !degradedRef.current)) {
+      pendingManualQ.current = { text: q.text, questionId: q.id }
+      setManualQ(q.text)
+      return
+    }
+    generateHint(q.text, { force: true, questionId: q.id })
+  }
+
   const onEarlyQuestion = useCallback((text, meta) => {
     if (!sessionActiveRef.current) return
-    if (meta?.isCandidate) return   // never hint on candidate speech
-    const trimmed = text.trim()
-    if (!trimmed || trimmed.split(/\s+/).length < 4) return
-    // Thinking label only — no scripted buy-time phrase. Skip if a hint is already in flight
-    // for a different question (stale early from a previous utterance).
-    if (hintInFlight.current) return
-    setBuyTimePhrase(thinkingLabel(profileRef.current?.language))
+    const trimmed = String(text || '').trim()
+    if (!trimmed) return
+    if (meta?.isCandidate) {
+      captureRef.current?.ingest?.({
+        text: trimmed,
+        isFinal: false,
+        meta: { isCandidate: true, speakerRole: 'candidate', speaker: meta?.speaker },
+      })
+      return
+    }
+    captureRef.current?.ingest?.({
+      text: trimmed,
+      isFinal: false,
+      meta: {
+        isCandidate: false,
+        speaker: meta?.speaker,
+        speakerRole: diarizationLockedRef.current ? 'interviewer' : 'unknown',
+        diarizationLocked: diarizationLockedRef.current,
+      },
+    })
+    if (!hintInFlight.current && trimmed.split(/\s+/).length >= 4) {
+      setBuyTimePhrase(thinkingLabel(profileRef.current?.language))
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const onFinal = useCallback((text, meta) => {
     if (!sessionActiveRef.current) return
-    const trimmed = text.trim()
-    // Diarization: this was YOU speaking. Don't generate an answer to your own voice — but
-    // DO record what you said, so the end-of-session review is the REAL conversation.
-    if (meta?.isCandidate && !meta?.isQuestion) {
-      if (trimmed && trimmed.split(/\s+/).length >= 2) convoRef.current.push({ role: 'candidate', text: trimmed, ts: Date.now() })
+    const trimmed = String(text || '').trim()
+    if (!trimmed) return
+
+    // Candidate speech: record, never commit as question.
+    if (meta?.isCandidate) {
+      if (!meta?.isQuestion && trimmed.split(/\s+/).length >= 2) {
+        interviewStateRef.current?.recordCandidate?.(trimmed)
+      }
+      captureRef.current?.ingest?.({
+        text: trimmed,
+        isFinal: true,
+        meta: { isCandidate: true, speakerRole: 'candidate', speaker: meta?.speaker },
+      })
       return
     }
-    if (meta?.isCandidate) return   // never hint if meta.isCandidate
-    // Allow short follow-ups ("Why?") through — shouldTriggerHint softens after a prior Q.
-    if (!trimmed) return
-    const w = trimmed.split(/\s+/).filter(Boolean).length
-    if (w < 3 && !/\?\s*$/.test(trimmed)) return
-    // Coalesce fragments first; gate on the FULL coalesced string so we don't burn tokens on chatter.
-    pendingQ.current = pendingQ.current ? `${pendingQ.current} ${trimmed}` : trimmed
-    clearTimeout(finalDebounce.current)
-    const terminal = /\?\s*$/.test(pendingQ.current)
-    if (terminal) {
-      const specQ = pendingQ.current.trim()
-      ragSpec.current = { q: specQ, p: retrieveContext(specQ, { budgetMs: 600 }).catch(() => '') }
-    }
-    finalDebounce.current = setTimeout(() => {
-      const q = pendingQ.current.trim(); pendingQ.current = ''
-      if (!q) return
-      const hadPriorQuestion = convoRef.current.some(t => t.role === 'interviewer')
-      const gateMeta = {
-        ...meta,
-        hadPriorQuestion,
-        diarizationLocked: diarizationLockedRef.current || meta?.diarizationLocked,
-        degraded: degradedRef.current || meta?.degraded,
-      }
-      if (!shouldTriggerHint(q, gateMeta)) return
-      if (isStragglerDuplicate(q, lastHintText.current)) { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); return }
-      convoRef.current.push({ role: 'interviewer', text: q, ts: Date.now() })
 
-      const isMic = liveSourceIdRef.current === 'microphone'
-      // Mic mode: suppress auto-hints until diarization locked and not degraded.
-      if (isMic && !(diarizationLockedRef.current && !degradedRef.current)) {
-        pendingManualQ.current = q
-        setManualQ(q)
-        setTranscript(t => t.some(s => s.text === q)
-          ? t
-          : [...t, { text: q, ts: Date.now(), isQuestion: true, answer: undefined }])
-        return
-      }
-      generateHint(q)
-    }, terminal ? 250 : 450)
+    captureRef.current?.ingest?.({
+      text: trimmed,
+      isFinal: true,
+      confidence: meta?.confidence,
+      meta: {
+        isCandidate: false,
+        speaker: meta?.speaker,
+        speakerRole: diarizationLockedRef.current
+          ? 'interviewer'
+          : (liveSourceIdRef.current === 'system' ? 'interviewer' : 'unknown'),
+        diarizationLocked: diarizationLockedRef.current,
+        degraded: degradedRef.current,
+      },
+    })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [liveSourceId, setLiveSourceId] = useState(sourceId)
@@ -841,6 +1205,16 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     diarizationLockedRef.current = !!audio.diarizationLocked
     degradedRef.current = !!audio.degraded
   }, [audio.diarizationLocked, audio.degraded])
+
+  // Mic lock flush — auto-answer the question that arrived before diarization locked.
+  useEffect(() => {
+    if (!(audio.diarizationLocked && !audio.degraded)) return
+    const pending = pendingManualQ.current
+    if (!pending?.text) return
+    pendingManualQ.current = null
+    setManualQ('')
+    generateHint(pending.text, { force: true, questionId: pending.questionId })
+  }, [audio.diarizationLocked, audio.degraded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function audioOpts() {
     return {
@@ -898,7 +1272,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   useEffect(() => {
     audio.start(liveSourceId, audioOpts())
-    warmDocs()   // pre-embed uploaded docs now so the FIRST question is grounded (not just Q2+)
+    warmDocs(interviewConfigRef.current?.selectedDocumentIds)   // pre-embed selected docs only
     metricsRef.current = createSessionMetrics('live')
     hintTimingRef.current = null
     if (initialPip && !initialPip.closed) {
@@ -930,15 +1304,17 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     try { metricsRef.current?.end({ tokens: usage.tokens, cost: usage.cost }) } catch {}
     metricsRef.current = null
     sessionActiveRef.current = false
-    hintGen.current.bump()
+    try { genManagerRef.current?.cancelCurrent?.('end_session') } catch {}
 
     audio.stop(); stopSpeaking()
-    clearTimeout(finalDebounce.current)
     clearTimeout(postMetaTimerRef.current)
-    try { hintAbortRef.current?.abort() } catch {}
     // The REAL conversation: interviewer questions + what YOU actually said (diarized),
     // NOT the AI's suggested answers. Merge consecutive same-speaker segments into clean turns.
-    const conversation = mergeTurns(convoRef.current)
+    const conversation = mergeTurns(
+      (interviewStateRef.current?.getSnapshot?.()?.speechTurns || [])
+        .filter(t => t.role === 'interviewer' || t.role === 'candidate')
+        .map(t => ({ role: t.role, text: t.text, ts: t.ts })),
+    )
     if (conversation.length === 0) { onEnd(); return }
 
     const hasCandidate = conversation.some(t => t.role === 'candidate')
@@ -998,6 +1374,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       {/* Hide Sys↔Mic switch on Linux (System Audio unavailable). */}
       {!isLinuxLive && (
         <button type="button" onClick={switchAudioSource} disabled={switchingAudio}
+          onMouseDown={e => e.stopPropagation()}
           title="Switch audio source mid-session (System Audio ↔ Microphone)"
           style={{ fontSize: 10, padding: '2px 7px', background: 'rgba(255,255,255,0.06)', color: T.text2, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, cursor: switchingAudio ? 'default' : 'pointer', opacity: switchingAudio ? 0.6 : 1 }}>
           {liveSourceId === 'microphone' ? '🎤 Mic' : '🖥️ Sys'}
@@ -1006,17 +1383,27 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     </div>
   )
 
-  // The only Live-specific action: content-protected PiP (verify in share preview — matrix UNKNOWN).
-  const liveActions = pipSupported ? (
-    <IconBtn icon="shield" active={!!pipWindow}
-      onClick={pipWindow ? () => { pipWindow.close(); setPipWindow(null) } : openProtectedPip}
-      title={pipWindow ? 'Protected window ON — verify it stays out of your share preview' : 'Open protected window — verify in share preview (browser matrix UNKNOWN)'} />
-  ) : null
+  // Shield = share-preview verify. Browser PiP when available; otherwise an in-overlay tip
+  // (Electron often has no documentPictureInPicture — button must still do something useful).
+  const liveActions = (
+    <IconBtn icon="shield" active={!!(pipWindow && !pipWindow.closed) || verifyTip}
+      onClick={() => {
+        if (pipSupported) {
+          if (pipWindow && !pipWindow.closed) { pipWindow.close(); setPipWindow(null) }
+          else openProtectedPip()
+        } else {
+          setVerifyTip(v => !v)
+        }
+      }}
+      title={pipSupported
+        ? (pipWindow ? 'Protected window ON — check Zoom/Meet share preview' : 'Open protected hints window — then verify share preview')
+        : 'How to verify the overlay is hidden from screen share'} />
+  )
 
   if (ending) {
     return (
       <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} onStealth={onStealth}
-        onMinimize={onMinimize} onResize={onResize} onDrag={onDrag} onSizePreset={onSizePreset}
+        onMinimize={onMinimize} onResize={onResize} onDrag={onDrag}
         opacity={opacity} onOpacity={onOpacity}
         clickThrough={false} onClickThrough={onClickThrough}
         onClose={() => {}} extra={<span style={{ fontSize: 11, fontWeight: 600, color: '#5eead4' }}>Ending…</span>}>
@@ -1030,10 +1417,20 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   return (
     <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} onStealth={onStealth} actions={liveActions} confirmClose
-      onMinimize={onMinimize} onResize={onResize} onDrag={onDrag} onSizePreset={onSizePreset}
+      onMinimize={onMinimize} onResize={onResize} onDrag={onDrag}
       opacity={opacity} onOpacity={onOpacity}
       clickThrough={clickThrough} onClickThrough={onClickThrough}
       onClose={endSession} extra={titleExtra}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      {verifyTip && (
+        <div role="status" style={{ margin: '8px 12px 0', padding: '10px 12px', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.35)', borderRadius: 8, fontSize: 11.5, color: T.text2, lineHeight: 1.5 }}>
+          <div style={{ fontWeight: 700, color: '#5eead4', marginBottom: 4 }}>Verify share preview</div>
+          This overlay already uses OS content protection{inElectronLive ? ' (Electron)' : ''}. Open Zoom/Meet/Teams → Share → look at the preview:
+          you should <strong style={{ color: T.text1 }}>not</strong> see MockMate. If you do, don&apos;t trust stealth for that app.
+          {pipSupported ? ' Tip: open the protected hints window (shield) and confirm that stays hidden too.' : ' (Browser PiP isn\'t available here — preview check is the real test.)'}
+          <button type="button" onClick={() => setVerifyTip(false)} style={{ display: 'block', marginTop: 8, background: 'none', border: 'none', color: '#5eead4', cursor: 'pointer', fontSize: 11, padding: 0 }}>Dismiss</button>
+        </div>
+      )}
       {/* ── Single scrollable chat feed ── */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column' }}>
         {error && (
@@ -1067,13 +1464,18 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             <span style={{ fontSize: 15 }}>💻</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, color: '#4ade80', fontWeight: 700 }}>Coding question detected</div>
-              <div style={{ fontSize: 10, color: T.text3 }}>Tap to read the screen and get a solution · or press Ctrl+Shift+U</div>
+              <div style={{ fontSize: 10, color: T.text3 }}>Tap to read the screen and get a solution · or press F7 / Ctrl+Shift+U</div>
             </div>
             <span style={{ fontSize: 11, color: '#4ade80', fontWeight: 700, background: 'rgba(34,197,94,0.15)', padding: '4px 10px', borderRadius: 6 }}>Solve it →</span>
           </button>
         )}
 
-        <ScreenAnalysisPanel analysis={screenAnalysis} analyzing={screenAnalyzing} onDismiss={onDismissScreen} onReanalyze={onReanalyze} onRecapture={onCaptureScreen} />
+        <ScreenAnalysisPanel
+          analysis={screenAnalysis} analyzing={screenAnalyzing}
+          onDismiss={onDismissScreen} onReanalyze={onReanalyze} onRecapture={onCaptureScreen}
+          captureDisplays={captureDisplays} captureDisplayId={captureDisplayId} onCaptureDisplayId={onCaptureDisplayId}
+          liveAttachHint={screenAttachHint}
+        />
 
         {/* PiP active banner */}
         {pipWindow && !pipWindow.closed && pipProtected && (
@@ -1099,7 +1501,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         )}
 
         {/* Empty state with status + keyboard shortcuts */}
-        {transcript.length === 0 && !hintLoading && !audio.interim && (
+        {transcript.length === 0 && !hintLoading && !audio.interim && !liveCaptureText && (
           <div style={{ padding: '16px 4px' }}>
             {/* Status */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, padding: '8px 12px', background: audio.active ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${audio.active ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`, borderRadius: 8 }}>
@@ -1133,12 +1535,13 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[
-                ['Alt+H', 'Collapse / expand pill (icon stays on screen)'],
-                ['— / eye', 'Collapse to pill · click pill to restore'],
-                ['S / M / L', 'HUD sizes · compact by default'],
+                ['Alt+H', 'Collapse / expand pill (same as − button)'],
+                ['🖱️', 'Click-through — clicks pass to the meeting (overlay stays visible)'],
+                ['📌 pin', 'Pinned: stays on app switch · Unpinned: collapses to pill'],
                 ['◐ slider', 'Transparency'],
-                ['Ctrl+Shift+U', 'Screenshot → solve coding question'],
-                ['📌 pin', 'Pinned: stays on switch · Unpinned: collapses to pill (not close)'],
+                ['Shield', 'Verify share preview (is MockMate hidden from the interviewer?)'],
+                ['F7 / Ctrl+Shift+U', 'Screenshot → solve coding question'],
+                ['Type + Enter', 'Submit a question when mic/STT fails'],
               ].map(([key, desc]) => (
                 <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 10, color: '#2dd4bf', background: 'rgba(13,148,136,0.15)', padding: '2px 7px', borderRadius: 5, fontFamily: 'monospace', fontWeight: 600, minWidth: 92, textAlign: 'center' }}>{key}</span>
@@ -1149,25 +1552,49 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           </div>
         )}
 
+        {/* STATE A — live transcript fragments (not yet committed) */}
+        {!!liveCaptureText && !hintLoading && (
+          <div style={{ fontSize: 11, color: T.text3, fontStyle: 'italic', marginBottom: 8, paddingLeft: 4, opacity: 0.85 }}>
+            {captureStatus === 'unclear' ? 'Question unclear — listening…' : 'Listening…'} {liveCaptureText}
+          </div>
+        )}
+
         {/* Mic waiting for lock — Answer this for the queued question */}
         {manualQ && liveSourceId === 'microphone' && !(audio.diarizationLocked && !audio.degraded) && (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.35)', borderRadius: 8, padding: '9px 11px', marginBottom: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, color: '#fbbf24', fontWeight: 700, marginBottom: 3 }}>Waiting for speaker lock</div>
+              <div style={{ fontSize: 11, color: '#fbbf24', fontWeight: 700, marginBottom: 3 }}>Question captured — waiting for speaker lock</div>
               <div style={{ fontSize: 12, color: T.text1, lineHeight: 1.4 }}>❓ {manualQ}</div>
             </div>
-            <button type="button" onClick={() => generateHint(manualQ, { force: true })}
+            <button type="button" onClick={() => {
+              const pending = pendingManualQ.current
+              generateHint(manualQ, { force: true, questionId: pending?.questionId })
+            }}
               style={{ background: 'rgba(94,234,212,0.15)', border: '1px solid rgba(94,234,212,0.4)', color: '#5eead4', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
               Answer this
             </button>
           </div>
         )}
 
-        {/* ── Chat: each confirmed question + its answer ── */}
-        {transcript.filter(s => s.isQuestion).map((s, i) => (
-          <div key={i} style={{ marginBottom: 14 }}>
-            {/* Q bubble */}
-            <div style={{ fontSize: 12, color: T.text1, background: 'rgba(255,255,255,0.06)', borderRadius: '0 8px 8px 8px', padding: '7px 11px', marginBottom: 6, lineHeight: 1.5 }}>
+        {/* STATE C — Thinking… question text stays in transcript (STATE B), not replaced */}
+        <div ref={topRef} />
+        {hintLoading && (
+          <div style={{ marginBottom: 10, marginLeft: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 7, padding: '7px 10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ fontSize: 11, color: '#5eead4', marginBottom: 4, fontWeight: 600 }}>{buyTimePhrase || thinkingLabel(profileRef.current?.language)}</div>
+            <div style={{ height: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: '40%', background: `linear-gradient(90deg,${T.accentFrom},#3b82f6)`, animation: 'slide 1.2s ease-in-out infinite' }} />
+            </div>
+          </div>
+        )}
+
+        {audio.interim && !liveCaptureText && <div style={{ fontSize: 11, color: T.text3, fontStyle: 'italic', marginBottom: 8, paddingLeft: 4 }}>… {audio.interim}</div>}
+
+        {[...transcript].filter(s => s.isQuestion).reverse().map((s, i) => {
+          const isLatest = i === 0
+          return (
+          <div key={s.questionId || s.ts || s.text} style={{ marginBottom: 14, opacity: isLatest ? 1 : 0.72 }}>
+            {/* Q bubble — never replaced by Thinking… */}
+            <div style={{ fontSize: isLatest ? 13 : 12, color: T.text1, background: 'rgba(255,255,255,0.06)', borderRadius: '0 8px 8px 8px', padding: '7px 11px', marginBottom: 6, lineHeight: 1.5, fontWeight: isLatest ? 600 : 400 }}>
               ❓ {s.text}
             </div>
             {/* A bubble (or incomplete stub with Retry) */}
@@ -1177,7 +1604,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                   {s.hint.incomplete && <span style={badge('rgba(251,191,36,0.2)', '#fbbf24')}>⚠ INCOMPLETE</span>}
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
                     {s.hint.incomplete && (
-                      <button type="button" onClick={() => generateHint(s.text, { force: true })} style={btn('rgba(251,191,36,0.15)', '#fbbf24')}>Retry</button>
+                      <button type="button" onClick={() => generateHint(s.text, { force: true, questionId: s.questionId })} style={btn('rgba(251,191,36,0.15)', '#fbbf24')}>Retry</button>
                     )}
                     <button onClick={() => navigator.clipboard?.writeText(s.hint.fullAnswer || s.hint.sampleAnswer || '')} style={btn('rgba(255,255,255,0.04)', T.text3)} title="Copy answer">📋</button>
                   </div>
@@ -1186,67 +1613,95 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                 {(() => {
                   const streamingThis = streaming && s.text === lastHintText.current
                   const layers = glanceLayers(s.answer || '', s.hint || {})
+                  // Never auto-expand latest — that duplicated opener/bullets + full prose.
                   const expanded = expandedAnswers.has(s.text)
-                  const showBullets = layers.keyPoints.length > 0
+                  const showBullets = !expanded && layers.keyPoints.length > 0
+                  const watch = s.hint.watchOut || layers.watchOut
+                  const hasMore = !streamingThis && ((layers.fullAnswer || '').length > (layers.opener || '').length + 40)
                   return (
                     <div role="log" aria-live="polite" aria-label="Suggested answer" style={{ fontSize: 13, color: s.hint.confidence === 'resume' ? '#dcfce7' : '#e8eaf0', background: s.hint.confidence === 'resume' ? 'rgba(6,30,18,0.96)' : 'rgba(20,18,32,0.96)', border: `1px solid ${s.hint.confidence === 'resume' ? 'rgba(34,197,94,0.3)' : 'rgba(13,148,136,0.32)'}`, borderRadius: '8px 8px 8px 0', padding: '10px 12px', lineHeight: 1.55, userSelect: 'text', WebkitUserSelect: 'text' }}>
-                      {/* Opener-first while streaming — not a full markdown wall */}
-                      <div style={{ fontWeight: 600, marginBottom: showBullets ? 8 : 0, lineHeight: 1.45 }}>
-                        {layers.opener || (streamingThis ? '…' : '…')}
-                        {streamingThis && <span style={{ display: 'inline-block', width: 2, height: '0.9em', background: T.accentFrom, marginLeft: 2, verticalAlign: 'text-bottom', animation: 'blink 0.7s step-end infinite' }} />}
-                      </div>
-                      {showBullets && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
-                          {layers.keyPoints.map((pt, bi) => (
-                            <div key={bi} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 12.5, color: s.hint.confidence === 'resume' ? '#bbf7d0' : T.text1 }}>
-                              <span style={{ color: T.accentFrom, flexShrink: 0, marginTop: 2, fontSize: 10 }}>▸</span>
-                              <span>{pt}</span>
+                      {/* Glance OR full — never both (was repeating the same answer twice). */}
+                      {expanded && hasMore ? (
+                        <div style={{ lineHeight: 1.7 }}>{renderMd(layers.fullAnswer || s.answer || '')}</div>
+                      ) : (
+                        <>
+                          <div style={{ fontWeight: 600, marginBottom: showBullets ? 8 : 0, lineHeight: 1.45 }}>
+                            {layers.opener || (streamingThis ? '…' : '…')}
+                            {streamingThis && <span style={{ display: 'inline-block', width: 2, height: '0.9em', background: T.accentFrom, marginLeft: 2, verticalAlign: 'text-bottom', animation: 'blink 0.7s step-end infinite' }} />}
+                          </div>
+                          {showBullets && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 4 }}>
+                              {layers.keyPoints.map((pt, bi) => (
+                                <div key={bi} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 12.5, color: s.hint.confidence === 'resume' ? '#bbf7d0' : T.text1 }}>
+                                  <span style={{ color: T.accentFrom, flexShrink: 0, marginTop: 2, fontSize: 10 }}>▸</span>
+                                  <span>{pt}</span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
+                          )}
+                        </>
                       )}
-                      {!streamingThis && ((layers.fullAnswer || '').length > (layers.opener || '').length + 40) && (
-                        expanded ? (
-                          <>
-                            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 8, marginTop: 2, lineHeight: 1.7 }}>{renderMd(layers.fullAnswer || s.answer || '')}</div>
-                            <button type="button" onClick={() => setExpandedAnswers(prev => { const n = new Set(prev); n.delete(s.text); return n })}
-                              style={{ background: 'none', border: 'none', color: '#5eead4', fontSize: 11, cursor: 'pointer', padding: '6px 0 0', fontWeight: 600 }}>Collapse</button>
-                          </>
-                        ) : (
-                          <button type="button" onClick={() => setExpandedAnswers(prev => new Set(prev).add(s.text))}
-                            style={{ background: 'none', border: 'none', color: '#5eead4', fontSize: 11, cursor: 'pointer', padding: '2px 0 0', fontWeight: 600 }}>Expand full answer</button>
-                        )
+                      {hasMore && (
+                        <button type="button" onClick={() => setExpandedAnswers(prev => {
+                          const n = new Set(prev)
+                          if (n.has(s.text)) n.delete(s.text); else n.add(s.text)
+                          return n
+                        })}
+                          style={{ background: 'none', border: 'none', color: '#5eead4', fontSize: 11, cursor: 'pointer', padding: '6px 0 0', fontWeight: 600 }}>
+                          {expanded ? 'Show glance' : 'Expand full answer'}
+                        </button>
                       )}
+                      {watch && <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)' }}>⚠ {watch}</div>}
                     </div>
                   )
                 })()}
-                {s.hint.watchOut && <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)' }}>⚠ {s.hint.watchOut}</div>}
               </div>
             )}
           </div>
-        ))}
-
-        {/* Currently loading — Thinking… only (no scripted Say:) */}
-        {hintLoading && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: T.text2, background: 'rgba(255,255,255,0.05)', borderRadius: '0 8px 8px 8px', padding: '7px 11px', marginBottom: 6 }}>
-              ❓ {lastHintText.current}
-            </div>
-            <div style={{ marginLeft: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 7, padding: '7px 10px', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <div style={{ fontSize: 11, color: '#5eead4', marginBottom: 4, fontWeight: 600 }}>{buyTimePhrase || thinkingLabel(profileRef.current?.language)}</div>
-              <div style={{ height: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: '40%', background: `linear-gradient(90deg,${T.accentFrom},#3b82f6)`, animation: 'slide 1.2s ease-in-out infinite' }} />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {audio.interim && <div style={{ fontSize: 11, color: T.text3, fontStyle: 'italic', marginBottom: 4, paddingLeft: 4 }}>… {audio.interim}</div>}
+          )
+        })}
         <div ref={bottomRef} />
+        </div>
+
+        {/* Type a question when STT fails / for silent practice — Enter → LLM */}
+        <form
+          onSubmit={e => {
+            e.preventDefault()
+            const q = typedQ.trim()
+            if (!q || hintInFlight.current) return
+            setTypedQ('')
+            setManualQ('')
+            generateHint(q, { force: true })
+          }}
+          style={{ flexShrink: 0, padding: '8px 10px 10px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 6 }}
+          data-mm-hit="1"
+        >
+          <input
+            type="text"
+            value={typedQ}
+            onChange={e => setTypedQ(e.target.value)}
+            placeholder="Type a question · Enter to ask AI"
+            disabled={!!hintLoading || ending}
+            aria-label="Type interview question"
+            style={{
+              flex: 1, height: 34, padding: '0 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)',
+              background: 'rgba(0,0,0,0.35)', color: T.text1, fontSize: 12, fontFamily: T.font, outline: 'none',
+            }}
+          />
+          <button
+            type="submit"
+            disabled={!typedQ.trim() || !!hintLoading || ending}
+            style={{
+              height: 34, padding: '0 12px', borderRadius: 8, border: 'none', fontSize: 11, fontWeight: 700,
+              background: typedQ.trim() && !hintLoading ? 'rgba(13,148,136,0.45)' : 'rgba(255,255,255,0.06)',
+              color: typedQ.trim() && !hintLoading ? '#5eead4' : T.text3, cursor: typedQ.trim() && !hintLoading ? 'pointer' : 'default',
+            }}
+          >Ask</button>
+        </form>
 
         {/* Secondary controls — collapsed so glance path stays opener + bullets */}
-        <details style={{ marginTop: 'auto', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-          <summary style={{ listStyle: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700, letterSpacing: '0.07em', color: T.text3, userSelect: 'none' }}>
+        <details style={{ flexShrink: 0, padding: '0 10px 8px', borderTop: 'none' }}>
+          <summary style={{ listStyle: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700, letterSpacing: '0.07em', color: T.text3, userSelect: 'none', paddingTop: 4 }}>
             OPTIONS {coachMode ? '· COACH' : ''}{answerStyle !== 'concise' ? ` · ${answerStyle.toUpperCase()}` : ''}{extraContext ? ' · CTX' : ''}{usage.tokens > 0 ? ` · ${(usage.tokens / 1000).toFixed(1)}k` : ''}
           </summary>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
@@ -1261,7 +1716,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                 coachModeRef.current = next
                 setCoachMode(next)
                 const q = lastHintText.current
-                if (q) generateHint(q, { force: true })
+                if (q) generateHint(q, { force: true, questionId: activeQuestionIdRef.current })
               }}
                 title="Coach = structure; Answer = full spoken answer"
                 style={{ display: 'flex', alignItems: 'center', gap: 5, background: coachMode ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${coachMode ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.1)'}`, color: coachMode ? '#4ade80' : T.text2, fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', borderRadius: 100, padding: '3px 9px', cursor: 'pointer' }}>
@@ -1285,7 +1740,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, onSizePreset, opacity, onOpacity, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, clickThrough, onClickThrough }) {
+export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId }) {
   const [phase, setPhase] = useState('setup')
   const [sessionConfig, setSessionConfig] = useState(null)
   const [sessionNotes, setSessionNotes] = useState(null)
@@ -1324,7 +1779,7 @@ export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealt
       {...sessionConfig}
       panelSize={panelSize} stealth={stealth} minimized={minimized}
       onStealth={onStealth} onMinimize={onMinimize}
-      onResize={onResize} onDrag={onDrag} onSizePreset={onSizePreset}
+      onResize={onResize} onDrag={onDrag}
       opacity={opacity} onOpacity={onOpacity}
       onEnd={data => {
         setSessionNotes(data); setPhase('notes')
@@ -1335,6 +1790,8 @@ export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealt
       }}
       screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} onDismissScreen={onDismissScreen}
       codingDetected={codingDetected} onCaptureScreen={onCaptureScreen} onReanalyze={onReanalyze}
+      onLiveSpokenQuestion={onLiveSpokenQuestion}
+      captureDisplays={captureDisplays} captureDisplayId={captureDisplayId} onCaptureDisplayId={onCaptureDisplayId}
       onPipActive={onPipActive}
       clickThrough={clickThrough} onClickThrough={onClickThrough}
     />

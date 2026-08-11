@@ -15,30 +15,28 @@ content-protected overlay (WDA_EXCLUDEFROMCAPTURE / PiP).
 The most dangerous gap: 1.4.2 shipped bugs that a single packaged-build click-through would have
 caught. Fix the *process*, not just the bugs.
 - [x] `docs/RELEASE_CHECKLIST.md` — packaged-build smoke gate (sign in → Solo → Live → screenshot → Duo)
+- [x] `npm run smoke:api` — in-process `/api` route contract smoke (fast pre-check)
 - [ ] Adopt it: no tag/upload until the checklist passes on the packaged artifact
 - [ ] (Later) CI: `npm ci && npm run build && npm test` on every PR
 
 ## P1 — Kill the dual-paradigm debt (consistency reads as quality)
-Two UIs fight: legacy browser app (`Home.jsx`, `Room.jsx`, `styles.css` classes) vs the token
-dashboard (`App.jsx`, `Dashboard.jsx`, `T`). Orphaned Duo was the symptom.
-- [ ] Re-theme `Room.jsx` to design tokens (`T`), then delete `styles.css` legacy classes
-- [ ] Delete `Home.jsx` (superseded by `Duo.jsx` + the dashboard)
+Legacy browser app (`Home.jsx`, old `styles.css`) vs the token dashboard — largely retired in 1.4.3.
+- [x] Re-theme `Room.jsx` to design tokens (`T`), then delete `styles.css` legacy classes *(1.4.3)*
+- [x] Delete `Home.jsx` (superseded by `Duo.jsx` + the dashboard) *(1.4.3)*
 - [ ] One audit pass: every screen uses `T`, no stray `className="..."` from the old system
 
 ## P2 — Document intelligence / RAG (biggest answer-quality lever)
-Today: resume truncated to 1800–4000 chars, stuffed into every prompt. That's why long-resume
-answers feel generic.
+Long resumes used to be truncated into every prompt; RAG retrieves relevant chunks per question.
 - [x] RAG core — `shared/retrieval.js` (chunk/cosine/topK/threshold), `embed()` in `core.js`, `/api/embed` (verified)
-- [ ] Client: docs store → embed chunks once → per-question top-K retrieve → inject (replace truncation)
-- [ ] Documents UI (upload/list/delete — the LockedIn panel); multi-doc (resume + JD + extras)
-- [ ] "Filter document" threshold slider in AI Settings (default 0.20)
-- See `docs/RAG_PLAN.md`.
+- [x] Client: docs store → embed chunks → per-question top-K retrieve → inject *(Documents + AI Settings threshold)*
+- [x] Documents UI (upload/list/delete); multi-doc (resume + JD + extras); JD type `jd`
+- [x] "Filter document" threshold slider in AI Settings (default 0.20)
+- See `docs/RAG_PLAN.md` (client wiring marked shipped; keep soak evidence honest).
 
 ## P3 — Fix the funnel (convert the aha-moment)
-- [ ] Let users try locally BEFORE forcing auth ("try free, sign in to sync") — AuthGate currently
-      gates all value behind signup, leaking the "download & go" promise
+- [x] Guest / try locally BEFORE forcing full account value *(guest mode 1.4.3)*
 - [ ] Cap cliff: a graceful path when the managed free cap is hit locally (switch-to-BYOK prompt,
-      or don't hard-cap local managed) — never a mid-interview dead end
+      or don't hard-cap local managed) — never a mid-interview dead end *(local hard-cap removed 1.4.3; hosted path still TBD)*
 
 ## P4 — Polish + modernize (mostly done; needs the green build to verify)
 - [x] Modernized model catalog (GPT-5.4, Gemini 3 Flash/Flash-Lite, Cerebras, Sonnet 5); un-hardcoded fast tier
@@ -47,12 +45,37 @@ answers feel generic.
 - [x] Duo revived (LiveKit `mintToken` + `/api/token`, wired into dashboard)
 - [x] Stepped/collapsible setup sections (Live setup → numbered 1·2·3 accordion); in-app version label
 - [x] Duo Phase 3: protected Electron co-pilot window (content-protected BrowserWindow + setRoomActive/sendHint IPC)
+- [x] Live compact HUD + pin/pill *(1.4.5)*; Live engine modules + Career PDF / JD seed *(1.4.6)*
 
 ## P5 — Breadth (ONLY after P0–P3 are solid)
 More modes (Professional Meeting / Online Assessment / Phone), Resume Builder, billing UI.
 Breadth on a shaky base is a trap — resist until the wedge is airtight.
 
+## P6 — Referral outreach (Career) — phased, not multi-agent-first
+
+**Ship today (v1.4.x):** Referral DM is **copy-only** — draft from resume + role + company; user
+pastes into LinkedIn/email. That is intentional. Specialty vs ChatGPT is **grounded context already
+in MockMate** (profile, tailor, JD), not “we send mail.”
+
+**Do not build first:** autonomous multi-agent email/LinkedIn triggers (MockMate SMTP, silent sends,
+agent swarms). Wrong surface: OAuth/spam/trust/support; competes with CRM products; LinkedIn auto-DM
+belongs to the separate extension track in [`NEXT_PHASE.md`](NEXT_PHASE.md) (ToS/ban risk).
+
+### Phased roadmap (keep the idea; ship in this order)
+
+| Phase | What | Why |
+|---|---|---|
+| **A — Now (1.4.6)** | Best grounded drafts + Copy; tailored **PDF** for resume | Low risk; uses existing Career context |
+| **B — Next** | Per-job/company **follow-up checklist + local reminders** (calendar/OS notify); still user-sends | Captures “follow-up” value without send infrastructure |
+| **C — Later** | **User-confirmed send** via *their* Gmail/Outlook (“Send with my account”); templates + optional schedule | Agent/assistant **drafts + reminds**; human taps Send — never MockMate-as-mailer |
+| **D — Separate product** | LinkedIn discovery / auto-DM / Easy Apply | Browser extension only — see NEXT_PHASE “Job-application automation” |
+
+**Multi-agent angle (validated, deferred):** sequences (DM → thank-you → 7-day nudge) are valuable as
+**assisted outreach** (prepare + remind + confirm), not as unsolicited autonomous agents. Revisit
+when Jobs/Career retention is strong enough that users live in MockMate between interviews.
+
 ---
 ### Status legend
-[x] done + verified where possible this session · [ ] pending (most P1–P3 UI needs a green
-`npm run build`, currently blocked by a local Windows/Defender file lock — reboot to clear).
+[x] done + verified in unit tests / code where noted · [ ] pending. Packaged stealth soak + 120m
+usage remain **NOT VERIFIED** — see `docs/evidence/VALIDATION_STATUS.md`. Do not claim them from
+docs alone.

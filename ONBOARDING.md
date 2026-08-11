@@ -26,8 +26,8 @@ npm run electron:dev:nosandbox
   `~/.config/mockmate/.env`), or for dev put them in a project `.env` (see `.env.example`).
 - **Logs:** the API server tees everything to **`logs/server.log`** — `tail -n 40 logs/server.log`
   is the fastest way to see LLM errors / provider failover. **Check it first when debugging.**
-- **Tests:** `npx vitest run`. **Build UI:** `npm run build`. **Package app:**
-  `npm run electron:build` (`:win` for Windows).
+- **Tests:** `npm test` (vitest). **API smoke:** `npm run smoke:api`. **Build UI:** `npm run build`.
+  **Full gate:** `npm run verify`. **Package app:** `npm run electron:build` (`:win` for Windows).
 
 ---
 
@@ -56,39 +56,54 @@ Renderer (React, Vite :5174 in dev) ── the whole UI. Talks to :3002 via /api
   - `CATALOG` — providers (openai, openai_mini, groq, gemini, claude_*) → `{ label, envKey, baseURL, model() }`.
   - `completeJSON()` / `streamText()` — call an LLM with **automatic failover** across configured
     providers (`getFallbackProviders`), rate-limit/quota/400 **benching**, JSON repair.
+  - **Text vs vision health** (1.4.6) — separate last-working / ban windows so a vision 429 does not
+    take text offline (and vice versa).
   - **Model selection:** a provider id can be plain (`openai`) or an encoded dynamic pick
     **`provider::model`** (e.g. `openai::gpt-4.1`). `resolveProvider`/`baseOf` handle both.
   - `listModels()` — **dynamic discovery**: asks each key's provider (`/v1/models` etc.) what models
     it can actually use, so the picker is always current and never 400s on a stale id.
   - **Gemini gotcha:** never send `response_format:json_object` to Gemini (400s) — only `reasoning_effort:'none'`.
-- **`apiRoutes.js`** — `registerApiRoutes(app, { auth, onLlm, report })` registers every `/api/*` route.
+- **`apiRoutes.js`** — `registerApiRoutes(app, { auth, onLlm, report })` registers every `/api/*` route
+  (incl. Deepgram token policy, `/api/resume-latex`, embed, interview, career, jobs).
 - **`interview.js`** — `interviewerTurn` (Solo), `streamHint`/`generateHint` (Live, SSE), `evaluateSolo`
-  (scoring), `analyzeScreen` (Ctrl+Shift+U), the interview **playbooks**.
+  (scoring), `analyzeScreen` (Ctrl+Shift+U / F7), interview **playbooks** (also `playbooks.js`).
+- **`visionPolicy.js`** — when / how screen analysis may run.
 - **`jobs.js`** — `findJobs` (Remotive remote + Adzuna local; LLM ranker → keyword fallback).
-- **`career.js`** — `atsScore`, `tailorResume`, `referralMessage`.
+- **`career.js`** — `atsScore`, `tailorResume`, `referralMessage`, `resumeLatex`.
 - **`api/*.js`** — thin Vercel serverless wrappers of the same handlers (web deploy).
+
+### Live interview shared modules (`shared/` + `src/live/`)
+- **`interviewState.js`**, **`generationManager.js`**, **`questionCapture.js`**, **`interviewClassify.js`**,
+  **`screenContext.js`**, **`transcriptBuffer.js`**, **`contextSelection.js`**, **`hintLayers.js`** —
+  authority for question lifecycle, generations, and context (unit-tested).
+- **`src/live/hintTransport.js`**, **`LiveSessionController.js`** — Live SSE / session orchestration slice.
+- **`shared/delivery.js`** — filler/pace analysis (do not confuse with deleted `src/delivery.js`).
 
 ---
 
 ## 4. Frontend (`src/`)
 
 - **`App.jsx`** — `ElectronShell`: `view` state + routing. `SHELL_VIEWS` (home/solo/jobs/career/
-  settings/account/history) render inside the **dashboard shell**; `companion` (Live) renders as the
-  compact **overlay**. A window-mode effect resizes the OS window (app-large vs overlay-compact) via
-  `set-window-mode` IPC, driven by `view` + the Live phase. Wrapped in `<AuthGate>`.
+  settings/account/history/documents…) render inside the **dashboard shell**; `companion` (Live)
+  renders as the compact **overlay**. Minimize-to-pill **keeps the shell mounted** (hidden) so
+  Career drafts survive. Screen analysis UI lives on **Live**, not Home. Wrapped in `<AuthGate>`.
 - **`Dashboard.jsx`** — `AppShell` (top bar + sidebar), `DashboardHome` (greeting, action cards,
   Recent Sessions, `Sparkline` performance, `SystemStatus`), `SessionsTable`, `UpdateToast`.
 - **`Solo.jsx`** — Solo Practice: setup → 3-panel interview workspace → feedback. Deepgram voice
   (`useDeepgram`); no browser mic (fails in Electron). **`SoloFeedback.jsx`** = results screen.
 - **`LiveCompanion.jsx`** — Live: setup (full-window) → `LiveOverlay` (compact HUD, streaming
   suggested answers) → feedback. Reports its phase up so the window resizes.
+- **`Career.jsx`** — Resume Studio: ATS / tailor / referral (copy-only). Tailor exports: **PDF**
+  primary (`lib/resumePdf.js`), optional `.txt` / `.tex`. Draft JD: `lib/careerDraft.js`.
+- **`Jobs.jsx`** — matching + saved jobs; handoff to Career / Solo / Live via `lib/jobsHandoff.js`
+  + `lib/interviewJobSeed.js`.
+- **`Documents.jsx`** + **`lib/docs.js`** — client-side RAG index.
 - **`ApiKeys.jsx`** — Settings AI chooser: **Managed AI** vs **Bring your own key** cards + the
   dynamic model picker (from `/api/models`) + key entry.
 - **`Account.jsx`**, **`auth/`** (AuthGate, Login, Signup, Welcome, Onboarding, `api.js`, **`tokens.js`**
-  = design system, `ui.jsx`, `AuthShell.jsx`).
+  = design system, `ui.jsx`, `AuthShell.jsx`). Onboarding resume: **PDF-only**.
 - **`lib/aiMode.js`** — `managed` vs `byok` (`MANAGED_AVAILABLE` flag). `lib/profile.js`, `lib/ui.js`
-  (`scoreColor`), `lib/languages.js`, `history.js` (local sessions).
-- **`shared/`** — `delivery.js` (`analyze` filler/pace), `llm-errors.js` (shared retry classifiers).
+  (`scoreColor`), `lib/languages.js`, `history.js` (local sessions), `lib/clipboard.js`.
 - **Design tokens** live ONLY in `src/auth/tokens.js` (teal accent `#14B8A6→#10B981`, dark surfaces,
   Kanit font). Change colors/radii there.
 
@@ -118,7 +133,11 @@ Renderer (React, Vite :5174 in dev) ── the whole UI. Talks to :3002 via /api
     MockMate's own keys) — **TODO**. See `docs/PHASE2B_SCOPE.md`.
   - ⚠️ **Until B6, "Managed AI" uses the machine's local keys** — a keyless user can't run managed yet.
 - **Phase 2c — Stripe billing** ⏳ (Free cap → "Upgrade or BYOK"; enforce/upgrade).
-- Docs: `docs/DEPLOY_BACKEND.md`, `docs/PHASE2B_SCOPE.md`, `docs/MM_PROMPT.md` (UI spec).
+- **Product (1.4.5–1.4.6)** ✅ compact Live HUD; Live state/generation/capture modules; Career PDF +
+  copy-only referral; Jobs→interview JD seed; text/vision health split; Deepgram local fallback policy.
+  Next Career outreach phases: `docs/ROADMAP.md` § P6 (reminders → user-confirmed send — **not** silent agents).
+- Docs: `docs/DEPLOY_BACKEND.md`, `docs/PHASE2B_SCOPE.md`, `docs/MM_PROMPT.md` (UI spec),
+  `docs/ROADMAP.md`, `CHANGELOG.md`.
 
 ---
 
@@ -130,17 +149,25 @@ Renderer (React, Vite :5174 in dev) ── the whole UI. Talks to :3002 via /api
   `backend/`), not just Vite HMR.
 - **Linux/Wayland:** no screen-capture (pipewire portal hangs → guarded off), no meeting auto-detect,
   content-protection can't hide the overlay. Dev with `electron:dev:nosandbox`.
-- **Voice = Deepgram only** (browser `webkitSpeechRecognition` silently fails in Electron).
-- **Provider keys**: server + backend load userData `.env` in addition to project `.env`.
+- **Voice = Deepgram only** (browser `webkitSpeechRecognition` silently fails in Electron). Local
+  managed may fall back to API-key WS if grant minting 403s; hosted never returns the raw key —
+  see `docs/SECRET_ROTATION.md`.
+- **Provider keys**: server + backend load userData `.env` / `.env.enc` in addition to project `.env`.
+  Shipped builds may include **bundled** keys from CI secrets (BYOK overrides).
 - **Free AI keys are unreliable** for long sessions (Gemini 400s on some models, Groq 6k TPM). A
   funded **OpenAI** key (`gpt-4o-mini`) is the reliable path. ChatGPT subscription ≠ API credit.
+- **Domains stay separate:** Live Copilot, Screen Analyzer, Solo — share infra, not product semantics.
+  Do not put screen-analysis CTAs back on Home.
 
 ---
 
 ## 8. "I want to…" quick map
 - **Change a screen's look** → that screen in `src/` + tokens in `src/auth/tokens.js`.
-- **Add/adjust an interview prompt** → `api/_lib/interview.js`.
+- **Add/adjust an interview prompt** → `api/_lib/interview.js` / `playbooks.js`.
 - **Provider/model/failover behavior** → `api/_lib/core.js`.
+- **Live question/generation lifecycle** → `shared/interviewState.js`, `generationManager.js`, `questionCapture.js`.
+- **Career / ATS / referral / PDF** → `api/_lib/career.js`, `src/Career.jsx`, `src/lib/resumePdf.js`.
 - **Add an `/api/*` route** → `api/_lib/apiRoutes.js` (+ `api/<name>.js` for Vercel).
 - **Auth / usage / plans** → `backend/src/` (`routes/`, `middleware/`, `store.js`, `plans.js`).
 - **Window sizing / shortcuts / capture / update** → `electron/main.cjs` (+ `preload.cjs` bridge).
+- **Roadmap / what ships next** → `docs/ROADMAP.md`, `CHANGELOG.md`.

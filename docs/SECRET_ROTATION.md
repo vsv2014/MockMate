@@ -40,7 +40,16 @@ in each provider console, and rotate if abused.
 - Rotate by replacing keys in Settings; old keys remain valid at the provider until revoked in that provider’s console.
 - User BYOK **overrides** bundled keys for that install.
 
-## Deepgram
-- Prefer short-lived **grant tokens** (Owner-scoped key). Local desktop may fall back to the
-  project key on the websocket when grant minting returns 403 (Member keys).
+## Deepgram (local vs production)
+
+- Prefer short-lived **grant tokens** (Owner-scoped key can mint `/v1/auth/grant`).
+- **Local Electron (this laptop, including managed mode on :4000):** if grant minting returns
+  401/403 (typical for Member / scoped keys), MockMate falls back to using the project API key
+  on the websocket. That key already lives on the machine — voice must keep working for solo
+  testing and fresh laptop installs without hunting Owner keys.
+- **Remote production (`MOCKMATE_HOSTED=1`):** never return the raw project key to clients.
+- Opt out of local fallback: `MOCKMATE_DEEPGRAM_KEY_FALLBACK=0`.
+- Keep `DEEPGRAM_API_KEY` (+ at least one of `GROQ_API_KEY` / Gemini / OpenAI) in bundled or
+  user `.env` so a new machine works out-of-box.
 - Rotate the key in Deepgram console + update the `DEEPGRAM_API_KEY` GitHub secret + rebuild.
+

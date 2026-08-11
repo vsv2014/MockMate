@@ -21,24 +21,26 @@ Live specifically: `Dashboard → Live Setup (in window) → Start → window mi
 
 ---
 
-## 2. Visual language (make `src/auth/tokens.js` match this exactly)
+## 2. Visual language (source of truth: `src/auth/tokens.js`)
+
+> **Shipped brand accent is teal→emerald** (`#14B8A6` → `#10B981`), not violet. Older purple
+> mock references below are historical — do not reintroduce purple as primary.
 
 **Color**
 | Token | Hex | Use |
 |---|---|---|
-| accentFrom | `#8B5CF6` | primary (violet) |
-| accentTo | `#6D28D9` | primary gradient end (deep purple) |
+| accentFrom | `#14B8A6` | primary (teal) |
+| accentTo | `#10B981` | primary gradient end (emerald) |
 | success | `#10B981` | emerald — connected/good |
 | warning | `#F59E0B` | amber |
 | danger | `#F43F5E` | rose — destructive only |
 
-**Background / surfaces**: base `#08080C` · surface `#111217` · surface-2 `#16171C`
-**Text**: primary `#E8E8EC` · secondary `#8A8A8E` · tertiary `#71717A`
-**Radius**: card `16px` · control `12px` · large `20px`
-**Font**: Kanit (already self-hosted)
-**Style**: dark · glass · rounded · generous spacing · almost no hard borders · soft shadows.
-Purple = brand/primary. Emerald = success. Rose = destructive ONLY. Drop the purple→orange
-gradient in favor of purple→deep-purple (orange/amber only as an accent, e.g. an amber tag).
+**Background / surfaces**: base `#08080C` · surface `#111217` · surface-2 `#16171C` (see `tokens.js` for exact `T.*`)
+**Text**: primary / secondary / tertiary from `T`
+**Radius**: card / control / large from `T`
+**Font**: Kanit (self-hosted)
+**Style**: dark · glass · rounded · generous spacing · soft shadows. Teal = brand/primary.
+Emerald = success. Rose = destructive ONLY.
 
 **Logo** — replace the plain purple "M" square everywhere with the MockMate mark: an angular
 "M" whose left stroke is violet and right stroke is emerald. Canonical SVG:
@@ -63,16 +65,17 @@ window/tray icon (`build/icon.png`, `iconPath()`), so the taskbar icon matches t
 | Screen | State | Action |
 |---|---|---|
 | Auth (Welcome/Login/Signup) | ✅ on-system | keep |
-| Dashboard / Home | ✅ good | apply new tokens; add "System Status" + "Performance Overview" panels (ref) |
+| Dashboard / Home | ✅ good | no screen-analysis CTA (Live/F7 owns capture); System Status + Performance stay |
 | Solo Setup | ✅ good | tokens only |
 | Solo Interview Workspace | ✅ good | tokens only |
 | Solo Feedback | ✅ good | tokens only |
 | API & Settings | ✅ good rows | rename to **Settings**; fold in app settings; see Fix #2 |
 | Account | ⚠️ dup keys | remove the BYO-keys block; see Fix #2 |
 | **Sessions** | ✅ in-shell table | naming locked to **Sessions** (not “Past Sessions”) |
-| Jobs | ✅ tokenized secondary UI | keep parity with `secondaryUi.jsx` |
-| Resume Studio | ✅ tokenized secondary UI | analysis JD is this-screen only; resume/role shared |
-| Live Companion | ✅ glance-first overlay | honesty on stealth + ending notes; no Phase-3 rewrite unless soak demands |
+| Jobs | ✅ tokenized secondary UI | handoff to Career + JD seed Solo/Live (confirm) |
+| Resume Studio | ✅ tokenized secondary UI | analysis JD screen-local; **PDF** primary export; referral **copy-only** |
+| Documents | ✅ RAG UI | client index; type `jd` supported |
+| Live Companion | ✅ compact HUD (1.4.5+) | glance-first; pin/pill; honesty on stealth; screen analysis here only |
 
 ---
 

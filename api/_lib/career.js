@@ -54,3 +54,42 @@ Return ONE JSON object, no prose:
   const user = `CANDIDATE RESUME:\n${String(resume).slice(0, 4000)}\n\nTARGET ROLE: ${targetRole || '(infer)'}\nCOMPANY: ${company || '(unspecified)'}\nPERSON (who you're asking, if known): ${person || '(unknown — keep it generally addressable)'}`
   return completeJSON({ maxTokens: 1200, provider, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] })
 }
+
+/**
+ * FAANG/MANG-style single-column ATS-safe LaTeX resume from the candidate's text
+ * (optionally after tailor). Returns JSON { latex, filenameHint } — plaintext .tex only
+ * (no PDF binary generation).
+ */
+export async function resumeLatex({ resume = '', targetRole = '', jobDescription = '', tailor = null, provider } = {}) {
+  requireResume(resume)
+  const tailorBlock = tailor
+    ? `\nTAILOR EDITS (apply these truths into the LaTeX — do not invent):\n${JSON.stringify({
+      summary: tailor.summary || '',
+      rewrittenBullets: Array.isArray(tailor.rewrittenBullets) ? tailor.rewrittenBullets.slice(0, 20) : [],
+      keywordsToAdd: Array.isArray(tailor.keywordsToAdd) ? tailor.keywordsToAdd.slice(0, 20) : [],
+      sectionOrder: Array.isArray(tailor.sectionOrder) ? tailor.sectionOrder : [],
+    }).slice(0, 3500)}\n`
+    : ''
+  const system = `You convert a candidate resume into a SINGLE-COLUMN, ATS-friendly LaTeX resume used by FAANG/MANG applicants (Jake's Resume style).
+Rules:
+- Output ONE JSON object: { "latex": "<full .tex source>", "filenameHint": "<kebab-case-name-role>" }
+- Use \\documentclass{article} with geometry margins ~0.5in, enumitem, titlesec or simple \\section*{}, hyperref optional.
+- ONE column only. NO tables, NO multi-col, NO graphics, NO fontspec/XeLaTeX-only packages. pdflatex-safe.
+- Preserve ONLY real experience from the resume / tailor edits — never invent employers, dates, degrees, or metrics.
+- Prefer action verbs + metrics when present in source. Dense but readable. 1 page preferred.
+- Escape LaTeX special chars in content (& % $ # _ { } ~ ^ \\).
+- Include contact, summary, skills, experience, education (and projects if present).`
+  const user = `TARGET ROLE: ${targetRole || '(infer)'}\n${jobDescription ? `JOB DESCRIPTION (for keyword emphasis only):\n${String(jobDescription).slice(0, 1500)}\n` : ''}${tailorBlock}\nRESUME TEXT:\n${String(resume).slice(0, 7000)}`
+  const out = await completeJSON({
+    maxTokens: 4500, provider,
+    messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+  })
+  const latex = String(out?.latex || '').trim()
+  if (!latex || !/\\documentclass/.test(latex)) {
+    const e = new Error('Could not generate LaTeX resume — try again or download the plain-text version.')
+    e.status = 502
+    throw e
+  }
+  const hint = String(out?.filenameHint || 'resume').replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/^-|-$/g, '') || 'resume'
+  return { latex, filenameHint: hint }
+}

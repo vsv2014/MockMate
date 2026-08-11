@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { loadProfile, saveProfile, applyTailorToResume } from './lib/profile'
+import { loadCareerDraft, saveCareerDraft } from './lib/careerDraft'
+import { copyText, downloadTextFile } from './lib/clipboard'
+import { downloadTailoredResumePdf } from './lib/resumePdf'
 import { scoreColor } from './lib/ui'
 import { T } from './auth/tokens'
 import { S, tabStyle, NoKeysBanner, ResumeMaterials } from './lib/secondaryUi'
@@ -8,19 +11,24 @@ import { S, tabStyle, NoKeysBanner, ResumeMaterials } from './lib/secondaryUi'
 // Resume Studio — ATS score, tailor, referral DM.
 
 const TABS = [
-  ['ats', 'ATS Score'],
+  ['ats', 'ATS Score (AI)'],
   ['tailor', 'Tailor Resume'],
   ['referral', 'Referral DM'],
 ]
 
-function CopyBtn({ text }) {
+function CopyBtn({ text, label = 'Copy' }) {
   const [done, setDone] = useState(false)
+  const [failed, setFailed] = useState(false)
   if (!text) return null
   return (
     <button type="button"
-      onClick={() => { navigator.clipboard?.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500) }}
-      style={{ ...S.chip, cursor: 'pointer', border: 'none', color: done ? T.success : T.accentFrom, fontFamily: T.font }}>
-      {done ? 'Copied' : 'Copy'}
+      onClick={async () => {
+        const ok = await copyText(text)
+        if (ok) { setDone(true); setFailed(false); setTimeout(() => setDone(false), 1500) }
+        else { setFailed(true); setTimeout(() => setFailed(false), 2000) }
+      }}
+      style={{ ...S.chip, cursor: 'pointer', border: 'none', color: failed ? '#fca5a5' : (done ? T.success : T.accentFrom), fontFamily: T.font }}>
+      {failed ? 'Copy failed' : done ? 'Copied' : label}
     </button>
   )
 }
@@ -28,26 +36,50 @@ function CopyBtn({ text }) {
 export default function Career({
   onHome, noProviders, onSettings, embedded,
   initialJd, initialRole, initialCompany, initialTab, limitedJd, onSeedConsumed,
+  onUseForInterview,
 }) {
+  const draft0 = loadCareerDraft()
   const [profile, setProfile] = useState(() => loadProfile())
-  const [tab, setTab] = useState(() => (['ats', 'tailor', 'referral'].includes(initialTab) ? initialTab : 'ats'))
+  const [tab, setTab] = useState(() => (
+    ['ats', 'tailor', 'referral'].includes(initialTab) ? initialTab
+      : (draft0.tab || 'ats')
+  ))
   const [loading, setLoading] = useState(false)
+  const [latexBusy, setLatexBusy] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
   const [error, setError] = useState('')
-  const [result, setResult] = useState(null)
-  // JD is local only — must not clobber profile.jobDescription used by Live.
-  const [jd, setJd] = useState(() => initialJd ?? (loadProfile().jobDescription || ''))
+  const [result, setResult] = useState(() => (
+    draft0.resultTab === (initialTab || draft0.tab || 'ats') ? draft0.result : null
+  ))
+  // Analysis JD is persisted in mm-career-draft — must not clobber profile.jobDescription (Live/Solo).
+  const [jd, setJd] = useState(() => initialJd ?? draft0.jd ?? '')
   const [company, setCompany] = useState(() => initialCompany || profile.targetCompany || '')
-  const [person, setPerson] = useState('')
-  const [seedNote, setSeedNote] = useState(() => !!limitedJd)
+  const [person, setPerson] = useState(() => draft0.person || '')
+  const [seedNote, setSeedNote] = useState(() => !!(limitedJd || draft0.limitedJd))
   const [applyMsg, setApplyMsg] = useState('')
   const seedDone = useRef(false)
+
+  // Persist analysis draft whenever JD / person / tab / result change (survives minimize).
+  useEffect(() => {
+    saveCareerDraft({
+      jd,
+      person,
+      tab,
+      limitedJd: seedNote,
+      result,
+      resultTab: result ? tab : null,
+    })
+  }, [jd, person, tab, result, seedNote])
 
   // One-shot seed from Jobs handoff
   useEffect(() => {
     if (seedDone.current) return
     if (initialJd == null && !initialRole && !initialCompany && !initialTab) return
     seedDone.current = true
-    if (initialJd != null) setJd(initialJd)
+    if (initialJd != null) {
+      setJd(initialJd)
+      saveCareerDraft({ jd: initialJd, limitedJd: !!limitedJd, tab: initialTab || 'ats' })
+    }
     if (limitedJd) setSeedNote(true)
     if (['ats', 'tailor', 'referral'].includes(initialTab)) {
       setTab(initialTab)
@@ -91,6 +123,53 @@ export default function Career({
     setApplyMsg('Resume updated — shared with Solo, Live, and Job Matching.')
   }
 
+  function downloadPlainTailored(r) {
+    const text = applyTailorToResume(profile.resume || '', r || {})
+    const role = (profile.targetRole || 'resume').replace(/[^\w\-]+/g, '-').toLowerCase()
+    downloadTextFile(`mockmate-${role}.txt`, text, 'text/plain;charset=utf-8')
+  }
+
+  function downloadPdf(r) {
+    setError(''); setPdfBusy(true); setApplyMsg('')
+    try {
+      const { filename, pages } = downloadTailoredResumePdf({
+        resume: profile.resume || '',
+        tailor: r || null,
+        targetRole: profile.targetRole || '',
+      })
+      setApplyMsg(`Downloaded ${filename} (${pages} page${pages === 1 ? '' : 's'}) — tailored text applied to your resume.`)
+    } catch (e) {
+      setError(e.message || 'Could not build PDF.')
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
+  async function downloadLatex(r) {
+    setError(''); setLatexBusy(true); setApplyMsg('')
+    try {
+      const res = await apiFetch('/api/resume-latex', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resume: profile.resume || '',
+          targetRole: profile.targetRole || '',
+          jobDescription: jd,
+          tailor: r || null,
+        }),
+      })
+      const text = await res.text()
+      let d = null; try { d = JSON.parse(text) } catch {}
+      if (!res.ok || d?.error) throw new Error(d?.error || `LaTeX failed (${res.status})`)
+      if (!d?.latex) throw new Error('No LaTeX returned')
+      downloadTextFile(`${d.filenameHint || 'resume'}.tex`, d.latex, 'application/x-tex;charset=utf-8')
+      setApplyMsg('Downloaded .tex — open in Overleaf / pdflatex for a FAANG-style one-pager PDF.')
+    } catch (e) {
+      setError(e.message || 'Could not generate LaTeX resume.')
+    } finally {
+      setLatexBusy(false)
+    }
+  }
+
   const base = { resume: profile.resume || '', targetRole: profile.targetRole || '', jobDescription: jd }
   const canRun = hasResume && !noProviders && !loading
   const primaryLabel = loading
@@ -130,7 +209,7 @@ export default function Career({
         <div style={{ fontSize: 14, fontWeight: 600, color: T.text1, marginBottom: 4 }}>Your materials</div>
         <div style={{ fontSize: 12, color: T.text3, marginBottom: 12, lineHeight: 1.45 }}>
           <strong style={{ color: T.text2 }}>Resume and target role</strong> are shared with Solo, Live, and Job Matching.
-          The job description below is for <strong style={{ color: T.text2 }}>this analysis only</strong> — it does not change your Live/Solo JD.
+          The analysis JD below is saved on this device for Resume Studio only — it does not change your Live/Solo JD until you click “Use for Solo/Live”.
         </div>
         <ResumeMaterials resume={profile.resume} onPatch={patch} />
         {!hasResume && (
@@ -147,7 +226,7 @@ export default function Career({
 
         {tab !== 'referral' && (
           <>
-            <label style={S.lbl}>Job description for this analysis (optional — not saved to Live/Solo)</label>
+            <label style={S.lbl}>Job description for this analysis (saved in Resume Studio — not Live/Solo)</label>
             <textarea rows={3} style={{ ...S.input, resize: 'vertical' }} value={jd} placeholder="Paste a JD to score or tailor against…"
               onChange={e => { setJd(e.target.value); setSeedNote(false) }} />
           </>
@@ -155,6 +234,10 @@ export default function Career({
 
         {tab === 'referral' && (
           <>
+            <div style={{ ...S.note, marginBottom: 12 }}>
+              This drafts a LinkedIn / email message for <strong style={{ color: T.text1 }}>you to send</strong>.
+              MockMate does not email anyone or connect to LinkedIn — tap Copy, then paste where you message the person.
+            </div>
             <label style={S.lbl}>Company</label>
             <input style={S.input} value={company} placeholder="e.g. Stripe"
               onChange={e => { setCompany(e.target.value); patch({ targetCompany: e.target.value }) }} />
@@ -180,6 +263,44 @@ export default function Career({
       >
         {primaryLabel}
       </button>
+      {onUseForInterview && tab !== 'referral' && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+          <button
+            type="button"
+            disabled={!String(jd || '').trim()}
+            style={{
+              ...S.btnSecondary,
+              opacity: String(jd || '').trim() ? 1 : 0.55,
+              cursor: String(jd || '').trim() ? 'pointer' : 'default',
+            }}
+            onClick={() => onUseForInterview({
+              jd,
+              role: profile.targetRole || '',
+              company: company || profile.targetCompany || '',
+              source: 'career',
+            }, 'solo')}
+          >
+            Use JD for Solo
+          </button>
+          <button
+            type="button"
+            disabled={!String(jd || '').trim()}
+            style={{
+              ...S.btnSecondary,
+              opacity: String(jd || '').trim() ? 1 : 0.55,
+              cursor: String(jd || '').trim() ? 'pointer' : 'default',
+            }}
+            onClick={() => onUseForInterview({
+              jd,
+              role: profile.targetRole || '',
+              company: company || profile.targetCompany || '',
+              source: 'career',
+            }, 'live')}
+          >
+            Use JD for Live
+          </button>
+        </div>
+      )}
       {!hasResume && !noProviders && (
         <div role="status" style={{ fontSize: 12, color: T.text3, marginTop: -4, marginBottom: 12 }}>
           Add a resume above to enable this action.
@@ -200,7 +321,18 @@ export default function Career({
       )}
 
       {result && tab === 'ats' && <AtsResult r={result} />}
-      {result && tab === 'tailor' && <TailorResult r={result} onApply={() => applyTailor(result)} />}
+      {result && tab === 'tailor' && (
+        <TailorResult
+          r={result}
+          onApply={() => applyTailor(result)}
+          onDownloadPdf={() => downloadPdf(result)}
+          onDownloadTxt={() => downloadPlainTailored(result)}
+          onDownloadLatex={() => downloadLatex(result)}
+          latexBusy={latexBusy || loading}
+          pdfBusy={pdfBusy}
+          canLatex={hasResume && !noProviders}
+        />
+      )}
       {result && tab === 'referral' && <ReferralResult r={result} />}
     </div>
   )
@@ -244,8 +376,12 @@ function AtsResult({ r }) {
   )
 }
 
-function TailorResult({ r, onApply }) {
+function TailorResult({ r, onApply, onDownloadPdf, onDownloadTxt, onDownloadLatex, latexBusy, pdfBusy, canLatex }) {
   const full = [r.summary && `SUMMARY:\n${r.summary}`, r.rewrittenBullets?.length && 'REWRITTEN BULLETS:\n' + r.rewrittenBullets.map(b => `• ${b.after}`).join('\n'), r.keywordsToAdd?.length && `KEYWORDS TO ADD: ${r.keywordsToAdd.join(', ')}`].filter(Boolean).join('\n\n')
+  const dlBtn = {
+    fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
+    background: T.surface2, border: `1px solid ${T.border}`, color: T.text1,
+  }
   return (
     <div style={{ marginTop: 4 }} aria-live="polite">
       <div style={{ marginBottom: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -257,6 +393,27 @@ function TailorResult({ r, onApply }) {
           }}>
           Apply summary + bullets to my resume
         </button>
+        <button type="button" onClick={onDownloadPdf} disabled={pdfBusy}
+          style={{
+            ...dlBtn,
+            background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.35)', color: T.accentFrom,
+            opacity: pdfBusy ? 0.55 : 1, cursor: pdfBusy ? 'default' : 'pointer',
+          }}
+          title="Download 1–2 page PDF with tailor edits applied">
+          {pdfBusy ? 'Building PDF…' : 'Download PDF'}
+        </button>
+        <button type="button" onClick={onDownloadTxt} style={dlBtn} title="Plain text fallback">
+          Download .txt
+        </button>
+        <button type="button" onClick={onDownloadLatex} disabled={!canLatex || latexBusy}
+          style={{ ...dlBtn, opacity: (!canLatex || latexBusy) ? 0.55 : 1, cursor: (!canLatex || latexBusy) ? 'default' : 'pointer' }}
+          title="Optional: FAANG-style LaTeX for Overleaf">
+          {latexBusy ? 'Building LaTeX…' : 'Download .tex'}
+        </button>
+      </div>
+      <div style={{ fontSize: 11.5, color: T.text3, marginBottom: 10, lineHeight: 1.45 }}>
+        <strong style={{ color: T.text2 }}>Download PDF</strong> is the normal path — your resume text with tailor edits, single-column, usually 1–2 pages.
+        .tex is optional (Overleaf). No invented experience.
       </div>
       {r.summary && <Block title="Tailored summary"><div style={para}>{r.summary}</div></Block>}
       {r.rewrittenBullets?.length > 0 && (
@@ -280,8 +437,8 @@ function TailorResult({ r, onApply }) {
 function ReferralResult({ r }) {
   return (
     <div style={{ marginTop: 4 }} aria-live="polite">
-      {r.short && <Block title="Connection note (short)"><div style={para}>{r.short}</div><div style={{ marginTop: 8 }}><CopyBtn text={r.short} /></div></Block>}
-      {r.message && <Block title="Full referral message"><div style={{ ...para, whiteSpace: 'pre-wrap' }}>{r.message}</div><div style={{ marginTop: 8 }}><CopyBtn text={r.message} /></div></Block>}
+      {r.short && <Block title="Connection note (short)"><div style={para}>{r.short}</div><div style={{ marginTop: 8 }}><CopyBtn text={r.short} label="Copy note" /></div></Block>}
+      {r.message && <Block title="Full referral message"><div style={{ ...para, whiteSpace: 'pre-wrap' }}>{r.message}</div><div style={{ marginTop: 8 }}><CopyBtn text={r.message} label="Copy to paste" /></div></Block>}
       {r.why && <div style={{ fontSize: 12, color: T.accentFrom, marginTop: 4 }}>✓ {r.why}</div>}
     </div>
   )

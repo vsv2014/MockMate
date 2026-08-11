@@ -26,6 +26,8 @@ let pinnedState = true
 let suppressBlurUntil = 0
 function suppressBlurHide(ms = 1200) { suppressBlurUntil = Date.now() + ms }
 let lastWindowMode = null
+// Remember Live HUD size so set-window-mode('overlay') never resets a user resize to 300×360.
+let lastOverlaySize = { w: 300, h: 360 }
 let copilotWindow = null
 
 function isOwnWindowFocused() {
@@ -335,14 +337,10 @@ function createMainWindow() {
       // Already a pill — leave the icon on screen.
       if (lastWindowMode === 'pill') return
 
-      // Live overlay: collapse to on-screen pill (visible restore). Dashboard/app: hide to tray.
-      if (lastWindowMode === 'overlay') {
-        try { mainWindow.webContents.send('blur-collapse') } catch {}
-        suppressBlurHide(600)
-        applyPillGeometry()
-      } else {
-        try { mainWindow.hide() } catch {}
-      }
+      // Always collapse to on-screen pill (dashboard + Live) — never vanish to tray.
+      try { mainWindow.webContents.send('blur-collapse') } catch {}
+      suppressBlurHide(600)
+      applyPillGeometry()
     }, 60)
   })
 
@@ -416,37 +414,93 @@ function launchTrayAndShortcuts() {
     if (Notification.isSupported()) {
       new Notification({
         title: 'MockMate is running',
-        body: 'Live: — collapses to a pill icon. Alt+H toggles. Tray icon always works.',
+        body: '— / Alt+H collapses to a pill icon (click to restore). Tray icon always works.',
         icon: trayIcon
       }).show()
     }
   } catch {}
 
+  // Screen solve: Ctrl+Shift+U (avoids Zoom/browser stealing lone F-keys) + F7 alias.
   globalShortcut.register('CommandOrControl+Shift+U', captureScreen)
+  try { globalShortcut.register('F7', captureScreen) } catch {}
 }
 
-// Capture the primary screen and hand the PNG to the renderer for vision analysis.
+// Capture the primary screen and hand a compressed JPEG to the renderer for vision analysis.
 // Called by the Ctrl+Shift+U shortcut AND by the in-app "Solve it" button (ipc).
-async function captureScreen() {
+// Keep resolution/quality modest: full 1920×1080 PNGs routinely trip vision 429s ("busy")
+// and slow TTFT; 1280-wide JPEG is enough for code/diagrams and fails over far more reliably.
+async function captureScreen(opts = {}) {
   // Linux/Wayland routes desktopCapturer through the pipewire ScreenCast portal, which is
   // unreliable/absent here and can HANG or crash the process (SIGKILL). The screenshot-solve
   // feature just isn't available on Linux — notify instead of attempting the portal.
   if (process.platform === 'linux') {
     try { if (Notification.isSupported()) new Notification({ title: 'Screen capture unavailable on Linux', body: 'The screenshot-solve feature needs Windows or macOS (Wayland blocks it).' }).show() } catch {}
-    return
+    return { error: 'linux_unsupported' }
   }
   suppressBlurHide(2500)
   try {
-    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } })
-    if (!sources.length) return
-    // Multi-monitor: pick the source for the PRIMARY display (where the call/problem
-    // usually is), not an arbitrary sources[0]. Fall back to the first source.
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1280, height: 720 } })
+    if (!sources.length) return { error: 'no_sources' }
     const primaryId = String(screen.getPrimaryDisplay().id)
-    const chosen = sources.find(s => s.display_id === primaryId) || sources[0]
-    const base64 = chosen.thumbnail.toPNG().toString('base64')
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('screen-captured', base64)
-  } catch (e) { console.error('Screen capture failed:', e.message) }
-  finally { suppressBlurHide(800) }
+    const preferredId = opts.displayId != null ? String(opts.displayId) : null
+    // Prefer explicit display → primary → first. display_id is Electron's link to Display.id when available.
+    const chosen = (preferredId && sources.find(s => String(s.display_id) === preferredId || s.id === preferredId))
+      || sources.find(s => String(s.display_id) === primaryId)
+      || sources[0]
+    let payload
+    try {
+      const img = chosen.thumbnail.resize({ width: 1280, quality: 'better' })
+      const size = img.getSize?.() || { width: 1280, height: 720 }
+      const jpeg = img.toJPEG(72)
+      payload = {
+        mime: 'image/jpeg',
+        base64: jpeg.toString('base64'),
+        width: size.width || 1280,
+        height: size.height || 720,
+        bytes: jpeg.length,
+        displayId: chosen.display_id || chosen.id || null,
+        displayName: chosen.name || null,
+      }
+    } catch {
+      const png = chosen.thumbnail.toPNG()
+      const size = chosen.thumbnail.getSize?.() || { width: 1280, height: 720 }
+      payload = {
+        mime: 'image/png',
+        base64: png.toString('base64'),
+        width: size.width,
+        height: size.height,
+        bytes: png.length,
+        displayId: chosen.display_id || chosen.id || null,
+        displayName: chosen.name || null,
+      }
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('screen-captured', payload)
+    return payload
+  } catch (e) {
+    console.error('Screen capture failed:', e.message)
+    return { error: e.message || 'capture_failed' }
+  } finally { suppressBlurHide(800) }
+}
+
+async function listScreenDisplays() {
+  if (process.platform === 'linux') return { displays: [], unsupported: true }
+  try {
+    const displays = screen.getAllDisplays().map(d => ({
+      id: String(d.id),
+      label: d.label || `Display ${d.id}`,
+      bounds: d.bounds,
+      primary: d.id === screen.getPrimaryDisplay().id,
+    }))
+    // Cross-check capturer source ids (display_id may be empty on some platforms).
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
+    return {
+      displays,
+      sources: sources.map(s => ({ id: s.id, displayId: s.display_id || null, name: s.name })),
+      // Abstraction note: when display_id is missing, UI should fall back to source.id.
+    }
+  } catch (e) {
+    return { displays: [], error: e.message }
+  }
 }
 
 // Protect EVERY window from screen capture — including the Document Picture-in-
@@ -587,7 +641,8 @@ ipcMain.handle('get-audio-sources', async () => {
   const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } })
   return sources.map(s => ({ id: s.id, name: s.name }))
 })
-ipcMain.handle('capture-screen', () => captureScreen())   // "Solve it" button trigger
+ipcMain.handle('capture-screen', (_, opts) => captureScreen(opts || {}))   // "Solve it" button trigger
+ipcMain.handle('list-screen-displays', () => listScreenDisplays())
 // PiP windows are auto-protected by the browser-window-created listener above.
 // This confirms it to the renderer so it can warn honestly on Linux (no protection).
 ipcMain.handle('exclude-from-capture', () => ({ ok: process.platform !== 'linux', id: 'pip' }))
@@ -720,7 +775,7 @@ ipcMain.on('window-drag', (_, { dx, dy }) => {
 })
 ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
-    const nw = Math.max(240, Math.round(Number(w) || 280))
+  const nw = Math.max(240, Math.round(Number(w) || 280))
   const nh = Math.max(180, Math.round(Number(h) || 200))
   try {
     if (dx || dy) {
@@ -730,6 +785,10 @@ ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
       mainWindow.setSize(nw, nh)
     }
   } catch {}
+  // Persist HUD size whenever the user resizes (overlay or restoring from pill).
+  if (lastWindowMode === 'overlay' || lastWindowMode === 'pill' || lastWindowMode == null) {
+    if (nw < 900 && nh < 900) lastOverlaySize = { w: nw, h: nh }
+  }
   lastWindowMode = null
 })
 // Switch between the full windowed dashboard ('app') and the compact overlay ('overlay').
@@ -745,9 +804,13 @@ ipcMain.on('set-window-mode', (_, mode) => {
       const w = Math.min(1200, width - 80), h = Math.min(760, height - 80)
       mainWindow.setSize(w, h); mainWindow.center()
     } else {
-      // Clamp to the work area so the compact overlay is never pushed off-screen on small/scaled displays.
-      const w = Math.min(300, width - 40), h = Math.min(360, height - 40)
-      mainWindow.setSize(w, h); mainWindow.setPosition(Math.max(0, width - w - 20), 20)
+      // Restore the user's last HUD size — never hard-reset to 300×360 after a resize.
+      const w = Math.min(Math.max(240, lastOverlaySize.w || 300), width - 40)
+      const h = Math.min(Math.max(180, lastOverlaySize.h || 360), height - 40)
+      const [cx, cy] = mainWindow.getPosition()
+      const x = Math.min(Math.max(0, cx), Math.max(0, width - w))
+      const y = Math.min(Math.max(0, cy), Math.max(0, height - h))
+      mainWindow.setBounds({ x, y, width: w, height: h })
     }
   } catch {}
 })

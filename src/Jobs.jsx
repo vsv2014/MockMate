@@ -38,7 +38,7 @@ const STATUS_LABEL = {
   passed: 'Passed',
 }
 
-function JobCard({ j, saved, onToggleSave, onOpenCareer, showTracking, onUpdateSaved }) {
+function JobCard({ j, saved, onToggleSave, onOpenCareer, onUseForInterview, showTracking, onUpdateSaved }) {
   return (
     <div style={S.card}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -112,6 +112,18 @@ function JobCard({ j, saved, onToggleSave, onOpenCareer, showTracking, onUpdateS
             </button>
           </>
         )}
+        {onUseForInterview && (
+          <>
+            <button type="button" onClick={() => onUseForInterview(j, 'solo')}
+              style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
+              Use for Solo
+            </button>
+            <button type="button" onClick={() => onUseForInterview(j, 'live')}
+              style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
+              Use for Live
+            </button>
+          </>
+        )}
         <button type="button" onClick={() => onToggleSave(j)} aria-pressed={saved} aria-label={saved ? 'Unsave job' : 'Save job'}
           style={{
             marginLeft: 'auto', fontSize: 12, fontWeight: 600, background: 'transparent', border: '1px solid',
@@ -128,7 +140,7 @@ function JobCard({ j, saved, onToggleSave, onOpenCareer, showTracking, onUpdateS
 // Re-export for Career (and any other consumer).
 export { NoKeysBanner }
 
-export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, embedded }) {
+export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, onUseForInterview, embedded }) {
   const [profile, setProfile] = useState(() => loadProfile())
   const inputsKey = `${profile.resume || ''}|${profile.targetRole || ''}|${profile.location || ''}|${profile.yearsExp || ''}`
   const [loading, setLoading] = useState(false)
@@ -169,6 +181,10 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, em
       limitedJd: limited,
     })
   }, [onOpenCareer, profile.targetRole])
+
+  const useForInterview = useCallback((job, destination) => {
+    onUseForInterview?.(job, destination)
+  }, [onUseForInterview])
 
   const find = useCallback(async () => {
     setError(''); setLoading(true)
@@ -239,7 +255,8 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, em
                   {j.status ? ` · ${STATUS_LABEL[j.status] || j.status}` : ''}
                 </div>
                 <JobCard j={j} saved showTracking onToggleSave={toggleSave} onUpdateSaved={patchSaved}
-                  onOpenCareer={onOpenCareer ? openCareer : undefined} />
+                  onOpenCareer={onOpenCareer ? openCareer : undefined}
+                  onUseForInterview={onUseForInterview ? useForInterview : undefined} />
               </div>
             ))}
           </div>
@@ -355,7 +372,8 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, em
 
               {sortJobs(result.jobs, sort).slice(0, visible).map(j => (
                 <JobCard key={savedKeyOf(j) || j.id} j={j} saved={savedSet.has(savedKeyOf(j))} onToggleSave={toggleSave}
-                  onOpenCareer={onOpenCareer ? openCareer : undefined} />
+                  onOpenCareer={onOpenCareer ? openCareer : undefined}
+                  onUseForInterview={onUseForInterview ? useForInterview : undefined} />
               ))}
 
               {visible < result.jobs.length && (

@@ -13,3 +13,8 @@ export function jobAnalysisJd(j) {
   ].filter(Boolean).join('\n')
   return { jd: stub, limited: true }
 }
+
+/** Alias kept for callers that want the interview-oriented name; same text today. */
+export function jobInterviewJd(j) {
+  return jobAnalysisJd(j)
+}

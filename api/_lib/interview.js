@@ -1,9 +1,20 @@
 // Solo (you-vs-AI) interview engine for the web app. Open-ended, speech-first,
 // no difficulty knob — the interviewer calibrates to the target role.
-import { completeJSON, visionComplete, extractJSON, streamText, pickFastProvider, pickStrongProvider } from './core.js'
+import { completeJSON, visionComplete, extractJSON, streamText, pickFastProvider, pickStrongProvider, completeTextQuick } from './core.js'
 import { analyze, BANNED_WORDS } from '../../shared/delivery.js'
-import { glanceLayers } from '../../shared/hintLayers.js'
+import { glanceLayers, stripHintMeta } from '../../shared/hintLayers.js'
+import { classifyTurn } from '../../shared/interviewClassify.js'
+import {
+  contextNeedsForScreenAnalysis,
+  normalizeScreenContentType,
+  toLegacyContentType,
+  evaluateScreenRelevance,
+  buildScreenContextBlock,
+  SCREEN_CONTEXT_VERSION,
+} from '../../shared/screenContext.js'
 import { searchWeb, needsWebSearch } from './search.js'
+import { getPlaybook, PLAYBOOK_BY_KEY, PLAYBOOK_REGISTRY_VERSION } from './playbooks.js'
+import { CUSTOM_INSTRUCTIONS_PACK_MAX } from '../../shared/interviewConfig.js'
 
 // Web-search grounding must NEVER stall an answer — above all a live streamed hint, where
 // time-to-first-word is the whole product. Time-box the lookup: if it returns within budget we
@@ -46,34 +57,73 @@ function profileBlock(p = {}) {
   return s
 }
 
-/** Short identity + resume/JD with hierarchy. When RAG chunks are present, skip stuffing a long resume. */
-export function packCandidateContext(profile = {}, extraContext = '') {
+const CONTEXT_PRECEDENCE =
+  'CONTEXT PRECEDENCE (use only what is relevant to the CURRENT question; ignore the rest): '
+  + '1) current question + conversation  2) screen evidence if present  '
+  + '3) retrieved documents  4) resume/JD fact cards only when the ask is about you/the role  '
+  + '5) never invent facts not present here.'
+
+/**
+ * Soft candidate context packer.
+ * Classification budgets resume/JD size; it must not strip selected docs or force empty packs.
+ * When opts.classification / opts.contextNeeds is omitted, keeps legacy Solo dump behavior.
+ */
+export function packCandidateContext(profile = {}, extraContext = '', opts = {}) {
+  const needs = opts.contextNeeds
+    || opts.classification?.contextNeeds
+    // Legacy callers (Solo interviewer, old tests): keep prior dump behavior when no intent passed.
+    || { identity: true, resume: 'full', jd: 'full', rag: true, customPrompt: true, codingLanguage: false, history: true }
+
   const extra = String(extraContext || '').trim()
   const hasRag = /RELEVANT FROM YOUR DOCUMENTS/i.test(extra)
-  const parts = []
-  const id = []
-  if (profile.name) id.push(`Name: ${profile.name}`)
-  if (profile.targetRole) id.push(`Target role: ${profile.targetRole}`)
-  if (profile.targetCompany) id.push(`Target company: ${profile.targetCompany}`)
-  if (profile.yearsExp) id.push(`Experience: ${profile.yearsExp}`)
-  if (id.length) parts.push('CANDIDATE IDENTITY:\n' + id.join('\n'))
+  const parts = [CONTEXT_PRECEDENCE]
 
-  if (hasRag) {
-    // Source hierarchy: retrieved docs first, then a short resume fact card (not the full dump).
+  if (needs.identity !== false) {
+    const id = []
+    if (profile.name) id.push(`Name: ${profile.name}`)
+    if (profile.targetRole) id.push(`Target role: ${profile.targetRole}`)
+    if (profile.targetCompany) id.push(`Target company: ${profile.targetCompany}`)
+    if (profile.yearsExp) id.push(`Experience: ${profile.yearsExp}`)
+    if (id.length) parts.push('CANDIDATE IDENTITY:\n' + id.join('\n'))
+  }
+
+  const resume = String(profile.resume || '').trim()
+  const jd = String(profile.jobDescription || '').trim()
+  const resumeMode = needs.resume || 'none'
+  const jdMode = needs.jd || 'none'
+
+  // Soft: always allow RAG/extra when present — never hard-veto selected materials.
+  if (hasRag && extra) {
     parts.push(extra)
-    const resume = String(profile.resume || '').trim()
-    if (resume) parts.push('RESUME FACT CARD (do not invent beyond this; prefer retrieved docs above when they conflict):\n' + resume.slice(0, 800))
-    const jd = String(profile.jobDescription || '').trim()
-    if (jd) parts.push('JD CONTEXT:\n' + jd.slice(0, 500))
+    if (resume && resumeMode !== 'none') {
+      const cap = resumeMode === 'short' ? 500 : 800
+      parts.push('RESUME FACT CARD (use only if relevant; do not invent; prefer retrieved docs when they conflict):\n' + resume.slice(0, cap))
+    }
+    if (jd && jdMode !== 'none') {
+      const cap = jdMode === 'short' ? 400 : 500
+      parts.push('JD CONTEXT (use only if relevant):\n' + jd.slice(0, cap))
+    }
   } else {
-    const resume = String(profile.resume || '').trim()
-    if (resume) parts.push('CANDIDATE RESUME (ground truth — never invent beyond this):\n' + resume.slice(0, 1800))
-    const jd = String(profile.jobDescription || '').trim()
-    if (jd) parts.push('JOB DESCRIPTION:\n' + jd.slice(0, 900))
+    if (resume && resumeMode === 'full') {
+      parts.push('CANDIDATE RESUME (ground truth — never invent beyond this):\n' + resume.slice(0, 1800))
+    } else if (resume && resumeMode === 'short') {
+      parts.push('RESUME FACT CARD (use only if the question is about the candidate — never invent):\n' + resume.slice(0, 600))
+    }
+    if (jd && jdMode === 'full') {
+      parts.push('JOB DESCRIPTION:\n' + jd.slice(0, 900))
+    } else if (jd && jdMode === 'short') {
+      parts.push('JD CONTEXT (use only if relevant):\n' + jd.slice(0, 400))
+    }
     if (extra) parts.push(extra)
   }
-  if (profile.customPrompt?.trim()) {
-    parts.push('CANDIDATE VOICE / INSTRUCTIONS (match this):\n' + String(profile.customPrompt).trim().slice(0, 800))
+
+  if (needs.customPrompt !== false && profile.customPrompt?.trim()) {
+    // Product safety / playbooks stay in system; this is voice + emphasis only (budgeted).
+    parts.push('CANDIDATE VOICE / INSTRUCTIONS (match this; never override honesty rules):\n'
+      + String(profile.customPrompt).trim().slice(0, CUSTOM_INSTRUCTIONS_PACK_MAX))
+  }
+  if (needs.codingLanguage && (profile.codingLanguage || profile.language)) {
+    parts.push('Coding language for solutions: ' + String(profile.codingLanguage || 'Python'))
   }
   return parts.filter(Boolean).join('\n\n')
 }
@@ -164,19 +214,21 @@ export async function interviewerTurn({ config = {}, transcript = [], profile = 
 
 /** Normalize META-like fields + spoken prose into the UI hint shape (stream + JSON fallback share this). */
 function normalizeHint(meta = {}, prose = '') {
-  const layers = glanceLayers(prose || meta.fullAnswer || meta.sampleAnswer || meta.answer || '', meta)
+  const cleaned = stripHintMeta(prose || meta.fullAnswer || meta.sampleAnswer || meta.answer || '')
+  const m = { ...cleaned.meta, ...meta }
+  const layers = glanceLayers(cleaned.prose, m)
   return {
-    questionType: meta.type || meta.questionType || 'other',
-    pattern: meta.pattern || null,
-    complexity: meta.complexity || null,
-    confidence: meta.confidence === 'resume' ? 'resume' : 'general',
-    resumeStory: meta.resumeStory || null,
+    questionType: m.type || m.questionType || 'other',
+    pattern: m.pattern || null,
+    complexity: m.complexity || null,
+    confidence: m.confidence === 'resume' ? 'resume' : 'general',
+    resumeStory: m.resumeStory || null,
     opener: layers.opener,
     keyPoints: layers.keyPoints,
     sampleAnswer: layers.fullAnswer,
     fullAnswer: layers.fullAnswer,
-    watchOut: meta.watch || meta.watchOut || null,
-    ...(meta.searchSources?.length ? { _searchSources: meta.searchSources } : {}),
+    watchOut: m.watch || m.watchOut || layers.watchOut || null,
+    ...(m.searchSources?.length ? { _searchSources: m.searchSources } : {}),
   }
 }
 
@@ -188,69 +240,47 @@ export async function generateHint(opts) {
 // Re-export for tests / callers that want glance layers without the full engine.
 export { glanceLayers } from '../../shared/hintLayers.js'
 
-// ── Interview playbooks ──────────────────────────────────────────────────────
-// One "card" per question archetype: how to DETECT it (match), which model TIER it
-// deserves, and the type-specific structure for ANSWER mode and COACH mode. The
-// prompt builder injects ONLY the matched card — so each answer stays focused, rules
-// never collide, and adding new interview wisdom = adding one card here (not editing
-// a giant prompt). Order matters: first match wins; `general` is the catch-all last.
-const PLAYBOOKS = [
-  {
-    key: 'project_walkthrough', tier: 'strong',
-    match: /\b(walk me through|end.?to.?end|deep.?dive|project you (built|led|worked|shipped)|tell me about (a|your).{0,18}(project|system you built|service you built)|something you built|most (challenging|complex) project)\b/i,
-    answer: 'Narrate END-TO-END: context + scale (why it mattered) → what YOU owned (say "I", not "we") → the architecture and the 1-2 key technical decisions and WHY → the hardest trade-off/challenge and how you resolved it → measurable impact (numbers) + what you would do differently. Ground every detail in the resume. 5-7 spoken sentences.',
-    coach: '**Context:** the problem + scale in one line (why it mattered).\n**Your role:** what YOU owned — say "I", not "we".\n**Architecture:** the design + the 1-2 key technical decisions and why.\n**Trade-offs:** the hard call made and what was given up.\n**Challenge:** the toughest problem and how it was cracked.\n**Impact:** measurable result (numbers) + what you would do differently.'
-  },
-  {
-    key: 'system_design', tier: 'strong',
-    match: /\b(system design|design (a|an|the)|architect|scal|throughput|load.?balanc|shard|partition|replicat|distributed|micro.?service|\bcdn\b|consistency|cap theorem|\bsql\b|nosql|kafka|rabbitmq)\b/i,
-    answer: 'SYSTEM DESIGN — never start designing blind. ALWAYS open by asking 1-2 sharp scoping questions out loud (scale / QPS, read-vs-write ratio, consistency vs availability, key use cases), then state your assumptions. Then, in 4-6 spoken sentences: the data-store choice and WHY, the key components, and the MAIN trade-off — conversationally, not a lecture.',
-    coach: '**Clarify:** scope questions to ask (QPS, read/write ratio, consistency vs availability).\n**Scale:** which of horizontal-vs-vertical, load balancing, caching, sharding apply here.\n**Data:** SQL vs NoSQL + why; indexing / partitioning / replication if relevant.\n**Components:** the queues / caches / CDN to mention + one concrete trade-off (e.g. Kafka vs RabbitMQ).\n**Trade-offs:** the 1-2 trade-offs to verbalize — this is what is actually graded.'
-  },
-  {
-    key: 'dsa', tier: 'strong',
-    match: /\b(algorithm|complexity|big[- ]?o|dynamic programming|\bdp\b|recursion|binary search|two pointers|sliding window|\bbfs\b|\bdfs\b|leetcode|subarray|substring|linked list|\bgraph\b|\btree\b|\bheap\b|\barray\b|hashmap|optimi[sz]e|time limit)\b/i,
-    answer: 'CODING/DSA — NEVER jump straight to code; that is the biggest red flag. ALWAYS open by asking the 1-2 SHARPEST clarifying questions out loud (sorted? duplicates? input size / expected complexity? 4 or 8 directions? in-place?) — one or two sharp ones, not a barrage — then state the assumption you will go with. Next, in 2-3 spoken sentences: name the PATTERN and why it fits, the brute-force + its complexity, then the OPTIMAL approach with its time/space complexity and WHY it actually works (the key insight/invariant — not just the steps), and the main edge cases. THEN give the FULL, correct, runnable solution in a fenced ``` code block — default to Python unless the candidate\'s language is set otherwise — clean code in one go.',
-    coach: '**Clarify:** 1-2 sharp questions to ask first (sorted? duplicates? input size? directions?).\n**Pattern:** name it (sliding window / BFS / DP-…) and why it fits.\n**Approach:** brute-force in one line + its complexity → optimal + its time/space complexity.\n**Why it works:** the key insight/invariant to say out loud (and the trade-off, e.g. BFS vs DFS, HashMap vs Set).\n**Edge cases:** the 2-3 to mention before coding.\n**Clean code:** name things clearly; default Python.'
-  },
-  {
-    key: 'company', tier: 'fast',
-    match: /\b(why (do you want to work|us\b|this company|here\b|join)|what do you know about (us|the company|our)|our (product|mission|company|team))\b/i,
-    answer: 'Ground in the LIVE WEB SEARCH facts. Tie 1-2 SPECIFIC, current facts about the company/product to your own experience or goals. Genuine and specific — never generic flattery. 2-4 sentences.',
-    coach: '**Hook:** one specific, current fact about the company/product (from the search results).\n**Fit:** connect that fact to YOUR experience or goal.\n**Why now:** a sincere, specific reason — not generic.'
-  },
-  {
-    key: 'behavioral', tier: 'fast',
-    match: /\b(tell me about a time|describe a (situation|time)|conflict|disagree|weakness|strength|failure|mistake|proud|gave feedback|leadership|missed a deadline|under pressure)\b/i,
-    answer: 'Open with a SPECIFIC project from the resume, light STAR shape, first person, conversational. Surface ownership — say "I", quantify the result. Set confidence:"resume" when grounded in the resume. 3-5 sentences.',
-    coach: '**STAR:** Situation / Task / Action / Result as four short bullets pulled from the resume — points to expand in their own words, never a script.\n**Signal:** the ownership/leadership trait to surface (say "I", quantify the result).'
-  },
-  {
-    // Pure technical / conceptual knowledge ("what is X", "explain Y", "difference
-    // between A and B"). Must come AFTER dsa/system_design so real coding problems still
-    // get those cards, but BEFORE the general catch-all so concept questions are NOT
-    // resume-grounded. Answer from general knowledge, confidence:"general".
-    key: 'technical', tier: 'fast',
-    match: /\b(what(?:'s| is| are| does| do)|explain|describe what|difference between|differ(?:ence)?|define|pros and cons|trade.?offs? between|when (?:would|should|do) you use|why (?:do we|use|is|are)|what happens (?:when|if)|how does .* work)\b/i,
-    answer: 'PURE KNOWLEDGE question — answer from GENERAL technical knowledge, NOT the resume. Do NOT name a personal project, do NOT say "in our project", do NOT invent experience. confidence MUST be "general". In 2-4 spoken sentences: the precise answer, the WHY / mechanism underneath, and the one trade-off or gotcha that signals real depth. Be concrete and correct over broad.',
-    coach: '**Concept:** the precise definition in one line.\n**Why/mechanism:** what is actually happening under the hood.\n**Trade-off / gotcha:** the subtle point that signals depth.'
-  },
-  {
-    key: 'general', tier: 'fast',
-    match: /.*/,
-    answer: 'Answer directly in 2-3 spoken sentences. If the question is about the candidate\'s own experience, ground it in the resume; if it is a general/knowledge question, answer from general knowledge and set confidence:"general" — do NOT force a resume reference. State the reasoning behind your take.',
-    coach: '**Frame:** restate what they are really asking, in one line.\n**Point:** the 2-3 key things to say.\n**Why:** the reasoning behind your take.'
-  }
-]
+// ── Interview playbooks (modular registry) ───────────────────────────────────
+// Classification lives in shared/interviewClassify.js; guides in playbooks.js.
+// pickPlaybook remains the Live entry — first-match regex removed in favor of
+// intent-ordered classifyTurn (specific > broad). PLAYBOOK_BY_KEY kept for tests.
+export { PLAYBOOK_BY_KEY as PLAYBOOKS, PLAYBOOK_REGISTRY_VERSION }
 
-// First matching card wins (general is the catch-all). Zero added latency — pure regex.
-export function pickPlaybook(question = '') {
-  for (const pb of PLAYBOOKS) if (pb.match.test(question)) return pb
-  return PLAYBOOKS[PLAYBOOKS.length - 1]
+/**
+ * Resolve playbook for a question. Optional history/profile enable follow-ups + role routing.
+ * @param {string} question
+ * @param {object} [opts]
+ */
+export function pickPlaybook(question = '', opts = {}) {
+  const classification = opts.classification || classifyTurn({
+    question,
+    profile: opts.profile,
+    conversationHistory: opts.conversationHistory,
+    lastClassification: opts.lastClassification,
+    recentScreen: opts.recentScreen,
+  })
+  const pb = getPlaybook(classification.playbookKey)
+  return { ...pb, classification }
+}
+
+function classificationBlock(c) {
+  if (!c) return ''
+  const bits = [
+    `roleFamily=${c.roleFamily}`,
+    `questionType=${c.questionType}`,
+    `playbook=${c.playbookKey}`,
+    `isFollowUp=${!!c.isFollowUp}`,
+    c.parentType ? `parentType=${c.parentType}` : null,
+    c.parentTopic ? `parentTopic=${String(c.parentTopic).slice(0, 120)}` : null,
+    c.referencedConcept ? `ref=${c.referencedConcept}` : null,
+    `classifier=${c.classifierVersion}`,
+    `playbooks=${PLAYBOOK_REGISTRY_VERSION}`,
+  ].filter(Boolean)
+  return `\n\n[INTERNAL ROUTING — do not mention to the candidate: ${bits.join('; ')}]`
 }
 
 // BANNED_WORDS is imported from delivery.js (single source shared with the live coach).
-const META_LINE = '1) FIRST LINE ONLY: a single-line VALID JSON object (every value a quoted string or null — no unquoted text), then a newline. Shape: META: {"type":"dsa|coding|technical|system_design|behavioral|resume|culture|other","confidence":"resume|general","pattern":"<pattern name, or null>","complexity":"<e.g. O(n) time, O(1) space, or null>","watch":"<one specific mistake to avoid for THIS question, <=12 words>"}'
+const META_LINE = '1) FIRST LINE ONLY: a single-line VALID JSON object (every value a quoted string or null — no unquoted text), then a newline. Shape: META: {"type":"dsa|coding|technical|system_design|behavioral|resume|culture|intro|experience|follow_up|product|other","confidence":"resume|general","pattern":"<pattern name, or null>","complexity":"<e.g. O(n) time, O(1) space, or null>","watch":"<one specific mistake to avoid for THIS question, <=12 words>"}'
 
 // Answer mode: shared spoken-style rules + ONLY the matched card's structure.
 function buildAnswerSystem(language, guide) {
@@ -261,14 +291,17 @@ If the input is NOT a real interview question (greeting, filler, the candidate's
 Otherwise output, in this exact order:
 ${META_LINE}
 2) Then a newline, then the SPOKEN answer prose (no markdown headers).
+CRITICAL: Never repeat the META JSON (or any JSON) inside the spoken answer. Spoken answer = plain sentences only.
 
-SPOKEN STYLE (said out loud, not read): real-person contractions and connectors ("so", "honestly", "basically", "what I did was"); start mid-thought, never a textbook definition; 2-4 sentences then STOP — don't keep teaching; plain words, not jargon ("response time" not "latency"); ALWAYS state the WHY / the trade-off, not just the what. Never use these AI-tell words: ${BANNED_WORDS}.
+SPOKEN STYLE (said out loud, not read): real-person contractions and connectors ("so", "honestly", "basically"); start mid-thought, never a textbook definition; plain words over jargon when possible; ALWAYS state the WHY / the trade-off, not just the what. Never use these AI-tell words: ${BANNED_WORDS}.
 
-GROUND IN THE CANDIDATE (critical — they're reading this as their OWN work):
-- The RESUME is the only source of truth — NEVER invent tools, numbers, projects, or features that aren't in it. If asked about something not on it: "honestly haven't used that directly, but I'd approach it by…" then the closest real thing from the resume. Never fake expertise.
-- For EXPERIENCE / behavioral answers, NAME the specific project and open with it ("In our <project>, what we did was…"). But for a PURE KNOWLEDGE / conceptual question (what is X, explain Y, difference between A and B), answer from general knowledge and do NOT force a project reference or resume grounding.
-- Keep numbers messy and human ("around 0.8-ish, I'd have to check") — never clean, fabricated-sounding ranges.
-- Pick ONE option, don't list three ("I'd use X"). If they say "just tell me X", give only X. If it's a repeat, answer shorter.
+WHEN TO USE THE RESUME (critical — applies to EVERY question type):
+- EXPERIENCE / behavioral / "tell me about a time" / project walkthrough → ground in the resume. NAME the project. Never invent tools or numbers not on it.
+- SYSTEM DESIGN / DSA / coding / pure knowledge / "design X" / "what is X" / "how does Y work" → solve or explain what the interviewer ASKED. confidence:"general". Do NOT substitute a resume project for the asked topic. A one-line analogy at the end is optional; the body must answer the question asked.
+- Wrong: interviewer asks to design a train booking system → you talk about your contact-center routing work.
+- Right: design the train booking system; only then, optionally, "similar consistency tricks to what I used for …" if it truly fits.
+
+Pick ONE option, don't list three ("I'd use X"). If they say "just tell me X", give only X. If it's a repeat, answer shorter.
 
 FOR THIS EXACT QUESTION TYPE — follow this and nothing else:
 ${guide}`
@@ -285,14 +318,32 @@ ${META_LINE}
 2) Then a newline, then a SCANNABLE guide using **bold labels** and short lines (never prose, never a script), following EXACTLY this label set and order:
 ${guide}
 
+CRITICAL: Never repeat the META JSON (or any JSON) inside the guide. Labels + short lines only.
 Keep every line short. Calm, confident framing. Never use these AI-tell words: ${BANNED_WORDS}.`
+}
+
+/** Prefer client-committed classification (one authority); otherwise classify here. */
+function resolveTurnClassification({
+  question,
+  profile,
+  conversationHistory,
+  lastClassification,
+  recentScreen,
+  classification = null,
+} = {}) {
+  if (classification && classification.questionType && classification.classifierVersion) {
+    return classification
+  }
+  return classifyTurn({
+    question, profile, conversationHistory, lastClassification, recentScreen,
+  })
 }
 
 // Streaming variant of generateHint — emits a one-line META header (badges/type/
 // complexity/watch) then streams the SPOKEN answer prose token-by-token, so the UI
 // shows words in <1s instead of waiting for a full JSON object. Outputs the sentinel
 // [SKIP] when the input isn't a real interview question.
-export async function streamHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', mode = 'answer', style = 'balanced', autoSkip = true } = {}, { onMeta, onToken, onUsage, signal } = {}) {
+export async function streamHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', mode = 'answer', style = 'balanced', autoSkip = true, lastClassification = null, recentScreen = null, classification: clientClassification = null } = {}, { onMeta, onToken, onUsage, signal } = {}) {
   if (!question || !String(question).trim()) return { skipped: true }
 
   // Web-search grounding for company/product/current-events questions (same as generateHint).
@@ -309,15 +360,38 @@ export async function streamHint({ question, profile = {}, conversationHistory =
     } catch { /* search failure/timeout is non-fatal */ }
   }
 
-  const packed = packCandidateContext(profile, extraContext)
+  const classification = resolveTurnClassification({
+    question, profile, conversationHistory, lastClassification, recentScreen,
+    classification: clientClassification,
+  })
+  const relevance = evaluateScreenRelevance({ question, classification, screen: recentScreen })
+  const screenBlock = relevance.attach ? buildScreenContextBlock(recentScreen) : ''
+  // Soft: screen attach must not strip RAG / fact cards — only shrink full resume → short.
+  let packClassification = classification
+  if (relevance.attach) {
+    const n = classification.contextNeeds || {}
+    packClassification = {
+      ...classification,
+      contextNeeds: {
+        ...n,
+        resume: n.resume === 'full' ? 'short' : (n.resume || 'short'),
+        codingLanguage: true,
+      },
+    }
+  }
+  const packed = packCandidateContext(profile, extraContext, { classification: packClassification })
   const historyBlock = conversationHistory.length
     ? '\n\nConversation so far (resolve "that"/"it"/"what you said" against this):\n' + conversationHistory.slice(-8).map(t => `${t.role.toUpperCase()}: ${String(t.text).slice(0, 300)}`).join('\n') : ''
 
-  // Pick the ONE playbook for this question and inject only its structure — focused
-  // prompt = the model follows it far more reliably than one giant all-types prompt.
-  const pb = pickPlaybook(question)
+  const pb = pickPlaybook(question, { classification })
   const baseSystem = mode === 'coach' ? buildCoachSystem(language, pb.coach) : buildAnswerSystem(language, pb.answer)
-  const user = `${packed ? packed + '\n\n' : ''}${historyBlock}${searchBlock}\n\nCurrent question: "${String(question).slice(0, 800)}"`
+  const followParent = classification.isFollowUp && classification.parentTopic
+    ? `\n\nParent topic for this follow-up: "${String(classification.parentTopic).slice(0, 240)}"${classification.parentType ? ` (prior type: ${classification.parentType})` : ''}`
+    : ''
+  const screenNote = screenBlock
+    ? `\n\n${screenBlock}\n(Use the screen evidence above for the CURRENT question. Do not invent pixels. Follow CONTEXT PRECEDENCE in the candidate pack.)`
+    : ''
+  const user = `${packed ? packed + '\n\n' : ''}${historyBlock}${searchBlock}${followParent}${screenNote}\n\nCurrent question: "${String(question).slice(0, 800)}"`
 
   // HONOR THE USER'S EXPLICIT MODEL CHOICE. If they picked a model in the dropdown
   // (provider is a real id, not '' / 'auto'), use it for EVERY question — so choosing
@@ -333,61 +407,70 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   const { directive, maxTokens } = styleFor(style, (tier === 'strong' || mode === 'coach') ? 900 : 700)
   // Auto-skip OFF → force an answer for every input (override the [SKIP] instruction).
   const skipDirective = autoSkip ? '' : '\n\nALWAYS ANSWER: respond to every input — do NOT output [SKIP], even for small talk, filler, or a partial/unclear question. Do your best with what was said.'
-  const system = baseSystem + directive + skipDirective
+  const system = baseSystem + directive + skipDirective + classificationBlock(classification)
 
   let buf = '', metaSent = false, skipped = false, proseEmitted = false
-  const emit = t => { if (t) { proseEmitted = true; onToken?.(t) } }   // track that real answer text went out
+  const emitProse = t => { if (t) { proseEmitted = true; onToken?.(t) } }
+  const routingExtra = {
+    roleFamily: classification.roleFamily,
+    questionType: classification.questionType,
+    playbook: pb.key,
+    playbookVersion: pb.version,
+    isFollowUp: classification.isFollowUp,
+    classifierVersion: classification.classifierVersion,
+    screenAttached: relevance.attach,
+    screenRelevance: relevance.reason,
+    screenContextId: relevance.attach ? recentScreen?.screenContextId : null,
+    screenContextVersion: SCREEN_CONTEXT_VERSION,
+  }
   await streamText({
     provider: chosen, maxTokens,
     onUsage, signal,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     onToken: tok => {
-      if (skipped || metaSent === 'done') { if (metaSent === 'done') emit(tok); return }
+      // After META is parsed, stream tokens as-is (client strips any trailing JSON leak).
+      if (skipped) return
+      if (metaSent === 'done') { emitProse(tok); return }
       buf += tok
       if (/^\s*\[SKIP\]/i.test(buf)) { skipped = true; return }
-      if (buf.length < 6) return                       // wait to rule out "[SKIP]"/"META:"
-      if (/^\s*META:/i.test(buf)) {
-        const nl = buf.indexOf('\n')
-        if (nl === -1) return                          // still buffering the META line
-        let meta = {}
-        const mm = buf.slice(0, nl).match(/\{[\s\S]*\}/)
-        if (mm) { try { meta = JSON.parse(mm[0]) } catch {} }
-        if (searchSources.length) meta.searchSources = searchSources
-        onMeta?.(meta)
-        metaSent = 'done'
-        emit(buf.slice(nl + 1).replace(/^\s+/, ''))
-      } else {
-        // Model skipped the META format — treat everything as prose.
-        onMeta?.(searchSources.length ? { searchSources } : {})
-        metaSent = 'done'
-        emit(buf)
+      if (buf.length < 6) return
+
+      // Preferred format: META: {...}\nprose  — also bare leading JSON meta
+      if (/^\s*META:/i.test(buf) || /^\s*\{/.test(buf) || /^\s*```/.test(buf)) {
+        const stripped = stripHintMeta(buf)
+        if (stripped.pending) return
+        if (Object.keys(stripped.meta).length || /^\s*META:/i.test(buf) || /^\s*\{/.test(buf)) {
+          if (searchSources.length) stripped.meta.searchSources = searchSources
+          stripped.meta._routing = routingExtra
+          onMeta?.(stripped.meta)
+          metaSent = 'done'
+          emitProse(stripped.prose)
+          return
+        }
       }
+
+      // Model skipped META entirely — prose only
+      onMeta?.({ ...(searchSources.length ? { searchSources } : {}), _routing: routingExtra })
+      metaSent = 'done'
+      emitProse(buf)
     }
   })
-  if (skipped) return { skipped: true }
-  // Stream ended without a clean META+newline (e.g. model omitted the newline, or got cut
-  // off mid-META). Emit meta + prose WITHOUT leaking the raw "META: {…}" line to the user.
+  if (skipped) return { skipped: true, classification, screenRelevance: relevance }
+  // Stream ended while still buffering META / leading JSON
   if (metaSent !== 'done' && buf.trim()) {
-    let meta = searchSources.length ? { searchSources } : {}
-    let prose = buf
-    const m = buf.match(/^\s*META:\s*(\{[\s\S]*?\})?\s*([\s\S]*)$/i)
-    if (m) {
-      if (m[1]) { try { meta = { ...JSON.parse(m[1]), ...(searchSources.length ? { searchSources } : {}) } } catch {} }
-      prose = (m[2] || '').replace(/^\s+/, '')
-    }
+    const stripped = stripHintMeta(buf)
+    const meta = { ...stripped.meta, _routing: routingExtra }
+    if (searchSources.length) meta.searchSources = searchSources
     onMeta?.(meta)
-    emit(prose.trim() ? prose : '')
-    return proseEmitted ? { skipped: false, searchSources } : { skipped: true }
+    emitProse(stripped.prose)
+    return proseEmitted ? { skipped: false, searchSources, classification, screenRelevance: relevance } : { skipped: true, classification, screenRelevance: relevance }
   }
-  // Model streamed nothing usable — either no META at all, OR a META header with zero answer
-  // prose after it. Either way treat as a skip so the client shows nothing (and can retry)
-  // instead of a `done` event with badges but a blank answer body.
-  if (metaSent !== 'done' || !proseEmitted) return { skipped: true }
-  return { skipped: false, searchSources }
+  if (metaSent !== 'done' || !proseEmitted) return { skipped: true, classification, screenRelevance: relevance }
+  return { skipped: false, searchSources, classification, screenRelevance: relevance }
 }
 
 
-async function generateHintImpl({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', style = 'balanced', autoSkip = true, mode = 'answer' } = {}) {
+async function generateHintImpl({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', style = 'balanced', autoSkip = true, mode = 'answer', lastClassification = null, recentScreen = null, classification: clientClassification = null } = {}) {
   if (!question || !String(question).trim()) return null
 
   let searchSources = [], searchBlock = ''
@@ -403,11 +486,35 @@ async function generateHintImpl({ question, profile = {}, conversationHistory = 
     } catch { /* non-fatal */ }
   }
 
-  const pb = pickPlaybook(question)
+  const classification = resolveTurnClassification({
+    question, profile, conversationHistory, lastClassification, recentScreen,
+    classification: clientClassification,
+  })
+  const relevance = evaluateScreenRelevance({ question, classification, screen: recentScreen })
+  const screenBlock = relevance.attach ? buildScreenContextBlock(recentScreen) : ''
+  let packClassification = classification
+  if (relevance.attach) {
+    const n = classification.contextNeeds || {}
+    packClassification = {
+      ...classification,
+      contextNeeds: {
+        ...n,
+        resume: n.resume === 'full' ? 'short' : (n.resume || 'short'),
+        codingLanguage: true,
+      },
+    }
+  }
+  const pb = pickPlaybook(question, { classification })
   const baseSystem = mode === 'coach' ? buildCoachSystem(language, pb.coach) : buildAnswerSystem(language, pb.answer)
-  const packed = packCandidateContext(profile, extraContext)
+  const packed = packCandidateContext(profile, extraContext, { classification: packClassification })
   const historyBlock = conversationHistory.length
     ? '\n\nConversation so far (resolve "that"/"it" against this):\n' + conversationHistory.slice(-8).map(t => `${t.role.toUpperCase()}: ${String(t.text).slice(0, 300)}`).join('\n')
+    : ''
+  const followParent = classification.isFollowUp && classification.parentTopic
+    ? `\n\nParent topic for this follow-up: "${String(classification.parentTopic).slice(0, 240)}"${classification.parentType ? ` (prior type: ${classification.parentType})` : ''}`
+    : ''
+  const screenNote = screenBlock
+    ? `\n\n${screenBlock}\n(Use the screen evidence above for the CURRENT question. Do not invent pixels. Follow CONTEXT PRECEDENCE in the candidate pack.)`
     : ''
   const userPicked = provider && provider !== 'auto'
   const escalateFast = pickFastProvider()
@@ -423,7 +530,7 @@ async function generateHintImpl({ question, profile = {}, conversationHistory = 
 
 OUTPUT FORMAT — return ONE JSON object only (no markdown fences):
 ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
-  "type": "dsa|coding|technical|system_design|behavioral|resume|culture|other",
+  "type": "dsa|coding|technical|system_design|behavioral|resume|culture|intro|experience|follow_up|product|other",
   "confidence": "resume|general",
   "pattern": "<pattern or null>",
   "complexity": "<complexity or null>",
@@ -435,8 +542,8 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
   const hint = await completeJSON({
     maxTokens, provider: chosen,
     messages: [
-      { role: 'system', content: baseSystem + directive + skipDirective + schemaNote },
-      { role: 'user', content: `${packed ? packed + '\n\n' : ''}${historyBlock}${searchBlock}\n\nCurrent question: "${String(question).slice(0, 800)}"` },
+      { role: 'system', content: baseSystem + directive + skipDirective + classificationBlock(classification) + schemaNote },
+      { role: 'user', content: `${packed ? packed + '\n\n' : ''}${historyBlock}${searchBlock}${followParent}${screenNote}\n\nCurrent question: "${String(question).slice(0, 800)}"` },
     ],
   })
 
@@ -444,7 +551,20 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
   if (searchSources.length) hint.searchSources = searchSources
   const prose = hint.fullAnswer || hint.sampleAnswer || hint.answer || ''
   if (!String(prose).trim()) return null
-  return normalizeHint(hint, prose)
+  const normalized = normalizeHint(hint, prose)
+  normalized._routing = {
+    roleFamily: classification.roleFamily,
+    questionType: classification.questionType,
+    playbook: pb.key,
+    playbookVersion: pb.version,
+    isFollowUp: classification.isFollowUp,
+    classifierVersion: classification.classifierVersion,
+    screenAttached: relevance.attach,
+    screenRelevance: relevance.reason,
+    screenContextId: relevance.attach ? recentScreen?.screenContextId : null,
+    screenContextVersion: SCREEN_CONTEXT_VERSION,
+  }
+  return normalized
 }
 
 
@@ -475,65 +595,103 @@ Return ONE JSON object, no prose:
   return report
 }
 
-export async function analyzeScreen({ imageBase64, profile = {}, language, style = 'balanced' }) {
-  if (!imageBase64) { const e = new Error('No screenshot captured. Try the capture shortcut again.'); e.status = 400; throw e }
-  const ctx = profileBlock(profile)
+export async function analyzeScreen({
+  imageBase64, profile = {}, language, style = 'balanced', mime,
+  spokenQuestion = '', contentTypeHint = '',
+  requestId = '', fingerprint = '', imageDimensions = null, signal,
+} = {}) {
+  if (!imageBase64) { const e = new Error('No screenshot captured. Try the capture shortcut again.'); e.status = 400; e.code = 'SCREEN_EMPTY'; throw e }
+  let b64 = String(imageBase64)
+  let imageMime = mime || 'image/png'
+  if (b64.startsWith('data:')) {
+    const m = b64.match(/^data:([^;]+);base64,(.+)$/s)
+    if (m) { imageMime = m[1]; b64 = m[2] }
+  }
+  if (!b64.trim()) { const e = new Error('Empty screenshot — recapture with F7 / Ctrl+Shift+U.'); e.status = 400; e.code = 'SCREEN_EMPTY'; throw e }
+
+  const needs = contextNeedsForScreenAnalysis({
+    spokenQuestion, profile, contentTypeHint,
+  })
+  const packed = packCandidateContext(profile, '', { contextNeeds: needs })
   const codeLang = language || profile.codingLanguage || 'Python'
-  // "Faster Screenshot Replies": concise → answer-first, minimal prose, tighter token budget.
-  // (Code solutions still get room — the cap only trims the surrounding explanation.)
   const fast = style === 'concise'
+  const spoken = String(spokenQuestion || '').trim()
+  const rid = requestId || `scr_${Date.now().toString(36)}`
 
   const prompt = `You are a private interview coach analyzing a screenshot taken during a live interview.
-${ctx ? `\nCandidate background:\n${ctx}\n` : ''}
-Identify what is on screen and generate instant guidance the candidate can use RIGHT NOW.
+${packed ? `\n${packed}\n` : ''}
+${spoken ? `\nCURRENT SPOKEN QUESTION (highest priority — answer THIS; the screen is evidence only):\n"${spoken.slice(0, 500)}"\nIf the screen is unrelated to this question, set contentType appropriately and say so briefly in fullAnswer — do not invent a connection.\n` : ''}
+First identify what is actually on screen, then give guidance the candidate can use RIGHT NOW.
 
-Rules:
-- coding/algorithm problem → identify the pattern, give a full WORKING code solution + approach + complexity + edge cases
-- system design question → framework: requirements → scale → components → trade-off
-- behavioral/HR question → STAR scaffold + resume hook ONLY from real experience in the profile
-- slide/presentation → extract the key question or topic and give talking points
+CONTENT TYPE — pick the best match:
+"coding" | "system_design" | "behavioral" | "slide" | "other"
+(optional finer hint via keyPoints[0] prefix ok, but contentType must be one of those five)
 
-NEVER FABRICATE: if the screen references a tool, tech, or project NOT in the candidate's profile, do not claim they used it — answer the concept generally or pivot honestly to their real experience.
-- other → extract what's being asked and give concise guidance
+STRATEGY BY TYPE (apply ONLY the matching branch — do NOT force HLD or STAR on everything):
+- coding: approach steps, working code, complexity, edge cases. Narrow if the spoken question asks for one thing (e.g. bug only → focus on the bug).
+- system_design (diagram/architecture): components, relationships, issues, tradeoffs relevant to what is shown. Do NOT dump a full FR→NFR→API scaffold unless the spoken question asks for a full design.
+- behavioral: STAR ONLY if the screen/spoken ask is about experience; ground resume hooks ONLY from provided candidate context — never invent.
+- slide: extract the visible question/topic + talking points.
+- other (doc/ui/spreadsheet/unknown): extract visible info and answer the spoken question if any; otherwise concise observations.
 
-For CODING problems specifically:
-- Write the solution in ${codeLang}. (If the screen clearly shows a different required language, use that and set "language" accordingly.)
-- "code" must be a COMPLETE, correct, idiomatic, ready-to-paste solution — not pseudocode. Include the function signature.
-- Output ONLY the raw code in the "code" field — NO markdown fences, NO \`\`\` wrappers.
-- "approach" = 3-5 short plain-English steps explaining the solution.
-- "edgeCases" = the specific edge cases to mention to the interviewer.
+NEVER FABRICATE candidate experience. Never claim tools/projects not in candidate context.
+Prefer answering the spoken question over producing a huge generic analysis.
+
+For CODING problems:
+- Write the solution in ${codeLang} unless the screen requires another language (then set "language").
+- "code" = COMPLETE runnable solution with signature — raw code, NO markdown fences.
+- "approach" = 3-5 short steps; "edgeCases" = specific edges to mention.
 
 BANNED WORDS: ${BANNED_WORDS}.
-Answer must sound like a real engineer talking — natural, slightly imperfect, NOT textbook.
+Sound like a real engineer — natural, not textbook.
 
 Return ONE JSON object, no markdown:
 {
   "contentType": "coding" | "system_design" | "behavioral" | "slide" | "other",
-  "detectedText": "<the question or main text you can see on screen>",
-  "pattern": "<coding only: algorithm pattern name, null otherwise>",
-  "complexity": "<coding only: O() time and space, null otherwise>",
-  "language": "<coding only: solution language e.g. 'Python', null otherwise>",
-  "approach": ["<coding only: step 1>", "<step 2>", "<step 3>"],
-  "code": "<coding only: complete runnable solution with the function signature — null otherwise>",
-  "edgeCases": ["<coding only: edge case to mention>"],
+  "screenFamily": "screen_code|screen_diagram|screen_document|screen_spreadsheet|screen_ui|screen_slide|screen_text|screen_unknown",
+  "detectedText": "<main visible question or text>",
+  "pattern": "<coding only, else null>",
+  "complexity": "<coding only, else null>",
+  "language": "<coding language or null>",
+  "approach": ["<step>"],
+  "code": "<raw code or null>",
+  "edgeCases": ["<edge>"],
   "confidence": "resume" | "general",
-  "resumeStory": "<if behavioral and resume has a match: one line pointing to it, null otherwise>",
-  "keyPoints": ["<3-5 word bullet>", "<3-5 word bullet>", "<3-5 word bullet>"],
-  "fullAnswer": "<complete 3-6 sentence natural spoken answer — for coding, explain the approach out loud>",
-  "watchOut": "<one specific mistake to avoid>"
+  "resumeStory": "<behavioral+resume match only, else null>",
+  "keyPoints": ["<short>", "<short>", "<short>"],
+  "fullAnswer": "<3-6 spoken sentences scoped to the ask>",
+  "watchOut": "<one mistake to avoid>"
 }`
 
-  // Retries + falls over OpenAI ↔ Gemini, so a single provider's 429 no longer breaks it.
-  const faster = fast ? '\n\nFASTER MODE: Lead with the answer/solution first. Keep prose minimal — the code and the 1-2 most important points only.' : ''
-  // Fast mode trims PROSE via the prompt, not the token ceiling: the whole response is one JSON
-  // object that must contain a complete `code` solution, so a low cap truncates mid-JSON and
-  // extractJSON throws (the feature fails on exactly the hard coding screenshots it targets). Keep
-  // the cap high enough to never cut off a real solution — a short answer finishes early regardless.
-  const raw = await visionComplete({ imageBase64, prompt: prompt + faster, maxTokens: fast ? 1400 : 1500 })
-  const out = extractJSON(raw)
-  // Defensive: strip any markdown code fences the model wrapped around the code.
+  const faster = fast ? '\n\nFASTER MODE: Lead with the answer/solution first. Keep prose minimal.' : ''
+  // ONE image-analysis call (with provider failover inside visionComplete). Repair is text-only.
+  const raw = await visionComplete({
+    imageBase64: b64, mime: imageMime, detail: 'low',
+    prompt: prompt + faster, maxTokens: fast ? 1400 : 1500,
+    requestId: rid, fingerprint: fingerprint || undefined,
+    imageDimensions, signal,
+  })
+  let out
+  try {
+    out = extractJSON(raw)
+  } catch {
+    const fixed = await completeTextQuick({
+      prompt: 'Convert the following into ONE valid JSON object matching the screen-analysis schema (contentType, screenFamily, detectedText, keyPoints, fullAnswer, code, approach, edgeCases, etc). Output ONLY JSON, no markdown.\n\n' + String(raw || '').slice(0, 8000),
+      maxTokens: 1500,
+      signal,
+      requestId: rid,
+    })
+    out = extractJSON(fixed)
+  }
   if (out && typeof out.code === 'string') {
     out.code = out.code.replace(/^\s*```[a-zA-Z0-9+#]*\n?/, '').replace(/\n?```\s*$/, '').trim()
+  }
+  if (out) {
+    const family = normalizeScreenContentType(out.screenFamily || out.contentType)
+    out.screenFamily = family
+    out.contentType = toLegacyContentType(family)
+    out._screenContextVersion = SCREEN_CONTEXT_VERSION
+    out._screenRequestId = rid
   }
   return out
 }

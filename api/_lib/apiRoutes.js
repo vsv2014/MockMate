@@ -1,6 +1,8 @@
-// Shared /api/* route registration — mounted by BOTH the local dev/prod server (server.js,
-// UNAUTHED = BYOK/local, private) and the hosted managed proxy (backend, AUTHED + METERED).
-// One engine, two deployments.
+// Shared /api/* route registration.
+// Deployments:
+//   - Local BYOK (server.js): registerApiRoutes(app, { report }) — no auth, loopback-only.
+//   - Managed backend (backend/server.js): registerApiRoutes(app, { auth, authLight, onLlm }).
+// One engine, two deployments. Do not re-inline these routes in server.js.
 //   opts.auth   — Express middleware (or array) run before the LLM routes (e.g. requireAuth +
 //                 a plan-cap check). Omit for the local/BYOK server (no gate).
 //   opts.onLlm  — async (req, path) hook fired AFTER a successful LLM call, for usage metering.
@@ -8,10 +10,30 @@
 //   opts.report — error reporter (e.g. Sentry.captureException). Optional.
 // On the managed/hosted mount, metadata is auth-gated (reveals which platform keys exist).
 // Local BYOK (:3002) leaves them open — loopback-only, intentional for setup UI.
-import { makeReport, availableProviders, allProviders, listModels, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed } from './core.js'
+import { makeReport, availableProviders, allProviders, listModels, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed, isLoopbackAddress } from './core.js'
 import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen, streamHint } from './interview.js'
 import { findJobs } from './jobs.js'
-import { atsScore, tailorResume, referralMessage } from './career.js'
+import { atsScore, tailorResume, referralMessage, resumeLatex } from './career.js'
+
+/** Contract surface shared by local BYOK and managed mounts. */
+export const API_ROUTE_CONTRACT = [
+  { method: 'GET', path: '/api/providers' },
+  { method: 'GET', path: '/api/models' },
+  { method: 'POST', path: '/api/deepgram-token' },
+  { method: 'POST', path: '/api/token' },
+  { method: 'POST', path: '/api/embed' },
+  { method: 'POST', path: '/api/report' },
+  { method: 'POST', path: '/api/interview' },
+  { method: 'POST', path: '/api/evaluate' },
+  { method: 'POST', path: '/api/hint' },
+  { method: 'POST', path: '/api/analyze-screen' },
+  { method: 'POST', path: '/api/jobs' },
+  { method: 'POST', path: '/api/ats-score' },
+  { method: 'POST', path: '/api/tailor-resume' },
+  { method: 'POST', path: '/api/referral' },
+  { method: 'POST', path: '/api/resume-latex' },
+  { method: 'POST', path: '/api/hint-stream' },
+]
 
 export function registerApiRoutes(app, opts = {}) {
   const guard = opts.auth ? [].concat(opts.auth) : []
@@ -31,7 +53,15 @@ export function registerApiRoutes(app, opts = {}) {
   })
 
   app.post('/api/deepgram-token', ...guardLight, async (req, res) => {
-    try { res.json(await deepgramToken()) }
+    try {
+      // Local Electron (loopback): always allow Member-key → raw API key WS fallback.
+      // Covers BYOK (:3002, no auth) AND local managed (:4000 with auth) — same laptop.
+      // Remote hosted production sets MOCKMATE_HOSTED=1 and deepgramToken refuses the fallback.
+      const ip = req.ip || req.socket?.remoteAddress || ''
+      const remoteHosted = process.env.MOCKMATE_HOSTED === '1' || process.env.MOCKMATE_HOSTED === 'true'
+      const allowApiKeyFallback = !remoteHosted && (isLoopbackAddress(ip) || !ip)
+      res.json(await deepgramToken({ allowApiKeyFallback }))
+    }
     catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
   })
 
@@ -66,11 +96,25 @@ export function registerApiRoutes(app, opts = {}) {
   post('/api/interview', interviewerTurn, 'turn')
   post('/api/evaluate', evaluateSolo, 'report')
   post('/api/hint', generateHint, 'hint')
-  post('/api/analyze-screen', analyzeScreen, 'analysis')
+  app.post('/api/analyze-screen', ...guard, async (req, res) => {
+    const ac = new AbortController()
+    res.on('close', () => { try { ac.abort() } catch {} })
+    try {
+      const out = await analyzeScreen({ ...(req.body || {}), signal: ac.signal })
+      if (onLlm) { try { await onLlm(req, '/api/analyze-screen') } catch {} }
+      if (!ac.signal.aborted) res.json({ analysis: out })
+    } catch (e) {
+      if (ac.signal.aborted || e?.name === 'AbortError') return
+      report(e)
+      console.error(`[api] POST /api/analyze-screen → ${e.status || 500}: ${e.message}`)
+      res.status(e.status || 500).json({ error: e.message, code: e.code || undefined })
+    }
+  })
   post('/api/jobs', findJobs)
   post('/api/ats-score', atsScore)
   post('/api/tailor-resume', tailorResume)
   post('/api/referral', referralMessage)
+  post('/api/resume-latex', resumeLatex)
 
   // Server-Sent Events: stream the spoken answer token-by-token for <1s time-to-first-word.
   app.post('/api/hint-stream', ...guard, async (req, res) => {

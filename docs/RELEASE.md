@@ -23,10 +23,13 @@ here are **infra/signing**, not code (tests + reviews pass while an update silen
    - Never re-release the same version number with new artifacts — existing installs won't update.
 2. **Pre-flight (locally):**
    ```bash
-   npm test           # must be green
-   npm run build      # renderer builds clean
-   git status         # confirm NO .env / secrets / keys are staged (.gitignore covers .env)
+   npm test              # must be green
+   npm run smoke:api     # route contract smoke
+   npm run build         # renderer builds clean
+   git status            # confirm NO .env / secrets / keys are staged (.gitignore covers .env)
    ```
+   Bump `CHANGELOG.md` + skim `docs/ROADMAP.md` / README “Done” so release notes match the tag.
+   Update `docs/evidence/VALIDATION_STATUS.md` if you completed a packaged soak (else leave NOT VERIFIED).
 3. **Merge to `main`** (PR from your branch).
 4. **Tag and push** — this triggers the release workflow (`.github/workflows/release.yml`):
    ```bash

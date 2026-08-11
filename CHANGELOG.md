@@ -1,5 +1,43 @@
 # Changelog
 
+## v1.4.6 — 2026-08-12
+
+Live interview engine hardening, Career export polish (PDF primary), Jobs→interview JD seeding,
+provider health split (text vs vision), and a large unit/smoke test net. Stealth share-preview matrix
+and continuous 120-minute usage remain **not verified** on a packaged build — dry-run before a real interview.
+
+### Added
+- **Tailored resume PDF** — Resume Studio Tailor → **Download PDF** (jsPDF, 1–2 page single-column; same `applyTailorToResume` text, no invented content). `.txt` / FAANG `.tex` remain optional.
+- **`POST /api/resume-latex`** — optional Overleaf-oriented LaTeX export for tailored resumes.
+- **Jobs / Career → Solo & Live JD seed** — explicit confirm + profile write (`src/lib/interviewJobSeed.js`).
+- **Career draft persistence** — analysis JD / draft survive minimize (`src/lib/careerDraft.js`); shell stays mounted when collapsed to pill.
+- **Robust Copy / download helpers** — Electron-safe clipboard + text file download (`src/lib/clipboard.js`).
+- **Live interview core modules** — `InterviewState`, `GenerationManager`, `questionCapture`, classification authority, `screenContext`, `transcriptBuffer`, `contextSelection`, `interviewClassify`; Live transport slice (`hintTransport`, `LiveSessionController`).
+- **Vision policy** — `api/_lib/visionPolicy.js` (+ tests).
+- **Playbooks extract** — `api/_lib/playbooks.js`.
+- **`npm run smoke:api`** — in-process API route contract smoke (`scripts/api-smoke.mjs`).
+- Broad unit coverage: career, Deepgram token policy, provider health, docs/PDF fixtures, Live transport, interview state/classify/capture.
+
+### Changed
+- **Provider failover / health** — unified stream+JSON failover; **text vs vision** health separated (`lastWorkingTextProvider` / vision path; vision 429 does not ban text).
+- **Deepgram local managed** — Member/scoped keys may fall back to API-key websocket on loopback managed; **hosted** (`MOCKMATE_HOSTED=1`) never returns the raw project key (see `docs/SECRET_ROTATION.md`).
+- **Documents** — job descriptions stored as type `jd`; **Onboarding** resume upload is **PDF-only**.
+- **Home** — removed Screenshot/screen-analysis CTA and panel (screen solve stays on Live / F7).
+- **Referral DM** — copy-only UX clarified (MockMate does not email or auto-DM); phased follow-up/send documented in `docs/ROADMAP.md` § P6.
+- Dead code removed: root `providers.js` / `search.js`, `src/delivery.js`.
+
+### Fixed
+- Career Copy / minimize JD loss; Deepgram 403 on local managed with Member keys.
+
+## v1.4.5 — 2026-08-11
+
+Compact Live HUD, pin/pill stay-or-hide behavior, and bundled runtime provider keys for out-of-box Live/Solo on downloaders (CI secrets → installer `.env`; never committed). Optional Windows/macOS signing wired in CI without requiring certs. Windows release: empty `WIN_CSC_LINK` unset so unsigned builds succeed.
+
+### Added / Changed
+- Live overlay as a **compact HUD** with pin-aware stay/hide; unpinned blur → pill (not vanish); ignore own windows/screenshots for blur logic.
+- **Bundled runtime keys** via GitHub Actions secrets at package time (user BYOK still overrides).
+- Signing docs / CI paths for optional Authenticode / Apple signing.
+
 ## v1.4.4 — 2026-08-11
 
 Reliability + trust UX for Solo/Live, Resume Studio ↔ Jobs depth, design-token parity, and an honest landing page. Stealth share-preview matrix and continuous 120-minute usage remain **not verified** on this build — always dry-run before a real interview.

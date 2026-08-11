@@ -9,7 +9,8 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 ## 0. Clean-room build (catches missing deps / stale node_modules)
 - [ ] `rm -rf node_modules dist release && npm install` (fresh — mirrors a new machine)
 - [ ] `npm run build` completes with no errors
-- [ ] `npm test` green (unit + playbook/context/glance contract tests)
+- [ ] `npm test` green (unit + playbook/context/glance / Live state / Career PDF contract tests)
+- [ ] `npm run smoke:api` green
 - [ ] `git status` shows no build artifacts tracked (dist/ ignored)
 
 ## 1. Packaged app boots (catches CSP / server-fork / dangling-import bugs)
@@ -49,8 +50,14 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] Runs 5+ min without the socket dying; survives a brief network blip
 
 ## 5. Screenshot solve
-- [ ] Ctrl+Shift+U on a coding problem → answer-first solution, no refusal
+- [ ] Ctrl+Shift+U / F7 on a coding problem **from Live** → answer-first solution, no refusal
+- [ ] Home does **not** show a screen-analysis panel / “Screenshot + solve” CTA
 - [ ] "Faster" vs "Quality" setting changes verbosity
+
+## 5b. Resume Studio
+- [ ] Tailor → **Download PDF** produces a readable 1–2 page file with applied summary/bullets
+- [ ] Referral → Copy note / Copy to paste works; no send-email affordance
+- [ ] Minimize-to-pill and restore: analysis JD / tailor draft still present
 
 ## 6. Duo (when enabled)
 - [ ] `LIVEKIT_*` set → create room, join from a 2nd client, transcript syncs, End → report

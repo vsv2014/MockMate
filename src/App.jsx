@@ -17,6 +17,17 @@ import { getAnswerStyle, setAnswerStyle, getScreenshotSpeed, setScreenshotSpeed,
 import { loadSessions, deleteSession } from './history'
 import { scoreColor, TYPE_LABEL } from './lib/ui'
 import { CODING_LANGUAGES } from './lib/languages'
+import { loadProfile, saveProfile } from './lib/profile'
+import {
+  buildInterviewJobSeed,
+  applyInterviewJobSeed,
+  interviewSeedConfirmMessage,
+} from './lib/interviewJobSeed'
+import { copyText } from './lib/clipboard'
+import {
+  createScreenContextRecord,
+  screenFingerprint,
+} from '../shared/screenContext.js'
 
 const inElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
 const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
@@ -108,21 +119,17 @@ function ElectronShell({ auth }) {
     const cleanups = []
     cleanups.push(window.electronAPI?.onMeetingDetected(active => setMeetingActive(active)))
     cleanups.push(window.electronAPI?.onCodingDetected?.(active => setCodingDetected(active)))
-    // Alt+H from main: Live → collapse/expand on-screen pill (keep icon visible). Elsewhere → hide window.
+    // Alt+H: collapse/expand on-screen pill everywhere after login — never vanish to tray.
     cleanups.push(window.electronAPI?.onShortcutStealth?.(() => {
-      if (viewRef.current === 'companion' && companionPhaseRef.current === 'live') {
-        setClickThrough(false)
-        setMinimized(m => {
-          const next = !m
-          if (!next) {
-            const { w, h } = panelSizeRef.current || { w: 300, h: 360 }
-            queueMicrotask(() => window.electronAPI?.windowResize?.(w, h))
-          }
-          return next
-        })
-      } else {
-        window.electronAPI?.hideWindow?.()
-      }
+      setClickThrough(false)
+      setMinimized(m => {
+        const next = !m
+        if (!next && viewRef.current === 'companion' && companionPhaseRef.current === 'live') {
+          const { w, h } = panelSizeRef.current || { w: 300, h: 360 }
+          queueMicrotask(() => window.electronAPI?.windowResize?.(w, h))
+        }
+        return next
+      })
     }))
     // Unpinned + switched to another app → collapse to pill (never vanish).
     cleanups.push(window.electronAPI?.onBlurCollapse?.(() => {
@@ -137,34 +144,152 @@ function ElectronShell({ auth }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Run vision analysis on a screenshot (optionally in a chosen coding language).
-  const lastShotRef = useRef(null)
-  const runAnalysis = useCallback(async (base64, language) => {
-    if (!base64) return
+  // Single-flight + abort: rapid F7 presses used to stack requests and burn the vision
+  // rate limit into "Screen analysis is busy right now".
+  const lastShotRef = useRef(null)          // { base64, mime, displayId, displayName }
+  const analysisAbortRef = useRef(null)
+  const analysisGenRef = useRef(0)
+  const analysisCacheRef = useRef(new Map()) // fingerprint → analysis
+  const liveSpokenQRef = useRef('')         // last Live interviewer Q (for vision scope)
+  const [captureDisplays, setCaptureDisplays] = useState([])
+  const [captureDisplayId, setCaptureDisplayId] = useState(() => {
+    try { return localStorage.getItem('mm-capture-display-id') || '' } catch { return '' }
+  })
+
+  useEffect(() => {
+    window.electronAPI?.listScreenDisplays?.().then(r => {
+      if (r?.displays?.length) setCaptureDisplays(r.displays)
+    }).catch(() => {})
+  }, [])
+
+  const runAnalysis = useCallback(async (shot, language, { retry = 0 } = {}) => {
+    const base64 = typeof shot === 'string' ? shot : shot?.base64
+    const mime = (typeof shot === 'object' && shot?.mime) || 'image/png'
+    if (!base64) {
+      setScreenAnalysis(createScreenContextRecord({ error: 'No screenshot captured', status: 'not_captured' }))
+      return
+    }
+
+    try { analysisAbortRef.current?.abort() } catch {}
+    const abort = new AbortController()
+    analysisAbortRef.current = abort
+    const gen = ++analysisGenRef.current
+    const style = screenshotStyle()
+    const fp = screenFingerprint(base64, { language: language || '', style })
+    const requestId = `scr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
+    const imageDimensions = (shot?.width && shot?.height)
+      ? { width: shot.width, height: shot.height }
+      : null
+
+    const cached = analysisCacheRef.current.get(fp)
+    if (cached && retry === 0) {
+      setScreenAnalysis(createScreenContextRecord({
+        analysis: cached,
+        displayId: shot?.displayId,
+        displayName: shot?.displayName,
+        fingerprint: fp,
+        mime,
+        status: 'analyzed_cached',
+      }))
+      setScreenAnalyzing(false)
+      return
+    }
+
     setScreenAnalyzing(true)
     setScreenAnalysis(null)
     try {
-      const d = await apiFetch('/api/analyze-screen', {
+      const res = await apiFetch('/api/analyze-screen', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64, profile: profileRef.current, language, style: screenshotStyle() })
-      }).then(r => r.json())
-      setScreenAnalysis(d.analysis || { error: d.error })
+        signal: abort.signal,
+        body: JSON.stringify({
+          imageBase64: base64, mime, profile: profileRef.current, language,
+          style,
+          spokenQuestion: liveSpokenQRef.current || '',
+          requestId, fingerprint: fp, imageDimensions,
+        }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (gen !== analysisGenRef.current) return
+      const err = d.error || (!res.ok ? `Screen analysis failed (${res.status})` : null)
+      const code = d.code || ''
+      // At most ONE delayed client retry for transient 429 — never on cancel/auth.
+      if (err && !abort.signal.aborted && (/busy|rate.?limit|429|VISION_RATE_LIMITED/i.test(err) || code === 'VISION_RATE_LIMITED') && retry < 1) {
+        await new Promise(r => setTimeout(r, 1600))
+        if (gen !== analysisGenRef.current || abort.signal.aborted) return
+        return runAnalysis({
+          base64, mime, displayId: shot?.displayId, displayName: shot?.displayName,
+          width: shot?.width, height: shot?.height,
+        }, language, { retry: retry + 1 })
+      }
+      if (err) {
+        setScreenAnalysis(createScreenContextRecord({
+          error: err, status: 'failed',
+          displayId: shot?.displayId, displayName: shot?.displayName, fingerprint: fp, mime,
+        }))
+      } else {
+        const analysis = d.analysis || { error: 'Empty analysis' }
+        if (!analysis.error) {
+          analysisCacheRef.current.set(fp, analysis)
+          if (analysisCacheRef.current.size > 12) {
+            const first = analysisCacheRef.current.keys().next().value
+            analysisCacheRef.current.delete(first)
+          }
+        }
+        setScreenAnalysis(createScreenContextRecord({
+          analysis: analysis.error ? null : analysis,
+          error: analysis.error || null,
+          status: analysis.error ? 'failed' : 'analyzed',
+          displayId: shot?.displayId, displayName: shot?.displayName, fingerprint: fp, mime,
+        }))
+      }
     } catch (e) {
-      setScreenAnalysis({ error: e.message })
+      if (abort.signal.aborted || gen !== analysisGenRef.current) return // cancelled — no retry
+      setScreenAnalysis(createScreenContextRecord({
+        error: e.message || 'Screen analysis failed', status: 'failed',
+        displayId: shot?.displayId, displayName: shot?.displayName, mime,
+      }))
     }
-    setScreenAnalyzing(false)
+    if (gen === analysisGenRef.current) setScreenAnalyzing(false)
   }, [])
 
   // Re-solve the SAME captured screen in a different language (no re-capture).
   const reanalyze = useCallback((language) => { if (lastShotRef.current) runAnalysis(lastShotRef.current, language) }, [runAnalysis])
 
+  const capturePreferredScreen = useCallback(() => {
+    const opts = captureDisplayId ? { displayId: captureDisplayId } : {}
+    window.electronAPI?.captureScreen?.(opts)
+  }, [captureDisplayId])
+
   // Listen for screen captures (Ctrl+Shift+U or "Solve it" button) from Electron
   useEffect(() => {
-    const cleanup = window.electronAPI?.onScreenCaptured((base64) => {
-      lastShotRef.current = base64       // remember it so language switching can re-solve
-      runAnalysis(base64)
+    const cleanup = window.electronAPI?.onScreenCaptured((payload) => {
+      if (payload?.error === 'linux_unsupported') {
+        setScreenAnalysis(createScreenContextRecord({ error: 'Screen capture unavailable on Linux', status: 'unsupported' }))
+        return
+      }
+      const shot = typeof payload === 'string'
+        ? { base64: payload, mime: 'image/png' }
+        : {
+          base64: payload?.base64,
+          mime: payload?.mime || 'image/jpeg',
+          displayId: payload?.displayId || null,
+          displayName: payload?.displayName || null,
+          width: payload?.width || null,
+          height: payload?.height || null,
+          bytes: payload?.bytes || null,
+        }
+      if (!shot.base64) {
+        setScreenAnalysis(createScreenContextRecord({ error: 'Screen not captured', status: 'not_captured' }))
+        return
+      }
+      lastShotRef.current = shot
+      runAnalysis(shot)
     })
     return () => cleanup?.()
   }, [runAnalysis])
+
+  // Live tells App the latest interviewer question for vision scoping.
+  const onLiveSpokenQuestion = useCallback((q) => { liveSpokenQRef.current = q || '' }, [])
 
   // Resize + stealth keyboard shortcut
   useEffect(() => {
@@ -205,26 +330,40 @@ function ElectronShell({ auth }) {
   }, [])
 
   function handleStealthToggle() {
-    if (inElectron) {
-      // Electron: hide the entire OS window — completely gone from screen and screen share
-      // Press Alt+H again to restore (global shortcut registered in main.cjs)
-      window.electronAPI.hideWindow()
-    } else {
-      // Browser: just dim (can't fully protect without Electron)
-      setStealth(s => !s)
+    // Collapse to on-screen pill (same as —). Alt+H expands again. Never vanish.
+    setClickThrough(false)
+    setMinimized(true)
+  }
+
+  function expandFromPill() {
+    setMinimized(false)
+    if (inElectron && viewRef.current === 'companion' && companionPhaseRef.current === 'live') {
+      const { w, h } = panelSizeRef.current || { w: 300, h: 360 }
+      queueMicrotask(() => window.electronAPI?.windowResize?.(w, h))
     }
   }
 
+  function collapseToPill() {
+    setClickThrough(false)
+    setMinimized(true)
+  }
+
   function startDrag(e) {
-    const onMove = ev => {
-      window.electronAPI.windowDrag(ev.screenX - lastX, ev.screenY - lastY)
-      lastX = ev.screenX; lastY = ev.screenY
-    }
+    if (e.button !== 0) return
+    if (!inElectron || !window.electronAPI?.windowDrag) return
+    e.preventDefault()
     let lastX = e.screenX, lastY = e.screenY
-    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+    const onMove = ev => {
+      const dx = ev.screenX - lastX, dy = ev.screenY - lastY
+      lastX = ev.screenX; lastY = ev.screenY
+      window.electronAPI.windowDrag(dx, dy)
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-    e.preventDefault()
   }
 
   function startResize(e, edge = 'se') {
@@ -238,15 +377,6 @@ function ElectronShell({ auth }) {
     e.stopPropagation(); e.preventDefault()
   }
 
-  function applySizePreset(preset) {
-    // Stealth-HUD sizes (LockedIn / Final Round class): small by default, expandable.
-    const sizes = { s: { w: 280, h: 320 }, m: { w: 320, h: 400 }, l: { w: 380, h: 520 } }
-    const next = sizes[preset] || sizes.s
-    setPanelSize(next)
-    try { localStorage.setItem('mm-overlay-size', JSON.stringify(next)) } catch {}
-    if (inElectron) window.electronAPI?.windowResize?.(next.w, next.h)
-  }
-
   function setOverlayOpacity(v) {
     const n = Math.min(1, Math.max(0.35, Number(v) || 0.92))
     setOpacity(n)
@@ -256,10 +386,25 @@ function ElectronShell({ auth }) {
   function goHome() { setReport(null); setOpenSession(null); refreshSessions(); setView('home') }
   function openHistory() { refreshSessions(); setOpenSession(null); setView('history') }
 
-  // On Live start: restore last HUD size (compact), else default 300×360.
+  /** Explicit Jobs/Career → Solo/Live JD handoff (confirm before writing shared profile JD). */
+  function useJobForInterview(payload, destination) {
+    const seed = payload?.job
+      ? buildInterviewJobSeed({ job: payload.job })
+      : buildInterviewJobSeed(payload)
+    if (!window.confirm(interviewSeedConfirmMessage(seed, destination))) return
+    try {
+      const next = applyInterviewJobSeed(loadProfile(), seed)
+      saveProfile(next)
+      setView(destination === 'live' ? 'companion' : 'solo')
+    } catch (e) {
+      window.alert(e?.message || 'Could not apply that job description.')
+    }
+  }
+
+  // On Live start: restore last HUD size from localStorage (never wipe a user resize).
   useEffect(() => {
     if (view !== 'companion' || companionPhase !== 'live') return
-    let next = { w: 300, h: 360 }
+    let next = panelSizeRef.current || { w: 300, h: 360 }
     try {
       const raw = localStorage.getItem('mm-overlay-size')
       if (raw) {
@@ -288,16 +433,13 @@ function ElectronShell({ auth }) {
     window.electronAPI?.setWindowMode?.(mode)
   }, [view, showWelcome, companionPhase, minimized])
 
-  // Minimize-to-pill only makes sense in the live overlay. If we're anywhere else (dashboard, setup,
-  // notes) force it off — otherwise a leftover minimized=true would keep the window a 76px pill with
-  // no expand affordance on those screens (a lock-out).
-  useEffect(() => {
-    if (minimized && !(view === 'companion' && companionPhase === 'live')) setMinimized(false)
-  }, [view, companionPhase, minimized])
-
   // The sessions list is a snapshot — refresh it when the Sessions tab opens so a
   // just-finished interview shows up without navigating away and back.
   useEffect(() => { if (view === 'history') refreshSessions() }, [view]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Collapsed pill for dashboard/shell — keep shell views mounted (hidden) so Career JD /
+  // form state survives minimize. Live overlay keeps its own minimized handling.
+  const shellPill = minimized && !(view === 'companion' && companionPhase === 'live') && SHELL_VIEWS.includes(view)
 
   // ── First-run welcome — guide a brand-new user straight to adding a key ──
   if (showWelcome) return (
@@ -332,9 +474,8 @@ function ElectronShell({ auth }) {
             <button onClick={() => auth.signIn?.()} style={{ height: 34, padding: '0 16px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Sign in</button>
           </div>
         )}
-        <ScreenAnalysisPanel analysis={screenAnalysis} analyzing={screenAnalyzing} onDismiss={() => setScreenAnalysis(null)} onReanalyze={reanalyze} />
         <DashboardHome auth={auth} sessions={sessions} noProviders={noProviders}
-          onNav={setView} onCapture={() => window.electronAPI?.captureScreen?.()} />
+          onNav={setView} />
       </>
     )
     else if (view === 'solo') content = <Solo onHome={goHome} noProviders={noProviders} />
@@ -347,6 +488,7 @@ function ElectronShell({ auth }) {
           noProviders={noProviders}
           onSettings={() => setView('settings')}
           onOpenCareer={seed => { setCareerSeed(seed); setView('career') }}
+          onUseForInterview={(job, destination) => useJobForInterview({ job }, destination)}
           embedded
         />
       </div>
@@ -365,6 +507,7 @@ function ElectronShell({ auth }) {
           initialTab={careerSeed?.initialTab}
           limitedJd={careerSeed?.limitedJd}
           onSeedConsumed={() => setCareerSeed(null)}
+          onUseForInterview={(fields, destination) => useJobForInterview(fields, destination)}
         />
       </div>
     )
@@ -407,12 +550,23 @@ function ElectronShell({ auth }) {
     )
 
     return (
-      <AppShell active={view} onNav={setView} auth={auth} meetingActive={meetingActive}
-        stealth={stealth} onStealth={handleStealthToggle}
-        onMinimize={() => window.electronAPI?.hideWindow?.()} onClose={() => window.close?.()}>
-        <WhatsNew openSignal={whatsNewSignal} />
-        {content}
-      </AppShell>
+      <>
+        {shellPill && (
+          <OverlayPanel minimized
+            onMinimize={expandFromPill}
+            onStealth={expandFromPill}
+            panelSize={panelSize}
+          />
+        )}
+        <div style={shellPill ? { display: 'none' } : undefined} aria-hidden={shellPill || undefined}>
+          <AppShell active={view} onNav={setView} auth={auth} meetingActive={meetingActive}
+            stealth={stealth} onStealth={collapseToPill}
+            onMinimize={collapseToPill} onClose={() => window.close?.()}>
+            <WhatsNew openSignal={whatsNewSignal} />
+            {content}
+          </AppShell>
+        </div>
+      </>
     )
   }
 
@@ -420,23 +574,18 @@ function ElectronShell({ auth }) {
   // else lives in the dashboard shell (handled above).
   if (view === 'companion') return (
     <LiveCompanion onHome={goHome} onPhaseChange={setCompanionPhase} panelSize={panelSize} stealth={stealth} opacity={opacity} onOpacity={setOverlayOpacity} minimized={minimized}
-      onStealth={() => { setClickThrough(false); setMinimized(true) }}
+      onStealth={collapseToPill}
       onMinimize={() => {
-        setClickThrough(false)
-        setMinimized(m => {
-          const next = !m
-          if (!next && inElectron) {
-            // Expanding from pill — restore the user's HUD size (don't stay 72×72).
-            queueMicrotask(() => window.electronAPI?.windowResize?.(panelSize.w, panelSize.h))
-          }
-          return next
-        })
+        if (minimized) expandFromPill()
+        else collapseToPill()
       }}
       clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
-      onResize={startResize} onDrag={startDrag} onSizePreset={applySizePreset}
+      onResize={startResize} onDrag={startDrag}
       screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} onDismissScreen={() => setScreenAnalysis(null)}
-      codingDetected={codingDetected} onCaptureScreen={() => window.electronAPI?.captureScreen?.()}
+      codingDetected={codingDetected} onCaptureScreen={capturePreferredScreen}
       onReanalyze={reanalyze}
+      onLiveSpokenQuestion={onLiveSpokenQuestion}
+      captureDisplays={captureDisplays} captureDisplayId={captureDisplayId} onCaptureDisplayId={setCaptureDisplayId}
       onPipActive={active => setStealth(active)} />
   )
 
@@ -473,9 +622,9 @@ function highlightCode(code) {
 // ── Code block with one-tap copy + syntax highlighting — the core of Coding mode ──
 export function CodeBlock({ code, language }) {
   const [copied, setCopied] = useState(false)
-  function copy() {
-    navigator.clipboard?.writeText(code || '')
-    setCopied(true); setTimeout(() => setCopied(false), 1500)
+  async function copy() {
+    const ok = await copyText(code || '')
+    if (ok) { setCopied(true); setTimeout(() => setCopied(false), 1500) }
   }
   return (
     <div style={{ background: '#0d1117', border: '1px solid #1f2733', borderRadius: 8, marginBottom: 8, overflow: 'hidden' }}>
@@ -493,40 +642,70 @@ export function CodeBlock({ code, language }) {
 }
 
 // ── Screen Analysis Panel — shown when Ctrl+Shift+U is pressed ───────────────
-export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyze, onRecapture }) {
+export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyze, onRecapture, captureDisplays, captureDisplayId, onCaptureDisplayId, liveAttachHint }) {
   if (!analyzing && !analysis) return null
-  const isCoding = analysis?.contentType === 'coding'
-  // Coding mode uses a green/dev accent; everything else keeps the amber capture accent.
+  // Supports wrapped screen-context records { analysis, status, error } and legacy flat analysis.
+  const record = analysis?.analysis || analysis
+  const status = analysis?.status
+  const err = analysis?.error || record?.error
+  const isCoding = (record?.contentType === 'coding') || (record?.screenFamily === 'screen_code')
   const accent = isCoding ? 'rgba(34,197,94,0.25)' : 'rgba(234,179,8,0.25)'
   const accentBg = isCoding ? 'rgba(34,197,94,0.06)' : 'rgba(234,179,8,0.08)'
+  const statusLabel = analyzing ? 'Analyzing…'
+    : status === 'not_captured' ? 'SCREEN NOT CAPTURED'
+    : status === 'unsupported' ? 'CAPTURE UNSUPPORTED'
+    : status === 'failed' || err ? 'SCREEN ANALYSIS FAILED'
+    : status === 'analyzed_cached' ? 'SCREEN ANALYZED (cached)'
+    : liveAttachHint === 'attached' ? 'SCREEN CONTEXT ATTACHED'
+    : liveAttachHint === 'irrelevant' ? 'SCREEN CAPTURED · NOT RELEVANT TO LAST Q'
+    : 'SCREEN ANALYZED'
   return (
     <div style={{ background: accentBg, border: `1px solid ${accent}`, borderRadius: 10, padding: '12px', marginBottom: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: isCoding ? '#4ade80' : '#fbbf24' }}>{isCoding ? '💻 Coding Solution' : '📸 Screen Analysis'}</span>
-        <span style={{ fontSize: 9, color: T.text3, background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 8 }}>Ctrl+Shift+U</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: isCoding ? '#4ade80' : '#fbbf24' }}>{isCoding ? 'Coding Solution' : 'Screen Analysis'}</span>
+        <span style={{ fontSize: 9, color: T.text3, background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 8 }}>F7 / Ctrl+Shift+U</span>
+        <span style={{ fontSize: 9, color: err ? '#f87171' : T.text3, marginLeft: 4 }}>{statusLabel}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           {onRecapture && <button onClick={onRecapture} title="Re-capture the screen" style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 13 }}>↻</button>}
           <button onClick={onDismiss} title="Dismiss" style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 13 }}>✕</button>
         </div>
       </div>
+      {captureDisplays?.length > 1 && onCaptureDisplayId && (
+        <div style={{ marginBottom: 8 }}>
+          <select
+            value={captureDisplayId || ''}
+            onChange={e => {
+              const v = e.target.value
+              onCaptureDisplayId(v)
+              try { localStorage.setItem('mm-capture-display-id', v) } catch {}
+            }}
+            style={{ fontSize: 11, background: 'rgba(0,0,0,0.25)', color: T.text2, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '3px 6px', maxWidth: '100%' }}
+            aria-label="Capture display"
+          >
+            <option value="">Primary display</option>
+            {captureDisplays.map(d => (
+              <option key={d.id} value={d.id}>{d.primary ? `${d.label} (primary)` : d.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
       {analyzing
         ? <div style={{ fontSize: 12, color: '#fbbf24' }}>Analyzing screen…</div>
-        : analysis?.error
-          ? <div style={{ fontSize: 12, color: '#f87171' }}>⚠ {analysis.error}</div>
+        : err
+          ? <div style={{ fontSize: 12, color: '#f87171' }}>⚠ {err}</div>
           : isCoding
             ? (
               <>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
-                  {analysis.pattern && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(20,184,166,0.3)', color: '#99f6e4', borderRadius: 10, fontWeight: 700 }}>⚡ {analysis.pattern}</span>}
-                  {analysis.complexity && <span style={{ fontSize: 9, padding: '2px 8px', background: '#0d1117', color: '#7ee787', borderRadius: 10, fontFamily: 'monospace' }}>{analysis.complexity}</span>}
-                  {analysis.language && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(255,255,255,0.06)', color: T.text2, borderRadius: 10 }}>{analysis.language}</span>}
+                  {record.pattern && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(20,184,166,0.3)', color: '#99f6e4', borderRadius: 10, fontWeight: 700 }}>{record.pattern}</span>}
+                  {record.complexity && <span style={{ fontSize: 9, padding: '2px 8px', background: '#0d1117', color: '#7ee787', borderRadius: 10, fontFamily: 'monospace' }}>{record.complexity}</span>}
+                  {record.language && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(255,255,255,0.06)', color: T.text2, borderRadius: 10 }}>{record.language}</span>}
                 </div>
-                {analysis.detectedText && <div style={{ fontSize: 11, color: T.text2, fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(34,197,94,0.3)', paddingLeft: 7 }}>{analysis.detectedText}</div>}
-                {/* Language switcher — re-solve the same screen in another language, no re-capture */}
+                {record.detectedText && <div style={{ fontSize: 11, color: T.text2, fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(34,197,94,0.3)', paddingLeft: 7 }}>{record.detectedText}</div>}
                 {onReanalyze && (
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
                     {CODING_LANGUAGES.map(lang => {
-                      const on = (analysis.language || '').toLowerCase() === lang.toLowerCase()
+                      const on = (record.language || '').toLowerCase() === lang.toLowerCase()
                       return (
                         <button key={lang} onClick={() => onReanalyze(lang)} title={`Solve in ${lang}`}
                           style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer', border: 'none', fontWeight: 600,
@@ -535,37 +714,37 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
                     })}
                   </div>
                 )}
-                {Array.isArray(analysis.approach) && analysis.approach.length > 0 && (
+                {Array.isArray(record.approach) && record.approach.length > 0 && (
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>APPROACH</div>
-                    {analysis.approach.map((step, i) => (
+                    {record.approach.map((step, i) => (
                       <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 3, fontSize: 12, color: T.text1 }}>
                         <span style={{ color: '#4ade80', flexShrink: 0 }}>{i + 1}.</span><span>{step}</span>
                       </div>
                     ))}
                   </div>
                 )}
-                {analysis.code && <CodeBlock code={analysis.code} language={analysis.language} />}
-                {Array.isArray(analysis.edgeCases) && analysis.edgeCases.length > 0 && (
+                {record.code && <CodeBlock code={record.code} language={record.language} />}
+                {Array.isArray(record.edgeCases) && record.edgeCases.length > 0 && (
                   <div style={{ marginBottom: 6 }}>
                     <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>EDGE CASES</div>
-                    {analysis.edgeCases.map((ec, i) => (
+                    {record.edgeCases.map((ec, i) => (
                       <div key={i} style={{ fontSize: 11, color: T.text2, marginBottom: 2 }}>• {ec}</div>
                     ))}
                   </div>
                 )}
-                {analysis.watchOut && <div style={{ fontSize: 11, color: '#f59e0b' }}>⚠ {analysis.watchOut}</div>}
+                {record.watchOut && <div style={{ fontSize: 11, color: '#f59e0b' }}>⚠ {record.watchOut}</div>}
               </>
             )
-            : analysis && (
+            : record && (
               <>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
-                  <span style={{ fontSize: 9, padding: '1px 7px', background: 'rgba(234,179,8,0.15)', color: '#fbbf24', borderRadius: 10, fontWeight: 700 }}>{TYPE_LABEL[analysis.contentType] || analysis.contentType}</span>
+                  <span style={{ fontSize: 9, padding: '1px 7px', background: 'rgba(234,179,8,0.15)', color: '#fbbf24', borderRadius: 10, fontWeight: 700 }}>{TYPE_LABEL[record.contentType] || record.contentType}</span>
                 </div>
-                {analysis.detectedText && <div style={{ fontSize: 11, color: '#fcd34d', fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(234,179,8,0.3)', paddingLeft: 7 }}>{analysis.detectedText}</div>}
-                {analysis.resumeStory && <div style={{ fontSize: 11, color: '#86efac', borderLeft: '2px solid #4ade80', paddingLeft: 7, marginBottom: 8 }}>{analysis.resumeStory}</div>}
-                <div style={{ fontSize: 14, color: '#fef3c7', lineHeight: 1.7, marginBottom: 8 }}>{analysis.fullAnswer}</div>
-                {analysis.watchOut && <div style={{ fontSize: 11, color: '#f59e0b' }}>⚠ {analysis.watchOut}</div>}
+                {record.detectedText && <div style={{ fontSize: 11, color: '#fcd34d', fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(234,179,8,0.3)', paddingLeft: 7 }}>{record.detectedText}</div>}
+                {record.resumeStory && <div style={{ fontSize: 11, color: '#86efac', borderLeft: '2px solid #4ade80', paddingLeft: 7, marginBottom: 8 }}>{record.resumeStory}</div>}
+                <div style={{ fontSize: 14, color: '#fef3c7', lineHeight: 1.7, marginBottom: 8 }}>{record.fullAnswer}</div>
+                {record.watchOut && <div style={{ fontSize: 11, color: '#f59e0b' }}>⚠ {record.watchOut}</div>}
               </>
             )
       }
@@ -596,7 +775,8 @@ export function IconBtn({ icon, title, onClick, active, danger }) {
   const bg = hover ? (danger ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.1)')
     : active ? 'rgba(34,197,94,0.14)' : 'transparent'
   return (
-    <button onClick={onClick} title={title} aria-label={title} aria-pressed={active || undefined}
+    <button type="button" onClick={onClick} title={title} aria-label={title} aria-pressed={active || undefined}
+      onMouseDown={e => e.stopPropagation()}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
         width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -718,7 +898,7 @@ function DocThreshold() {
   )
 }
 
-export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, onResize, onStealth, onMinimize, onClose, title, extra, actions, opacity = 0.95, onOpacity, autoHeight, clickThrough, onClickThrough, confirmClose, onSizePreset }) {
+export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, onResize, onStealth, onMinimize, onClose, title, extra, actions, opacity = 0.95, onOpacity, autoHeight, clickThrough, onClickThrough, confirmClose }) {
   const [confirming, setConfirming] = useState(false)
   const confirmTimer = useRef(null)
   const pillDragged = useRef(false)
@@ -763,13 +943,15 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
     return () => { try { off?.() } catch {} }
   }, [clickThrough, onClickThrough])
   // Region-aware: while click-through is on, accept mouse over interactive chrome only.
+  // Keep CSS pointer-events ALL so elementFromPoint can see buttons (pointer-events:none
+  // broke the toolbar — clicks never hit buttons → overlay felt "stuck").
   useEffect(() => {
     if (!inElectron || !clickThrough) return
     const root = document.getElementById('mockmate-overlay')
     if (!root) return
     const isInteractive = el => {
       if (!el || !root.contains(el)) return false
-      return !!el.closest?.('[data-mm-hit],button,a,input,textarea,select,[role="button"]')
+      return !!el.closest?.('[data-mm-hit],button,a,input,textarea,select,label,[role="button"]')
     }
     let accepting = false
     const setAccept = on => {
@@ -777,7 +959,11 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
       accepting = on
       window.electronAPI?.setIgnoreMouseEvents?.(!on, { forward: true })
     }
-    const onMove = e => setAccept(isInteractive(e.target))
+    const onMove = e => {
+      // Prefer elementFromPoint — e.target is unreliable while ignore+forward is toggling.
+      const el = document.elementFromPoint(e.clientX, e.clientY) || e.target
+      setAccept(isInteractive(el))
+    }
     const onLeave = () => setAccept(false)
     root.addEventListener('mousemove', onMove, true)
     root.addEventListener('mouseleave', onLeave, true)
@@ -785,7 +971,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
     return () => {
       root.removeEventListener('mousemove', onMove, true)
       root.removeEventListener('mouseleave', onLeave, true)
-      window.electronAPI?.setClickThrough?.(true)
+      // Do NOT re-enable click-through here — the companion setClickThrough(false) effect owns final state.
     }
   }, [clickThrough])
   function togglePin() {
@@ -812,7 +998,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
           position: 'absolute', top: 6, left: 6, width: 56, height: 56, pointerEvents: 'all', cursor: 'grab',
           background: 'linear-gradient(145deg, #0f766e, #115e59)',
           border: '2px solid rgba(45,212,191,0.65)', borderRadius: 16,
-          boxShadow: '0 8px 28px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.08)',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
           display: 'grid', placeItems: 'center', padding: 0,
         }}>
         <img src="/icon.png" alt="" width={30} height={30}
@@ -841,33 +1027,25 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         overflow: 'hidden',
         opacity: stealth ? 0.2 : opacity,
         transition: 'opacity 0.1s',
-        pointerEvents: clickThrough ? 'none' : 'all',
+        // Always 'all' — click-through is handled by Electron setIgnoreMouseEvents + region hover.
+        pointerEvents: 'all',
         fontFamily: 'system-ui, sans-serif',
         color: T.text1,
         userSelect: 'none',
         boxSizing: 'border-box',
       }}>
-        {/* Header — status/title on the left, a tidy icon toolbar on the right */}
-        <div onMouseDown={onDrag} style={{
+        {/* Header — drag handle (above resize hit-zones so Live overlay stays movable) */}
+        <div onMouseDown={onDrag} data-mm-hit="1" style={{
           display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px 7px 12px',
           borderBottom: '1px solid rgba(255,255,255,0.06)',
-          background: 'rgba(0,0,0,0.25)', cursor: 'grab', flexShrink: 0
+          background: 'rgba(0,0,0,0.25)', cursor: 'grab', flexShrink: 0,
+          position: 'relative', zIndex: 20,
         }}>
           {extra
-            ? <div onMouseDown={e => e.stopPropagation()}>{extra}</div>
+            ? <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>{extra}</div>
             : <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.88)', fontWeight: 600, fontFamily: T.font }}>{title || 'MockMate'}</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }} onMouseDown={e => e.stopPropagation()} data-mm-hit="1">
             {actions}
-            {onSizePreset && (
-              <>
-                <button type="button" onClick={() => onSizePreset('s')} title="HUD · compact (LockedIn-style)"
-                  style={{ height: 28, minWidth: 28, padding: '0 6px', display: 'grid', placeItems: 'center', background: panelSize?.w <= 300 ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>S</button>
-                <button type="button" onClick={() => onSizePreset('m')} title="Medium HUD"
-                  style={{ height: 28, minWidth: 28, padding: '0 6px', display: 'grid', placeItems: 'center', background: panelSize?.w > 300 && panelSize?.w < 360 ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>M</button>
-                <button type="button" onClick={() => onSizePreset('l')} title="Large HUD"
-                  style={{ height: 28, minWidth: 28, padding: '0 6px', display: 'grid', placeItems: 'center', background: panelSize?.w >= 360 ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>L</button>
-              </>
-            )}
             {typeof onOpacity === 'function' && (
               <label title="Transparency (like LockedIn) — lower = more see-through"
                 style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 4px', cursor: 'pointer' }}
@@ -887,12 +1065,13 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
             )}
             {inElectron && onClickThrough && (
               <button onClick={toggleClickThrough} onMouseDown={e => e.stopPropagation()}
-                title={clickThrough ? 'Click-through ON — clicks pass to the meeting. Hover this toolbar to interact, or press Alt+C to turn off.' : 'Click-through OFF — click to let clicks pass through the overlay (Alt+C force-off when on)'}
+                title={clickThrough ? 'Click-through ON — mouse clicks go through to Zoom/Meet. Hover the toolbar to use MockMate (Alt+C off).' : 'Click-through — let clicks pass through the overlay into the meeting (different from collapse)'}
                 aria-label={clickThrough ? 'Disable click-through' : 'Enable click-through'} aria-pressed={!!clickThrough}
                 style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: clickThrough ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 12, opacity: clickThrough ? 1 : 0.6, fontWeight: 700 }}>🖱️</button>
             )}
-            <IconBtn icon="eye" onClick={onStealth} title="Collapse to pill icon (stays on screen) · Alt+H" />
-            <IconBtn icon={minimized ? 'expand' : 'minimize'} onClick={onMinimize} title={minimized ? 'Expand overlay' : 'Collapse to pill icon'} />
+            {/* Single collapse control — eye + minimize were duplicates of the same pill action */}
+            <IconBtn icon={minimized ? 'expand' : 'minimize'} onClick={onMinimize || onStealth}
+              title={minimized ? 'Expand overlay' : 'Collapse to pill (stays on screen) · Alt+H'} />
             {confirming
               ? <button onClick={handleClose} onMouseDown={e => e.stopPropagation()} title="Confirm end"
                   style={{ height: 28, padding: '0 10px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>End?</button>
@@ -906,12 +1085,12 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         {!minimized && onResize && (
           <>
             {[
-              { edge: 'n',  cursor: 'ns-resize', style: { top: 0, left: 14, right: 14, height: 10 } },
+              { edge: 'n',  cursor: 'ns-resize', style: { top: 0, left: 48, right: 48, height: 6 } },
               { edge: 's',  cursor: 'ns-resize', style: { bottom: 0, left: 14, right: 14, height: 10 } },
-              { edge: 'e',  cursor: 'ew-resize', style: { top: 14, right: 0, bottom: 14, width: 10 } },
-              { edge: 'w',  cursor: 'ew-resize', style: { top: 14, left: 0, bottom: 14, width: 10 } },
-              { edge: 'nw', cursor: 'nwse-resize', style: { top: 0, left: 0, width: 16, height: 16 } },
-              { edge: 'ne', cursor: 'nesw-resize', style: { top: 0, right: 0, width: 16, height: 16 } },
+              { edge: 'e',  cursor: 'ew-resize', style: { top: 36, right: 0, bottom: 14, width: 10 } },
+              { edge: 'w',  cursor: 'ew-resize', style: { top: 36, left: 0, bottom: 14, width: 10 } },
+              { edge: 'nw', cursor: 'nwse-resize', style: { top: 0, left: 0, width: 14, height: 14 } },
+              { edge: 'ne', cursor: 'nesw-resize', style: { top: 0, right: 0, width: 14, height: 14 } },
               { edge: 'sw', cursor: 'nesw-resize', style: { bottom: 0, left: 0, width: 16, height: 16 } },
               { edge: 'se', cursor: 'nwse-resize', style: { bottom: 0, right: 0, width: 18, height: 18, background: 'linear-gradient(135deg,transparent 50%,rgba(255,255,255,0.18) 50%)', borderRadius: '0 0 12px 0' } },
             ].map(h => (

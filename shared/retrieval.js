@@ -43,9 +43,16 @@ export function topK(queryVec, items, { k = 4, minScore = 0.2 } = {}) {
     .slice(0, k)
 }
 
-// Build a grounding block from retrieved chunks (what gets injected into the hint prompt).
+/**
+ * Build a grounding block from retrieved chunks (injected into the hint prompt).
+ * Includes source name/type when present for attribution.
+ */
 export function groundingBlock(chunks) {
   if (!chunks?.length) return ''
   return '\n\nRELEVANT FROM YOUR DOCUMENTS (ground the answer in these — they were retrieved for THIS question):\n'
-    + chunks.map((c, i) => `[${i + 1}] ${c.text}`).join('\n\n')
+    + chunks.map((c, i) => {
+      const src = [c.doc, c.type].filter(Boolean).join(' · ')
+      const prefix = src ? `[${i + 1} · ${src}] ` : `[${i + 1}] `
+      return prefix + c.text
+    }).join('\n\n')
 }

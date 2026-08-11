@@ -10,6 +10,7 @@ import rateLimit from 'express-rate-limit'
 import * as Sentry from '@sentry/node'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { registerApiRoutes } from './api/_lib/apiRoutes.js'
 
 // Error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies so a
 // candidate's resume/transcript never rides along to Sentry (privacy-first).
@@ -19,10 +20,6 @@ if (process.env.SENTRY_DSN) {
     beforeSend(event) { if (event.request) delete event.request.data; return event }
   })
 }
-import { makeReport, availableProviders, allProviders, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed } from './api/_lib/core.js'
-import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen, streamHint } from './api/_lib/interview.js'
-import { findJobs } from './api/_lib/jobs.js'
-import { atsScore, tailorResume, referralMessage } from './api/_lib/career.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const distDir = path.join(__dirname, 'dist')
@@ -74,63 +71,12 @@ app.use(cors({ origin: [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$
 app.use(express.json({ limit: '2mb' }))
 app.use('/api', rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }))
 
-app.get('/api/providers', (req, res) => res.json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured() }))
-
-app.post('/api/deepgram-token', async (req, res) => {
-  try { res.json(await deepgramToken()) }
-  catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
-})
-
 // Report only UNEXPECTED errors to Sentry (skip expected 4xx like 402 quota / 429 rate-limit /
 // 400 validation, which are normal and would just be noise).
 const report = e => { if (process.env.SENTRY_DSN && (!e?.status || e.status >= 500)) Sentry.captureException(e) }
 
-// Shared POST route: call the lib fn with the JSON body, wrap the result under `key`
-// (or return it raw when key is omitted), and shape errors uniformly.
-const post = (path, fn, key) => app.post(path, async (req, res) => {
-  try { const out = await fn(req.body || {}); res.json(key ? { [key]: out } : out) }
-  catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
-})
-
-post('/api/report', makeReport, 'report')
-post('/api/interview', interviewerTurn, 'turn')
-post('/api/evaluate', evaluateSolo, 'report')
-post('/api/hint', generateHint, 'hint')
-post('/api/analyze-screen', analyzeScreen, 'analysis')
-post('/api/jobs', findJobs)
-post('/api/ats-score', atsScore)
-post('/api/tailor-resume', tailorResume)
-post('/api/referral', referralMessage)
-post('/api/token', mintToken)   // LiveKit room token for Duo (501 until LIVEKIT_* is configured)
-post('/api/embed', async b => ({ vectors: await embed(b.input || []) }))   // document RAG embeddings
-
-// Server-Sent Events: stream the spoken answer token-by-token for <1s time-to-first-word.
-app.post('/api/hint-stream', async (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache, no-transform')
-  res.setHeader('Connection', 'keep-alive')
-  res.flushHeaders?.()
-  // Detect a real client disconnect on the RESPONSE/socket. (req's 'close' fires
-  // normally once the request body is read, which would wrongly suppress all writes.)
-  let closed = false
-  // Abort the upstream LLM stream when the client disconnects (a newer question superseded
-  // this one) — otherwise it keeps generating server-side and bills tokens nobody sees.
-  const ac = new AbortController()
-  res.on('close', () => { closed = true; ac.abort() })
-  const send = (event, data) => { if (!closed) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`) }
-  try {
-    const out = await streamHint(req.body || {}, {
-      onMeta: m => send('meta', m),
-      onToken: t => send('token', t),
-      onUsage: u => send('usage', u),
-      signal: ac.signal
-    })
-    send(out?.skipped ? 'skip' : 'done', {})
-  } catch (e) {
-    if (!closed && !ac.signal.aborted && e?.name !== 'AbortError') { report(e); send('error', { error: e.message }) }
-  }
-  if (!closed) res.end()
-})
+// Single route registrar — same engine as managed backend (no auth locally = BYOK loopback).
+registerApiRoutes(app, { report })
 
 // Serve the built React app (production) + SPA fallback for non-API routes
 app.use(express.static(distDir))

@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 'app' = full windowed dashboard (large, centered); 'overlay' = compact floating panel.
   setWindowMode: mode => ipcRenderer.send('set-window-mode', mode),
   onScreenCaptured: cb => {
-    const handler = (_, base64) => cb(base64)
+    const handler = (_, payload) => cb(payload)
     ipcRenderer.on('screen-captured', handler)
     return () => ipcRenderer.removeListener('screen-captured', handler)
   },
@@ -24,7 +24,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('coding-detected', handler)
     return () => ipcRenderer.removeListener('coding-detected', handler)
   },
-  captureScreen: () => ipcRenderer.invoke('capture-screen'),
+  captureScreen: (opts) => ipcRenderer.invoke('capture-screen', opts || {}),
+  listScreenDisplays: () => ipcRenderer.invoke('list-screen-displays'),
   excludeFromCapture: () => ipcRenderer.invoke('exclude-from-capture'),
   onShortcutStealth: cb => {
     const handler = () => cb()

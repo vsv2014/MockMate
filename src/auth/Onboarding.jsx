@@ -8,7 +8,8 @@ const TARGET_ROLES = ['Full-stack', 'AI Engineer', 'Frontend', 'Backend', 'Other
 // Keep in sync with Solo Practice experience chips (same profile.yearsExp field).
 const YEARS = ['Student / New grad', '1–3 years', '4–6 years', '7+ years']
 const MAX_BYTES = 5 * 1024 * 1024
-const ACCEPT = '.pdf,.docx'
+// PDF only — DOCX is not parsed client-side; accepting it produced empty "needs_paste" resumes.
+const ACCEPT = '.pdf,application/pdf'
 
 // ── Onboarding (2 steps; shown once, right after first signup) ────────────────
 // Step 1: role setup.  Step 2: optional resume upload.
@@ -31,22 +32,15 @@ export default function Onboarding({ onComplete }) {
   async function handleFile(file) {
     if (!file) return
     setFileError(null)
-    const okType = /\.(pdf|docx)$/i.test(file.name)
-    if (!okType) { setFileError('Please choose a PDF or DOCX file'); return }
+    const okType = /\.pdf$/i.test(file.name) || file.type === 'application/pdf'
+    if (!okType) { setFileError('Please choose a PDF file (DOCX is not supported yet — export to PDF or paste text in Solo / Career)'); return }
     if (file.size > MAX_BYTES) { setFileError('That file is over 5MB — please choose a smaller one'); return }
 
-    setResume({ name: file.name, status: 'parsing', text: '', kind: /\.docx$/i.test(file.name) ? 'docx' : 'pdf' })
+    setResume({ name: file.name, status: 'parsing', text: '', kind: 'pdf' })
     let text = ''
-    const isDocx = /\.docx$/i.test(file.name)
-    if (!isDocx) {
-      // PDF parsed entirely on-device; the file never leaves the machine.
-      try { text = await extractPdfText(file) } catch { text = '' }
-    }
-    // DOCX has no client-side parser yet — never claim "Ready" with empty text.
-    const status = isDocx
-      ? 'needs_paste'
-      : (text && text.length > 20 ? 'ready' : 'empty')
-    setResume({ name: file.name, status, text, kind: isDocx ? 'docx' : 'pdf' })
+    try { text = await extractPdfText(file) } catch { text = '' }
+    const status = text && text.length > 20 ? 'ready' : 'empty'
+    setResume({ name: file.name, status, text, kind: 'pdf' })
   }
 
   function onDrop(e) {
@@ -129,7 +123,7 @@ export default function Onboarding({ onComplete }) {
                 Drag &amp; drop your resume
               </div>
               <div style={{ marginTop: 3, fontSize: 11, fontWeight: 400, color: T.text3 }}>
-                or <span style={{ color: T.accentFrom }}>browse</span> · PDF or DOCX · max 5MB
+                or <span style={{ color: T.accentFrom }}>browse</span> · PDF · max 5MB
               </div>
             </div>
           ) : (
@@ -146,7 +140,6 @@ export default function Onboarding({ onComplete }) {
                   {resume.status === 'parsing' && <><Spinner /> Reading…</>}
                   {resume.status === 'ready' && <><CheckIcon /> Ready · text extracted</>}
                   {resume.status === 'empty' && <>⚠ No text found — paste your resume in Solo or Career</>}
-                  {resume.status === 'needs_paste' && <>⚠ DOCX saved as file only — paste resume text in Solo or Career</>}
                 </div>
               </div>
               <button

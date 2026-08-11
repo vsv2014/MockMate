@@ -125,14 +125,18 @@ answer matches it.
 ### 💼 Job Matching
 - Live roles (Remotive + Adzuna) **ranked against your resume** — why-it-fits + skill gaps
 - Location filter, sort by fit / newest / salary, on-site vs remote badges, Load-more
-- **★ Save** any role to a local **Saved-jobs** list for later
+- **★ Save** any role to a local **Saved-jobs** list (status + notes)
+- Open **Resume Studio** against a match, or **use this JD** in Solo / Live (confirm → profile)
 
 ### 📄 Resume Studio
 - **ATS resume score** — graded **/100** with checks (keywords, impact metrics, parse-safety, seniority…),
   missing keywords, prioritized fixes, and red flags
 - **Tailor resume** — rewrites summary + bullets for a target role/JD and surfaces keywords you
   genuinely match (**never fabricates** experience). Analysis JD on this screen stays local to Resume Studio.
-- **Referral DM drafter** — a personalized, non-cringe referral request from your resume + role
+  Primary export: **Download PDF** (1–2 pages); optional `.txt` / Overleaf `.tex`.
+- **Referral DM drafter** — personalized note from your resume + role; **copy to paste** only
+  (MockMate does not send email or LinkedIn messages). Follow-up / user-confirmed send is roadmap § P6.
+- Hand off a listing to **score/tailor**, or seed the JD into **Solo / Live** with an explicit confirm.
 
 ---
 
@@ -209,10 +213,13 @@ hard questions escalate to a strong model (GPT-5.4 / Claude Sonnet 5). Model def
 ## Architecture
 
 **Code layers (enforced):**
-- `src/` — **frontend only** (React renderer; DOM, audio capture, `localStorage`). Shared frontend helpers in `src/lib/` (`profile`, `ui`, `languages`).
-- `api/`, `server.js`, `electron/` — **backend only** (Node). AI/provider/retry/failover logic in `api/_lib/` (`core`, `interview`, `jobs`, `search`, `http`). The backend **never imports from `src/`**.
-- `shared/` — **pure logic used by both** layers (e.g. `shared/delivery.js`: delivery analysis + the single banned-words list). The dependency arrow only ever points *into* `shared/`.
-- `backend/` — a **separate** (currently optional/unwired) auth+Mongo service; the foundation for the managed-backend phase ([`docs/NEXT_PHASE.md`](docs/NEXT_PHASE.md)).
+- `src/` — **frontend only** (React renderer; DOM, audio capture, `localStorage`). Helpers in `src/lib/`
+  (`profile`, `docs`, `careerDraft`, `resumePdf`, `clipboard`, `interviewJobSeed`, …) and Live slice in `src/live/`.
+- `api/`, `server.js`, `electron/` — **backend only** (Node). AI/provider/retry/failover in `api/_lib/`
+  (`core`, `interview`, `jobs`, `career`, `visionPolicy`, `playbooks`, `http`). The backend **never imports from `src/`**.
+- `shared/` — **pure logic used by both** layers (`delivery`, `retrieval`, `interviewState`,
+  `generationManager`, `questionCapture`, `interviewClassify`, `screenContext`, …). Dependency arrow only ever points *into* `shared/`.
+- `backend/` — JWT auth + (Phase 2b) managed `/api` proxy; forked from Electron; see [`docs/NEXT_PHASE.md`](docs/NEXT_PHASE.md).
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -283,6 +290,18 @@ here — they stay on the user's machine.
 
 ## Roadmap
 
+**Done (1.4.6)**
+- ✅ **Live engine hardening** — `InterviewState` / generation / question-capture / classification authority; text vs vision provider health; Deepgram local-managed key fallback policy.
+- ✅ **Resume Studio exports** — tailored **PDF** (primary), optional `.txt` / FAANG `.tex`; draft persistence across minimize; Electron-safe copy.
+- ✅ **Jobs ↔ Career ↔ interview** — JD seed into Solo/Live; Documents `jd` type; Home declutter (screen solve on Live only).
+- ✅ **`npm run smoke:api`** + expanded vitest net. Referral follow-up/send stays **roadmap P6** (copy-only today).
+
+**Done (1.4.5)**
+- ✅ Compact Live HUD, pin/pill stay-or-hide, bundled runtime keys for downloaders, optional CI signing paths.
+
+**Done (1.4.4)**
+- ✅ Jobs → Resume Studio handoff, apply-tailor-to-resume, saved-job status/notes, Solo turn timeout, honest Home readiness / landing.
+
 **Done (1.4.3)**
 - ✅ **Fixed the packaged-app regression** — the local server's CSP blocked the auth backend + LiveKit, so Solo/Live/sign-in failed in 1.4.2; loopback + LiveKit origins now allowlisted.
 - ✅ **Duo (Rooms)** — a friend joins live: shared transcript + screen, plus a private, capture-protected AI co-pilot (LiveKit).
@@ -331,6 +350,9 @@ here — they stay on the user's machine.
 - Coding-mode follow-ups: "optimize / explain / dry-run".
 
 **Later**
+- **Referral outreach (in-app)** — keep copy-only drafts now; next: local follow-up reminders, then
+  optional **user-confirmed** send via the user’s Gmail/Outlook (not MockMate mailers / not silent
+  multi-agent triggers). Phased plan: [`docs/ROADMAP.md` § P6](docs/ROADMAP.md).
 - **Job-application automation** (LinkedIn auto-apply, referral finding + auto-DM) — a **separate
   browser-extension** product, **not** an OAuth feature of this app. It runs in the user's own
   logged-in browser session (LinkedIn exposes no public auto-apply/connections API) and carries
@@ -348,6 +370,9 @@ here — they stay on the user's machine.
 npm run electron:dev         # Launch Electron overlay + API + Vite (recommended)
 npm run dev                  # API server + Vite only (browser, no screen protection)
 npm run build                # Build the frontend (Vite → dist/)
+npm test                     # Vitest unit suite
+npm run smoke:api            # API route contract smoke (in-process)
+npm run verify               # doctor + build + tests
 npm run electron:build       # Build installer for the current platform
 npm run electron:build:win   # Windows installer (.exe, nsis)
 ```

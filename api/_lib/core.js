@@ -4,6 +4,21 @@ import OpenAI from 'openai'
 import { analyze } from '../../shared/delivery.js'
 import { fetchWithTimeout } from './http.js'
 import { isRateLimit, isQuotaExhausted, isTransient } from '../../shared/llm-errors.js'
+import {
+  filterVisionProviders,
+  markVision429Family,
+  markVisionSuccess,
+  classifyVisionError,
+  shouldRetryVisionAttempt,
+  shouldFailoverVision,
+  makeVisionRateLimitedError,
+  makeVisionUnavailableError,
+  runVisionSingleFlight,
+  estimateImageBytes,
+  visionTelemetry,
+  isVisionCooling,
+  getVisionCooldown,
+} from './visionPolicy.js'
 
 // ── Provider registry ───────────────────────────────────────────────────────
 // Keys live in env (server-side, never shipped to the browser). The client
@@ -237,13 +252,63 @@ export function extractJSON(text) {
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 // Error classifiers live in shared/ (single source shared with the client retry path).
 
-// Cache: remember which provider last worked so we skip failed ones immediately
-let lastWorkingProvider = null
-const rateLimitedUntil = {}   // provId → timestamp when ban expires
+// Text-lane health (Live hints, Solo, Career, Jobs ranking). Vision has its own lane in
+// visionPolicy.js — a screen 429 must not reorder or ban text providers, and a text success
+// must not prefer a vision-only slot on the next hint.
+let lastWorkingTextProvider = null
+const textBannedUntil = {}   // baseProvId → timestamp when ban expires
+let lastWorkingVisionProvider = null
 // A 429 is "slow down for a bit", not "this model is dead". Keep the ban short so the
 // user's CHOSEN model comes back within the same interview instead of being switched
 // away for 5 minutes after one transient burst.
 const RATE_LIMIT_BAN_MS = 90 * 1000
+
+/** Permanent-looking provider failures — fail over (and briefly bench) before first token. */
+export function isProviderHardFail(e) {
+  const s = e?.status ?? e?.statusCode
+  return s === 400 || s === 401 || s === 403 || s === 404
+}
+
+/** Shared pre-emit failover rule for completeJSON + streamText. */
+export function shouldFailoverTextError(e, { emitted = false } = {}) {
+  if (emitted) return false
+  if (!e) return false
+  if (isQuotaExhausted(e) || isRateLimit(e) || isTransient(e) || isProviderHardFail(e)) return true
+  return false
+}
+
+function banTextProvider(provId, ms = RATE_LIMIT_BAN_MS) {
+  if (!provId) return
+  textBannedUntil[baseOf(provId)] = Date.now() + ms
+}
+
+function noteTextProviderFailure(provId, e) {
+  if (isRateLimit(e) || isProviderHardFail(e)) banTextProvider(provId)
+}
+
+/** Test helper — reset text/vision preference + text bans (vision cooldowns: visionPolicy). */
+export function _resetProviderHealthForTests() {
+  lastWorkingTextProvider = null
+  lastWorkingVisionProvider = null
+  for (const k of Object.keys(textBannedUntil)) delete textBannedUntil[k]
+}
+
+export function _getProviderHealthForTests() {
+  return {
+    lastWorkingTextProvider,
+    lastWorkingVisionProvider,
+    textBannedUntil: { ...textBannedUntil },
+  }
+}
+
+/** Test-only: seed text/vision preference without calling providers. */
+export function _setProviderHealthForTests({ text, vision, banText } = {}) {
+  if (text !== undefined) lastWorkingTextProvider = text
+  if (vision !== undefined) lastWorkingVisionProvider = vision
+  if (banText) {
+    for (const [id, until] of Object.entries(banText)) textBannedUntil[id] = until
+  }
+}
 
 // Mode-aware user-facing errors. The SAME engine serves TWO deployments: the local BYOK server
 // (server.js :3002), where the user owns the key, and the managed proxy (backend/server.js :4000),
@@ -300,7 +365,7 @@ export function assertProviderConfigured() {
   if (availableProviders().length === 0) throw aiError('no_provider', 402)
 }
 
-function getFallbackProviders(requestedId) {
+export function getFallbackProviders(requestedId) {
   // Preferred try-order (fast/cheap first), then EVERY other configured provider appended —
   // so ANY second key you add (Anthropic/Claude, Groq, Gemini, a custom endpoint, …) is part
   // of the failover, not just this hardcoded subset. That's what makes auto-switch actually work.
@@ -311,17 +376,17 @@ function getFallbackProviders(requestedId) {
   const now = Date.now()
   const reqBase = baseOf(requestedId)
   const encoded = !!requestedId && requestedId !== reqBase   // 'provider::model' dynamic pick
-  // Filter out recently rate-limited providers (bans are keyed by the base provider id).
+  // Filter out recently banned text providers (bans are keyed by the base provider id).
   const available = [...new Set([reqBase, ...order, ...configured])]
     .filter(id => configured.includes(id))
-    .filter(id => !rateLimitedUntil[id] || rateLimitedUntil[id] < now)
+    .filter(id => !textBannedUntil[id] || textBannedUntil[id] < now)
   // Dynamic-model pick → lead with the EXACT encoded choice so its chosen model is used,
   // then the remaining configured providers as automatic failover.
   if (encoded && available.includes(reqBase)) {
     return [requestedId, ...available.filter(id => id !== reqBase)]
   }
   // Respect the caller's REQUESTED provider as primary — keep it first whenever it's
-  // available. Only use last-known-working to order the REMAINING fallbacks.
+  // available. Only use last-known-working TEXT provider to order the REMAINING fallbacks.
   if (reqBase && available.includes(reqBase)) {
     const reqUrl = baseUrlFor(reqBase)
     // Order fallbacks so a DIFFERENT endpoint than the primary comes first (stable sort keeps
@@ -329,14 +394,15 @@ function getFallbackProviders(requestedId) {
     // same-endpoint siblings are tried only as a last resort.
     const rest = available.filter(id => id !== reqBase)
       .sort((a, b) => (baseUrlFor(a) === reqUrl ? 1 : 0) - (baseUrlFor(b) === reqUrl ? 1 : 0))
-    if (lastWorkingProvider && lastWorkingProvider !== reqBase && rest.includes(lastWorkingProvider) && baseUrlFor(lastWorkingProvider) !== reqUrl) {
-      return [reqBase, lastWorkingProvider, ...rest.filter(id => id !== lastWorkingProvider)]
+    const last = lastWorkingTextProvider
+    if (last && last !== reqBase && rest.includes(last) && baseUrlFor(last) !== reqUrl) {
+      return [reqBase, last, ...rest.filter(id => id !== last)]
     }
     return [reqBase, ...rest]
   }
-  // Requested provider unavailable (banned/unconfigured) — fall back, last-working first.
-  if (lastWorkingProvider && available.includes(lastWorkingProvider)) {
-    return [lastWorkingProvider, ...available.filter(id => id !== lastWorkingProvider)]
+  // Requested provider unavailable (banned/unconfigured) — fall back, last-working text first.
+  if (lastWorkingTextProvider && available.includes(lastWorkingTextProvider)) {
+    return [lastWorkingTextProvider, ...available.filter(id => id !== lastWorkingTextProvider)]
   }
   return available.length ? available : [requestedId]
 }
@@ -403,7 +469,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
         ])
         parsed = extractJSON(fixed)
       }
-      lastWorkingProvider = provId   // remember only AFTER a clean parse — not for garbage output
+      lastWorkingTextProvider = baseOf(provId)   // remember only AFTER a clean parse — not for garbage output
       return parsed
     } catch (e) {
       lastError = e
@@ -412,7 +478,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
       if (isQuotaExhausted(e)) { sawQuota = true; console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
       if (isRateLimit(e)) {
         sawRate = true
-        rateLimitedUntil[baseOf(provId)] = Date.now() + RATE_LIMIT_BAN_MS
+        noteTextProviderFailure(provId, e)
         console.warn(`[MockMate] ${provId} rate-limited → trying next provider`)
         continue
       }
@@ -425,7 +491,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
       // next configured provider. A 400/401/403/404 won't self-heal this session, so BENCH the
       // provider briefly — otherwise a permanently-broken key (e.g. a Gemini model your key can't
       // use) gets retried on every single request, spamming logs and adding latency to each turn.
-      if ([400, 401, 403, 404].includes(e?.status)) rateLimitedUntil[baseOf(provId)] = Date.now() + RATE_LIMIT_BAN_MS
+      if (isProviderHardFail(e)) noteTextProviderFailure(provId, e)
       console.error(`[llm] ${provId} (${model}) failed (${e?.status || ''}): ${e?.message || e} → trying next provider`)
       continue
     }
@@ -442,47 +508,221 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
   throw aiError('generic', lastError?.status || 502)
 }
 
-// All vision-capable providers (in preference order) — so screen analysis can fail over
-// OpenAI ↔ Gemini instead of dying on one provider's 429.
-function visionProviders() {
+// Vision-capable providers — cheap/fast first so screen solve survives free-tier 429s.
+// Prefer Gemini Flash / GPT-4o-mini before heavy GPT-4o; skip recently rate-limited slots.
+export function listVisionProviders() {
   const list = []
-  if (process.env.OPENAI_API_KEY) list.push({ id: 'openai', key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: process.env.OPENAI_MODEL && /4o|4\.1|gpt-4/.test(process.env.OPENAI_MODEL) ? process.env.OPENAI_MODEL : 'gpt-4o' })
-  if (process.env.GEMINI_API_KEY) list.push({ id: 'gemini', key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: CATALOG.gemini.model() })
+  if (process.env.GEMINI_API_KEY) {
+    list.push({ id: 'gemini_flash_lite', key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini_flash_lite.baseURL, model: CATALOG.gemini_flash_lite.model() })
+    list.push({ id: 'gemini', key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: CATALOG.gemini.model() })
+  }
+  if (process.env.OPENAI_API_KEY) {
+    list.push({ id: 'openai_mini', key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: process.env.OPENAI_MINI_MODEL || 'gpt-4o-mini' })
+    const oaiModel = process.env.OPENAI_MODEL && /4o|4\.1|gpt-4|gpt-5/.test(process.env.OPENAI_MODEL) ? process.env.OPENAI_MODEL : 'gpt-4o'
+    list.push({ id: 'openai', key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: oaiModel })
+  }
   return list
 }
 
-// Vision completion with retry + provider fallback. Returns the raw model text.
-// Fixes "429 (no body)" on screen analysis: a rate-limit now retries with backoff,
-// then falls over to the other vision provider, instead of erroring on the first try.
-export async function visionComplete({ imageBase64, prompt, maxTokens = 1500, detail = 'auto' }) {
+function visionProviders(now = Date.now()) {
+  const list = listVisionProviders()
+  const ready = filterVisionProviders(list, now)
+  if (!ready.length) return []
+  // Prefer last-working VISION provider among ready (do not resurrect a cooling provider).
+  if (lastWorkingVisionProvider) {
+    const hit = ready.find(p => p.id === lastWorkingVisionProvider)
+    if (hit) return [hit, ...ready.filter(p => p.id !== hit.id)]
+  }
+  return ready
+}
+
+function visionDataUrl(imageBase64, mime = 'image/png') {
+  const raw = String(imageBase64 || '')
+  if (raw.startsWith('data:')) return raw
+  return `data:${mime || 'image/png'};base64,${raw}`
+}
+
+/**
+ * Vision completion with provider failover + cooldown.
+ * Budget for ONE screen analysis: at most one image call per provider, failover on 429
+ * without re-hitting the same provider. No same-provider 429 retry storm.
+ *
+ * @param {object} opts
+ * @param {string} opts.imageBase64
+ * @param {string} opts.prompt
+ * @param {number} [opts.maxTokens]
+ * @param {string} [opts.detail]
+ * @param {string} [opts.mime]
+ * @param {string} [opts.requestId] — stable screen/request id for single-flight + telemetry
+ * @param {string} [opts.fingerprint] — image fingerprint for single-flight key
+ * @param {AbortSignal} [opts.signal]
+ * @param {{ width?: number, height?: number }} [opts.imageDimensions]
+ * @param {function} [opts._callProvider] — test inject
+ * @param {boolean} [opts._skipSingleFlight]
+ */
+export async function visionComplete(opts = {}) {
+  const {
+    imageBase64, prompt, maxTokens = 1500, detail = 'low', mime = 'image/png',
+    requestId, fingerprint, signal, imageDimensions,
+    _callProvider, _skipSingleFlight,
+  } = opts
+
+  const managed = process.env.MOCKMATE_MANAGED === '1'
+  const providersAll = listVisionProviders()
+  if (!providersAll.length) throw makeVisionUnavailableError(managed)
+
+  const key = fingerprint || requestId || 'vision-default'
+  const rid = requestId || key
+  const run = () => visionCompleteOnce({
+    imageBase64, prompt, maxTokens, detail, mime, requestId: rid, signal, imageDimensions, _callProvider, managed,
+  })
+  if (_skipSingleFlight) return run()
+  return runVisionSingleFlight(key, rid, run)
+}
+
+async function visionCompleteOnce({
+  imageBase64, prompt, maxTokens, detail, mime, requestId, signal, imageDimensions, _callProvider, managed,
+}) {
   const providers = visionProviders()
-  if (!providers.length) throw aiError('vision_none', 400)
+  if (!providers.length) {
+    // All configured providers are in cooldown.
+    if (listVisionProviders().length) throw makeVisionRateLimitedError(managed)
+    throw makeVisionUnavailableError(managed)
+  }
+
+  const dataUrl = visionDataUrl(imageBase64, mime)
+  const imageBytes = estimateImageBytes(imageBase64)
+  const dims = imageDimensions || null
   let lastError
-  for (const prov of providers) {
+  let sawRate = false
+  let failover = false
+  const debug = process.env.MOCKMATE_DEBUG_VISION === '1'
+
+  const callOne = _callProvider || (async (prov) => {
     const llm = clientFor(prov)
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const resp = await llm.chat.completions.create({
+      model: prov.model, max_tokens: maxTokens,
+      messages: [{ role: 'user', content: [
+        { type: 'image_url', image_url: { url: dataUrl, detail } },
+        { type: 'text', text: prompt },
+      ] }],
+    }, signal ? { signal } : undefined)
+    return resp.choices?.[0]?.message?.content
+  })
+
+  for (let pi = 0; pi < providers.length; pi++) {
+    const prov = providers[pi]
+    if (signal?.aborted) {
+      const e = new Error('Screen analysis cancelled'); e.name = 'AbortError'; throw e
+    }
+    if (isVisionCooling(prov.id)) continue
+    if (pi > 0) failover = true
+
+    for (let attempt = 0; ; attempt++) {
+      const t0 = Date.now()
       try {
-        const resp = await llm.chat.completions.create({
-          model: prov.model, max_tokens: maxTokens,
-          messages: [{ role: 'user', content: [
-            { type: 'image_url', image_url: { url: `data:image/png;base64,${imageBase64}`, detail } },
-            { type: 'text', text: prompt }
-          ] }]
-        })
-        const raw = resp.choices?.[0]?.message?.content
-        if (raw) { lastWorkingProvider = prov.id; return raw }
-        throw new Error('No response from vision model')
+        const raw = await callOne(prov)
+        if (!raw) {
+          const e = new Error('No response from vision model'); e.status = 502; throw e
+        }
+        markVisionSuccess(prov.id)
+        lastWorkingVisionProvider = prov.id
+        if (debug) {
+          console.info('[vision]', visionTelemetry({
+            screenRequestId: requestId, provider: prov.id, attempt, imageBytes,
+            imageDimensions: dims, status: 'ok', latencyMs: Date.now() - t0, failover,
+          }))
+        }
+        return raw
       } catch (e) {
         lastError = e
-        if ((isRateLimit(e) || isTransient(e)) && attempt < 2) { await sleep(800 * (attempt + 1)); continue }
-        break   // give up on this provider → try the next
+        const kind = classifyVisionError(e)
+        if (debug) {
+          console.info('[vision]', visionTelemetry({
+            screenRequestId: requestId, provider: prov.id, attempt, imageBytes,
+            imageDimensions: dims, status: kind, latencyMs: Date.now() - t0,
+            is429: kind === 'rate', cooldown: getVisionCooldown(prov.id),
+            failover, cancelled: kind === 'cancelled',
+          }))
+        }
+        if (kind === 'cancelled') throw e
+        if (kind === 'rate') {
+          sawRate = true
+          markVision429Family(prov.id)
+          // Vision lane only — do not ban text providers for a screen 429.
+          break // never re-hit this provider for this request
+        }
+        if (kind === 'auth' || kind === 'bad_request' || kind === 'quota') {
+          // Do not retry this provider; try next only for auth if another vendor exists.
+          if (kind === 'quota') { /* continue failover */ }
+          break
+        }
+        if (shouldRetryVisionAttempt(kind, attempt)) {
+          await sleep(400 * (attempt + 1))
+          continue
+        }
+        if (!shouldFailoverVision(kind)) break
+        break
       }
     }
   }
+
   if (isQuotaExhausted(lastError)) throw aiError('vision_quota', 402)
-  if (isRateLimit(lastError)) throw aiError('vision_rate', 429)
-  throw lastError || new Error('Screen analysis failed')
+  if (sawRate || classifyVisionError(lastError) === 'rate') throw makeVisionRateLimitedError(managed)
+  if (classifyVisionError(lastError) === 'auth') {
+    const e = aiError('vision_none', 401); e.code = 'VISION_AUTH'; throw e
+  }
+  throw lastError || makeVisionUnavailableError(managed)
 }
+
+/** Text-only repair — do NOT re-send the screenshot (avoids a second vision 429). */
+export async function completeTextQuick({ prompt, maxTokens = 1200, signal, requestId } = {}) {
+  assertProviderConfigured()
+  const providerQueue = getFallbackProviders('auto')
+  let lastError
+  const debug = process.env.MOCKMATE_DEBUG_VISION === '1'
+  for (const provId of providerQueue) {
+    if (signal?.aborted) { const e = new Error('cancelled'); e.name = 'AbortError'; throw e }
+    let prov
+    try { prov = resolveProvider(provId) } catch { continue }
+    const t0 = Date.now()
+    try {
+      const llm = clientFor(prov)
+      const resp = await llm.chat.completions.create({
+        model: prov.model, max_tokens: maxTokens,
+        messages: [{ role: 'user', content: prompt }],
+      }, signal ? { signal } : undefined)
+      const raw = resp.choices?.[0]?.message?.content
+      if (raw) {
+        lastWorkingTextProvider = baseOf(provId)
+        if (debug) {
+          console.info('[vision-repair]', visionTelemetry({
+            screenRequestId: requestId, provider: provId, status: 'ok',
+            latencyMs: Date.now() - t0, repairAttempt: true, repairType: 'text',
+          }))
+        }
+        return raw
+      }
+    } catch (e) {
+      lastError = e
+      const kind = classifyVisionError(e)
+      if (kind === 'cancelled') throw e
+      if (kind === 'rate') {
+        noteTextProviderFailure(provId, e)
+        // Same API key is rate-limited — cool vision siblings for this repair path only.
+        markVision429Family(baseOf(provId))
+        continue
+      }
+      if (kind === 'auth' || kind === 'bad_request') {
+        if (isProviderHardFail(e)) noteTextProviderFailure(provId, e)
+        continue
+      }
+      if (!isRateLimit(e) && !isTransient(e)) throw e
+    }
+  }
+  throw lastError || new Error('Could not repair screen-analysis response')
+}
+
 
 // Streaming text completion — emits tokens via onToken as they arrive (true SSE).
 // Provider fallback only kicks in BEFORE the first token; once streaming has begun
@@ -490,7 +730,7 @@ export async function visionComplete({ imageBase64, prompt, maxTokens = 1500, de
 export async function streamText({ messages, maxTokens = 700, provider, onToken, onUsage, signal }) {
   assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
-  let lastError, emitted = false
+  let lastError, emitted = false, sawQuota = false, sawRate = false, sawTransient = false
   for (const provId of providerQueue) {
     let prov
     try { prov = resolveProvider(provId) } catch { continue }
@@ -508,7 +748,7 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
         const tok = chunk?.choices?.[0]?.delta?.content || ''
         if (tok) { emitted = true; onToken?.(tok) }
       }
-      lastWorkingProvider = provId
+      lastWorkingTextProvider = baseOf(provId)
       if (usage && onUsage) onUsage({ model, input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0 })
       return
     } catch (e) {
@@ -516,14 +756,28 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       // do NOT fail over to another provider, which would re-spend tokens on a dead request.
       if (signal?.aborted || e?.name === 'AbortError') throw e
       lastError = e
-      if (isRateLimit(e)) rateLimitedUntil[baseOf(provId)] = Date.now() + RATE_LIMIT_BAN_MS
       if (emitted) throw e   // already streamed partial output — don't restart elsewhere
-      // Before any token: only fall over for retryable classes (rate-limit / transient).
-      // A genuine error (bad/expired key = 401, malformed request = 400) fails FAST with a
-      // clear message — same as completeJSON — instead of silently trying every provider.
-      if (!isRateLimit(e) && !isTransient(e)) throw e
+      // Before any token: same failover classes as completeJSON (rate / transient / hard fail / quota).
+      if (!shouldFailoverTextError(e, { emitted: false })) throw e
+      if (isQuotaExhausted(e)) { sawQuota = true; console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
+      if (isRateLimit(e)) {
+        sawRate = true
+        noteTextProviderFailure(provId, e)
+        console.warn(`[MockMate] ${provId} rate-limited → trying next provider`)
+        continue
+      }
+      if (isTransient(e)) {
+        sawTransient = true
+        console.warn(`[MockMate] ${provId} transient error (${e?.status || ''}) → trying next provider`)
+        continue
+      }
+      if (isProviderHardFail(e)) noteTextProviderFailure(provId, e)
+      console.error(`[llm] ${provId} (${model}) stream failed (${e?.status || ''}): ${e?.message || e} → trying next provider`)
     }
   }
+  if (sawQuota) { const e = aiError('quota', 402); e.code = 'insufficient_quota'; throw e }
+  if (sawRate) throw aiError('rate', 429)
+  if (sawTransient) throw aiError('transient', 503)
   if (isQuotaExhausted(lastError)) { const e = aiError('quota', 402); e.code = 'insufficient_quota'; throw e }
   throw lastError || new Error('No LLM provider could stream a response')
 }
@@ -531,13 +785,19 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
 // ── Deepgram (accurate speech-to-text) ──────────────────────────────────────
 export function deepgramConfigured() { return !!process.env.DEEPGRAM_API_KEY }
 
-// Mint a short-lived grant token so the browser can stream audio to Deepgram
-// without ever seeing the real API key.
-// Requires an Owner-scoped Deepgram key that can mint grants. Member / scoped
-// keys often return 403 on /v1/auth/grant — for local Electron BYOK we fall back
-// to the API key as the WS token (key already lives on this machine). Never do
-// that when MOCKMATE_HOSTED=1 (remote clients must not receive the project key).
-export async function deepgramToken(_opts = {}) {
+// Mint a short-lived grant token so the browser can stream audio to Deepgram.
+// Prefer a short-lived grant. Member / scoped Deepgram keys often 403 on /v1/auth/grant —
+// for LOCAL Electron (BYOK :3002 or the local managed fork :4000) we fall back to the
+// project API key as the WS token because that key already lives on this machine.
+//
+// NEVER return the raw key when MOCKMATE_HOSTED=1 (real remote production).
+// Local MOCKMATE_MANAGED=1 is fine — it is still this laptop's key, not a multi-tenant leak.
+// Opt out anytime with MOCKMATE_DEEPGRAM_KEY_FALLBACK=0.
+//
+// DEV NOTE: keep DEEPGRAM_API_KEY (+ GROQ/Gemini) in bundled/user .env so a fresh laptop
+// install works out-of-box. Owner-scoped Deepgram keys can mint grants; Member keys need
+// this fallback. Tighten for production hosted only — do not break local solo testing.
+export async function deepgramToken(opts = {}) {
   if (!process.env.DEEPGRAM_API_KEY) { const e = new Error('Deepgram not configured (set DEEPGRAM_API_KEY).'); e.status = 500; throw e }
   const key = process.env.DEEPGRAM_API_KEY
   const r = await fetchWithTimeout('https://api.deepgram.com/v1/auth/grant', {
@@ -547,19 +807,35 @@ export async function deepgramToken(_opts = {}) {
   }, 8000)
   if (r.ok) return await r.json()   // { access_token, expires_in }
 
-  const hosted = process.env.MOCKMATE_HOSTED === '1' || process.env.MOCKMATE_HOSTED === 'true'
-  if (!hosted && (r.status === 403 || r.status === 401)) {
-    // Member keys can't mint grants; Deepgram still accepts the project key on the WS.
-    return { access_token: key, expires_in: 3600, fallback: 'api_key' }
+  const remoteHosted = process.env.MOCKMATE_HOSTED === '1' || process.env.MOCKMATE_HOSTED === 'true'
+  const envAllowsFallback = process.env.MOCKMATE_DEEPGRAM_KEY_FALLBACK !== '0'
+    && process.env.MOCKMATE_DEEPGRAM_KEY_FALLBACK !== 'false'
+  // Route must opt in (typically after loopback check). Local managed is allowed; remote hosted is not.
+  const fallbackAllowed = opts.allowApiKeyFallback === true && !remoteHosted && envAllowsFallback
+
+  if (fallbackAllowed && (r.status === 403 || r.status === 401)) {
+    return {
+      access_token: key,
+      expires_in: 3600,
+      fallback: 'api_key',
+      warning: 'byok_api_key_fallback',
+      localOnly: true,
+    }
   }
 
   const e = new Error(
     r.status === 403 || r.status === 401
-      ? `Deepgram token grant failed (${r.status}). Use an Owner-scoped API key (Deepgram Console → API Keys → create with Member/Owner that can create keys), or a Project key that can mint grants (Settings → Voice).`
+      ? `Deepgram token grant failed (${r.status}). Use an Owner-scoped API key that can mint grants (Deepgram Console → API Keys), or ensure local key fallback is enabled on this machine.`
       : `Deepgram token grant failed (${r.status}). Check your Deepgram key in Settings → Voice.`
   )
   e.status = r.status
   throw e
+}
+
+/** True when the HTTP client is loopback (IPv4 / IPv6 / IPv4-mapped). */
+export function isLoopbackAddress(ip) {
+  const s = String(ip || '').replace(/^::ffff:/i, '')
+  return s === '127.0.0.1' || s === '::1' || s === 'localhost'
 }
 
 // ── LiveKit room token — MockMate "Duo" ─────────────────────────────────────
