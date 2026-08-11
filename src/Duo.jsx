@@ -4,10 +4,8 @@ import Room from './Room'
 import SoloFeedback from './SoloFeedback'
 import { loadProfile, saveProfile } from './lib/profile'
 
-// MockMate Duo — a live room where a friend/mentor joins your interview: shared transcript +
-// screen, and a PRIVATE AI co-pilot only the candidate sees. Self-contained flow:
-//   lobby → room (LiveKit) → report.  Backend: /api/token (LiveKit), /api/hint, /api/report.
-// Replaces the legacy Home.jsx room entry; styled to the dashboard.
+// MockMate Duo — shared room (LiveKit) + private candidate co-pilot.
+// Voice: Deepgram (same as Solo) — requires a Deepgram key / managed voice.
 
 function randomRoom() {
   return 'mock-' + Math.random().toString(36).slice(2, 8)

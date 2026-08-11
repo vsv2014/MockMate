@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   hideWindow: () => ipcRenderer.send('hide-window'),
   setPin: on => ipcRenderer.send('set-pin', on),
+  setClickThrough: on => ipcRenderer.send('set-click-through', !!on),
   // Duo co-pilot: open/close the protected hint window + push hints into it (see main.cjs).
   setRoomActive: on => ipcRenderer.send('set-room-active', on),
   sendHint: payload => ipcRenderer.send('send-hint', payload),
@@ -55,8 +56,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
   checkForUpdates: () => ipcRenderer.invoke('check-updates-now'),
   writeEnv: content => ipcRenderer.invoke('write-env', content),
+  appendSessionMetrics: row => ipcRenderer.invoke('append-session-metrics', row),
   relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
   applyKeys: () => ipcRenderer.invoke('apply-keys'),
   openKeySetup: () => ipcRenderer.invoke('open-key-setup'),
-  openExternal: url => ipcRenderer.invoke('open-external', url)
+  openExternal: url => ipcRenderer.invoke('open-external', url),
+  // OS power / display — Live resumes AudioContext + STT after sleep/wake or monitor changes.
+  onPowerEvent: cb => {
+    const h = (_, ev) => cb(ev)
+    ipcRenderer.on('power-event', h)
+    return () => ipcRenderer.removeListener('power-event', h)
+  },
+  onDisplayChanged: cb => {
+    const h = (_, ev) => cb(ev)
+    ipcRenderer.on('display-changed', h)
+    return () => ipcRenderer.removeListener('display-changed', h)
+  },
 })

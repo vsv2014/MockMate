@@ -5,7 +5,7 @@ import { getAiMode, setAiMode, MANAGED_AVAILABLE } from './lib/aiMode'
 
 // Reusable API-key entry. Used BOTH at the global level (Home → Settings) and inside
 // Live Companion, so keys can be configured once without entering any specific mode.
-// Keys are MERGED into userData/.env by the main process (adding one never wipes others)
+// Keys are MERGED into encrypted userData/.env.enc by the main process (safeStorage; plaintext .env migrated)
 // and applied live, so they immediately work for Solo, Companion, and Jobs alike.
 
 const inp = {
@@ -151,19 +151,19 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       {/* ── AI provider — two-card chooser (design #37) ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
         <ProviderCard selected={mode === 'managed'} onSelect={() => setMode('managed')}
-          icon="✨" accent={T.accentFrom} title="Managed AI" subtitle="Powered by MockMate" recommended
-          desc="No API keys. No setup. We automatically choose the best model for every task."
-          checks={['No API keys required', 'Automatic best-model routing', 'Built-in failover & reliability', 'Optimized for interviews', 'Ready instantly']}
-          cta="Use MockMate AI" />
+          icon="✨" accent={T.accentFrom} title="Managed AI" subtitle="Hosted proxy (when configured)"
+          desc="Routes through MockMate’s authenticated backend with platform keys. Requires sign-in and a configured hosted API. Until then, add BYOK keys so Live/Solo still work."
+          checks={['No personal API keys (when hosted)', 'Automatic model routing', 'Built-in failover', 'Usage caps may apply', 'Needs account + MOCKMATE_API_BASE']}
+          cta="Use Managed AI" />
         <ProviderCard selected={mode === 'byok'} onSelect={() => setMode('byok')}
-          icon="🔑" accent="#8b5cf6" title="Bring your own API key" subtitle="Advanced"
-          desc="Use your OpenAI, Anthropic, Gemini or Groq API keys."
-          checks={['Pick your own models', 'Use your existing credits', 'Stored locally on this device', 'Advanced configuration']}
+          icon="🔑" accent="#8b5cf6" title="Bring your own API key" subtitle="Recommended until Managed is hosted"
+          desc="Use your OpenAI, Anthropic, Gemini, Groq, or Cerebras keys. Keys stay in local app storage; interview content still goes to those providers."
+          checks={['Pick your own models', 'Use your existing credits', 'Keys encrypted at rest on this device', 'Test keys before a real interview']}
           cta="Use my own API key" />
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, padding: '9px 12px', fontSize: 11.5, color: T.text2 }}>
-        <span>ⓘ</span><span>You can switch between these anytime. Your interviews and data are always private.</span>
+        <span>ⓘ</span><span>You can switch anytime. BYOK keys stay local; audio/resume/screenshots still go to the providers you call — not “never leave the device.”</span>
       </div>
 
       {mode === 'managed' && <HowItWorks />}
@@ -217,7 +217,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
         </button>
         {msg && <span style={{ fontSize: 11, fontWeight: 500, color: msg.startsWith('⚠') ? T.danger : T.success }}>{msg}</span>}
       </div>
-      <div style={{ fontSize: 10, color: T.text3, textAlign: 'center' }}>Keys are stored only on this machine.</div>
+      <div style={{ fontSize: 10, color: T.text3, textAlign: 'center' }}>Keys are encrypted at rest on this machine (OS keychain when available).</div>
       </>)}
     </div>
   )

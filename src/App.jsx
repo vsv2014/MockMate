@@ -228,7 +228,7 @@ function ElectronShell({ auth }) {
       <>
         {auth?.guest && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCard, padding: '11px 14px', marginBottom: 14 }}>
-            <span style={{ fontSize: 12.5, color: '#5eead4', flex: 1 }}>You're exploring as a guest — running on your own API key. <strong>Sign in</strong> to save sessions, sync across devices, and use MockMate AI (no key needed).</span>
+            <span style={{ fontSize: 12.5, color: '#5eead4', flex: 1 }}>You're exploring as a guest — BYOK on this device (sessions save locally). <strong>Sign in</strong> for an account and Managed AI when the hosted proxy is available.</span>
             <button onClick={() => auth.signIn?.()} style={{ height: 34, padding: '0 16px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Sign in</button>
           </div>
         )}
@@ -244,10 +244,10 @@ function ElectronShell({ auth }) {
     else if (view === 'settings') content = (
       <div style={{ maxWidth: 640, margin: '0 auto' }}>
         <div style={shellHeader}>Settings</div>
-        <div style={{ fontSize: 13, color: T.text2, lineHeight: 1.5, marginBottom: 16 }}>Choose how MockMate gets its AI. <strong>MockMate AI</strong> is managed for you — nothing to set up. Power users can bring their own keys.</div>
+        <div style={{ fontSize: 13, color: T.text2, lineHeight: 1.5, marginBottom: 16 }}>Choose how MockMate gets its AI. <strong>Bring your own key</strong> keeps provider keys on this device. <strong>Managed AI</strong> uses MockMate’s hosted proxy when configured — otherwise add your own keys.</div>
         {auth?.guest && (
           <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCard, fontSize: 12.5, color: '#5eead4', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ flex: 1 }}>You're a guest — <strong>MockMate AI (managed)</strong> needs an account. Sign in to use it with no key, or add your own key below to keep using MockMate locally.</span>
+            <span style={{ flex: 1 }}>You're a guest — use <strong>your own API keys</strong> below. Sign in for an account; keyless Managed AI needs the hosted backend.</span>
             <button onClick={() => auth.signIn?.()} style={{ height: 32, padding: '0 14px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Sign in</button>
           </div>
         )}
@@ -575,7 +575,7 @@ function DocThreshold() {
   )
 }
 
-export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, onResize, onStealth, onMinimize, onClose, title, extra, actions, opacity = 0.95, autoHeight, clickThrough, confirmClose }) {
+export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, onResize, onStealth, onMinimize, onClose, title, extra, actions, opacity = 0.95, autoHeight, clickThrough, onClickThrough, confirmClose }) {
   const [confirming, setConfirming] = useState(false)
   const confirmTimer = useRef(null)
   const pillDragged = useRef(false)
@@ -601,8 +601,16 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
   // view changes, and re-asserted on mount so the window matches the saved state.
   const [pinned, setPinned] = useState(() => { try { return localStorage.getItem('mm-pinned') === '1' } catch { return false } })
   useEffect(() => { if (inElectron) window.electronAPI?.setPin?.(pinned) }, [pinned])
+  useEffect(() => {
+    if (!inElectron) return
+    window.electronAPI?.setClickThrough?.(!!clickThrough)
+    return () => { window.electronAPI?.setClickThrough?.(false) }
+  }, [clickThrough])
   function togglePin() {
     setPinned(p => { const v = !p; try { localStorage.setItem('mm-pinned', v ? '1' : '0') } catch {} ; return v })
+  }
+  function toggleClickThrough() {
+    onClickThrough?.()
   }
   function handleClose() {
     if (!confirmClose) return onClose?.()
@@ -665,6 +673,12 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
                 title={pinned ? 'Pinned above full-screen apps — click to unpin' : 'Pin above full-screen apps (Zoom/Meet)'}
                 aria-label={pinned ? 'Unpin overlay from above full-screen apps' : 'Pin overlay above full-screen apps'} aria-pressed={pinned}
                 style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: pinned ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, opacity: pinned ? 1 : 0.6 }}>📌</button>
+            )}
+            {inElectron && onClickThrough && (
+              <button onClick={toggleClickThrough} onMouseDown={e => e.stopPropagation()}
+                title={clickThrough ? 'Click-through ON — clicks pass to the meeting (click pill/header icons to interact)' : 'Click-through OFF — click to let clicks pass through the overlay'}
+                aria-label={clickThrough ? 'Disable click-through' : 'Enable click-through'} aria-pressed={!!clickThrough}
+                style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: clickThrough ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 12, opacity: clickThrough ? 1 : 0.6, fontWeight: 700 }}>🖱️</button>
             )}
             <IconBtn icon="eye" onClick={onStealth} title={inElectron ? 'Hide overlay  (Alt+H)' : 'Dim  (Alt+H)'} />
             <IconBtn icon={minimized ? 'expand' : 'minimize'} onClick={onMinimize} title={minimized ? 'Expand' : 'Minimize'} />

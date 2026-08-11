@@ -6,7 +6,8 @@
 //   opts.onLlm  — async (req, path) hook fired AFTER a successful LLM call, for usage metering.
 //                 Omit locally. Metering errors are swallowed so they never break a response.
 //   opts.report — error reporter (e.g. Sentry.captureException). Optional.
-// Metadata routes (/providers, /models) are never gated — they expose no user data.
+// On the managed/hosted mount, metadata is auth-gated (reveals which platform keys exist).
+// Local BYOK (:3002) leaves them open — loopback-only, intentional for setup UI.
 import { makeReport, availableProviders, allProviders, listModels, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed } from './core.js'
 import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen, streamHint } from './interview.js'
 import { findJobs } from './jobs.js'
@@ -22,17 +23,15 @@ export function registerApiRoutes(app, opts = {}) {
   const report = typeof opts.report === 'function' ? opts.report : () => {}
   const onLlm = typeof opts.onLlm === 'function' ? opts.onLlm : null
 
-  // ── Metadata (never gated) ──
-  app.get('/api/providers', (req, res) => res.json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured() }))
-  app.get('/api/models', async (req, res) => {
+  // ── Metadata — gated on managed proxy; open on local BYOK ──
+  app.get('/api/providers', ...guardLight, (req, res) => res.json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured() }))
+  app.get('/api/models', ...guardLight, async (req, res) => {
     try { res.json({ models: await listModels() }) }
     catch (e) { console.error('[api] GET /api/models:', e.message); res.json({ models: [] }) }
   })
 
   app.post('/api/deepgram-token', ...guardLight, async (req, res) => {
-    const host = req.headers.host || ''
-    const local = host.startsWith('localhost') || host.startsWith('127.')
-    try { res.json(await deepgramToken({ allowRawKey: local })) }
+    try { res.json(await deepgramToken()) }
     catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
   })
 

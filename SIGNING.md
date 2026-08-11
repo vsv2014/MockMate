@@ -68,9 +68,11 @@ with no Gatekeeper warning.
 
 > **Signing is conditional.** If the `MAC_CSC_LINK` + `APPLE_ID` secrets are **not** set,
 > the macOS build still succeeds — it just ships **unsigned** (users clear it once with
-> `xattr -dr com.apple.quarantine /Applications/MockMate.app`). Signing + notarization
-> turn on automatically the moment the secrets exist. So a release never fails just
-> because Apple isn't set up yet.
+> `xattr -dr com.apple.quarantine /Applications/MockMate.app`).
+>
+> **Current CI note:** `.github/workflows/release.yml` sets `CSC_IDENTITY_AUTO_DISCOVERY: false`,
+> so builds stay unsigned until you (1) add the secrets above and (2) remove that env override
+> (or set CSC_* from secrets). Signing does **not** turn on from `package.json` alone.
 
 ## Verifying locally (optional, on a Mac)
 

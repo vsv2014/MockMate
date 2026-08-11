@@ -531,12 +531,11 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
 // ── Deepgram (accurate speech-to-text) ──────────────────────────────────────
 export function deepgramConfigured() { return !!process.env.DEEPGRAM_API_KEY }
 
-// Mint a short-lived (30s default) token so the browser can stream audio to
-// Deepgram directly without ever seeing the real API key.
-// Prefer a short-lived grant token. If the key lacks grant permission, fall back
-// to the raw key ONLY for local dev (allowRawKey) — never expose it on a public
-// deployment, where a grant-capable (Owner-scoped) key is required.
-export async function deepgramToken({ allowRawKey = false } = {}) {
+// Mint a short-lived grant token so the browser can stream audio to Deepgram
+// without ever seeing the real API key. Raw-key fallback was removed (P0) —
+// any localhost process could otherwise exfiltrate DEEPGRAM_API_KEY.
+// Requires an Owner-scoped Deepgram key that can mint grants.
+export async function deepgramToken(_opts = {}) {
   if (!process.env.DEEPGRAM_API_KEY) { const e = new Error('Deepgram not configured (set DEEPGRAM_API_KEY).'); e.status = 500; throw e }
   const r = await fetchWithTimeout('https://api.deepgram.com/v1/auth/grant', {
     method: 'POST',
@@ -544,8 +543,7 @@ export async function deepgramToken({ allowRawKey = false } = {}) {
     body: JSON.stringify({ ttl_seconds: 300 })   // 5 min — long enough to (re)establish the stream on reconnects
   }, 8000)
   if (r.ok) return await r.json()   // { access_token, expires_in }
-  if (allowRawKey) return { access_token: process.env.DEEPGRAM_API_KEY, _raw: true }   // localhost only
-  const e = new Error(`Deepgram token grant failed (${r.status}). For deployment, create an Owner-scoped Deepgram key that can mint tokens.`)
+  const e = new Error(`Deepgram token grant failed (${r.status}). Use an Owner-scoped Deepgram key that can mint short-lived tokens (Settings → Voice).`)
   e.status = r.status
   throw e
 }

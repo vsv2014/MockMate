@@ -26,7 +26,7 @@ body{background:#08090e;color:#e2e8f0;font-family:system-ui,sans-serif;padding:1
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 .cursor{display:inline-block;width:2px;height:.9em;background:#0d9488;margin-left:2px;vertical-align:text-bottom;animation:blink .7s step-end infinite}
 </style>
-<div class="prot">🛡️ Protected — excluded from all screen capture</div>
+<div class="prot">🛡️ Protected — excluded from common screen-share APIs (verify preview)</div>
 <div id="root"></div>`
 
 const PIP_SCRIPT = `
@@ -73,7 +73,13 @@ function render(state){
       if(h.pattern)html+='<span class="badge" style="background:rgba(19,78,74,.5);color:#99f6e4">⚡ '+esc(h.pattern)+'</span>'
       html+='</div>'
       if(h.resumeStory)html+='<div style="border-left:2px solid #4ade80;padding-left:7px;font-size:10px;color:#86efac;margin-bottom:6px;font-style:italic">'+esc(h.resumeStory)+'</div>'
-      html+='<div class="a '+(h.confidence==='resume'?'a-resume':'a-general')+'">'+md(s.answer||'…')+'</div>'
+      const opener=esc(h.opener||(s.answer||'').split(/(?<=[.!?])\\s+/)[0]||s.answer||'…')
+      const pts=Array.isArray(h.keyPoints)?h.keyPoints:[]
+      html+='<div class="a '+(h.confidence==='resume'?'a-resume':'a-general')+'">'
+      html+='<div style="font-weight:600;margin-bottom:'+(pts.length?'8px':'0')+';line-height:1.45">'+opener+'</div>'
+      if(pts.length){html+='<div style="margin-bottom:6px">';pts.forEach(pt=>{html+='<div style="display:flex;gap:6px;margin-bottom:3px;font-size:12px"><span style="color:#0d9488">▸</span><span>'+esc(pt)+'</span></div>'});html+='</div>'}
+      html+='<details style="margin-top:4px"><summary style="color:#5eead4;font-size:11px;cursor:pointer;font-weight:600">Expand full answer</summary><div style="margin-top:6px;line-height:1.7">'+md(s.answer||'')+'</div></details>'
+      html+='</div>'
       if(h.watchOut)html+='<div class="watch">⚠ '+esc(h.watchOut)+'</div>'
       html+='</div>'
     }

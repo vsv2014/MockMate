@@ -22,7 +22,13 @@ export async function sendResetEmail(to, link) {
       console.error('[reset] Resend responded', res.status)
     } catch (e) { console.error('[reset] email send failed:', e.message) }
   }
-  // Dev fallback — no provider configured (or send failed): surface the link in logs.
-  console.log(`[reset] password-reset link for ${to}: ${link}`)
+  // Dev fallback — never log the full reset URL outside local development (secret in logs).
+  const isDev = process.env.NODE_ENV !== 'production' && !process.env.HOST
+  if (isDev) {
+    console.log(`[reset] password-reset link for ${to}: ${link}`)
+  } else {
+    const domain = String(to || '').split('@')[1] || '?'
+    console.log(`[reset] password-reset issued (email domain=${domain}; link redacted)`)
+  }
   return { delivered: 'console' }
 }

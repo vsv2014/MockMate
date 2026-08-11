@@ -9,7 +9,7 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 ## 0. Clean-room build (catches missing deps / stale node_modules)
 - [ ] `rm -rf node_modules dist release && npm install` (fresh — mirrors a new machine)
 - [ ] `npm run build` completes with no errors
-- [ ] `npm test` green (46+ tests)
+- [ ] `npm test` green (unit + playbook/context/glance contract tests)
 - [ ] `git status` shows no build artifacts tracked (dist/ ignored)
 
 ## 1. Packaged app boots (catches CSP / server-fork / dangling-import bugs)
@@ -25,9 +25,21 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 
 ## 3. Solo Practice — end to end
 - [ ] Start a session → interviewer asks a real question (not an error toast)
-- [ ] Answer → follow-up question generates
+- [ ] With resume+JD filled: ≥8/10 main questions name a resume project or JD skill (manual rubric)
+- [ ] Zero “please answer / go ahead and answer” interviewer turns in a 10-turn dry-run
+- [ ] Answer → follow-up question generates and references what you said
 - [ ] End → evaluation report renders with scores
 - [ ] Bad-key / over-cap path shows a **clear message** (not a raw 4xx, not "check your API key" in managed mode)
+
+## 3b. Live glanceable answers
+- [ ] After a streamed hint finishes: opener + ≤3 bullets visible; full answer behind Expand
+- [ ] Force stream fail (abort mid-token) → JSON fallback still shows opener/bullets/same answer shape
+
+
+## 3c. Packaged Live dry-run evidence (First 10 #10)
+- [ ] Copy `docs/evidence/LIVE_DRY_RUN_TEMPLATE.md` → `docs/evidence/vX.Y.Z.md` for this version
+- [ ] Fill required interruption IDs (I01, I03, I04, I15, I16, I19) as PASS on Win or macOS
+- [ ] Attach the evidence file to the GitHub Release (`npm run check:dry-run`)
 
 ## 4. Live Interview — end to end (the core moment)
 - [ ] Start Live → transcription connects (Deepgram token minted)

@@ -23,7 +23,7 @@ Only `backend/` (the Express + JWT auth API). The Vite frontend and `api/*` func
 | `MONGO_URI` | *(Atlas string above)* | switches store from file → mongo automatically |
 | `JWT_SECRET` | *(long random string)* | must be stable — rotating it logs everyone out |
 | `JWT_EXPIRES` | `30d` | optional |
-| `CORS_ORIGIN` | `https://your-frontend.vercel.app` | comma-separate multiple; omit = allow all |
+| `CORS_ORIGIN` | `https://your-frontend.vercel.app` | comma-separated allowlist (enforced). Loopback always allowed for Electron. Omit = loopback-only (not “allow all”) |
 | `RESEND_API_KEY` | *(from resend.com)* | omit → reset links log to console instead of emailing |
 | `RESET_FROM` | `MockMate <noreply@yourdomain>` | required if using Resend |
 | `RESET_URL_BASE` | `https://your-frontend.vercel.app/reset.html` | where reset links point |

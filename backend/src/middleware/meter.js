@@ -1,8 +1,8 @@
 // Usage metering for the managed-AI proxy (Phase 2b). Runs AFTER requireAuth (needs req.userId).
 //   checkCap  — pre-request gate: 402 if the user is over their monthly cap.
 //   recordLlm — post-success hook: +1 AI response for the current period.
-// Metering must never HARD-break a paid/working request on a store hiccup, so errors soft-pass
-// on record and (conservatively) allow on a check failure.
+// Hosted (MONGO_URI): checkCap FAIL-CLOSED on store errors (503) — never burn MockMate keys uncapped.
+// Local file-store: caps skipped (no Upgrade path on the desktop fork).
 import { store, currentPeriod } from '../store.js'
 import { limitFor } from '../plans.js'
 
@@ -26,8 +26,11 @@ export async function checkCap(req, res, next) {
     req._plan = user.plan
     next()
   } catch (e) {
-    console.error('[meter] checkCap failed (allowing):', e.message)
-    next()   // never block a request because metering hiccuped
+    console.error('[meter] checkCap failed (blocking):', e.message)
+    return res.status(503).json({
+      error: 'Usage metering is temporarily unavailable. Try again in a moment, or switch to your own API key in Settings.',
+      code: 'metering_unavailable',
+    })
   }
 }
 

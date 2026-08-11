@@ -1,13 +1,15 @@
 # MockMate — Real-Time AI Interview Companion
 
 A desktop app for interview prep **and** live help: a full **dashboard workspace** (Solo practice,
-Resume Studio, Job matching, Past sessions) plus an **invisible live overlay** that floats over your
+Resume Studio, Job matching, Past sessions) plus a **live overlay** that floats over your
 screen during real interviews, listens to the interviewer, and gives natural, resume-grounded
-answers in seconds. **Invisible to screen recording and screen share on Windows & macOS.**
+answers in seconds. On **Windows & macOS**, the overlay uses OS content-protection APIs so it is
+**excluded from common screen-share / recording paths** — always verify in your meeting app before
+a real interview. **Not supported on Linux.** See [Screen Protection](#screen-protection).
 
-AI runs in one of two modes: **MockMate AI** (managed — no keys to manage, automatic best-model
-routing + failover) or **Bring your own key** (OpenAI / Anthropic / Gemini / Groq / Cerebras, stored locally;
-the model picker is discovered live from your key, so it never lists a model you can't use).
+AI runs in one of two modes: **MockMate AI** (managed — when the hosted proxy is configured: no keys
+to manage, automatic routing + failover) or **Bring your own key** (OpenAI / Anthropic / Gemini /
+Groq / Cerebras, stored locally; the model picker is discovered live from your key).
 
 ---
 
@@ -152,13 +154,15 @@ alive; a fabricated claim ends it.
 
 | Platform | Mechanism | Protection |
 |---|---|---|
-| **Windows** | `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` | ✅ Invisible to all capture tools |
-| **macOS** | `NSWindow.sharingType = NSWindowSharingNone` | ✅ Invisible to all capture tools |
+| **Windows** | `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` via Electron `setContentProtection` | ✅ **Partially supported** — excluded from common OS screen-capture / share APIs; **verify in your meeting app before a real interview** |
+| **macOS** | `NSWindowSharingNone` via Electron `setContentProtection` | ✅ **Partially supported** — same caveat; verify Zoom/Meet/Teams share preview |
 | **Linux** | — | ⚠️ **Not supported** — overlay is visible in screen share |
 
-Content protection is applied to **every** window, including the floating "hints" Picture-in-
-Picture window. **Linux note:** Electron has no content-protection API on Linux, so the overlay
-**will appear** in screen shares there — use **Windows or macOS** for a hidden overlay.
+Content protection is applied to **every** BrowserWindow, including the floating hints / PiP
+window. This is **not** “invisible to all capture tools” and **not** undetectable: cameras
+filming the screen, some remote-desktop / DLP paths, HDMI taps, and certain browser/compositor
+edge cases are outside this API. **Always dry-run a screen share** (see `docs/STEALTH_BROWSER_MATRIX.md`)
+before trusting it live. **Linux:** no content-protection API — use Windows or macOS for a hidden overlay.
 
 **Hide shortcut (all platforms):** `Alt+H` or `Ctrl+Shift+H` fully hides/restores the window —
 works even when it's not visible.
@@ -357,8 +361,8 @@ English, Spanish, French, German, Portuguese, Hindi, Japanese, Chinese, Korean, 
 
 ## Privacy
 
-- Audio streamed to **Deepgram** for transcription (per-session, not stored)
-- Screenshots sent to **OpenAI / Gemini** only when you press `Ctrl+Shift+U`
-- Resume text sent to the LLM as context for grounding answers
-- The optional accounts backend stores profile/resume/history per your choice — **API keys never leave your machine**
-- No analytics, no tracking
+- **BYOK mode:** your provider API keys stay in local `userData` / `.env` and are sent only to the providers you configure (OpenAI, Anthropic, Deepgram, etc.) — not to a MockMate key vault.
+- **Interview content leaves the device** when features need it: audio → **Deepgram**; resume/JD/transcript → your chosen **LLM**; screenshots → **OpenAI / Gemini** when you press `Ctrl+Shift+U`.
+- **Managed MockMate AI** (when hosted): prompts and context go through MockMate’s authenticated proxy; platform keys stay on the server. Until that hosted path is enabled for your build, “Managed” may still use keys on the machine — check Settings.
+- Optional accounts backend can store profile/resume/history if you choose — separate from API keys.
+- No third-party product analytics/tracking in the desktop app.

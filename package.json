@@ -3,7 +3,7 @@
   "version": "1.4.3",
   "type": "module",
   "main": "electron/main.cjs",
-  "description": "Real-Time AI Interview Companion — floats over Zoom/Teams/Meet, invisible to screen capture",
+  "description": "Real-Time AI Interview Companion \u2014 floats over Zoom/Teams/Meet, invisible to screen capture",
   "author": "MockMate",
   "license": "MIT",
   "engines": {
@@ -23,7 +23,9 @@
     "verify": "node scripts/doctor.mjs && vite build && vitest run",
     "vite": "vite",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:dry-run": "node scripts/check-dry-run-evidence.mjs",
+    "soak": "node scripts/soak-metrics.mjs"
   },
   "build": {
     "appId": "com.mockmate.app",

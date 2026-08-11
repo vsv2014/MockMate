@@ -6,7 +6,7 @@ import Login from './Login'
 import Signup from './Signup'
 import Onboarding from './Onboarding'
 import { WindowControls } from './AuthShell'
-import { login, signup, fetchMe, logout as apiLogout, updateProfile, forgotPassword, getToken, setUnauthorizedHandler } from './api'
+import { login, signup, fetchMe, logout as apiLogout, updateProfile, forgotPassword, getToken, setUnauthorizedHandler, refreshSession } from './api'
 import { loadProfile, saveProfile } from '../lib/profile'
 import { setAiMode } from '../lib/aiMode'
 
@@ -36,11 +36,21 @@ export default function AuthGate({ children }) {
     ;(async () => {
       const token = await getToken()
       if (!token) { if (alive) { setView(seenWelcome() ? 'login' : 'welcome'); setStatus('auth') } return }
-      try { await loadSession() }
+      try {
+        try { await refreshSession() } catch { /* expired → loadSession will 401 */ }
+        await loadSession()
+      }
       catch { if (alive) { setView('login'); setStatus('auth') } }
     })()
     return () => { alive = false }
   }, [loadSession])
+
+  // Keep access tokens fresh while the app stays open (default JWT is 7d).
+  useEffect(() => {
+    if (status !== 'ready') return
+    const id = setInterval(() => { refreshSession().catch(() => {}) }, 12 * 60 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [status])
 
   // ── Handlers passed to the screens ──
   const handleLogin = useCallback(async (creds) => {

@@ -2,6 +2,7 @@
 // no difficulty knob — the interviewer calibrates to the target role.
 import { completeJSON, visionComplete, extractJSON, streamText, pickFastProvider, pickStrongProvider } from './core.js'
 import { analyze, BANNED_WORDS } from '../../shared/delivery.js'
+import { glanceLayers } from '../../shared/hintLayers.js'
 import { searchWeb, needsWebSearch } from './search.js'
 
 // Web-search grounding must NEVER stall an answer — above all a live streamed hint, where
@@ -39,13 +40,50 @@ function profileBlock(p = {}) {
   if (p.name) s += `\nCandidate name: ${p.name}`
   if (p.targetRole) s += `\nTarget role: ${p.targetRole}`
   if (p.targetCompany) s += `\nTarget company: ${p.targetCompany}`
+  if (p.yearsExp) s += `\nExperience level: ${p.yearsExp}`
   if (p.resume) s += `\n\nResume:\n${String(p.resume).slice(0, 1800)}`
   if (p.jobDescription) s += `\n\nJob description:\n${String(p.jobDescription).slice(0, 1200)}`
   return s
 }
 
+/** Short identity + resume/JD with hierarchy. When RAG chunks are present, skip stuffing a long resume. */
+export function packCandidateContext(profile = {}, extraContext = '') {
+  const extra = String(extraContext || '').trim()
+  const hasRag = /RELEVANT FROM YOUR DOCUMENTS/i.test(extra)
+  const parts = []
+  const id = []
+  if (profile.name) id.push(`Name: ${profile.name}`)
+  if (profile.targetRole) id.push(`Target role: ${profile.targetRole}`)
+  if (profile.targetCompany) id.push(`Target company: ${profile.targetCompany}`)
+  if (profile.yearsExp) id.push(`Experience: ${profile.yearsExp}`)
+  if (id.length) parts.push('CANDIDATE IDENTITY:\n' + id.join('\n'))
+
+  if (hasRag) {
+    // Source hierarchy: retrieved docs first, then a short resume fact card (not the full dump).
+    parts.push(extra)
+    const resume = String(profile.resume || '').trim()
+    if (resume) parts.push('RESUME FACT CARD (do not invent beyond this; prefer retrieved docs above when they conflict):\n' + resume.slice(0, 800))
+    const jd = String(profile.jobDescription || '').trim()
+    if (jd) parts.push('JD CONTEXT:\n' + jd.slice(0, 500))
+  } else {
+    const resume = String(profile.resume || '').trim()
+    if (resume) parts.push('CANDIDATE RESUME (ground truth — never invent beyond this):\n' + resume.slice(0, 1800))
+    const jd = String(profile.jobDescription || '').trim()
+    if (jd) parts.push('JOB DESCRIPTION:\n' + jd.slice(0, 900))
+    if (extra) parts.push(extra)
+  }
+  if (profile.customPrompt?.trim()) {
+    parts.push('CANDIDATE VOICE / INSTRUCTIONS (match this):\n' + String(profile.customPrompt).trim().slice(0, 800))
+  }
+  return parts.filter(Boolean).join('\n\n')
+}
+
+const ANSWER_LOOP_RE = /\b(please\s+answer|go\s+ahead\s+and\s+answer|your\s+answer\s*(please)?|can\s+you\s+answer|answer\s+the\s+question|provide\s+your\s+answer|i('m| am)\s+waiting\s+for\s+your\s+answer)\b/i
+
 function buildPrompt(config = {}, profile = {}) {
   const ctx = profileBlock(profile)
+  const hasResume = !!(profile.resume && String(profile.resume).trim().length > 40)
+  const hasJd = !!(profile.jobDescription && String(profile.jobDescription).trim().length > 40)
   const track = [config.domainLabel, config.roundLabel].filter(Boolean).join(' — ') || 'general interview'
   const depth = config.followupDepth
   const followLine = depth === 'light'
@@ -54,25 +92,38 @@ function buildPrompt(config = {}, profile = {}) {
       ? 'After each answer, ask 2–3 probing follow-ups, drilling into specifics (real numbers, the tradeoff they rejected, what broke, why not the alternative) before moving on.'
       : 'After each answer, you may ask 0–2 natural follow-ups (about reasoning, complexity, tradeoffs, or how it scales) before moving on.'
 
+  const groundingRules = (hasResume || hasJd)
+    ? `
+GROUNDING (mandatory — this is a practice interview for THIS candidate):
+- Main questions (kind:"question") MUST reference something concrete from the resume and/or JD when provided (a project name, tech, metric, requirement, or responsibility). Do not ask generic bank questions that ignore their materials.
+- Follow-ups (kind:"followup") MUST react to what the candidate just said — quote or paraphrase a detail they used — never jump to an unrelated topic until probes for the current beat are done.
+- Prefer a natural conversation arc: open → 1–2 probes → next grounded topic. Vary openings; never sound like a quizmaster.
+- Ban robotic filler: never say "please answer", "go ahead and answer", "your answer please", "can you answer that", or similar.`
+    : `
+GROUNDING:
+- No resume/JD was provided — ask clear role-appropriate questions for the target role/company, still conversational (not quizmaster filler).`
+
   return `You are an experienced, professional interviewer running a REALISTIC mock interview so the candidate can practice as if it were real.
 
 Interview track: ${track}
 Calibrate difficulty yourself to the target role and the candidate's seniority (from their background) — interview them exactly as a real panel for that role and level would.
-${config.focus ? `\n[Candidate's requested focus — shape questions around this, but never reveal answers or break character]\n"${String(config.focus).slice(0, 600)}"\n` : ''}${ctx ? `\n[Candidate background — tailor questions to this where natural]${ctx}\n` : ''}${config.relentless ? `\n[RELENTLESS MODE] The moment an answer sounds rehearsed, generic, or buzzword-heavy, challenge it directly ("That sounds rehearsed — give me a concrete example from YOUR experience") and drill for specifics. Tough but respectful. Never reveal answers.\n` : ''}
+${config.focus ? `\n[Candidate's requested focus — shape questions around this, but never reveal answers or break character]\n"${String(config.focus).slice(0, 600)}"\n` : ''}${ctx ? `\n[Candidate background]${ctx}\n` : ''}${config.relentless ? `\n[RELENTLESS MODE] The moment an answer sounds rehearsed, generic, or buzzword-heavy, challenge it directly ("That sounds rehearsed — give me a concrete example from YOUR experience") and drill for specifics. Tough but respectful. Never reveal answers.\n` : ''}
+${groundingRules}
 HOW A REAL INTERVIEWER BEHAVES (follow strictly):
 - Ask ONE question at a time. Never dump multiple questions at once.
 - Stay within the interview track. ${followLine}
 - Do NOT give the candidate the answer, hints, or coaching during the interview. Stay neutral.
-- Briefly acknowledge ("Got it.", "Okay, makes sense.") but never praise or evaluate quality — feedback comes only at the end.
+- Briefly acknowledge ("Got it.", "Okay, makes sense.") then ask the next question or follow-up in the SAME turn when natural — never leave a dead "answer…" prompt with no question.
 - Talk like a real human interviewer, not a script: contractions ("Let's", "Why'd you", "Tell me about a time"), natural phrasing, vary how you open each question. Warm but neutral — not robotic, not a quizmaster reading a list.
 - Keep turns short and conversational, the way people actually speak.
 - This is OPEN-ENDED: there is NO fixed number of questions. Do NOT end the interview yourself and do NOT give a closing line — the candidate ends it when ready. Always set "isComplete" to false; keep moving to new relevant areas.
+- Optional: set "grounding" to a short label of what you anchored on (e.g. project name or JD skill), or null.
 
 Respond with ONE valid JSON object and nothing else, no markdown fences:
-{ "say": "<your spoken line>", "kind": "question" | "followup", "questionNumber": <1-based integer of the current MAIN question>, "isComplete": false }`
+{ "say": "<your spoken line — must include a real question or follow-up>", "kind": "question" | "followup", "questionNumber": <1-based integer of the current MAIN question>, "isComplete": false, "grounding": "<short label or null>" }`
 }
 
-export async function interviewerTurn({ config = {}, transcript = [], profile = {}, provider, language = 'English' }) {
+export async function interviewerTurn({ config = {}, transcript = [], profile = {}, provider, language = 'English', extraContext = '' }) {
   // Only send recent turns to the model. An unbounded transcript over a long (20+ min)
   // session makes each request bigger and slower — raising latency, cost, and the chance
   // of provider overload/timeout (the "503" mid-interview). Recent context is what drives
@@ -82,177 +133,59 @@ export async function interviewerTurn({ config = {}, transcript = [], profile = 
   const messages = recent.map(t => ({ role: t.role === 'interviewer' ? 'assistant' : 'user', content: t.text }))
   if (messages.length === 0) messages.push({ role: 'user', content: "I'm ready. Please begin the interview with your first question." })
   const langNote = language && language !== 'English' ? `\n\nConduct this interview entirely in ${language}.` : ''
-  const turn = await completeJSON({
+  const lastInterviewer = [...recent].reverse().find(t => t.role === 'interviewer')?.text || ''
+  const docBlock = String(extraContext || '').trim()
+    ? `\n\nRELEVANT DOCUMENT SNIPPETS (ground MAIN questions in these when natural):\n${String(extraContext).trim().slice(0, 2000)}`
+    : ''
+
+  const runOnce = async (extraSystem = '') => completeJSON({
     maxTokens: 700, provider,
-    messages: [{ role: 'system', content: buildPrompt(config, profile) + langNote }, ...messages]
+    messages: [{ role: 'system', content: buildPrompt(config, profile) + langNote + docBlock + extraSystem }, ...messages]
   })
+
+  let turn = await runOnce()
   // Guard: a model can return valid JSON that's missing "say" (off-schema). Surface it as a
   // retryable error — the client auto-retries + fails over — instead of a dead "Service error (200)".
   if (!turn || typeof turn.say !== 'string' || !turn.say.trim()) {
-    const e = new Error('The interviewer glitched for a second — tap Send again.'); e.status = 502; throw e
+    const e = new Error('The interviewer glitched for a second — tap Continue again.'); e.status = 502; throw e
+  }
+  // Anti-loop: reject quizmaster filler / duplicate turns once with a stricter regen.
+  const say = turn.say.trim()
+  const loop = ANSWER_LOOP_RE.test(say) || (lastInterviewer && say.toLowerCase() === lastInterviewer.trim().toLowerCase())
+  if (loop) {
+    turn = await runOnce('\n\nREGEN: Your previous line was invalid (filler like "please answer" or a duplicate). Ask a concrete, conversational interview question grounded in the resume/JD if available. No filler.')
+    if (!turn || typeof turn.say !== 'string' || !turn.say.trim() || ANSWER_LOOP_RE.test(turn.say)) {
+      const e = new Error('The interviewer glitched for a second — tap Continue again.'); e.status = 502; throw e
+    }
   }
   return turn
 }
 
-export async function generateHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', style = 'balanced', autoSkip = true }) {
-  const ctx = profileBlock(profile)
-  const langInstruction = language && language !== 'English'
-    ? `\n\nLANGUAGE: Respond ENTIRELY in ${language}. The fullAnswer, sampleAnswer, keyPoints, opener, resumeStory, and watchOut must ALL be written in ${language}. Do not mix languages.`
-    : ''
-  // Candidate's own persona/style instructions — highest-priority steering (like a custom prompt).
-  const customBlock = profile.customPrompt?.trim()
-    ? `\n\nTHE CANDIDATE'S OWN INSTRUCTIONS (highest priority — match this voice, seniority, and emphasis in every answer):\n"${String(profile.customPrompt).trim().slice(0, 800)}"`
-    : ''
-
-  const system = `You are a private interview coach. The candidate is in a REAL LIVE INTERVIEW with 5 seconds to glance at this hint.${langInstruction}${customBlock}
-
-FIRST — decide if this is an interview-relevant input:
-- If it is a greeting, filler word, incomplete sentence, or clearly NOT an interview question → return ONLY: {"skip": true}
-- If it IS an interview question or statement worth responding to → continue with full response below
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⛔ NEVER FABRICATE EXPERIENCE — THE #1 RULE, OVERRIDES EVERYTHING BELOW
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-If the question names a specific tool, technology, framework, company, domain, or project that is NOT in the candidate's resume/profile above, you MUST NOT pretend they used it, and you MUST NOT graft it onto one of their real projects. Inventing "I used AutoCAD in my Document Intelligence project" when AutoCAD isn't in their background is an instant, interview-ending lie. Do not do it.
-
-When the question assumes experience the candidate does NOT have:
-  • Behavioral / "how did you use X" question about an unfamiliar X → answer HONESTLY and pivot to the closest REAL thing: "Yeah, I haven't worked with <X> directly — the closest for me was <real project/skill from their resume>…". Only ever reference experience that is actually in their profile.
-  • Pure technical/knowledge question about an unfamiliar topic → explain the concept from general knowledge WITHOUT claiming personal use; set confidence:"general".
-  • If you're unsure whether something is in their background, treat it as NOT theirs — never claim it.
-  • NEVER invent metrics, numbers, percentages, dates, team sizes, or client names that aren't in the resume. No real number? Speak qualitatively ("cut it down quite a bit", "a big chunk faster") — do NOT make up "40%". Fabricated numbers get probed and exposed.
-  • Put the mismatch in "watchOut" (e.g. "AutoCAD isn't on your resume — don't claim you used it; pivot to your real tools.").
-A truthful "I haven't used that, but here's my closest experience" keeps the interview alive. A fabricated claim kills it.
-
-You operate in TWO modes. Switch based on question type — do NOT mix them.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-MODE A — CS EXPERT  (dsa, coding, technical, system_design)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-These are pure knowledge questions. Resume is irrelevant. Use accurate CS knowledge.
-NEVER say "I haven't worked on that" — every engineer knows these fundamentals.
-ACCURACY BEATS CONFIDENCE: if you're not certain of the exact complexity, name, or detail, hedge it ("pretty sure it's O(n log n), I'd sanity-check the edge cases") — a confidently WRONG answer is worse than a hedged correct one, and it gets caught on the follow-up.
-
-dsa (reverse/find/valid/count/sort/minimum/maximum/path/subarray/substring — algorithmic):
-  • Identify the PATTERN: Sliding Window | Two Pointers | BFS | DFS | Binary Search | DP | HashMap | Stack | Heap | Trie | Union Find | Backtracking
-  • Time + space complexity in O() notation
-  • sampleAnswer (2-3 lines): pattern name → one-line approach → complexity
-  • Fill "pattern" and "complexity" fields
-
-coding (write a function / implement / code this):
-  • Same as DSA. Pattern → approach → edge cases → complexity
-  • sampleAnswer: "So I'd clarify — sorted? duplicates? Then the pattern here is..."
-
-technical (React hooks / Java GC / Python async / SQL / REST vs GraphQL / OOP / OS / networking / any framework concept):
-  • One sharp definition + one concrete real-world analogy
-  • The single most common interview mistake on this topic
-  • If resume shows they used this tech, add one line of personal context
-  • confidence: "general"
-
-system_design (design X / architect X / build X at scale):
-  • Framework IN ORDER: requirements+constraints → scale estimate → core components → one key trade-off
-  • Safe round numbers only (100M users, ~1K QPS) — never fabricate precise capacity
-  • sampleAnswer is 4-6 lines for this type ONLY
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-MODE B — RESUME NARRATOR  (behavioral, resume, culture)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${ctx
-  ? `RESUME = GROUND TRUTH. Use ONLY the projects, tools, and numbers below. NEVER invent facts, metrics, dates, or tools not in it.\n${ctx}`
-  : 'No resume provided — use generic examples and set confidence: "general".'}
-
-behavioral ("tell me about a time" / "give an example" / "describe a situation"):
-  • STAR: name a REAL project from their resume → what YOU personally decided → measurable result
-  • Point to the most relevant resume project in resumeStory field
-  • Only if the scenario genuinely matches something they did. If it asks about experience they don't have, use the honesty-pivot from the #1 rule above — never invent a story.
-
-resume ("walk me through your project" / "tell me about your role"):
-  • Pull exact achievements from resume — real numbers, real tools, real outcomes
-  • If the question references a project/tool NOT in their resume, do NOT fabricate it onto a real project — pivot honestly to what they actually did.
-
-culture ("why this company" / "strengths/weaknesses" / "where do you see yourself"):
-  • Authentic and specific. No clichés. One honest concrete thing.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-HOW TO WRITE THIS — it will be SPOKEN OUT LOUD in seconds, never read like an essay:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. Write EXACTLY how a real person talks under light pressure — contractions ("I'd", "it's", "they're", "kinda"), first person, casual connectors ("so", "basically", "the thing is", "honestly").
-2. 2-4 spoken sentences MAX (4-6 for system_design only). One breath each. Then STOP — don't keep teaching.
-3. Start mid-thought like a human, NEVER with a definition: "Yeah so…", "Honestly…", "So the way I'd go about it…", "In my case at <company>…".
-4. Be a little imperfect on purpose — that's what reads as human: "around O(n) I think", "if I remember right", "something like that". Flawless = robotic = caught.
-5. NO lists read aloud, NO "firstly/secondly", NO headings, NO essay scaffolding. Just talk.
-6. Plain spoken words, not résumé-jargon: "response time" not "latency", "handles more load" not "horizontally scalable", "the steps" not "the orchestration".
-7. BANNED — instant AI tells: ${BANNED_WORDS}.
-8. MODE B → open with YOUR project ("In our Document Intelligence project…"), not theory. MODE A → open with the pattern ("So this is basically a sliding-window one…"), not a textbook line.
-
-The candidate GLANCES at the opener + keyPoints and then speaks in their OWN words. keyPoints are speaking notes to riff from — NOT a script. sampleAnswer is just one natural way to say it if they freeze.
-
-Return ONE JSON object, no prose, no markdown fences:
-{
-  "questionType": "dsa" | "coding" | "technical" | "system_design" | "behavioral" | "resume" | "culture" | "other",
-  "pattern": "<dsa/coding only: pattern name e.g. 'Sliding Window', 'BFS', 'DP — 0/1 Knapsack' — null otherwise>",
-  "complexity": "<dsa/coding only: e.g. 'O(n) time, O(1) space' — null otherwise>",
-  "confidence": "resume" | "general",
-  "resumeStory": "<behavioral/resume only: one sentence naming the specific project — null for technical>",
-  "opener": "<the exact first words to start saying out loud — buys a second while they think>",
-  "keyPoints": ["<2-4 word speaking note>", "<2-4 word speaking note>", "<2-4 word speaking note>"],
-  "sampleAnswer": "<one natural spoken way to answer — follows every rule above; what they'd say if they blank>",
-  "fullAnswer": "<the same answer, fleshed out, still conversational and spoken-sounding — 4-8 sentences. **bold** only key terms; **Section:** labels for STAR. No filler intros, no AI-essay tone.>",
-  "watchOut": "<one specific mistake for THIS exact question>"
-}`
-
-  const historyBlock = conversationHistory.length > 0
-    ? '\n\nConversation so far (for follow-up questions — "that"/"it"/"what you said" refers to this):\n' +
-      conversationHistory.slice(-8).map(t => `${t.role.toUpperCase()}: ${String(t.text).slice(0, 300)}`).join('\n')
-    : ''
-
-  const extraBlock = extraContext?.trim()
-    ? `\n\nEXTRA CONTEXT FROM CANDIDATE (use this to tailor the answer):\n${extraContext.trim()}`
-    : ''
-
-  // Live web search for company/product/current-events questions
-  let searchBlock = ''
-  let searchSources = []
-  if (needsWebSearch(question)) {
-    try {
-      const results = await groundedSearch(question, SEARCH_BUDGET_MS.blocking)
-      if (results?.sources?.length) {
-        searchSources = results.sources
-        searchBlock = '\n\nLIVE WEB SEARCH RESULTS (use these facts — they are current and specific):\n'
-        if (results.answer) searchBlock += `Summary: ${results.answer}\n\n`
-        searchBlock += results.sources.map(s => `[${s.title}]\n${s.snippet}`).join('\n\n')
-        searchBlock += '\n\nIMPORTANT: Ground your answer in these search results. Reference specific details from them.'
-      }
-    } catch { /* search failure/timeout is non-fatal — answer without it */ }
+/** Normalize META-like fields + spoken prose into the UI hint shape (stream + JSON fallback share this). */
+function normalizeHint(meta = {}, prose = '') {
+  const layers = glanceLayers(prose || meta.fullAnswer || meta.sampleAnswer || meta.answer || '', meta)
+  return {
+    questionType: meta.type || meta.questionType || 'other',
+    pattern: meta.pattern || null,
+    complexity: meta.complexity || null,
+    confidence: meta.confidence === 'resume' ? 'resume' : 'general',
+    resumeStory: meta.resumeStory || null,
+    opener: layers.opener,
+    keyPoints: layers.keyPoints,
+    sampleAnswer: layers.fullAnswer,
+    fullAnswer: layers.fullAnswer,
+    watchOut: meta.watch || meta.watchOut || null,
+    ...(meta.searchSources?.length ? { _searchSources: meta.searchSources } : {}),
   }
-
-  // Pick the live-hint provider for SPEED + high rate limits (P0-C):
-  //   gpt-4o-mini (fast, cheap, high TPM) → Gemini (free, ~1M TPM) → user's choice.
-  // This keeps live hints OFF Groq's tiny 6k-TPM free tier, which exhausts in ~1-2
-  // questions during a continuous interview. Groq stays as a fallback in the queue.
-  // Honor an explicitly chosen model (same rule as streamHint); only auto-escalate to a fast
-  // provider when the caller left it on auto.
-  const userPicked = provider && provider !== 'auto'
-  const fastProvider = userPicked ? provider : (pickFastProvider() || provider)
-
-  // Use the concise/detailed DIRECTIVE, but NOT the tight concise token cap here: this path returns
-  // a full multi-field JSON object, and 380 tokens truncates it into invalid JSON. Keep ≥700.
-  const { directive } = styleFor(style, 700)
-  const maxTokens = style === 'detailed' ? 1100 : 700
-  const skipDirective = autoSkip ? '' : '\n\nALWAYS ANSWER: respond to every input — never skip, even for small talk or a partial/unclear question.'
-  const hint = await completeJSON({
-    maxTokens, provider: fastProvider,
-    messages: [
-      { role: 'system', content: system + directive + skipDirective },
-      { role: 'user', content: `${historyBlock}${extraBlock}${searchBlock}\n\nCurrent question: "${String(question).slice(0, 800)}"` }
-    ]
-  })
-
-  // LLM decided this wasn't an interview question — skip silently
-  if (hint?.skip) return null
-  // Attach search metadata so the UI can show sources
-  if (searchSources.length) hint._searchSources = searchSources
-  return hint
 }
+
+// Thin export — implementation lives after playbooks/buildAnswerSystem (hoisted via function decl).
+export async function generateHint(opts) {
+  return generateHintImpl(opts)
+}
+
+// Re-export for tests / callers that want glance layers without the full engine.
+export { glanceLayers } from '../../shared/hintLayers.js'
 
 // ── Interview playbooks ──────────────────────────────────────────────────────
 // One "card" per question archetype: how to DETECT it (match), which model TIER it
@@ -375,16 +308,15 @@ export async function streamHint({ question, profile = {}, conversationHistory =
     } catch { /* search failure/timeout is non-fatal */ }
   }
 
-  const resumeBlock = profile.resume ? `\n\nCANDIDATE RESUME (ground behavioral/resume answers in this):\n${String(profile.resume).slice(0, 4000)}` : ''
+  const packed = packCandidateContext(profile, extraContext)
   const historyBlock = conversationHistory.length
     ? '\n\nConversation so far (resolve "that"/"it"/"what you said" against this):\n' + conversationHistory.slice(-8).map(t => `${t.role.toUpperCase()}: ${String(t.text).slice(0, 300)}`).join('\n') : ''
-  const extraBlock = extraContext?.trim() ? `\n\nEXTRA CONTEXT FROM CANDIDATE:\n${extraContext.trim()}` : ''
 
   // Pick the ONE playbook for this question and inject only its structure — focused
   // prompt = the model follows it far more reliably than one giant all-types prompt.
   const pb = pickPlaybook(question)
   const baseSystem = mode === 'coach' ? buildCoachSystem(language, pb.coach) : buildAnswerSystem(language, pb.answer)
-  const user = `${resumeBlock}${historyBlock}${extraBlock}${searchBlock}\n\nCurrent question: "${String(question).slice(0, 800)}"`
+  const user = `${packed ? packed + '\n\n' : ''}${historyBlock}${searchBlock}\n\nCurrent question: "${String(question).slice(0, 800)}"`
 
   // HONOR THE USER'S EXPLICIT MODEL CHOICE. If they picked a model in the dropdown
   // (provider is a real id, not '' / 'auto'), use it for EVERY question — so choosing
@@ -452,6 +384,68 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   if (metaSent !== 'done' || !proseEmitted) return { skipped: true }
   return { skipped: false, searchSources }
 }
+
+
+async function generateHintImpl({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', style = 'balanced', autoSkip = true, mode = 'answer' } = {}) {
+  if (!question || !String(question).trim()) return null
+
+  let searchSources = [], searchBlock = ''
+  if (needsWebSearch(question)) {
+    try {
+      const results = await groundedSearch(question, SEARCH_BUDGET_MS.blocking)
+      if (results?.sources?.length) {
+        searchSources = results.sources
+        searchBlock = '\n\nLIVE WEB SEARCH RESULTS (ground the answer in these current facts):\n'
+          + (results.answer ? `Summary: ${results.answer}\n\n` : '')
+          + results.sources.map(s => `[${s.title}] ${s.snippet}`).join('\n\n')
+      }
+    } catch { /* non-fatal */ }
+  }
+
+  const pb = pickPlaybook(question)
+  const baseSystem = mode === 'coach' ? buildCoachSystem(language, pb.coach) : buildAnswerSystem(language, pb.answer)
+  const packed = packCandidateContext(profile, extraContext)
+  const historyBlock = conversationHistory.length
+    ? '\n\nConversation so far (resolve "that"/"it" against this):\n' + conversationHistory.slice(-8).map(t => `${t.role.toUpperCase()}: ${String(t.text).slice(0, 300)}`).join('\n')
+    : ''
+  const userPicked = provider && provider !== 'auto'
+  const escalateFast = pickFastProvider()
+  const escalateStrong = pickStrongProvider()
+  const chosen = userPicked ? provider : ((pb.tier === 'strong' ? escalateStrong : escalateFast) || provider)
+  const { directive } = styleFor(style, 700)
+  const maxTokens = style === 'detailed' ? 1100 : (pb.tier === 'strong' || mode === 'coach') ? 900 : 700
+  const skipDirective = autoSkip
+    ? ''
+    : '\n\nALWAYS ANSWER: respond to every input — do NOT skip, even for small talk or a partial question.'
+
+  const schemaNote = `
+
+OUTPUT FORMAT — return ONE JSON object only (no markdown fences):
+${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
+  "type": "dsa|coding|technical|system_design|behavioral|resume|culture|other",
+  "confidence": "resume|general",
+  "pattern": "<pattern or null>",
+  "complexity": "<complexity or null>",
+  "watch": "<one short mistake to avoid or null>",
+  "keyPoints": ["<short beat 1>", "<beat 2>", "<beat 3>"],
+  "fullAnswer": "<the spoken answer / coach guide — same rules as streaming prose above>"
+}`
+
+  const hint = await completeJSON({
+    maxTokens, provider: chosen,
+    messages: [
+      { role: 'system', content: baseSystem + directive + skipDirective + schemaNote },
+      { role: 'user', content: `${packed ? packed + '\n\n' : ''}${historyBlock}${searchBlock}\n\nCurrent question: "${String(question).slice(0, 800)}"` },
+    ],
+  })
+
+  if (hint?.skip) return null
+  if (searchSources.length) hint.searchSources = searchSources
+  const prose = hint.fullAnswer || hint.sampleAnswer || hint.answer || ''
+  if (!String(prose).trim()) return null
+  return normalizeHint(hint, prose)
+}
+
 
 export async function evaluateSolo({ config = {}, transcript = [], profile = {}, provider }) {
   const candidateText = transcript.filter(t => t.role === 'candidate').map(t => t.text).join('\n')

@@ -77,9 +77,7 @@ app.use('/api', rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, l
 app.get('/api/providers', (req, res) => res.json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured() }))
 
 app.post('/api/deepgram-token', async (req, res) => {
-  const host = req.headers.host || ''
-  const local = host.startsWith('localhost') || host.startsWith('127.')
-  try { res.json(await deepgramToken({ allowRawKey: local })) }
+  try { res.json(await deepgramToken()) }
   catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
 })
 

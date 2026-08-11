@@ -49,7 +49,25 @@ if (process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_WEBHOOK_SECRET) {
 process.env.MOCKMATE_MANAGED = '1'
 
 const app = express()
-app.use(cors())                       // desktop renderer is a different origin (localhost:5174 / :3002 / file://)
+// CORS allowlist — CORS_ORIGIN (comma-separated) from deploy docs; loopback always allowed for Electron.
+// Never use cors() with no options on a hosted backend (any website + stolen JWT → API abuse).
+const CORS_ALLOW = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean)
+function corsOriginAllowed(origin) {
+  if (!origin) return true // same-origin / non-browser / Electron often omits Origin
+  if (CORS_ALLOW.includes(origin)) return true
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true
+  return false
+}
+app.use(cors({
+  origin(origin, cb) {
+    if (corsOriginAllowed(origin)) return cb(null, true)
+    cb(new Error(`CORS blocked for origin: ${origin}`))
+  },
+  credentials: true,
+}))
 
 // Stripe webhook MUST see the raw body to verify the signature — mount it BEFORE express.json.
 app.post('/billing/webhook', express.raw({ type: 'application/json' }), stripeWebhook)
@@ -84,11 +102,11 @@ initStore()
     const HOST = process.env.HOST || '127.0.0.1'
     const server = app.listen(PORT, HOST, () => {
       console.log(`[backend] auth${process.env.MONGO_URI ? '+managed AI' : ''} API on http://${HOST}:${PORT} (store: ${process.env.MONGO_URI ? 'mongo' : 'file'})`)
-      // Fail-open guard: without MONGO_URI, checkCap short-circuits (no usage caps) — safe for the
-      // loopback desktop fork, DANGEROUS on a public bind where it means uncapped managed AI billed
-      // to our keys with no upgrade wall. Shout loudly so a misconfigured deploy can't slip through.
+      // Without MONGO_URI, usage caps are DISABLED. That is fine on the loopback desktop fork.
+      // On a public bind it would burn MockMate keys uncapped — refuse to start (Phase 5).
       if (!process.env.MONGO_URI && HOST !== '127.0.0.1' && HOST !== 'localhost') {
-        console.warn(`[backend] ⚠️  PUBLIC bind on ${HOST} with NO MONGO_URI — usage caps are DISABLED. Set MONGO_URI for the hosted backend, or bind to 127.0.0.1 for local use.`)
+        console.error(`[backend] REFUSING to bind ${HOST} without MONGO_URI (usage caps would be disabled). Set MONGO_URI or bind to 127.0.0.1.`)
+        process.exit(1)
       }
       process.send?.({ type: 'ready', port: PORT })   // tell the Electron parent we're up
     })

@@ -1,11 +1,12 @@
 // Electron main — overlay window with setContentProtection(true):
 //   Windows → WDA_EXCLUDEFROMCAPTURE,  macOS → NSWindowSharingNone
 //   (Linux has no equivalent — overlay IS visible in screen share there.)
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut, Notification, shell, dialog, safeStorage } = require('electron')
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut, Notification, shell, dialog, safeStorage, powerMonitor } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
-const { fork } = require('child_process')
+const net = require('net')
+const { fork, execSync } = require('child_process')
 
 // Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
 // so a candidate's resume/transcript never leaves the device via Sentry (privacy-first).
@@ -50,13 +51,64 @@ function iconPath() {
 // Both dev and prod read the same bundled file, so hasApiKeys() in the main
 // process now matches what the server actually sees (that mismatch was the whole
 // dev/prod confusion + the "still says no keys" bug).
+// BYOK keys: prefer encrypted userData/.env.enc (safeStorage). Plaintext userData/.env
+// is migrated on first read when encryption is available, then deleted.
+function userEnvPaths() {
+  const dir = app.getPath('userData')
+  return { enc: path.join(dir, '.env.enc'), plain: path.join(dir, '.env') }
+}
+function parseEnvText(txt) {
+  return Object.fromEntries((txt || '').split('\n')
+    .map(l => l.trim()).filter(l => l && !l.startsWith('#') && l.includes('='))
+    .map(l => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()] }))
+}
+function applyEnvMap(map, { override = false } = {}) {
+  for (const [k, v] of Object.entries(map || {})) {
+    if (!k) continue
+    if (!override && process.env[k] !== undefined) continue
+    process.env[k] = v
+  }
+}
+function readUserEnvText() {
+  const { enc, plain } = userEnvPaths()
+  if (fs.existsSync(enc) && safeStorage.isEncryptionAvailable()) {
+    try { return safeStorage.decryptString(fs.readFileSync(enc)) } catch (e) {
+      console.warn('[MockMate] failed to decrypt .env.enc:', e.message)
+    }
+  }
+  if (fs.existsSync(plain)) {
+    const txt = fs.readFileSync(plain, 'utf8')
+    // Migrate plaintext → encrypted at rest when the OS keychain is available.
+    if (txt && safeStorage.isEncryptionAvailable()) {
+      try {
+        fs.writeFileSync(enc, safeStorage.encryptString(txt), { mode: 0o600 })
+        fs.rmSync(plain, { force: true })
+        console.log('[MockMate] migrated BYOK keys to encrypted userData/.env.enc')
+      } catch (e) { console.warn('[MockMate] BYOK encrypt migrate failed:', e.message) }
+    }
+    return txt
+  }
+  return ''
+}
+function writeUserEnvText(txt) {
+  const { enc, plain } = userEnvPaths()
+  fs.mkdirSync(path.dirname(plain), { recursive: true })
+  if (safeStorage.isEncryptionAvailable()) {
+    fs.writeFileSync(enc, safeStorage.encryptString(String(txt || '')), { mode: 0o600 })
+    try { fs.rmSync(plain, { force: true }) } catch {}
+    return { encrypted: true }
+  }
+  fs.writeFileSync(plain, String(txt || ''), { mode: 0o600 })
+  return { encrypted: false }
+}
 function loadEnv() {
-  const candidates = [
-    path.join(app.getPath('userData'), '.env'),
+  // Priority: user BYOK (override) → exe-dir → bundled app .env (fill gaps only).
+  const userTxt = readUserEnvText()
+  if (userTxt) applyEnvMap(parseEnvText(userTxt), { override: true })
+  for (const envPath of [
     path.join(path.dirname(app.getPath('exe')), '.env'),
     path.join(app.getAppPath(), '.env'),
-  ]
-  for (const envPath of candidates) {
+  ]) {
     if (fs.existsSync(envPath)) require('dotenv').config({ path: envPath })
   }
 }
@@ -65,8 +117,58 @@ function hasApiKeys() {
   return !!(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.LLM_API_KEY)
 }
 
+function portInUse(port) {
+  return new Promise(resolve => {
+    const s = net.createServer()
+    s.once('error', () => resolve(true))
+    s.once('listening', () => s.close(() => resolve(false)))
+    try { s.listen(port, '127.0.0.1') } catch { resolve(true) }
+  })
+}
+
+// Free a loopback port held by an orphaned MockMate child after a hard kill.
+function freePort(port) {
+  try {
+    if (process.platform === 'win32') {
+      const out = execSync('netstat -ano', { encoding: 'utf8', windowsHide: true })
+      const pids = new Set()
+      for (const line of out.split(/\r?\n/)) {
+        if (!line.includes(`:${port}`) || !/LISTENING/i.test(line)) continue
+        const parts = line.trim().split(/\s+/)
+        const pid = parts[parts.length - 1]
+        if (/^\d+$/.test(pid) && pid !== '0') pids.add(pid)
+      }
+      for (const pid of pids) {
+        try { execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore', windowsHide: true }) } catch {}
+      }
+    } else {
+      try { execSync(`fuser -k ${port}/tcp`, { stdio: 'ignore' }) } catch {}
+      try {
+        const out = execSync(`lsof -ti tcp:${port} -sTCP:LISTEN`, { encoding: 'utf8' }).trim()
+        for (const pid of out.split(/\s+/).filter(Boolean)) {
+          try { process.kill(Number(pid), 'SIGKILL') } catch {}
+        }
+      } catch {}
+    }
+  } catch (e) {
+    console.warn('[MockMate] freePort', port, e.message)
+  }
+}
+
+async function ensurePortFree(port, label) {
+  if (!(await portInUse(port))) return
+  console.warn(`[MockMate] ${label} port ${port} in use — reclaiming orphan process`)
+  freePort(port)
+  await new Promise(r => setTimeout(r, 400))
+  if (await portInUse(port)) {
+    console.error(`[MockMate] ${label} port ${port} still busy after reclaim`)
+  }
+}
+
 function startApiServer(onReady) {
   const serverEntry = path.join(app.getAppPath(), 'server-entry.cjs')
+  // Reclaim stale :3002 before fork (orphans after Task Manager / SIGKILL).
+  ensurePortFree(3002, 'API').then(() => {
   apiServer = fork(serverEntry, [], {
     env: { ...process.env, PORT: '3002', NODE_ENV: 'production' },
     cwd: app.getAppPath(), stdio: 'pipe'
@@ -90,6 +192,10 @@ function startApiServer(onReady) {
     }
   })
   setTimeout(fire, 6000)   // fallback if 'ready' never arrives
+  }).catch(e => {
+    console.error('[API] ensurePortFree failed:', e.message)
+    onReady?.()
+  })
 }
 
 // Persistent per-install JWT secret. Generated once, kept in userData (0600),
@@ -107,6 +213,7 @@ function getJwtSecret() {
 function startBackend() {
   const entry = path.join(app.getAppPath(), 'backend', 'server-entry.cjs')
   if (!fs.existsSync(entry)) { console.error('[backend] entry not found:', entry); return }
+  ensurePortFree(Number(BACKEND_PORT) || 4000, 'backend').then(() => {
   backendServer = fork(entry, [], {
     cwd: path.join(app.getAppPath(), 'backend'),
     env: {
@@ -123,6 +230,7 @@ function startBackend() {
   backendServer.stderr?.on('data', d => console.error('[backend]', d.toString().trim()))
   backendServer.on('error', e => console.error('[backend] fork error:', e.message))
   backendServer.on('exit', code => { if (code) console.error('[backend] exited with code', code) })
+  }).catch(e => console.error('[backend] ensurePortFree failed:', e.message))
 }
 
 function createSetupWindow() {
@@ -136,7 +244,7 @@ function createSetupWindow() {
     parent: asChild ? mainWindow : undefined,
     modal: asChild,
     skipTaskbar: asChild,
-    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false }
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   })
   setupWindow.setMenuBarVisibility(false)
   setupWindow.loadFile(path.join(app.getAppPath(), 'setup.html'))
@@ -164,7 +272,7 @@ function createMainWindow() {
     backgroundColor: isLinux ? '#08090e' : '#00000000',
     resizable: true, skipTaskbar: !isLinux,
     icon: iconPath(),
-    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false }
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   })
   mainWindow.setContentProtection(true)
 
@@ -334,10 +442,32 @@ if (!gotTheLock) {
     createMainWindow()
     launchTrayAndShortcuts()
     setupAutoUpdate()
+
+    // Sleep/wake + display hotplug — tell renderers so Live can resume AudioContext / STT.
+    const broadcast = (channel, payload) => {
+      for (const w of BrowserWindow.getAllWindows()) {
+        try { if (!w.isDestroyed()) w.webContents.send(channel, payload) } catch {}
+      }
+    }
+    try {
+      powerMonitor.on('suspend', () => broadcast('power-event', 'suspend'))
+      powerMonitor.on('resume', () => broadcast('power-event', 'resume'))
+      powerMonitor.on('unlock-screen', () => broadcast('power-event', 'unlock'))
+    } catch (e) { console.warn('[MockMate] powerMonitor unavailable:', e.message) }
+    try {
+      screen.on('display-added', () => broadcast('display-changed', 'added'))
+      screen.on('display-removed', () => broadcast('display-changed', 'removed'))
+      screen.on('display-metrics-changed', () => broadcast('display-changed', 'metrics'))
+    } catch (e) { console.warn('[MockMate] display events unavailable:', e.message) }
   })
 }
 
-app.on('will-quit', () => { globalShortcut.unregisterAll(); apiServer?.kill(); backendServer?.kill(); try { copilotWindow?.destroy() } catch {} })
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
+  try { apiServer?.kill('SIGKILL') } catch {}
+  try { backendServer?.kill('SIGKILL') } catch {}
+  try { copilotWindow?.destroy() } catch {}
+})
 
 // Auto-detect, by open window/tab titles: (1) a video meeting, (2) a coding platform.
 const MEETING_RE = /zoom meeting|google meet|microsoft teams|webex|whereby/i
@@ -412,7 +542,7 @@ function createCopilotWindow() {
     width: 400, height: 340, x: Math.max(0, width - 420), y: 60,
     frame: false, transparent: false, alwaysOnTop: true, skipTaskbar: process.platform !== 'linux',
     resizable: true, backgroundColor: '#0f0f1a', icon: iconPath(),
-    webPreferences: { contextIsolation: true, nodeIntegration: false }
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
   })
   try { copilotWindow.setContentProtection(process.platform !== 'linux') } catch {}
   try { copilotWindow.setAlwaysOnTop(true, 'screen-saver') } catch {}
@@ -471,6 +601,12 @@ ipcMain.on('set-pin', (_, on) => {
     mainWindow.setVisibleOnAllWorkspaces(!!on, { visibleOnFullScreen: true })
   } catch {}
 })
+// Click-through: forward mouse events to apps underneath; pill/header still need
+// setIgnoreMouseEvents(false) when interacting — renderer toggles this.
+ipcMain.on('set-click-through', (_, on) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  try { mainWindow.setIgnoreMouseEvents(!!on, { forward: true }) } catch {}
+})
 ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const [x, y] = mainWindow.getPosition(); mainWindow.setPosition(x + dx, y + dy)
@@ -505,25 +641,35 @@ ipcMain.on('set-window-mode', (_, mode) => {
 })
 // MERGE the submitted keys into the existing .env (so adding one key never wipes
 // the others). Only non-empty incoming values overwrite; everything else is kept.
+
+// Phase 6 — append privacy-safe session metrics (JSONL) under userData. Renderer must
+// never send transcript/resume text; main still drops oversized / suspicious payloads.
+ipcMain.handle('append-session-metrics', (_, row) => {
+  try {
+    if (!row || typeof row !== 'object') return { ok: false, error: 'bad row' }
+    const raw = JSON.stringify(row)
+    if (raw.length > 4000) return { ok: false, error: 'row too large' }
+    if (/resume|transcript|fullAnswer|sampleAnswer/i.test(raw) && /:"[^"]{80,}"/.test(raw)) {
+      return { ok: false, error: 'possible PII' }
+    }
+    const f = path.join(app.getPath('userData'), 'session-metrics.jsonl')
+    fs.mkdirSync(path.dirname(f), { recursive: true })
+    fs.appendFileSync(f, raw + '\n', { mode: 0o600 })
+    return { ok: true }
+  } catch (e) { return { ok: false, error: e.message } }
+})
+
 ipcMain.handle('write-env', (_, content) => {
   try {
-    // Always write userData/.env (loadEnv reads it first, as the user's override).
-    // We deliberately do NOT write the project-root .env in dev: Vite watches it and
-    // would restart the dev server mid-session, blanking the window. In dev the
-    // bundled keys belong in the root .env you edit by hand (the source of truth).
-    const envPath = path.join(app.getPath('userData'), '.env')
-    fs.mkdirSync(path.dirname(envPath), { recursive: true })
-    const parse = txt => Object.fromEntries((txt || '').split('\n')
-      .map(l => l.trim()).filter(l => l && !l.startsWith('#') && l.includes('='))
-      .map(l => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()] }))
-    const existing = fs.existsSync(envPath) ? parse(fs.readFileSync(envPath, 'utf8')) : {}
-    const incoming = parse(content)
-    // Only allow recognized config keys to be written from the renderer — never arbitrary env.
+    // Write encrypted userData/.env.enc when safeStorage works (Phase 4). Never write the
+    // project-root .env in dev — Vite would restart mid-session. Bundled keys stay hand-edited.
+    const existing = parseEnvText(readUserEnvText())
+    const incoming = parseEnvText(content)
     const ALLOWED = /(_API_KEY|_MODEL|_BASE_URL|_APP_ID|_APP_KEY)$/
-    for (const [k, v] of Object.entries(incoming)) if (v && ALLOWED.test(k)) { existing[k] = v; process.env[k] = v }  // set non-empty allowed + go live now
+    for (const [k, v] of Object.entries(incoming)) if (v && ALLOWED.test(k)) { existing[k] = v; process.env[k] = v }
     const merged = Object.entries(existing).map(([k, v]) => `${k}=${v}`).join('\n') + '\n'
-    fs.writeFileSync(envPath, merged, 'utf8')
-    return { ok: true }
+    const { encrypted } = writeUserEnvText(merged)
+    return { ok: true, encrypted }
   } catch (e) { return { ok: false, error: e.message } }
 })
 // Apply freshly-saved keys WITHOUT relaunching the app. Relaunch was the old way

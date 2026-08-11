@@ -23,6 +23,17 @@ function looksLikeQuestion(text) {
     /\b(tell me|describe|explain|how would|what is|walk me|can you|why did|why do|have you|give me|what are|how do|what was|what were|when did|where did)\b/i.test(text)
 }
 
+/** Live hint gate: question-shaped OR short follow-up with `?` / probe phrases (saves tokens on chatter). */
+export function shouldTriggerHint(text, meta = {}) {
+  if (meta?.isCandidate) return false
+  const t = String(text || '').trim()
+  const words = t.split(/\s+/).filter(Boolean).length
+  if (words < 3) return false
+  if (meta?.isQuestion || looksLikeQuestion(t)) return true
+  if (/\?\s*$/.test(t)) return true
+  return /\b(tell me|describe|explain|how would|what is|walk me|can you|why|have you|give me|what are|how do|could you|would you|and then|what about|how about)\b/i.test(t)
+}
+
 // Build the Deepgram URL. diarize=true tags each word with a speaker so we can tell
 // the interviewer from the candidate; keywords=<term>:2 boosts recognition of the
 // candidate's domain terms, tech, and proper nouns pulled from their resume.
@@ -75,7 +86,7 @@ const MAX_QUEUE_BYTES = 30 * BYTES_PER_SEC  // ~30 s of audio (~960 KB)
 // Live transcription via Deepgram with auto-reconnect + KeepAlive (P0-A).
 // The mic stream + AudioContext + audio graph are built ONCE and survive socket
 // reconnects — only the WebSocket is rebuilt, so audio never has to restart.
-export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
+export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const [active, setActive] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
   const [interim, setInterim] = useState('')
@@ -92,10 +103,11 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
   // Graceful-degrade: if the ENHANCED socket (diarize+keyterms) never connects, retry plain.
   const everConnected = useRef(false), degradedAudio = useRef(false)
   const lastEarlyTrigger = useRef('')
-  const onFinalRef = useRef(onFinal), onFailRef = useRef(onFail), onEarlyRef = useRef(onEarlyQuestion)
+  const onFinalRef = useRef(onFinal), onFailRef = useRef(onFail), onEarlyRef = useRef(onEarlyQuestion), onReconnectRef = useRef(onReconnect)
   useEffect(() => { onFinalRef.current = onFinal }, [onFinal])
   useEffect(() => { onFailRef.current = onFail }, [onFail])
   useEffect(() => { onEarlyRef.current = onEarlyQuestion }, [onEarlyQuestion])
+  useEffect(() => { onReconnectRef.current = onReconnect }, [onReconnect])
 
   // Full teardown — only on user stop / unmount.
   const teardown = useCallback(() => {
@@ -294,6 +306,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
   function scheduleReconnect(reason) {
     if (userStop.current) return
     reconnectAttempts.current += 1
+    try { onReconnectRef.current?.(reconnectAttempts.current, reason) } catch {}
     if (reconnectAttempts.current > MAX_RECONNECTS) {
       return failOrDegrade(`${reason} — gave up after ${MAX_RECONNECTS} consecutive reconnect attempts`)
     }
@@ -332,17 +345,47 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion) {
     }
   }, [buildAudioGraph, connectSocket, fail])
 
-  // Re-resume the AudioContext if the OS suspends it (device change / sleep).
+  // Mid-session source switch or manual retry: tear down cleanly then start again.
+  const restart = useCallback(async (sourceId = 'microphone', opts = {}) => {
+    userStop.current = true
+    teardown()
+    await new Promise(r => setTimeout(r, 200))
+    return start(sourceId, opts)
+  }, [start, teardown])
+
+  // Re-resume the AudioContext if the OS suspends it (device change / sleep / display hotplug).
+  // After laptop sleep the Deepgram socket is usually dead — nudge reconnect without tearing down mic.
   useEffect(() => {
-    const resume = () => { try { if (ctx.current?.state === 'suspended') ctx.current.resume() } catch {} }
-    navigator.mediaDevices?.addEventListener?.('devicechange', resume)
-    document.addEventListener('visibilitychange', resume)
-    return () => {
-      navigator.mediaDevices?.removeEventListener?.('devicechange', resume)
-      document.removeEventListener('visibilitychange', resume)
+    const resumeAudio = () => { try { if (ctx.current?.state === 'suspended') ctx.current.resume() } catch {} }
+    const afterWake = () => {
+      resumeAudio()
+      if (userStop.current) return
+      if (!ctx.current) return   // session not live
+      const sock = ws.current
+      if (sock && sock.readyState === 1) return
+      if (sock && (sock.readyState === 0 || sock.readyState === 2)) return
+      // Closed or missing — scheduleReconnect path via a synthetic close nudge.
+      setReconnecting(true)
+      clearTimeout(reconnectTimer.current)
+      reconnectTimer.current = setTimeout(() => {
+        if (!userStop.current) connectSocket().catch(() => {})
+      }, 400)
     }
-  }, [])
+    navigator.mediaDevices?.addEventListener?.('devicechange', afterWake)
+    const onVis = () => { if (document.visibilityState === 'visible') afterWake() }
+    document.addEventListener('visibilitychange', onVis)
+    const offPower = window.electronAPI?.onPowerEvent?.(ev => {
+      if (ev === 'resume' || ev === 'unlock') afterWake()
+    })
+    const offDisplay = window.electronAPI?.onDisplayChanged?.(() => afterWake())
+    return () => {
+      navigator.mediaDevices?.removeEventListener?.('devicechange', afterWake)
+      document.removeEventListener('visibilitychange', onVis)
+      try { offPower?.() } catch {}
+      try { offDisplay?.() } catch {}
+    }
+  }, [connectSocket])
 
   useEffect(() => () => { userStop.current = true; teardown() }, [teardown])
-  return { supported: true, active, reconnecting, interim, start, stop }
+  return { supported: true, active, reconnecting, interim, start, stop, restart }
 }

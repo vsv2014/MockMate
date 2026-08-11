@@ -102,6 +102,13 @@ export async function logout() {
   await clearToken()
 }
 
+/** Extend a still-valid session (new JWT with same tokenVersion). No-op if logged out. */
+export async function refreshSession() {
+  const { token } = await request('/auth/refresh', { method: 'POST', auth: true })
+  if (token) await setToken(token)
+  return token
+}
+
 // ── Billing (Phase 2c) ─────────────────────────────────────────────────────────
 // Checkout / portal always target the auth backend (JWT-attached), never the local
 // BYOK server. The returned Stripe URL opens in the user's default browser — payment

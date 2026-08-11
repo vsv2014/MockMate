@@ -5,7 +5,7 @@ import {
 } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import '@livekit/components-styles'
-import { useSpeech } from './useSpeech'
+import { useDeepgram } from './useDeepgram'
 import { apiFetch } from './lib/apiClient'   // routes to managed (:4000 + JWT) or BYOK (:3002)
 import { T } from './auth/tokens'
 
@@ -81,7 +81,7 @@ function RoomInner({ session, onEnd, onLeave }) {
     pip.document.body.innerHTML = `
       <div style="font-family:system-ui,sans-serif;font-size:13px;color:#e2e8f0;padding:14px;height:100%;box-sizing:border-box;background:#0f0f1a;">
         <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:#a78bfa;">🤖 AI Co-pilot</div>
-        <div style="font-size:10px;color:#475569;margin-bottom:10px;">excluded from screen capture</div>
+        <div style="font-size:10px;color:#475569;margin-bottom:10px;">excluded from common screen-share APIs — verify preview</div>
         ${question ? `<div style="color:#94a3b8;font-size:11px;margin-bottom:10px;border-left:2px solid #334155;padding-left:8px;font-style:italic">${escapeHtml(question)}</div>` : ''}
         ${loading ? '<p style="color:#64748b;margin:0">Generating hints…</p>' : h ? `
           ${h.resumeRelevant ? '<span style="background:#14532d;color:#4ade80;border-radius:4px;padding:2px 7px;font-size:11px;margin-bottom:8px;display:inline-block">✓ Resume-relevant</span>' : ''}
@@ -144,10 +144,13 @@ function RoomInner({ session, onEnd, onLeave }) {
     try { setTranscript(t => [...t, JSON.parse(new TextDecoder().decode(msg.payload))]) } catch {}
   })
 
-  const speech = useSpeech(text => {
+  const [sttError, setSttError] = useState('')
+  const speech = useDeepgram(text => {
     const seg = { speaker: session.name, role: session.role, text }
     setTranscript(t => [...t, seg])
     try { send(new TextEncoder().encode(JSON.stringify(seg)), { reliable: true }) } catch {}
+  }, reason => {
+    setSttError(reason || 'Voice transcription stopped')
   })
 
   const inElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
@@ -185,8 +188,20 @@ function RoomInner({ session, onEnd, onLeave }) {
       .catch(() => setHintLoading(false))
   }, [transcript]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Start capturing the local mic's speech on join.
-  useEffect(() => { if (speech.supported) speech.start(); return () => speech.stop() /* eslint-disable-next-line */ }, [speech.supported])
+  // Start Deepgram mic transcription on join (same path as Solo — Web Speech is unreliable in Electron).
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        await speech.start()
+        if (!cancelled) setSttError('')
+      } catch (e) {
+        if (!cancelled) setSttError(e.message || 'Could not start Deepgram transcription')
+      }
+    })()
+    return () => { cancelled = true; speech.stop() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [transcript, speech.interim])
 
   // Share the ROOM CODE, not a URL: the app is served from localhost/file in the desktop build, so a
@@ -227,7 +242,7 @@ function RoomInner({ session, onEnd, onLeave }) {
         {session.role === 'candidate' && pipSupported && (
           <button
             style={meetingMode ? btnPrimary : btnGhost}
-            title="Moves AI hints to a floating window excluded from Zoom/Meet/Teams screen capture (WDA_EXCLUDEFROMCAPTURE)"
+            title="Moves AI hints to a content-protected floating window (Win/macOS OS APIs — verify in share preview)"
             onClick={toggleMeetingMode}
           >
             {meetingMode ? '🛡️ Meeting mode — on' : '🛡️ Meeting mode'}
@@ -261,13 +276,13 @@ function RoomInner({ session, onEnd, onLeave }) {
             ))}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
-            {speech.supported ? (
-              speech.active
-                ? <><span style={{ width: 9, height: 9, borderRadius: '50%', background: '#ff5b5b', animation: 'mm-pulse 1.2s infinite' }} /><span style={metaStyle}>Listening — speak naturally</span>
-                    <span style={{ flex: 1 }} /><button style={btnGhost} onClick={speech.stop}>Pause mic text</button></>
-                : <><span style={metaStyle}>Mic transcription paused</span><span style={{ flex: 1 }} /><button style={btnGhost} onClick={speech.start}>Resume</button></>
+            {sttError ? (
+              <span style={metaStyle}>⚠ {sttError}. Fix Voice settings (Deepgram), then leave and rejoin the room.</span>
+            ) : speech.active ? (
+              <><span style={{ width: 9, height: 9, borderRadius: '50%', background: '#ff5b5b', animation: 'mm-pulse 1.2s infinite' }} /><span style={metaStyle}>Listening (Deepgram) — speak naturally</span>
+                <span style={{ flex: 1 }} /><button style={btnGhost} onClick={speech.stop}>Pause mic text</button></>
             ) : (
-              <span style={metaStyle}>⚠ This browser can’t transcribe speech — use Chrome/Edge for the report.</span>
+              <><span style={metaStyle}>Mic transcription paused</span><span style={{ flex: 1 }} /><button style={btnGhost} onClick={() => { setSttError(''); speech.start() }}>Resume</button></>
             )}
           </div>
         </div>
@@ -275,7 +290,7 @@ function RoomInner({ session, onEnd, onLeave }) {
         <div>
           {session.role === 'candidate' && !inElectron && pipSupported && !pipPrompted && (hintLoading || hint) && !pipWindow && (
             <div style={{ background: '#1e1b4b', border: '1px solid #4338ca', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ color: '#a5b4fc' }}>🛡️ <strong>In Zoom, Meet, or Teams?</strong> Pop hints to a protected window — invisible to all screen capture.</span>
+              <span style={{ color: '#a5b4fc' }}>🛡️ <strong>In Zoom, Meet, or Teams?</strong> Pop hints to a protected window — verify in your share preview (Win/macOS).</span>
               <button style={{ ...smallGhost, marginLeft: 'auto', whiteSpace: 'nowrap' }} onClick={openPip}>🪟 Pop out now</button>
               <button style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 16, lineHeight: 1 }} onClick={() => setPipPrompted(true)}>×</button>
             </div>
@@ -285,14 +300,14 @@ function RoomInner({ session, onEnd, onLeave }) {
             inElectron
               ? (
                 <div style={{ background: '#0d1117', border: '1px solid #4338ca', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#a5b4fc', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  🛡️ Hints in <strong>protected Electron window</strong> — invisible to Zoom, Teams, Meet, and all screen capture.
+                  🛡️ Hints in <strong>protected Electron window</strong> — excluded from common screen-share APIs; always verify your share preview.
                 </div>
               )
               : pipWindow
               ? (
                 // PiP is open — hints are in the protected floating window
                 <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: T.text3, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span>🛡️ AI hints are in the <strong style={{ color: '#a78bfa' }}>protected floating window</strong> — excluded from screen capture.</span>
+                  <span>🛡️ AI hints are in the <strong style={{ color: '#a78bfa' }}>protected floating window</strong> — excluded from common screen-share APIs — verify preview.</span>
                   <button style={{ ...smallGhost, marginLeft: 'auto' }} onClick={() => { pipWindow.close(); setPipWindow(null) }}>Close</button>
                 </div>
               )
@@ -310,7 +325,7 @@ function RoomInner({ session, onEnd, onLeave }) {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                       <span style={{ fontWeight: 600, fontSize: 13 }}>🤖 AI Co-pilot <span style={{ color: T.text3, fontWeight: 400, fontSize: 12 }}>· only you see this</span></span>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        {pipSupported && <button style={smallGhost} title="Move to a floating window excluded from screen capture" onClick={openPip}>🪟 Pop out</button>}
+                        {pipSupported && <button style={smallGhost} title="Move to a floating window excluded from common screen-share APIs — verify preview" onClick={openPip}>🪟 Pop out</button>}
                         <button style={smallGhost} onClick={() => setHintOpen(v => !v)}>{hintOpen ? 'Hide' : 'Show'}</button>
                       </div>
                     </div>

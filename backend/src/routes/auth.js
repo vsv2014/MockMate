@@ -69,9 +69,26 @@ router.get('/me', requireAuth, async (req, res) => {
 })
 
 // POST /auth/logout (JWT) → { ok }
-// JWTs are stateless, so logout is a client-side token clear; the server just acks.
-// (A future denylist can hook in here without changing the client.)
-router.post('/logout', requireAuth, (req, res) => res.json({ ok: true }))
+// Bump tokenVersion so this JWT (and any stolen copy) stops verifying immediately.
+router.post('/logout', requireAuth, async (req, res) => {
+  try {
+    const user = await store().findUserById(req.userId)
+    if (user) {
+      const tokenVersion = (user.tokenVersion || 0) + 1
+      await store().updateUser(user.id, { tokenVersion })
+    }
+    res.json({ ok: true })
+  } catch { res.json({ ok: true }) }
+})
+
+// POST /auth/refresh (JWT) → { token } — mint a new access token if the current one is still valid.
+router.post('/refresh', requireAuth, async (req, res) => {
+  try {
+    const user = await store().findUserById(req.userId)
+    if (!user) return res.status(401).json({ error: 'Your session has expired. Please sign in again.' })
+    res.json({ token: signToken(user.id, user.tokenVersion || 0) })
+  } catch { res.status(500).json({ error: 'Could not refresh session.' }) }
+})
 
 // POST /auth/forgot-password { email } → { ok }
 // Always 200 — never reveal whether an account exists (no email enumeration). We store only
@@ -141,7 +158,17 @@ router.get('/google/callback', async (req, res) => {
       }),
     }).then(r => r.json())
     if (!tokenRes.id_token) return res.status(401).send('Google sign-in failed')
-    const profile = JSON.parse(Buffer.from(tokenRes.id_token.split('.')[1], 'base64').toString())
+    // Cryptographically verify the id_token with Google (never trust a base64 payload alone).
+    const infoRes = await fetch(
+      'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(tokenRes.id_token)
+    )
+    if (!infoRes.ok) return res.status(401).send('Google token verification failed')
+    const profile = await infoRes.json()
+    if (profile.aud !== process.env.GOOGLE_CLIENT_ID) return res.status(401).send('Google token audience mismatch')
+    if (profile.email_verified !== 'true' && profile.email_verified !== true) {
+      return res.status(401).send('Google email is not verified')
+    }
+    if (!profile.email || !profile.sub) return res.status(401).send('Google profile incomplete')
     let user = await store().findUserByGoogleId(profile.sub) || await store().findUserByEmail(profile.email)
     if (!user) user = await store().createUser({ email: profile.email, googleId: profile.sub, name: profile.name || '', lastLogin: new Date().toISOString() })
     else await store().updateUser(user.id, { googleId: profile.sub, lastLogin: new Date().toISOString() })
