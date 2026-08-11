@@ -1,6 +1,6 @@
 {
   "name": "mockmate",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "type": "module",
   "main": "electron/main.cjs",
   "description": "Real-Time AI Interview Companion \u2014 Solo practice + Live overlay for Zoom/Teams/Meet (content protection on Win/macOS; verify share preview)",
