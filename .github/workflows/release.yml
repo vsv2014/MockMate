@@ -17,6 +17,8 @@ permissions:
 jobs:
   build:
     strategy:
+      # One platform failure must not cancel the others (Linux already uploaded when Win failed).
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -93,8 +95,15 @@ jobs:
       # - Windows: WIN_CSC_LINK + WIN_CSC_KEY_PASSWORD (Authenticode .pfx/.p12, base64)
       # - macOS:   MAC_CSC_LINK + MAC_CSC_KEY_PASSWORD + APPLE_* (see SIGNING.md)
       # If secrets are missing, the build still ships — unsigned (SmartScreen / Gatekeeper warnings).
+      # CRITICAL: unset empty CSC_* env vars. Actions expands missing secrets to "" and
+      # electron-builder treats that as a path → "WIN_CSC_LINK is not correct … not a file".
       - name: Build Electron installer (${{ matrix.platform }})
-        run: npx electron-builder --${{ matrix.platform }} --publish never
+        shell: bash
+        run: |
+          if [ -z "${WIN_CSC_LINK:-}" ]; then unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; fi
+          if [ -z "${MAC_CSC_LINK:-}" ]; then unset MAC_CSC_LINK MAC_CSC_KEY_PASSWORD; fi
+          if [ -z "${APPLE_ID:-}" ]; then unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; fi
+          npx electron-builder --${{ matrix.platform }} --publish never
         env:
           # Prefer explicit certs from secrets; don't hunt the runner keychain/store.
           CSC_IDENTITY_AUTO_DISCOVERY: false
