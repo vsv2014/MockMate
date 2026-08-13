@@ -66,8 +66,17 @@ export function feedbackToText(report) {
   return L.join('\n')
 }
 
+function roleLabel(t) {
+  if (t?.source === 'screen_f7' && t?.role === 'hint') return 'SCREEN'
+  if (t?.source === 'screen_f7') return 'SCREEN'
+  if (t?.role === 'hint' || t?.role === 'screen_hint') return 'HINT'
+  if (t?.role === 'interviewer') return 'INTERVIEWER'
+  if (t?.role === 'candidate' || t?.role === 'you') return 'YOU'
+  return 'YOU'
+}
+
 export function transcriptToText(transcript = []) {
   return (transcript || [])
-    .map(t => `${t.role === 'interviewer' ? 'INTERVIEWER' : 'YOU'}: ${t.text}`)
+    .map(t => `${roleLabel(t)}: ${t.text}`)
     .join('\n\n')
 }

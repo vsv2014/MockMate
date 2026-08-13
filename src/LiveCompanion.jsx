@@ -29,6 +29,15 @@ import { resolveContextSources, formatInterviewDevTrace } from '../shared/contex
 import { createTranscriptBuffer } from '../shared/transcriptBuffer.js'
 import { createQuestionCaptureController, formatCaptureDebugLine } from '../shared/questionCapture.js'
 import { streamLiveHint, fetchLiveHintFallback } from './live/hintTransport.js'
+import {
+  buildF7SeedText,
+  f7HasUsableContent,
+  f7QuestionText,
+  upsertF7TranscriptCard,
+  appendScreenF7ToConversation,
+  captureRejectLabel,
+  resolveF7QuestionId,
+} from './lib/liveF7History.js'
 
 function newQuestionId() {
   return `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -478,9 +487,11 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const lastHintText = useRef('')
   const lastClassificationRef = useRef(null)
   const recentScreenRef = useRef(null)
+  const lastF7IdentityRef = useRef({ fingerprint: null, questionId: null })
   const [screenAttachHint, setScreenAttachHint] = useState(null) // attached | irrelevant | null
   const [liveCaptureText, setLiveCaptureText] = useState('') // STATE A — subtle live fragments
   const [captureStatus, setCaptureStatus] = useState('listening') // listening | unclear | stabilizing | committed
+  const [captureRejectNote, setCaptureRejectNote] = useState('') // visible reject instead of silent wipe
   const activeQuestionIdRef = useRef(null)
   const activeGenerationRef = useRef(null)
   const pendingSpeakerRef = useRef(null)
@@ -520,6 +531,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       onLive: ({ text, status, reason }) => {
         setLiveCaptureText(text || '')
         setCaptureStatus(status || 'listening')
+        if (text) setCaptureRejectNote('')
+        else if (reason) {
+          setCaptureRejectNote(captureRejectLabel(reason, { audioSource: liveSourceIdRef.current }))
+        }
         interviewStateRef.current?.setLiveCapture?.({ text, status, reason })
       },
       onCandidate: (c) => {
@@ -534,7 +549,11 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         })
       },
       onCommitted: (c) => { handleCommittedRef.current?.(c) },
-      onReject: (reason) => { metricsRef.current?.markQuestionReject?.(reason) },
+      onReject: (reason) => {
+        metricsRef.current?.markQuestionReject?.(reason)
+        const note = captureRejectLabel(reason, { audioSource: liveSourceIdRef.current })
+        if (note) setCaptureRejectNote(note)
+      },
       onDebug: (evt) => {
         if (typeof localStorage !== 'undefined' && localStorage.getItem('mm-debug-live') === '1') {
           // eslint-disable-next-line no-console
@@ -551,57 +570,68 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     profileRef.current = profile
   }, [profile])
 
-  // Bound recent screen context for spoken fusion (replaces older capture).
+  // Bound recent screen context + durable SCREEN history card (survives panel dismiss).
   useEffect(() => {
     if (!screenAnalysis) return
     recentScreenRef.current = screenAnalysis
     interviewStateRef.current?.setScreenContext?.(screenAnalysis)
+    if (!f7HasUsableContent(screenAnalysis)) return
     const a = screenAnalysis.analysis
-    const isCode = !screenAnalysis.error && (
+    const isCode = (
       screenAnalysis.contentType === 'screen_code'
       || a?.contentType === 'coding'
       || a?.screenFamily === 'screen_code'
     )
-    if (!isCode || !a) return
-    // Seed coding thread so "do it without X" keeps House Robber context after F7.
-    lastClassificationRef.current = {
-      questionType: 'screen_code',
-      playbookKey: 'dsa',
-      isFollowUp: false,
-      parentType: null,
-      parentTopic: a.detectedText || 'Screen coding problem',
-      contextNeeds: { identity: true, resume: 'short', jd: 'none', rag: true, ragTypes: null, customPrompt: true, codingLanguage: true, history: true },
-      classifierVersion: 'screen_f7_seed',
-      question: a.detectedText || 'Screen coding problem',
+    const seedText = buildF7SeedText(a)
+    if (!seedText) return
+    const qText = f7QuestionText(a)
+    if (isCode) {
+      // Seed coding thread so "do it without X" keeps House Robber context after F7.
+      lastClassificationRef.current = {
+        questionType: 'screen_code',
+        playbookKey: 'dsa',
+        isFollowUp: false,
+        parentType: null,
+        parentTopic: qText,
+        contextNeeds: { identity: true, resume: 'short', jd: 'none', rag: true, ragTypes: null, customPrompt: true, codingLanguage: true, history: true },
+        classifierVersion: 'screen_f7_seed',
+        question: qText,
+      }
     }
-    const seedText = [
-      a.detectedText && `Problem: ${a.detectedText}`,
-      a.pattern && `Pattern: ${a.pattern}`,
-      Array.isArray(a.approach) && a.approach.length ? `Approach: ${a.approach.slice(0, 5).join(' | ')}` : '',
-      a.code ? `Code:\n${String(a.code).slice(0, 900)}` : '',
-      a.complexity && `Complexity: ${a.complexity}`,
-    ].filter(Boolean).join('\n')
-    if (!seedText.trim()) return
     const state = interviewStateRef.current
-    if (!state?.commitQuestion || !state?.commitAnswer) return
-    const qid = screenAnalysis.screenContextId || `f7_${Date.now().toString(36)}`
-    let q = state.getSnapshot?.()?.questions?.find?.(x => x.id === qid)
-    if (!q) {
-      q = state.commitQuestion(a.detectedText || 'Screen solve (F7)', null, {
-        questionId: qid,
-        source: 'screen_f7',
-      })
+    const fp = screenAnalysis.fingerprint || ''
+    const qid = resolveF7QuestionId(screenAnalysis, lastF7IdentityRef.current)
+      || `f7_${Date.now().toString(36)}`
+    if (fp || qid) lastF7IdentityRef.current = { fingerprint: fp || lastF7IdentityRef.current.fingerprint, questionId: qid }
+    if (state?.commitQuestion && state?.commitAnswer) {
+      let q = state.getSnapshot?.()?.questions?.find?.(x => x.id === qid)
+      if (!q) {
+        q = state.commitQuestion(qText, null, {
+          questionId: qid,
+          source: 'screen_f7',
+        })
+      }
+      if (q?.id) {
+        if (isCode) state.attachClassification?.(q.id, lastClassificationRef.current)
+        state.commitAnswer({
+          questionId: q.id,
+          generationId: `f7_${qid}`,
+          text: seedText.slice(0, 1400),
+          hint: { ...a, fullAnswer: seedText, confidence: 'screen' },
+          incomplete: false,
+        })
+      }
     }
-    if (q?.id) {
-      state.attachClassification?.(q.id, lastClassificationRef.current)
-      state.commitAnswer({
-        questionId: q.id,
-        generationId: `f7_${qid}`,
-        text: seedText.slice(0, 1400),
-        hint: { ...a, fullAnswer: seedText },
-        incomplete: false,
-      })
-    }
+    // Overlay history — upsert by id/fingerprint; reanalyze updates, never duplicates.
+    // Dismissing ScreenAnalysisPanel clears screenAnalysis prop but does NOT clear transcript.
+    setTranscript(t => upsertF7TranscriptCard(t, {
+      questionId: qid,
+      fingerprint: fp,
+      text: qText,
+      answer: seedText.slice(0, 1400),
+      hint: { ...a, fullAnswer: seedText, confidence: 'screen' },
+      ts: screenAnalysis.timestamp || Date.now(),
+    }))
   }, [screenAnalysis])
 
   useEffect(() => { answerStyleRef.current = answerStyle; persistAnswerStyle(answerStyle) }, [answerStyle])
@@ -819,6 +849,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         return [...t, { text: question, questionId, ts: Date.now(), isQuestion: true, answer: '', ...patch }]
       })
     }
+    // Clear SKIPPED badge when user taps Answer anyway / Retry.
+    if (isCurrent()) upsert({ skipped: false })
 
     const clearTimers = () => {
       clearTimeout(lockTimeout)
@@ -878,7 +910,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       if (!isCurrent()) return
       clearTimers()
       setHintLoading(false); setStreaming(false); hintInFlight.current = false
-      lastHintText.current = ''; setBuyTimePhrase(''); hintIncompleteRef.current = false
+      setBuyTimePhrase(''); hintIncompleteRef.current = false
+      // Keep the question card visible with Answer anyway — do not vanish the turn.
+      upsert({
+        isQuestion: true,
+        skipped: true,
+        answer: '',
+        hint: { skipped: true, fullAnswer: '', confidence: 'general' },
+      })
       state.markQuestionCancelled?.(questionId, 'skip')
       gen.complete()
     }
@@ -1110,6 +1149,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     })
     setLiveCaptureText('')
     setCaptureStatus('committed')
+    setCaptureRejectNote('')
     lastHintText.current = q.text
 
     // Speculative RAG after commit — same classify inputs as generateHint (incl. screen).
@@ -1310,27 +1350,36 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     clearTimeout(postMetaTimerRef.current)
     // The REAL conversation: interviewer questions + what YOU actually said (diarized),
     // NOT the AI's suggested answers. Merge consecutive same-speaker segments into clean turns.
-    const conversation = mergeTurns(
+    const speechConversation = mergeTurns(
       (interviewStateRef.current?.getSnapshot?.()?.speechTurns || [])
         .filter(t => t.role === 'interviewer' || t.role === 'candidate')
         .map(t => ({ role: t.role, text: t.text, ts: t.ts })),
     )
-    if (conversation.length === 0) { onEnd(); return }
 
-    const hasCandidate = conversation.some(t => t.role === 'candidate')
+    const hasCandidate = speechConversation.some(t => t.role === 'candidate')
+    let conversation
     if (!hasCandidate) {
       // Pair interviewer turns with overlay AI hints so notes can show "hints below".
       const withHints = []
-      for (const turn of conversation) {
+      for (const turn of speechConversation) {
         withHints.push(turn)
         if (turn.role === 'interviewer') {
-          const match = transcript.find(s => s.isQuestion && s.text === turn.text && (s.answer || s.hint?.fullAnswer))
+          const match = transcript.find(s => s.isQuestion && s.source !== 'screen_f7' && s.text === turn.text && (s.answer || s.hint?.fullAnswer))
           const hintText = (match?.answer || match?.hint?.fullAnswer || '').trim()
           if (hintText) withHints.push({ role: 'hint', text: hintText, ts: turn.ts })
         }
       }
+      conversation = appendScreenF7ToConversation(withHints.length ? withHints : speechConversation, transcript)
+    } else {
+      // Scored path — speechTurns for evaluate, but F7 solutions must still persist in Sessions.
+      conversation = appendScreenF7ToConversation(speechConversation, transcript)
+    }
+
+    if (conversation.length === 0) { onEnd(); return }
+
+    if (!hasCandidate) {
       onEnd({
-        conversation: withHints.length ? withHints : conversation,
+        conversation,
         report: {
           summary: 'No candidate speech was captured (System Audio hears the interviewer only, or Mic diarization never locked). Hints are below — this is not a scored interview.',
           overallScore: null,
@@ -1344,11 +1393,12 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
     setEnding(true)
     try {
+      // Evaluate on speech only; save conversation includes F7 for Sessions.
       const res = await apiFetch('/api/evaluate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           config: { domainLabel: profileRef.current?.targetRole || 'Live interview', roundLabel: 'Live interview' },
-          transcript: conversation,
+          transcript: speechConversation,
           profile: profileRef.current,
           provider: providerRef.current
         })
@@ -1552,10 +1602,27 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           </div>
         )}
 
-        {/* STATE A — live transcript fragments (not yet committed) */}
+        {/* STATE A — live transcript fragments (high contrast chip) */}
         {!!liveCaptureText && !hintLoading && (
-          <div style={{ fontSize: 11, color: T.text3, fontStyle: 'italic', marginBottom: 8, paddingLeft: 4, opacity: 0.85 }}>
-            {captureStatus === 'unclear' ? 'Question unclear — listening…' : 'Listening…'} {liveCaptureText}
+          <div style={{
+            fontSize: 12, color: '#F4F4F5', fontStyle: 'normal', fontWeight: 500, marginBottom: 8,
+            padding: '8px 10px', borderRadius: 8, lineHeight: 1.45,
+            background: 'rgba(0,0,0,0.78)', border: '1px solid rgba(255,255,255,0.14)',
+          }}>
+            <span style={{ color: '#A1A1AA', fontWeight: 600, marginRight: 6 }}>
+              {captureStatus === 'unclear' ? 'Unclear' : 'Listening'}
+            </span>
+            {liveCaptureText}
+          </div>
+        )}
+
+        {/* Capture reject — never silent disappearance */}
+        {!liveCaptureText && !!captureRejectNote && !hintLoading && (
+          <div role="status" style={{
+            fontSize: 11.5, color: '#FEF3C7', marginBottom: 8, padding: '8px 10px', borderRadius: 8, lineHeight: 1.4,
+            background: 'rgba(0,0,0,0.72)', border: '1px solid rgba(251,191,36,0.4)',
+          }}>
+            {captureRejectNote}
           </div>
         )}
 
@@ -1565,9 +1632,13 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 11, color: '#fbbf24', fontWeight: 700, marginBottom: 3 }}>Question captured — waiting for speaker lock</div>
               <div style={{ fontSize: 12, color: T.text1, lineHeight: 1.4 }}>❓ {manualQ}</div>
+              <div style={{ fontSize: 10.5, color: T.text2, marginTop: 4, lineHeight: 1.4 }}>
+                Mic needs a short lock so we don’t treat your voice as the interviewer. System Audio hears the call only (not you). Tap Answer this anytime.
+              </div>
             </div>
             <button type="button" onClick={() => {
               const pending = pendingManualQ.current
+              setCaptureRejectNote('')
               generateHint(manualQ, { force: true, questionId: pending?.questionId })
             }}
               style={{ background: 'rgba(94,234,212,0.15)', border: '1px solid rgba(94,234,212,0.4)', color: '#5eead4', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
@@ -1587,21 +1658,47 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           </div>
         )}
 
-        {audio.interim && !liveCaptureText && <div style={{ fontSize: 11, color: T.text3, fontStyle: 'italic', marginBottom: 8, paddingLeft: 4 }}>… {audio.interim}</div>}
+        {audio.interim && !liveCaptureText && (
+          <div style={{
+            fontSize: 12, color: '#F4F4F5', marginBottom: 8, padding: '8px 10px', borderRadius: 8, lineHeight: 1.45,
+            background: 'rgba(0,0,0,0.78)', border: '1px solid rgba(255,255,255,0.14)',
+          }}>
+            <span style={{ color: '#A1A1AA', fontWeight: 600, marginRight: 6 }}>Live</span>
+            … {audio.interim}
+          </div>
+        )}
 
         {[...transcript].filter(s => s.isQuestion).reverse().map((s, i) => {
           const isLatest = i === 0
+          const isScreen = s.source === 'screen_f7'
+          const isSkipped = !!(s.skipped || s.hint?.skipped)
           return (
-          <div key={s.questionId || s.ts || s.text} style={{ marginBottom: 14, opacity: isLatest ? 1 : 0.72 }}>
+          <div key={s.questionId || s.ts || s.text} style={{ marginBottom: 14, opacity: isLatest ? 1 : 0.92 }}>
             {/* Q bubble — never replaced by Thinking… */}
-            <div style={{ fontSize: isLatest ? 13 : 12, color: T.text1, background: 'rgba(255,255,255,0.06)', borderRadius: '0 8px 8px 8px', padding: '7px 11px', marginBottom: 6, lineHeight: 1.5, fontWeight: isLatest ? 600 : 400 }}>
+            <div style={{ fontSize: isLatest ? 13 : 12, color: T.text1, background: 'rgba(255,255,255,0.08)', borderRadius: '0 8px 8px 8px', padding: '7px 11px', marginBottom: 6, lineHeight: 1.5, fontWeight: isLatest ? 600 : 400 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                {isScreen && <span style={badge('rgba(56,189,248,0.2)', '#7dd3fc')}>SCREEN</span>}
+                {isSkipped && <span style={badge('rgba(251,191,36,0.2)', '#fbbf24')}>SKIPPED</span>}
+              </div>
               ❓ {s.text}
             </div>
+            {/* Skipped non-question — keep card + Answer anyway */}
+            {isSkipped && !s.answer && (
+              <div style={{ marginLeft: 10, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, color: T.text2 }}>Skipped as non-question</span>
+                <button type="button"
+                  onClick={() => generateHint(s.text, { force: true, questionId: s.questionId })}
+                  style={btn('rgba(94,234,212,0.15)', '#5eead4')}>
+                  Answer anyway
+                </button>
+              </div>
+            )}
             {/* A bubble (or incomplete stub with Retry) */}
-            {s.hint && (s.answer !== undefined || s.hint.incomplete) && (
+            {s.hint && !isSkipped && (s.answer !== undefined || s.hint.incomplete) && (
               <div style={{ marginLeft: 10 }}>
                 <div style={{ display: 'flex', gap: 4, marginBottom: 5, flexWrap: 'wrap', alignItems: 'center' }}>
                   {s.hint.incomplete && <span style={badge('rgba(251,191,36,0.2)', '#fbbf24')}>⚠ INCOMPLETE</span>}
+                  {isScreen && <span style={badge('rgba(56,189,248,0.15)', '#7dd3fc')}>F7</span>}
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
                     {s.hint.incomplete && (
                       <button type="button" onClick={() => generateHint(s.text, { force: true, questionId: s.questionId })} style={btn('rgba(251,191,36,0.15)', '#fbbf24')}>Retry</button>

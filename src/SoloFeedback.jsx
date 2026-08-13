@@ -53,6 +53,8 @@ function pairs(transcript) {
         a: next?.text ?? null,
         spoken: next?.meta?.spoken,
         hasMeta: !!(next && next.meta && typeof next.meta.spoken === 'boolean'),
+        screen: transcript[i].source === 'screen_f7' || next?.source === 'screen_f7',
+        hintOnly: next?.role === 'hint',
       })
     }
   }
@@ -198,9 +200,19 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
                     style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: open ? T.surface2 : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: T.font }}>
                     <span style={{ width: 24, height: 24, flexShrink: 0, borderRadius: 6, background: 'rgba(20,184,166,0.16)', color: T.accentFrom, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>Q{i + 1}</span>
                     <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: T.text1, whiteSpace: open ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.q}</span>
+                    {item.screen && (
+                      <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 600, color: '#7dd3fc', background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: 999, padding: '2px 8px' }}>
+                        SCREEN
+                      </span>
+                    )}
                     {item.hasMeta && (
                       <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 600, color: item.spoken ? '#5eead4' : T.text3, background: item.spoken ? 'rgba(20,184,166,0.12)' : T.surface2, border: `1px solid ${item.spoken ? 'rgba(20,184,166,0.3)' : T.border}`, borderRadius: 999, padding: '2px 8px' }}>
                         {item.spoken ? 'Spoken' : 'Typed'}
+                      </span>
+                    )}
+                    {item.hintOnly && !item.screen && (
+                      <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 600, color: T.text3, background: T.surface2, border: `1px solid ${T.border}`, borderRadius: 999, padding: '2px 8px' }}>
+                        HINT
                       </span>
                     )}
                     <span style={{ color: T.text3, fontSize: 12 }}>{open ? '▾' : '▸'}</span>
@@ -208,7 +220,9 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
                   {open && (
                     <div style={{ padding: '2px 14px 14px 46px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ fontSize: 10.5, fontWeight: 600, color: T.text3, letterSpacing: '0.04em' }}>YOUR ANSWER</div>
+                        <div style={{ fontSize: 10.5, fontWeight: 600, color: T.text3, letterSpacing: '0.04em' }}>
+                          {item.screen || item.hintOnly ? 'HINT / SOLUTION' : 'YOUR ANSWER'}
+                        </div>
                         {item.hasMeta && (
                           <span style={{ fontSize: 10, color: item.spoken ? '#5eead4' : T.text3 }}>
                             {item.spoken ? 'Spoken (voice contributed)' : 'Typed'}
