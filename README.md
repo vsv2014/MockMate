@@ -290,6 +290,14 @@ here — they stay on the user's machine.
 
 ## Roadmap
 
+**Done (1.4.8)**
+- ✅ **Live intent reliability** — slower semantic commit gate, overlap/artifact cleanup, correction cancellation, and active-card refinements for requests such as “write it as code.”
+- ✅ **Bounded answers** — provider first-byte timeout, 12-second Live deadline, stale-generation cancellation, and visible superseded/failed/Retry states.
+- ✅ **Truthful role fit** — resume-only first-person evidence, JD-prioritized framing, and explicit code/language/brief output contracts.
+- ✅ **Preflight overlay controls** — setup is draggable/resizable and collapses to a movable pill before Start Live.
+- ✅ **Safer Stealth + coding transforms** — OFF requires confirmation; screen-solution language tabs regenerate complete code in the selected language.
+- ✅ **Mid-interview coding** — coding requests reset routing from earlier topics and loose streamed code is normalized into an expanded highlighted/copyable block.
+
 **Done (1.4.6)**
 - ✅ **Live engine hardening** — `InterviewState` / generation / question-capture / classification authority; text vs vision provider health; Deepgram local-managed key fallback policy.
 - ✅ **Resume Studio exports** — tailored **PDF** (primary), optional `.txt` / FAANG `.tex`; draft persistence across minimize; Electron-safe copy.

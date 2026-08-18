@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('meeting-detected', handler)
     return () => ipcRenderer.removeListener('meeting-detected', handler)
   },
+  getMeetingContext: () => ipcRenderer.invoke('get-meeting-context'),
   onCodingDetected: cb => {
     const handler = (_, active) => cb(active)
     ipcRenderer.on('coding-detected', handler)
@@ -71,7 +72,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
   checkForUpdates: () => ipcRenderer.invoke('check-updates-now'),
   writeEnv: content => ipcRenderer.invoke('write-env', content),
+  removeProviderKey: provider => ipcRenderer.invoke('remove-provider-key', provider),
   appendSessionMetrics: row => ipcRenderer.invoke('append-session-metrics', row),
+  readSessionMetricsSummary: () => ipcRenderer.invoke('read-session-metrics-summary'),
   relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
   applyKeys: () => ipcRenderer.invoke('apply-keys'),
   openKeySetup: () => ipcRenderer.invoke('open-key-setup'),

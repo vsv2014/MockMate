@@ -4,8 +4,15 @@ import { toPCM16 } from './audio-pcm'
 
 async function getStream(sourceId) {
   if (!sourceId || sourceId === 'microphone') {
+    const supported = navigator.mediaDevices?.getSupportedConstraints?.() || {}
     return navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        ...(supported.autoGainControl ? { autoGainControl: true } : {}),
+        ...(supported.voiceIsolation ? { voiceIsolation: true } : {}),
+      }
     })
   }
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -42,11 +49,12 @@ export function shouldTriggerHint(text, meta = {}) {
 // the interviewer from the candidate; keywords=<term>:2 boosts recognition of the
 // candidate's domain terms, tech, and proper nouns pulled from their resume.
 function buildDgUrl(keyterms = [], degraded = false, lang = 'en-US') {
-  const base = 'wss://api.deepgram.com/v1/listen?model=nova-2&encoding=linear16&sample_rate=16000&channels=1'
-    + '&interim_results=true&smart_format=true&punctuate=true&utterance_end_ms=1200'
+  const model = degraded ? 'nova-2' : 'nova-3'
+  const base = `wss://api.deepgram.com/v1/listen?model=${model}&encoding=linear16&sample_rate=16000&channels=1`
+    + '&interim_results=true&smart_format=true&punctuate=true&utterance_end_ms=1200&vad_events=true&endpointing=300'
     + `&language=${encodeURIComponent(lang || 'en-US')}`   // transcribe in the chosen interview language
   if (degraded) return base   // plain proven baseline — drop diarize + keyterms if the enhanced config won't connect
-  return base + '&diarize=true' + keyterms.slice(0, 40).map(t => `&keywords=${encodeURIComponent(t)}:2`).join('')
+  return base + '&diarize=true' + keyterms.slice(0, 40).map(t => `&keyterm=${encodeURIComponent(t)}`).join('')
 }
 
 // Most-frequent speaker label across a diarized word list (Deepgram tags each word).
@@ -326,6 +334,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
           speaker: sp,
           isCandidate: !!isCandidate,
           isQuestion: looksLikeQuestion(text),
+          confidence: Number.isFinite(alt?.confidence) ? alt.confidence : null,
           diarizationLocked: !!interviewerSpeaker.current,
           degraded: !!degradedAudio.current,
         })

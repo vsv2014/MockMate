@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { T } from './auth/tokens'
 import { getAiMode, setAiMode, MANAGED_AVAILABLE } from './lib/aiMode'
+import { configuredProviderNames } from './lib/modelPicker'
 
 // Reusable API-key entry. Used BOTH at the global level (Home → Settings) and inside
 // Live Companion, so keys can be configured once without entering any specific mode.
@@ -26,8 +27,10 @@ const PROVIDERS = [
     note: 'Needs billing credit (not ChatGPT Plus) at', link: { href: 'https://platform.openai.com/api-keys', label: 'platform.openai.com' } },
   { k: 'ANTHROPIC_API_KEY', name: 'Anthropic', hint: 'Claude — paid API', match: /anthropic|claude/i,
     note: 'Needs billing credit at', link: { href: 'https://console.anthropic.com/settings/keys', label: 'console.anthropic.com' } },
+  { k: 'CEREBRAS_API_KEY', name: 'Cerebras', hint: 'fast inference', match: /cerebras/i,
+    note: 'Create a key at', link: { href: 'https://cloud.cerebras.ai', label: 'cloud.cerebras.ai' } },
 ]
-const EMPTY = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', GROQ_API_KEY: '', DEEPGRAM_API_KEY: '', OPENAI_MODEL: '', GROQ_VISION_MODEL: '', VISION_API_KEY: '', VISION_MODEL: '', VISION_BASE_URL: '', ADZUNA_APP_ID: '', ADZUNA_APP_KEY: '' }
+const EMPTY = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', GROQ_API_KEY: '', CEREBRAS_API_KEY: '', DEEPGRAM_API_KEY: '', OPENAI_MODEL: '', GROQ_VISION_MODEL: '', VISION_API_KEY: '', VISION_MODEL: '', VISION_BASE_URL: '', ADZUNA_APP_ID: '', ADZUNA_APP_KEY: '' }
 
 function Pill({ color, bg, children }) {
   return <span style={{ fontSize: 9.5, fontWeight: 600, color, background: bg, padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap' }}>{children}</span>
@@ -35,7 +38,7 @@ function Pill({ color, bg, children }) {
 
 // A single labeled key field: name + hint on the left, status/free pill on the right,
 // input below. Far clearer than a placeholder-only box that loses its label on focus.
-function KeyField({ name, hint, value, onChange, added, free, secret = true, note, link }) {
+function KeyField({ name, hint, value, onChange, added, free, secret = true, note, link, onRemove }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -46,6 +49,8 @@ function KeyField({ name, hint, value, onChange, added, free, secret = true, not
             ? <Pill color={T.success} bg="rgba(34,197,94,0.14)">✓ Added</Pill>
             : free ? <Pill color="#5eead4" bg="rgba(20,184,166,0.14)">Free</Pill> : null}
         </span>
+        {added && onRemove && <button type="button" onClick={onRemove}
+          style={{ background: 'none', border: 'none', color: '#fca5a5', fontSize: 10, cursor: 'pointer', padding: '2px 0 2px 5px' }}>Remove</button>}
       </div>
       <input type={secret ? 'password' : 'text'} placeholder={added ? '•••••••• — paste a new key to replace' : `Paste your ${name} key`}
         value={value} autoComplete="off" spellCheck={false} onChange={onChange}
@@ -104,6 +109,17 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   const set = k => e => setKeyVals(v => ({ ...v, [k]: e.target.value }))
   const isAdded = p => configured.some(c => p.match.test(c.label || c.id || ''))
 
+  async function removeProvider(provider, label) {
+    if (!window.confirm(`Clear the saved ${label} configuration from this device?`)) return
+    setMsg('')
+    const r = await window.electronAPI?.removeProviderKey?.(provider)
+    if (!r?.ok) { setMsg(`⚠ ${r?.error || 'Could not remove key'}`); return }
+    setMsg(`✓ ${label} removed`)
+    await window.electronAPI?.applyKeys?.()
+    await refresh()
+    onSaved?.()
+  }
+
   async function save() {
     const lines = Object.entries(keyVals).filter(([, v]) => v.trim()).map(([k, v]) => `${k}=${v.trim()}`).join('\n')
     if (!lines) { setMsg('Enter at least one key'); return }
@@ -124,6 +140,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   const card = { display: 'flex', flexDirection: 'column', gap: 12, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '13px 14px' }
 
   const byokRecommended = !MANAGED_AVAILABLE || mode === 'byok'
+  const configuredNames = configuredProviderNames([], configured)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontFamily: T.font }}>
@@ -133,6 +150,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       <div style={card}>
         <KeyField name="Deepgram" hint="live transcription" added={dg}
           value={keyVals.DEEPGRAM_API_KEY} onChange={set('DEEPGRAM_API_KEY')}
+          onRemove={() => removeProvider('deepgram', 'Deepgram')}
           note="Required for Live Interview and Solo voice. Prefer a Project/Owner key (Member keys may fail token grant). Free tier at" link={{ href: 'https://console.deepgram.com', label: 'console.deepgram.com' }} />
         {mode === 'managed' && !dg && (
           <div role="status" style={{ fontSize: 11, color: '#fbbf24', lineHeight: 1.4 }}>Managed AI does not include voice — add a Deepgram key here (Live will not start without it).</div>
@@ -163,7 +181,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       {showStatus && (
         <div role="status" style={{ ...card, fontSize: 12, color: T.text2 }}>
           <div style={{ fontWeight: 600, color: T.text1, marginBottom: 4 }}>Currently configured</div>
-          <div>AI: {configured.length ? configured.map(p => p.label || p.id).join(', ') : (mode === 'managed' ? 'Managed (when hosted)' : 'None yet')}</div>
+          <div>AI: {configuredNames.length ? configuredNames.join(', ') : (mode === 'managed' ? 'Managed unavailable / no provider reported' : 'None yet')}</div>
           <div style={{ marginTop: 2 }}>Voice: {dg ? 'Deepgram connected' : 'Off'}</div>
         </div>
       )}
@@ -174,6 +192,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       <div style={card}>
         {PROVIDERS.map(p => (
           <KeyField key={p.k} name={p.name} hint={p.hint} free={p.free} added={isAdded(p)}
+            onRemove={() => removeProvider(p.k.replace('_API_KEY', '').toLowerCase(), p.name)}
             note={p.note} link={p.link}
             value={keyVals[p.k]} onChange={set(p.k)} />
         ))}
@@ -194,20 +213,24 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
           <KeyField name="Custom OpenAI model id" hint="optional" secret={false}
             value={keyVals.OPENAI_MODEL} onChange={set('OPENAI_MODEL')}
             note="Blank = GPT-4o. Set any OpenAI model id to run it on your key. For Claude/Gemini/Groq, add the key above and pick the model in-app." />
+          <button type="button" onClick={() => removeProvider('openai_model', 'OpenAI model overrides')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: 10.5, cursor: 'pointer' }}>Clear OpenAI model overrides</button>
           <KeyField name="Groq vision model id" hint="optional · screenshots" secret={false}
             value={keyVals.GROQ_VISION_MODEL} onChange={set('GROQ_VISION_MODEL')}
             note="Uses the Groq key above only for screenshot analysis. Leave blank unless your Groq account exposes a vision-capable model." />
+          <button type="button" onClick={() => removeProvider('groq_vision', 'Groq vision override')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: 10.5, cursor: 'pointer' }}>Clear Groq vision override</button>
           <div style={{ height: 1, background: T.border }} />
           <div style={{ fontSize: 11, color: T.text2, lineHeight: 1.45 }}><strong style={{ color: T.text1 }}>Custom vision gateway</strong> — OpenAI-compatible endpoints only.</div>
           <KeyField name="Vision base URL" secret={false} value={keyVals.VISION_BASE_URL} onChange={set('VISION_BASE_URL')} />
           <KeyField name="Vision model id" secret={false} value={keyVals.VISION_MODEL} onChange={set('VISION_MODEL')} />
           <KeyField name="Vision API key" value={keyVals.VISION_API_KEY} onChange={set('VISION_API_KEY')} />
+          <button type="button" onClick={() => removeProvider('custom_vision', 'custom vision gateway')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: 10.5, cursor: 'pointer' }}>Clear custom vision gateway</button>
           <div style={{ height: 1, background: T.border }} />
           <div style={{ fontSize: 11, color: T.text2, lineHeight: 1.45 }}>
             <strong style={{ color: T.text1 }}>Job search (Adzuna)</strong> — free keys from <a href="https://developer.adzuna.com" style={{ color: T.accentFrom }}>developer.adzuna.com</a> add real local/on-site postings to Matching Jobs. Without them, only remote roles show.
           </div>
           <KeyField name="Adzuna App ID" secret={false} value={keyVals.ADZUNA_APP_ID} onChange={set('ADZUNA_APP_ID')} />
           <KeyField name="Adzuna App Key" value={keyVals.ADZUNA_APP_KEY} onChange={set('ADZUNA_APP_KEY')} />
+          <button type="button" onClick={() => removeProvider('adzuna', 'Adzuna job-search')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: 10.5, cursor: 'pointer' }}>Clear Adzuna configuration</button>
         </div>
       )}
       </>)}

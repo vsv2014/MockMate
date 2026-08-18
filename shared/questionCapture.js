@@ -3,14 +3,16 @@
  * Does NOT commit solely because Deepgram emitted one final fragment.
  */
 
-import { normalizeCaptureText, isDuplicateQuestion } from './transcriptBuffer.js'
+import { normalizeCaptureText, isDuplicateQuestion, sanitizeCaptureText } from './transcriptBuffer.js'
 
 export const QUESTION_CAPTURE_VERSION = 'question_capture_v1'
 
 /** Incomplete / wait-for-more shapes */
 const INCOMPLETE_OPENERS = /^(can you design|how would you design|how would you|what about|how about|tell me about(?: a time)?|tell me about|walk me through|describe|explain|why(?:\s+\w+)?|what are|what is|what was|given an|design a|design an|let'?s (?:start|switch|do)|okay\.?\s*(?:forget|let'?s)?)$/i
 const INCOMPLETE_TRAILING = /\b(design a|design an|tell me about(?: a time)?|how would you|what about|can you|walk me through)\s*$/i
-const CORRECTION_MARK = /\b(actually|no,?\s*i meant|rather|i mean)\b/i
+const CORRECTION_MARK = /(?:\b(?:actually|no,?\s*i meant|rather|i mean|what i(?:'m| am) saying is|let me (?:repeat|rephrase)|i(?:'ll| will) repeat(?: the question)?|you(?:'re| are) answering (?:it )?wrong)\b|\bwait[,.!]+(?:\s*wait[,.!]+)*)/i
+const REVISION_SIGNAL = /^(?:(?:ai\s+)?(?:wait|sorry|no|hold on|one second)[,.!\s]*)+(?:i(?:'ll| will) repeat|let me (?:repeat|rephrase)|you(?:'re| are) answering (?:it )?wrong)?[,.!\s]*$/i
+const REFINEMENT_SIGNAL = /^(?:so\s+)?(?:(?:can|could|would) you\s+)?(?:please\s+)?(?:write|show|give|provide|do)\s+(?:it|that|this)(?:\s+(?:as|in|using|with)\b[\s\S]*)?[?.!]*$|^(?:be\s+)?brief(?:ly)?(?:\s+about it)?[?.!]*$/i
 
 const INTERROGATIVE = /\b(tell me|describe|explain|how would|how do|how does|what is|what are|what was|what were|what about|how about|walk me|can you|could you|would you|why did|why do|why is|why are|why use|have you|give me|when did|where did|design (?:a|an|the)|given an?)\b/i
 
@@ -19,12 +21,12 @@ const INTERROGATIVE = /\b(tell me|describe|explain|how would|how do|how does|wha
  * Tuned for: fast commit on complete ? ; accumulate on incomplete openers.
  */
 export const STABILIZE_MS = {
-  completeQuestionMark: 180,
-  completeInterrogative: 320,
-  likelyComplete: 450,
-  incomplete: 900,
-  unknownSpeaker: 1100,
-  maxAccumulate: 2800,
+  completeQuestionMark: 700,
+  completeInterrogative: 900,
+  likelyComplete: 1100,
+  incomplete: 1400,
+  unknownSpeaker: 1500,
+  maxAccumulate: 4500,
 }
 
 /**
@@ -133,13 +135,14 @@ export function assessQuestionBoundary({
 }
 
 export function isIncompleteUtterance(text) {
-  const q = String(text || '').trim().replace(/\s+/g, ' ')
+  const q = sanitizeCaptureText(text).replace(/\s+/g, ' ')
   if (!q) return true
   if (/\?\s*$/.test(q)) return false
   if (INCOMPLETE_OPENERS.test(q)) return true
   if (INCOMPLETE_TRAILING.test(q)) return true
   // Ends mid-phrase without object
-  if (/\b(a|an|the|about|design|for|with|to|of)\s*$/i.test(q)) return true
+  if (/\b(a|an|the|about|design|for|with|to|of|write|explain|tell|related|using|against|as|like|maybe|please)\s*$/i.test(q)) return true
+  if (/\b(can|could|would|do) you (?:please )?(?:write|explain|tell|show|give|try)\s*$/i.test(q)) return true
   // "design a booking" without system/app/feature — still incomplete
   if (/\bdesign (?:a|an|the) \w{3,20}$/i.test(q) && !/\b(system|service|app|feature|platform|pipeline|architecture|layer|cache|database)\b/i.test(q)) {
     return true
@@ -157,13 +160,21 @@ export function isIncompleteUtterance(text) {
  * "How would you design Redis—actually, how would you design the whole caching layer?"
  */
 export function applyUtteranceCorrection(text) {
-  const raw = String(text || '').trim()
+  const raw = sanitizeCaptureText(text)
   if (!CORRECTION_MARK.test(raw)) return raw
   // Prefer text after the last correction marker
-  const parts = raw.split(/\b(?:actually|no,?\s*i meant|rather|i mean)\b/i)
+  const parts = raw.split(CORRECTION_MARK)
   if (parts.length < 2) return raw
   const last = parts[parts.length - 1].replace(/^[\s,.—\-]+/, '').trim()
   return last || raw
+}
+
+export function isRevisionSignal(text) {
+  return REVISION_SIGNAL.test(sanitizeCaptureText(text))
+}
+
+export function isRefinementSignal(text) {
+  return REFINEMENT_SIGNAL.test(sanitizeCaptureText(text))
 }
 
 /**
@@ -180,6 +191,8 @@ export function createQuestionCaptureController(opts = {}) {
     onReject = () => {},
     onLive = () => {},
     onDebug = () => {},
+    onRevision = () => {},
+    onRefinement = () => {},
     getHadPriorQuestion = () => false,
     getLastCommittedText = () => '',
   } = opts
@@ -340,6 +353,29 @@ export function createQuestionCaptureController(opts = {}) {
    */
   function ingest(fragment) {
     lastSilenceAt = now()
+    let incoming = sanitizeCaptureText(fragment?.text)
+    if (isRevisionSignal(incoming)) {
+      debug('QUESTION_REVISION_SIGNAL', { text: incoming })
+      onRevision({ text: incoming, reason: 'interviewer_revision' })
+      reset()
+      onLive({ text: '', status: 'listening', reason: 'interviewer_revision' })
+      return { liveText: '', flushed: null, rejected: 'revision_signal' }
+    }
+    const correctedIncoming = applyUtteranceCorrection(incoming)
+    if (correctedIncoming && normalizeCaptureText(correctedIncoming) !== normalizeCaptureText(incoming)) {
+      debug('QUESTION_REVISION_CONTINUATION', { text: incoming, corrected: correctedIncoming })
+      onRevision({ text: incoming, correctedText: correctedIncoming, reason: 'interviewer_revision_continuation' })
+      reset()
+      incoming = correctedIncoming
+    }
+    if (isRefinementSignal(incoming) && getHadPriorQuestion()) {
+      debug('QUESTION_REFINEMENT', { text: incoming })
+      onRefinement({ text: incoming, reason: 'interviewer_refinement' })
+      reset()
+      onLive({ text: '', status: 'listening', reason: 'interviewer_refinement' })
+      return { liveText: '', flushed: null, rejected: 'refinement_signal' }
+    }
+    fragment = { ...fragment, text: incoming }
     const result = buffer.push(fragment)
 
     // Flushed prior speaker lane — evaluate it as possible question

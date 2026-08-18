@@ -8,7 +8,7 @@ import { getAutoSkip, getAnswerStyle, setAnswerStyle as persistAnswerStyle } fro
 import { retrieveContext, warmDocs, addDoc, getSelectedDocIds } from './lib/docs'
 import Documents from './Documents'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
-import { OverlayPanel, ScreenAnalysisPanel, IconBtn } from './App'
+import { OverlayPanel, ScreenAnalysisPanel, IconBtn, CodeBlock } from './App'
 import ApiKeysPanel from './ApiKeys'
 import { saveSession } from './history'
 import { loadProfile, saveProfile } from './lib/profile'
@@ -18,9 +18,10 @@ import { estimateCost } from './cost'
 import { extractPdfText } from './pdf'
 import { mountPip } from './pip'
 import { mergeTurns } from './lib/transcript'
-import { glanceLayers, stripHintMeta } from '../shared/hintLayers.js'
+import { glanceLayers, stripHintMeta, ensureCodingCodeBlock } from '../shared/hintLayers.js'
 import { classifyTurn, shouldRetrieveDocs } from '../shared/interviewClassify.js'
 import { evaluateScreenRelevance, formatScreenDebugTrace } from '../shared/screenContext.js'
+import { selectScreenForTurn, updateCodingSessionContext } from '../shared/codingSessionContext.js'
 import { createSessionMetrics } from './lib/sessionMetrics'
 import { createSessionId } from './lib/sessionGen'
 import { createInterviewState } from '../shared/interviewState.js'
@@ -30,6 +31,7 @@ import { createTranscriptBuffer } from '../shared/transcriptBuffer.js'
 import { createQuestionCaptureController, formatCaptureDebugLine } from '../shared/questionCapture.js'
 import { streamLiveHint, fetchLiveHintFallback } from './live/hintTransport.js'
 import { copyText } from './lib/clipboard'
+import { curateModelOptions, configuredProviderNames, curateProviderFallbacks, loadModelSelection, persistModelSelection } from './lib/modelPicker'
 
 function newQuestionId() {
   return `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -87,21 +89,19 @@ function thinkingLabel(language = 'English') {
 
 
 // Simple markdown → JSX: bold, bullets, section headers
-const CODE_BLOCK_STYLE = { margin: '6px 0', padding: '10px 12px', background: 'rgba(0,0,0,0.55)', border: `1px solid ${T.borderStrong}`, borderRadius: 8, overflowX: 'auto', fontFamily: 'Menlo, Consolas, monospace', fontSize: 11.5, lineHeight: 1.55, color: T.text1, whiteSpace: 'pre' }
-
 function renderMd(text) {
   if (!text) return null
   const lines = text.split('\n')
   const out = []
-  let code = null   // accumulating lines inside a ``` fence (null = not in a code block)
+  let code = null   // { language, lines } inside a ``` fence
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     if (line.trim().startsWith('```')) {            // fence open/close
-      if (code === null) code = []
-      else { out.push(<pre key={'c' + i} style={CODE_BLOCK_STYLE}>{code.join('\n')}</pre>); code = null }
+      if (code === null) code = { language: line.trim().slice(3).trim(), lines: [] }
+      else { out.push(<CodeBlock key={'c' + i} code={code.lines.join('\n')} language={code.language} />); code = null }
       continue
     }
-    if (code !== null) { code.push(line); continue } // inside code — keep raw, no markdown
+    if (code !== null) { code.lines.push(line); continue } // inside code — keep raw
     const trimmed = line.trim()
     if (!trimmed) { out.push(<div key={i} style={{ height: 6 }} />); continue }
     if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
@@ -120,7 +120,7 @@ function renderMd(text) {
     out.push(<div key={i} style={{ marginBottom: 4 }}>{inlineMd(trimmed)}</div>)
   }
   // Streaming: a code block may still be open (closing ``` not arrived yet) — render it live anyway.
-  if (code !== null && code.length) out.push(<pre key="c-open" style={CODE_BLOCK_STYLE}>{code.join('\n')}</pre>)
+  if (code !== null && code.lines.length) out.push(<CodeBlock key="c-open" code={code.lines.join('\n')} language={code.language} />)
   return out
 }
 
@@ -137,15 +137,17 @@ function stopSpeaking() { window.speechSynthesis?.cancel() }
 
 
 // ── Setup screen ──────────────────────────────────────────────────────────────
-function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimize, onResize, onDrag }) {
+function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity }) {
   const [profile, setProfile] = useState(loadProfile)
   const [audioSources, setAudioSources] = useState([])
   const [sourceId, setSourceId] = useState('microphone')
   const [providers, setProviders] = useState([])       // configured only (for default + validation)
   const [allProviders, setAllProviders] = useState([]) // every model (for the dropdown)
-  const [provider, setProvider] = useState(() => { try { return localStorage.getItem('llmProvider') || '' } catch { return '' } })
+  const [provider, setProvider] = useState(loadModelSelection)
   const [dgAvailable, setDgAvailable] = useState(false)
   const [models, setModels] = useState([])   // dynamic per-key model list from /api/models
+  const modelOptions = curateModelOptions(models)
+  const providerNames = configuredProviderNames(models, providers)
   // Inline API-key entry — same keys are also editable globally (Home → Settings).
   const [showKeys, setShowKeys] = useState(false)
 
@@ -155,14 +157,19 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
       setProviders(list)
       setAllProviders(d.allProviders || list.map(p => ({ ...p, configured: true })))
       // Default selection must be a CONFIGURED provider (never auto-pick a locked one)
-      setProvider(p => (p && list.some(x => x.id === p)) ? p : (list[0]?.id || ''))
+      setProvider(p => (!p || p.includes('::') || list.some(x => x.id === p)) ? p : '')
       setDgAvailable(!!d.deepgram)
     }).catch(() => {})
   }
 
   useEffect(() => {
     refetchProviders()
-    apiFetch('/api/models').then(r => r.json()).then(d => setModels(d.models || [])).catch(() => {})
+    apiFetch('/api/models').then(r => r.json()).then(d => {
+      const next = d.models || []
+      setModels(next)
+      const compact = curateModelOptions(next)
+      setProvider(current => compact.some(m => m.id === current) ? current : '')
+    }).catch(() => {})
     window.electronAPI?.getAudioSources?.().then(srcs => {
       setAudioSources(srcs || [])
       // Auto-select system audio (best for hearing the interviewer) — but NOT on
@@ -175,18 +182,23 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
     })
   }, [])
 
-  useEffect(() => { if (provider) { try { localStorage.setItem('llmProvider', provider) } catch {} } }, [provider])
+  useEffect(() => { persistModelSelection(provider) }, [provider])
 
   function patch(p) { const next = { ...profile, ...p }; setProfile(next); saveProfile(next) }
   const managed = isManaged()   // managed → hide model picker, let the server auto-route
   const [pdfMsg, setPdfMsg] = useState('')
   const [linuxAck, setLinuxAck] = useState(false)
   const [shareVerified, setShareVerified] = useState(false)
+  const [protectionTest, setProtectionTest] = useState({ status: 'idle', message: '' })
+  const [meetingContext, setMeetingContext] = useState({ active: false, app: null, label: null })
+  const [shareMode, setShareMode] = useState('entire-screen')
   const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
   const inElectron = typeof window !== 'undefined' && !!window.electronAPI
   // BYOK with no LLM configured → hints would error on every question mid-call. Block Start and say why.
-  const noLLM = !managed && providers.length === 0 && models.length === 0
-  const canStart = dgAvailable && !noLLM && !!inElectron && (isLinux ? linuxAck : shareVerified)
+  // Mode selection is not capability. Managed/BYOK both need at least one provider
+  // reported by the active API service; otherwise the first hint would fail.
+  const noLLM = providers.length === 0 && models.length === 0
+  const canStart = dgAvailable && !noLLM && !!inElectron && (isLinux ? linuxAck : (protectionTest.status === 'passed' && shareVerified))
   // Mic preflight is amber (may hear you); SysAudio on Win/mac is green.
   const micMode = sourceId === 'microphone'
   const audioPreflightColor = micMode ? '#fbbf24' : (isLinux ? '#fbbf24' : '#4ade80')
@@ -194,8 +206,49 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
   const inp = { width: '100%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text1, padding: '10px 12px', borderRadius: T.rCtrl, fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: T.font }
   const preflightOk = (ok) => ok ? '#4ade80' : '#f87171'
 
+  useEffect(() => {
+    window.electronAPI?.getMeetingContext?.().then(ctx => setMeetingContext(ctx || { active: false })).catch(() => {})
+    const off = window.electronAPI?.onMeetingDetected?.(ctx => {
+      setMeetingContext(typeof ctx === 'object' ? ctx : { active: !!ctx, app: null, label: null })
+      setShareVerified(false) // a meeting/config change invalidates the prior preview assertion
+    })
+    return () => { try { off?.() } catch {} }
+  }, [])
+
+  async function testCaptureProtection() {
+    setProtectionTest({ status: 'testing', message: 'Applying OS capture protection…' })
+    try {
+      const result = await window.electronAPI?.setContentProtection?.(true)
+      if (!result?.ok) {
+        setProtectionTest({ status: 'failed', message: result?.unsupported
+          ? 'OS capture protection is unsupported on this platform.'
+          : 'MockMate could not apply OS capture protection.' })
+        return
+      }
+      setProtectionTest({
+        status: 'passed',
+        message: 'OS protection applied. This does not prove your meeting share mode—verify the preview below.',
+      })
+    } catch {
+      setProtectionTest({ status: 'failed', message: 'OS capture-protection test failed.' })
+    }
+  }
+
   return (
-    <div style={{ minHeight: '100vh', background: T.bg, color: T.text1, fontFamily: T.font, overflowY: 'auto' }}>
+    <OverlayPanel
+      panelSize={panelSize}
+      stealth={stealth}
+      minimized={minimized}
+      onStealth={onStealth}
+      onMinimize={onMinimize}
+      onResize={onResize}
+      onDrag={onDrag}
+      onClose={onHome}
+      opacity={opacity}
+      onOpacity={onOpacity}
+      title="Live Interview setup"
+    >
+    <div style={{ flex: 1, minHeight: 0, background: T.bg, color: T.text1, fontFamily: T.font, overflowY: 'auto' }}>
       <div style={{ maxWidth: 760, margin: '0 auto', padding: '22px 26px', display: 'flex', flexDirection: 'column', gap: 12, boxSizing: 'border-box' }}>
 
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 4 }}>
@@ -238,11 +291,29 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
 
         {inElectron && !isLinux && (
           <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: T.text2 }}>
-            <div style={{ fontWeight: 600, marginBottom: 6, color: '#4ade80' }}>Verify share preview</div>
+            <div style={{ fontWeight: 600, marginBottom: 6, color: '#4ade80' }}>Test Stealth Mode</div>
+            <div style={{ marginBottom: 8, lineHeight: 1.45 }}>Step 1 checks whether MockMate can apply the operating-system protection flag. It cannot verify Zoom, Meet, or Teams by itself.</div>
+            <button type="button" onClick={testCaptureProtection} disabled={protectionTest.status === 'testing'}
+              style={{ marginBottom: 8, background: protectionTest.status === 'passed' ? 'rgba(34,197,94,0.18)' : 'rgba(94,234,212,0.14)', border: `1px solid ${protectionTest.status === 'failed' ? '#ef4444' : 'rgba(94,234,212,0.4)'}`, color: protectionTest.status === 'failed' ? '#fca5a5' : '#5eead4', borderRadius: 5, padding: '5px 10px', cursor: protectionTest.status === 'testing' ? 'default' : 'pointer', fontSize: 11, fontWeight: 700 }}>
+              {protectionTest.status === 'testing' ? 'Testing…' : protectionTest.status === 'passed' ? '✓ OS protection applied' : 'Run protection test'}
+            </button>
+            {protectionTest.message && <div role="status" style={{ color: protectionTest.status === 'failed' ? '#fca5a5' : protectionTest.status === 'passed' ? '#86efac' : T.text2, marginBottom: 8 }}>{protectionTest.message}</div>}
+            <div style={{ fontWeight: 600, marginBottom: 5, color: T.text1 }}>Step 2 — meeting preview</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ color: meetingContext.active ? '#86efac' : '#fbbf24' }}>
+                {meetingContext.active ? `✓ Detected ${meetingContext.label || 'meeting app'}` : '⚠ No supported meeting app detected'}
+              </span>
+              <select value={shareMode} onChange={e => { setShareMode(e.target.value); setShareVerified(false) }}
+                style={{ marginLeft: 'auto', background: T.surface2, color: T.text1, border: `1px solid ${T.border}`, borderRadius: 5, padding: '4px 7px', fontSize: 11 }}>
+                <option value="entire-screen">Entire screen</option>
+                <option value="window">Window</option>
+                <option value="browser-tab">Browser tab</option>
+              </select>
+            </div>
             <div style={{ marginBottom: 8, lineHeight: 1.45 }}>Before a real interview: open your meeting share preview and confirm the MockMate overlay does <strong style={{ color: T.text1 }}>not</strong> appear in what others see.</div>
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
-              <input type="checkbox" checked={shareVerified} onChange={e => setShareVerified(e.target.checked)} style={{ marginTop: 2 }} />
-              <span>I verified in share preview — MockMate did not appear in what others would see.</span>
+              <input type="checkbox" checked={shareVerified} disabled={protectionTest.status !== 'passed'} onChange={e => setShareVerified(e.target.checked)} style={{ marginTop: 2 }} />
+              <span>I verified the <strong>{shareMode.replace('-', ' ')}</strong> preview{meetingContext.label ? ` in ${meetingContext.label}` : ''} — MockMate did not appear.</span>
             </label>
           </div>
         )}
@@ -381,11 +452,14 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
           <Field label="AI model">
             <select style={inp} value={provider} onChange={e => setProvider(e.target.value)} disabled={!providers.length && !models.length}>
               {!providers.length && !models.length && <option value="">No models yet — add a key in Settings</option>}
-              {models.length > 0
-                ? models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
-                : providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+              {(providers.length > 0 || models.length > 0) && <option value="">Automatic — recommended</option>}
+              {modelOptions.length > 0
+                ? modelOptions.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
+                : curateProviderFallbacks(providers).map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
-            <div style={{ fontSize: 11, color: T.text3, marginTop: 6 }}>Manage keys in <strong style={{ color: T.text2 }}>Settings</strong>.</div>
+            <div style={{ fontSize: 11, color: T.text3, marginTop: 6 }}>
+              Using: {providerNames.join(', ') || 'none'}. Automatic chooses the best configured provider and preserves failover. Manage or remove keys in <strong style={{ color: T.text2 }}>Settings</strong>.
+            </div>
           </Field>
         )}
 
@@ -403,6 +477,7 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, onStealth, onMinimiz
         </Section>
       </div>
     </div>
+    </OverlayPanel>
   )
 }
 
@@ -463,6 +538,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const [error, setError] = useState('')
   const [extraContext, setExtraContext] = useState('')
   const [expandedAnswers, setExpandedAnswers] = useState(() => new Set())
+  const autoExpandedCodeRef = useRef(new Set())
   const [copiedKey, setCopiedKey] = useState('')
   const extraContextRef = useRef('')
   const [verifyTip, setVerifyTip] = useState(false)
@@ -480,6 +556,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const lastHintText = useRef('')
   const lastClassificationRef = useRef(null)
   const recentScreenRef = useRef(null)
+  const codingScreenRef = useRef(null)
   const [screenAttachHint, setScreenAttachHint] = useState(null) // attached | irrelevant | null
   const [liveCaptureText, setLiveCaptureText] = useState('') // STATE A — subtle live fragments
   const [captureStatus, setCaptureStatus] = useState('listening') // listening | unclear | stabilizing | committed
@@ -506,6 +583,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const hintTimingRef = useRef(null)
   const captureRef = useRef(null)
   const handleCommittedRef = useRef(null)
+  const handleRevisionRef = useRef(null)
+  const handleRefinementRef = useRef(null)
 
   // M2 question capture pipeline — commit BEFORE generate.
   if (!captureRef.current) {
@@ -538,6 +617,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         })
       },
       onCommitted: (c) => { handleCommittedRef.current?.(c) },
+      onRevision: (evt) => { handleRevisionRef.current?.(evt) },
+      onRefinement: (evt) => { handleRefinementRef.current?.(evt) },
       onReject: (reason) => { metricsRef.current?.markQuestionReject?.(reason) },
       onDebug: (evt) => {
         if (typeof localStorage !== 'undefined' && localStorage.getItem('mm-debug-live') === '1') {
@@ -559,6 +640,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   useEffect(() => {
     if (!screenAnalysis) return
     recentScreenRef.current = screenAnalysis
+    codingScreenRef.current = updateCodingSessionContext(codingScreenRef.current, screenAnalysis)
     interviewStateRef.current?.setScreenContext?.(screenAnalysis)
     const a = screenAnalysis.analysis
     const isCode = !screenAnalysis.error && (
@@ -740,8 +822,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     lastClassificationRef.current = classification
     try { onLiveSpokenQuestion?.(qRec.text) } catch {}
 
+    const selectedScreen = selectScreenForTurn({
+      question: qRec.text,
+      classification,
+      recentScreen: recentScreenRef.current,
+      codingScreen: codingScreenRef.current,
+    })
     const relevance = evaluateScreenRelevance({
-      question: qRec.text, classification, screen: recentScreenRef.current,
+      question: qRec.text, classification, screen: selectedScreen,
     })
     const ctx = resolveContextSources({
       classification,
@@ -752,7 +840,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       contextSources: ctx.allowed,
       screenRelevant: relevance.attach,
       screenReason: relevance.reason,
-      screenContextId: recentScreenRef.current?.screenContextId || null,
+      screenContextId: selectedScreen?.screenContextId || null,
     })
     setScreenAttachHint(relevance.attach ? 'attached' : (recentScreenRef.current && !recentScreenRef.current.error ? 'irrelevant' : null))
 
@@ -769,8 +857,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
     const questionId = qRec.id
     const qText = qRec.text
+    const previousQuestionId = activeQuestionIdRef.current
     activeQuestionIdRef.current = questionId
     state.supersedeOpenQuestions?.(questionId, 'new_question')
+    if (previousQuestionId && previousQuestionId !== questionId) {
+      setTranscript(t => t.map(s => s.questionId === previousQuestionId && !s.answer
+        ? { ...s, status: 'superseded' }
+        : s))
+    }
 
     if (activeGenerationRef.current?.canCommit?.()) {
       metricsRef.current?.markGenerationCancelled?.()
@@ -820,9 +914,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         incomplete = true
         setError('Hint timed out — tap Retry')
         upsert({ hint: { confidence: 'general', fullAnswer: '', incomplete: true } })
+        state.markQuestionFailed?.(questionId, 'timed_out')
       }
       try { gen.fail('timed_out') } catch {}
-    }, 30000)
+    }, 12000)
     lockTimerRef.current = lockTimeout
 
     let lastAnswer = ''
@@ -874,7 +969,12 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       setStreaming(false); setHintLoading(false); hintInFlight.current = false
       setBuyTimePhrase('')
       hintIncompleteRef.current = false
-      const layers = glanceLayers(answer, hintObj || {})
+      const formattedAnswer = ensureCodingCodeBlock(answer, hintObj?.questionType || classification.questionType)
+      if (formattedAnswer.includes('```') && !autoExpandedCodeRef.current.has(questionId)) {
+        autoExpandedCodeRef.current.add(questionId)
+        setExpandedAnswers(prev => new Set(prev).add(qText))
+      }
+      const layers = glanceLayers(formattedAnswer, hintObj || {})
       const finalHint = {
         ...(hintObj || { confidence: 'general' }),
         opener: layers.opener,
@@ -922,7 +1022,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         setHintLoading(false); setStreaming(false); setBuyTimePhrase('')
         markIncomplete('', lastHintObj, 'no tokens after meta')
         try { gen.fail('no_tokens_after_meta') } catch {}
-      }, 20000)
+      }, 8000)
     }
 
     if (typeof localStorage !== 'undefined' && localStorage.getItem('mm-debug-screen') === '1') {
@@ -956,7 +1056,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       style: answerStyleRef.current, autoSkip: getAutoSkip(),
       lastClassification: prevClassification,
       classification, // one authority — server must not re-classify when present
-      recentScreen: attachScreen ? recentScreenRef.current : null,
+      recentScreen: attachScreen ? selectedScreen : null,
     })
 
     // SAFETY NET — proven non-streaming endpoint (must pass mode + style).
@@ -988,7 +1088,6 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         },
         onEvent: async ({ event: ev, data }) => {
           if (ev === 'meta') {
-            clearTimeout(lockTimeout)
             hintObj = {
               confidence: data?.confidence === 'resume' ? 'resume' : 'general',
               questionType: data?.type, pattern: data?.pattern || null,
@@ -1029,16 +1128,21 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
               lastHintObj = hintObj
             }
             answer = cleaned.pending ? '' : cleaned.prose
-            lastAnswer = answer
-            const layers = glanceLayers(answer, hintObj || {})
+            const formattedAnswer = ensureCodingCodeBlock(answer, hintObj?.questionType || classification.questionType)
+            if (formattedAnswer.includes('```') && !autoExpandedCodeRef.current.has(questionId)) {
+              autoExpandedCodeRef.current.add(questionId)
+              setExpandedAnswers(prev => new Set(prev).add(qText))
+            }
+            lastAnswer = formattedAnswer
+            const layers = glanceLayers(formattedAnswer, hintObj || {})
             const liveHint = {
               ...(hintObj || { confidence: 'general' }),
               opener: layers.opener,
               keyPoints: layers.keyPoints,
-              fullAnswer: layers.fullAnswer || answer,
+              fullAnswer: layers.fullAnswer || formattedAnswer,
               watchOut: layers.watchOut || hintObj?.watchOut || null,
             }
-            upsert({ answer: layers.fullAnswer || answer, hint: liveHint })
+            upsert({ answer: layers.fullAnswer || formattedAnswer, hint: liveHint })
             setHint(liveHint)
           } else if (ev === 'usage') {
             const u = data || {}
@@ -1167,6 +1271,45 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     generateHint(q.text, { force: true, questionId: q.id })
   }
 
+  // A clear interviewer correction invalidates the answer currently being generated.
+  // Keep the old card as an explicit superseded record instead of a mysterious blank.
+  handleRevisionRef.current = () => {
+    const activeId = activeQuestionIdRef.current
+    if (activeGenerationRef.current?.canCommit?.()) {
+      activeGenerationRef.current.cancel?.('interviewer_revision')
+      metricsRef.current?.markGenerationCancelled?.()
+    }
+    if (activeId) {
+      interviewStateRef.current?.markQuestionSuperseded?.(activeId, 'interviewer_revision')
+      setTranscript(t => t.map(s => s.questionId === activeId && !s.answer
+        ? { ...s, status: 'superseded' }
+        : s))
+    }
+    hintInFlight.current = false
+    setHintLoading(false)
+    setStreaming(false)
+    setBuyTimePhrase('')
+    activeQuestionIdRef.current = null
+  }
+
+
+  // "Write it as code" / "be brief" modifies the active question rather than
+  // becoming a second card. Regenerate the same card with the explicit contract.
+  handleRefinementRef.current = ({ text }) => {
+    const activeId = activeQuestionIdRef.current || interviewStateRef.current?.getCurrentQuestionId?.()
+    const current = activeId ? interviewStateRef.current?.getQuestion?.(activeId) : null
+    if (!current?.text || !text) return
+    const revised = `${current.text}\nInterviewer instruction: ${text}`
+    interviewStateRef.current?.commitQuestion?.(revised, current.classification, {
+      questionId: activeId,
+      source: 'stt_refinement',
+    })
+    setTranscript(t => t.map(s => s.questionId === activeId
+      ? { ...s, text: revised, answer: '', hint: null, status: 'committed' }
+      : s))
+    generateHint(revised, { force: true, questionId: activeId })
+  }
+
   const onEarlyQuestion = useCallback((text, meta) => {
     if (!sessionActiveRef.current) return
     const trimmed = String(text || '').trim()
@@ -1198,6 +1341,11 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     if (!sessionActiveRef.current) return
     const trimmed = String(text || '').trim()
     if (!trimmed) return
+    metricsRef.current?.markSttFinal?.({
+      confidence: meta?.confidence,
+      degraded: !!meta?.degraded,
+      diarizationLocked: !!meta?.diarizationLocked,
+    })
 
     // Candidate speech: record, never commit as question.
     if (meta?.isCandidate) {
@@ -1650,6 +1798,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                 {copiedKey === `q:${s.questionId || s.ts}` ? '✓' : '📋'}
               </button>
             </div>
+            {!s.answer && !s.hint && ['superseded', 'cancelled', 'failed'].includes(s.status) && (
+              <div style={{ marginLeft: 10, marginBottom: 5, fontSize: 10, color: s.status === 'failed' ? '#fbbf24' : T.text3 }}>
+                {s.status === 'failed' ? '⚠ Answer failed — use Retry' : '↪ Replaced by the corrected/latest question'}
+                {s.status === 'failed' && (
+                  <button type="button" onClick={() => generateHint(s.text, { force: true, questionId: s.questionId })}
+                    style={{ ...btn('rgba(251,191,36,0.15)', '#fbbf24'), marginLeft: 7 }}>Retry</button>
+                )}
+              </div>
+            )}
             {/* A bubble (or incomplete stub with Retry) */}
             {s.hint && (s.answer !== undefined || s.hint.incomplete) && (
               <div style={{ marginLeft: 10 }}>
@@ -1826,8 +1983,10 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
       }}
       onHome={onHome}
       panelSize={panelSize} stealth={stealth}
+      minimized={minimized}
       onStealth={onStealth} onMinimize={onMinimize}
       onResize={onResize} onDrag={onDrag}
+      opacity={opacity} onOpacity={onOpacity}
     />
   )
 

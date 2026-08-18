@@ -1,5 +1,44 @@
 # Changelog
 
+## v1.4.8 — 2026-08-19
+
+Live interview intent, latency, grounding, and preflight-window reliability patch based on a
+real SysCloud QA interview transcript. Unit/build verification is complete; packaged Windows
+meeting/share-preview validation remains required before publishing the installer.
+
+### Added
+- Explicit **superseded**, **failed**, and retry states for questions that are corrected, replaced, or time out.
+- Current-turn output contracts for requested code, pseudocode, language, and concise answers.
+- Resume/JD evidence policy: the resume is the source of first-person claims; the JD prioritizes framing and tools but never creates experience.
+- Transcript-derived regression cases for repeated questions, wait/repeat corrections, STT artifacts, overlap merging, and “write it as code” refinements.
+- **Stealth safety confirmation** — turning capture protection OFF requires an explicit in-window confirmation; successful ON/OFF changes show a visible status notice.
+- A session-scoped coding workspace preserves the latest coding screenshot for later language, debugging, optimization, and implementation follow-ups without leaking it into career answers.
+- Privacy-safe Live diagnostics record STT confidence, degraded-mode usage, diarization coverage, question commit latency, and answer first-token latency without transcript text.
+- JavaScript coding answers can be executed in a disposable, timeout-limited worker with network, storage, and DOM APIs disabled.
+- Meeting preflight identifies supported meeting apps and records the exact share mode being verified.
+
+### Changed
+- Question stabilization now waits 700–1500ms based on confidence instead of committing after 180–450ms.
+- Repeated/refinal STT windows merge by word overlap; common `AI End`/`AI Okay` artifacts and adjacent duplicate words are cleaned conservatively.
+- “Wait”, “sorry”, “I’ll repeat”, “you’re answering wrong”, and equivalent correction turns cancel stale generation and reopen capture.
+- “Write it as code” and “be brief” modify the active question instead of creating disconnected cards.
+- Live generation now uses a 9-second provider first-byte timeout, 8-second post-metadata token watchdog, and 12-second total UI deadline.
+- Full resume/JD grounding budgets increased for relevant experience/fit questions.
+- Stealth preflight now distinguishes an OS protection check from user verification in the actual meeting share preview; both are required before Live starts on supported desktop platforms.
+- Live transcription uses Deepgram Nova-3 with keyterm prompting, VAD/endpointing, global-English accent handling, and OS voice isolation/automatic gain control when available; Nova-2 remains the connection fallback.
+- The dashboard now summarizes local answer latency, question-capture latency, and STT confidence from recent sessions without exposing transcript content.
+
+### Fixed
+- Live and Solo model selectors no longer dump every model exposed by a provider key. They show Automatic (recommended) plus at most three curated models per configured provider, identify which providers are active, and clear stale selections. Settings can now remove an old provider key instead of merge-only replacement.
+- Capability status now counts distinct provider keys rather than internal model aliases, so one OpenAI key is no longer reported as multi-provider failover. Managed mode cannot pass Live readiness without a real provider. Cerebras key entry/discovery and stale disconnected-display cleanup are now wired end to end.
+- Selecting Automatic now deletes the old persisted model ID so stale explicit choices cannot return in later Live/Solo/Duo sessions. Display hot-plug refreshes capture choices, Claude/Cerebras count in desktop key detection, and Advanced settings have explicit clear actions for model, vision, and Adzuna overrides.
+- Live setup/preflight can now be dragged, resized, collapsed to a movable pill, and restored before the interview starts.
+- Old generations completing against corrected questions.
+- Blank cards with no explanation after supersede, cancellation, or failure.
+- Explanations being returned when the interviewer explicitly requested code.
+- Coding screen language tabs now strictly regenerate the complete solution in the selected language instead of retaining the language visible in the screenshot.
+- Spoken/manual coding questions are recognized even after a non-coding topic and render as expanded syntax-highlighted code blocks with a dedicated Copy control; loose model-emitted code is fenced defensively.
+
 ## v1.4.7 — 2026-08-18
 
 Reliability patch for live screenshot solving, interview-session isolation, local authentication,

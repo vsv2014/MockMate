@@ -3,6 +3,7 @@ import { apiFetch } from './lib/apiClient'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { scoreColor } from './lib/ui'
+import { configuredProviderNames } from './lib/modelPicker'
 
 // ── Phase-1 windowed app shell (sidebar + top bar) and the Dashboard/Home screen.
 // Matches the product mockup: a real desktop app for everything you do BEFORE/AFTER
@@ -289,7 +290,7 @@ export function DashboardHome({ auth, sessions = [], noProviders, onNav }) {
   useEffect(() => {
     apiFetch('/api/providers').then(r => r.json()).then(setReadyInfo).catch(() => setReadyInfo({}))
   }, [])
-  const aiReady = isManaged() || !noProviders || (readyInfo?.providers || []).length > 0
+  const aiReady = !noProviders || (readyInfo?.providers || []).length > 0
   const voiceReady = !!readyInfo?.deepgram
   // Live needs AI + Voice; Solo can run with AI alone (typed answers).
   const liveReady = aiReady && voiceReady
@@ -521,14 +522,17 @@ function StatusRow({ label, value, ok, warn }) {
 }
 function SystemStatus() {
   const [d, setD] = useState(null)
+  const [quality, setQuality] = useState(null)
   useEffect(() => { apiFetch('/api/providers').then(r => r.json()).then(setD).catch(() => setD({})) }, [])
+  useEffect(() => { window.electronAPI?.readSessionMetricsSummary?.().then(setQuality).catch(() => {}) }, [])
   const managed = isManaged()
   const providers = d?.providers || []
-  const aiReady = managed || providers.length > 0
+  const providerNames = configuredProviderNames([], providers)
+  const aiReady = providers.length > 0
   const dg = !!d?.deepgram
   const liveReady = aiReady && dg
   const linux = typeof navigator !== 'undefined' && /linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent)
-  const failover = managed || providers.length >= 2
+  const failover = providerNames.length >= 2
   const footer = !aiReady
     ? 'Add an AI key or switch to MockMate AI in Settings.'
     : !dg
@@ -536,10 +540,16 @@ function SystemStatus() {
       : 'AI + Voice ready — you can start Solo or Live.'
   return (
     <Panel title="System Status">
-      <StatusRow label="AI service" ok={aiReady} warn={!aiReady} value={aiReady ? 'Operational' : 'No key'} />
+      <StatusRow label="AI service" ok={aiReady} warn={!aiReady} value={aiReady ? `${providerNames.join(', ')} ready` : (managed ? 'Managed unavailable / no provider' : 'No key')} />
       <StatusRow label="Voice" ok={dg} warn={!dg} value={dg ? 'Deepgram connected' : 'Off — add Deepgram in Settings → Voice'} />
       <StatusRow label="Stealth" ok={false} warn={true} value={linux ? 'NOT supported (Linux)' : 'Verify in share preview (browser matrix UNKNOWN)'} />
       <StatusRow label="Failover" ok={failover} warn={!failover} value={failover ? 'Ready' : 'Single provider'} />
+      {!!quality?.sessions && <>
+        <StatusRow label="Answer speed" ok={quality.avgTtftMs != null && quality.avgTtftMs <= 5000} warn={quality.avgTtftMs > 5000} value={quality.avgTtftMs == null ? 'No data' : `${quality.avgTtftMs} ms avg`} />
+        <StatusRow label="Question capture" ok={quality.avgCommitMs != null && quality.avgCommitMs <= 2500} warn={quality.avgCommitMs > 2500} value={quality.avgCommitMs == null ? 'No data' : `${quality.avgCommitMs} ms avg`} />
+        <StatusRow label="Transcript confidence" ok={quality.avgSttConfidence >= 0.8} warn={quality.avgSttConfidence < 0.8} value={quality.avgSttConfidence == null ? 'No data' : `${Math.round(quality.avgSttConfidence * 100)}% avg`} />
+        <div style={{ fontSize: 10, color: T.text3, marginTop: 6 }}>Local quality summary · last {quality.sessions} sessions · no transcript text stored</div>
+      </>}
       <div role="status" style={{ fontSize: 10.5, color: liveReady ? T.text3 : '#fbbf24', marginTop: 8 }}>{footer}</div>
     </Panel>
   )

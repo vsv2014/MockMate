@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { apiFetch } from './lib/apiClient'
+import { curateModelOptions, configuredProviderNames, curateProviderFallbacks, loadModelSelection, persistModelSelection } from './lib/modelPicker'
 import { useDeepgram } from './useDeepgram'
 import { analyze, liveNudge } from '../shared/delivery.js'
 import SoloFeedback from './SoloFeedback'
@@ -96,11 +97,13 @@ export default function Solo({ onHome, noProviders }) {
   const [relentless, setRelentless] = useState(false)
   const [tts, setTts] = useState(true)
   const [providers, setProviders] = useState([])
-  const [provider, setProvider] = useState(() => { try { return localStorage.getItem('llmProvider') || '' } catch { return '' } })
+  const [provider, setProvider] = useState(loadModelSelection)
   const managed = isManaged()
   const effProvider = managed ? '' : provider   // managed → let the server auto-route/failover
   const [dgAvailable, setDgAvailable] = useState(false)
   const [models, setModels] = useState([])   // dynamic per-key model list from /api/models
+  const modelOptions = curateModelOptions(models)
+  const providerNames = configuredProviderNames(models, providers)
   const [setupError, setSetupError] = useState('')
   // Voice = Deepgram ONLY. The browser SpeechRecognition API silently fails inside
   // Electron, which is what made the mic "not work". No Deepgram key → type your answers.
@@ -109,15 +112,20 @@ export default function Solo({ onHome, noProviders }) {
     apiFetch('/api/providers').then(r => r.json()).then(d => {
       const list = d.providers || []
       setProviders(list)
-      setProvider(p => (p && list.some(x => x.id === p)) ? p : (list[0]?.id || ''))
+      setProvider(p => (!p || p.includes('::') || list.some(x => x.id === p)) ? p : '')
       setDgAvailable(!!d.deepgram)
       setSetupError('')
     }).catch(() => {
       setSetupError('Could not load AI providers — check your connection, then refresh.')
     })
-    if (!managed) apiFetch('/api/models').then(r => r.json()).then(d => setModels(d.models || [])).catch(() => {})
+    if (!managed) apiFetch('/api/models').then(r => r.json()).then(d => {
+      const next = d.models || []
+      setModels(next)
+      const compact = curateModelOptions(next)
+      setProvider(current => compact.some(m => m.id === current) ? current : '')
+    }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (provider) { try { localStorage.setItem('llmProvider', provider) } catch {} } }, [provider])
+  useEffect(() => { persistModelSelection(provider) }, [provider])
 
   const [transcript, setTranscript] = useState([])
   const [answer, setAnswer] = useState('')
@@ -693,10 +701,12 @@ export default function Solo({ onHome, noProviders }) {
             <div>
               <Label>AI model</Label>
               <select value={provider} onChange={e => setProvider(e.target.value)} style={{ ...textInput, maxWidth: 380 }}>
-                {models.length > 0
-                  ? models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
-                  : providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                <option value="">Automatic — recommended</option>
+                {modelOptions.length > 0
+                  ? modelOptions.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
+                  : curateProviderFallbacks(providers).map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
+              <div style={{ fontSize: 10.5, color: T.text3, marginTop: 5 }}>Configured provider{providerNames.length === 1 ? '' : 's'}: {providerNames.join(', ') || 'none'}</div>
             </div>
           )}
           <div>

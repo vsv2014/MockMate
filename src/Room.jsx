@@ -8,6 +8,8 @@ import '@livekit/components-styles'
 import { useDeepgram } from './useDeepgram'
 import { apiFetch } from './lib/apiClient'   // routes to managed (:4000 + JWT) or BYOK (:3002)
 import { T } from './auth/tokens'
+import { isManaged } from './lib/aiMode'
+import { loadModelSelection } from './lib/modelPicker'
 
 // ── Token-based styles (replaces the legacy styles.css classes this used to depend on) ──
 const btnGhost = { background: 'transparent', border: `1px solid ${T.borderStrong}`, color: T.text1, padding: '8px 14px', borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }
@@ -64,7 +66,7 @@ function RoomInner({ session, onEnd, onLeave }) {
   const [hintLoading, setHintLoading] = useState(false)
   const [hintOpen, setHintOpen] = useState(true)
   const lastHintQuestion = useRef('')
-  const [provider] = useState(() => { try { return localStorage.getItem('llmProvider') || '' } catch { return '' } })
+  const [provider] = useState(() => isManaged() ? '' : loadModelSelection())
 
   // Content protection: Document Picture-in-Picture (excluded from getDisplayMedia capture,
   // Zoom, Meet, Teams — Chrome marks PiP with WDA_EXCLUDEFROMCAPTURE / NSWindow.sharingType=none)
