@@ -14,6 +14,27 @@ export function unwrapHintMeta(obj) {
   return { ...obj }
 }
 
+const CODE_START = /^(?:async\s+)?(?:function\b|def\b|class\b|public\b|private\b|protected\b|static\b|const\b|let\b|var\b|await\b|import\b|from\b|#include\b|package\b|func\b|using\b)/i
+const CODE_LANGUAGE_LINE = /^(python|java|c\+\+|javascript|typescript|go|c#|ruby)$/i
+
+/** Convert loose model-emitted code into a fenced block for the Live renderer. */
+export function ensureCodingCodeBlock(text, questionType = '') {
+  const raw = String(text || '').trim()
+  if (!raw || /```/.test(raw) || !/^(?:dsa|coding|screen_code)$/i.test(String(questionType || ''))) return raw
+  const lines = raw.split('\n')
+  const start = lines.findIndex(line => CODE_START.test(line.trim()))
+  if (start < 0) return raw
+  let language = ''
+  let beforeEnd = start
+  if (start > 0 && CODE_LANGUAGE_LINE.test(lines[start - 1].trim())) {
+    language = lines[start - 1].trim().toLowerCase().replace('javascript', 'js').replace('typescript', 'ts')
+    beforeEnd = start - 1
+  }
+  const before = lines.slice(0, beforeEnd).join('\n').trimEnd()
+  const code = lines.slice(start).join('\n').trim()
+  return `${before ? `${before}\n\n` : ''}\`\`\`${language}\n${code}\n\`\`\``
+}
+
 /** Pull a balanced {...} starting at index `from` (must be '{'). Returns end index exclusive or -1. */
 function findBalancedJsonEnd(text, from = 0) {
   if (text[from] !== '{') return -1

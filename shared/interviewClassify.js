@@ -120,6 +120,7 @@ const BEHAVIORAL_RE = /\b(tell me about a time|describe a (situation|time)|confl
 const COMPANY_RE = /\b(why (do you want to work|us\b|this company|here\b|join)|what do you know about (us|the company|our)|our (product|mission|company|team))\b/i
 const SYSTEM_DESIGN_RE = /\b(system design|high[- ]?level design|\bhld\b|\blld\b|how (?:would|do) you design|design (?:a|an|the)\b|design [A-Za-z][\w.-]{1,40}|architect(?:ure|ing)?\b|scal(?:e|able|ability)|throughput|load.?balanc|shard|partition|replicat|distributed|micro.?services?|\bcdn\b|consistency|cap theorem|\bsql\b|nosql|kafka|rabbitmq|booking system|ticketing system|url shortener|news feed|chat (?:app|system)|rate limiter)\b/i
 const DSA_RE = /\b(algorithm|complexity|big[- ]?o|dynamic programming|\bdp\b|recursion|binary search|two pointers|sliding window|\bbfs\b|\bdfs\b|leetcode|subarray|substring|linked list|\bgraph\b|\btree\b|\bheap\b|\barray\b|hashmap|hash map|optimi[sz]e|time limit|two sum|shortest path|union[- ]?find|backtracking|prefix sum|trie)\b/i
+const CODING_REQUEST_RE = /\b(?:write|show|give|provide|create|implement|code|script|automate)\b[\s\S]{0,120}\b(?:code|function|method|script|test|automation|playwright|cypress|selenium|python|javascript|typescript|java|c\+\+|c#|go)\b|\b(?:playwright|cypress|selenium)\b[\s\S]{0,120}\b(?:code|script|test|automation)\b/i
 /** Narrow technical — concept knowledge only; excludes you/your/role/strength experience. */
 const TECHNICAL_RE = /\b(what(?:'s| is| are)(?! you\b)(?! your\b)|explain(?! how you\b)|describe what|difference between|differ(?:ence)?|define|pros and cons|trade.?offs? between|when (?:would|should|do) you use|why (?:do we|use|is|are)(?! you\b)|what happens (?:when|if)|how does .{1,40} work)\b/i
 const SCREEN_CODE_RE = /\b(what does (?:this|the) code|find the bug|what'?s wrong with (?:this|the) code|time complexity of this code|optimi[sz]e this code|implement this (?:function|method|code|algorithm))\b/i
@@ -272,6 +273,11 @@ export function classifyTurn({
   ) {
     // "Do it without data structures" after F7 / DSA — stay on the coding thread.
     questionType = 'follow_up'
+    confidence = 'high'
+  } else if (CODING_REQUEST_RE.test(q) && !isFollowUpCandidate) {
+    // A coding task can arrive after any prior topic. Treat it as a clean coding
+    // turn rather than inheriting behavioral/QA context as a follow-up.
+    questionType = 'coding'
     confidence = 'high'
   } else if (INTRO_RE.test(q)) {
     questionType = 'intro'

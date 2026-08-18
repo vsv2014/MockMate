@@ -1,7 +1,25 @@
 import { describe, it, expect } from 'vitest'
-import { pickPlaybook, packCandidateContext, analyzeScreen } from './interview.js'
+import { pickPlaybook, packCandidateContext, analyzeScreen, answerRequirementBlock } from './interview.js'
 import { classifyTurn } from '../../shared/interviewClassify.js'
 import { glanceLayers } from '../../shared/hintLayers.js'
+
+describe('current-turn output and evidence contracts', () => {
+  it('requires code and prefers the JD language when unspecified', () => {
+    const out = answerRequirementBlock(
+      'Can you write an asynchronous API test with five concurrent requests?',
+      { jobDescription: 'Required: JavaScript async/await and Playwright' },
+    )
+    expect(out).toMatch(/complete runnable code/i)
+    expect(out).toMatch(/prefer JavaScript/i)
+    expect(out).toMatch(/JD describes desired skills/i)
+  })
+
+  it('honors an explicitly requested language', () => {
+    const out = answerRequirementBlock('Write the function in Python', { jobDescription: 'JavaScript' })
+    expect(out).toMatch(/Use Python/i)
+    expect(out).not.toMatch(/prefer JavaScript/i)
+  })
+})
 
 describe('pickPlaybook (question classification)', () => {
   const cases = [
@@ -67,6 +85,36 @@ describe('manual screen capture precedence', () => {
     })
     expect(capturedPrompt).toContain('explain this visible diagram')
     expect(capturedPrompt).toContain('secondary evidence only')
+  })
+
+  it('treats a selected coding language as a strict transform', async () => {
+    let visionPrompt = ''
+    let rewritePrompt = ''
+    const out = await analyzeScreen({
+      imageBase64: 'aaaa',
+      language: 'Python',
+      _visionCall: async ({ prompt }) => {
+        visionPrompt = prompt
+        return JSON.stringify({
+          contentType: 'coding', screenFamily: 'screen_code', detectedText: 'find largest',
+          language: 'JavaScript', code: 'function max(a) { return Math.max(...a) }',
+          approach: ['scan'], edgeCases: ['empty'], keyPoints: [], fullAnswer: 'scan once',
+        })
+      },
+      _textCall: async ({ prompt }) => {
+        rewritePrompt = prompt
+        return JSON.stringify({
+          contentType: 'coding', screenFamily: 'screen_code', detectedText: 'find largest',
+          language: 'Python', code: 'def max_value(values):\n    return max(values)',
+          approach: ['scan'], edgeCases: ['empty'], keyPoints: [], fullAnswer: 'scan once',
+        })
+      },
+    })
+    expect(visionPrompt).toMatch(/EXPLICIT USER LANGUAGE OVERRIDE/i)
+    expect(rewritePrompt).toMatch(/explicitly selected Python/i)
+    expect(out.language).toBe('Python')
+    expect(out.code).toMatch(/^def /)
+    expect(out.code).not.toMatch(/function /)
   })
 })
 

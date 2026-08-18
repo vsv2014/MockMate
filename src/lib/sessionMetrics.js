@@ -59,6 +59,16 @@ export function createSessionMetrics(kind = 'live') {
   function markSkip() { counters.skips += 1; event('skip') }
   function markError(code) { counters.errors += 1; event('error', { code: String(code || 'unknown').slice(0, 80) }) }
   function markSttReconnect() { counters.sttReconnects += 1; event('stt_reconnect') }
+  function markSttFinal({ confidence = null, degraded = false, diarizationLocked = false } = {}) {
+    counters.sttFinals = (counters.sttFinals || 0) + 1
+    if (Number.isFinite(confidence)) {
+      counters.sttConfidence = counters.sttConfidence || []
+      counters.sttConfidence.push(Number(confidence))
+    }
+    if (degraded) counters.degradedSttFinals = (counters.degradedSttFinals || 0) + 1
+    if (diarizationLocked) counters.diarizedSttFinals = (counters.diarizedSttFinals || 0) + 1
+    event('stt_final', { confidence, degraded, diarizationLocked })
+  }
 
   function markQuestionCapture(payload = {}) {
     counters.questionCommits = (counters.questionCommits || 0) + 1
@@ -86,6 +96,7 @@ export function createSessionMetrics(kind = 'live') {
     const sorted = [...ttft].sort((a, b) => a - b)
     const p95 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] : null
     const ttc = counters.timeToCommitMs || []
+    const sttConfidence = counters.sttConfidence || []
     return sanitizeMetric({
       sessionId,
       kind,
@@ -103,6 +114,12 @@ export function createSessionMetrics(kind = 'live') {
       questionRejects: counters.questionRejects || 0,
       cancelledGenerations: counters.cancelledGenerations || 0,
       avgTimeToCommitMs: ttc.length ? Math.round(ttc.reduce((a, b) => a + b, 0) / ttc.length) : null,
+      sttFinals: counters.sttFinals || 0,
+      avgSttConfidence: sttConfidence.length
+        ? Number((sttConfidence.reduce((a, b) => a + b, 0) / sttConfidence.length).toFixed(3))
+        : null,
+      degradedSttFinals: counters.degradedSttFinals || 0,
+      diarizedSttFinals: counters.diarizedSttFinals || 0,
     })
   }
 
@@ -117,7 +134,7 @@ export function createSessionMetrics(kind = 'live') {
   event('session_start')
   return {
     sessionId, startHint, markFirstToken, markFallback, markIncomplete, markSkip, markError,
-    markSttReconnect, markQuestionCapture, markQuestionReject, markGenerationCancelled,
+    markSttReconnect, markSttFinal, markQuestionCapture, markQuestionReject, markGenerationCancelled,
     summary, end, event,
   }
 }

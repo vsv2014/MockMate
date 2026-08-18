@@ -4,8 +4,12 @@ Live sessions append **privacy-safe** JSONL rows to Electron `userData/session-m
 
 **Never logged:** resume text, transcripts, answers, prompts.
 
-**Logged:** session id, TTFT ms, STT reconnect count, stream fallback / incomplete / skip / error codes,
-question-capture / reject / generation-cancelled counters (privacy-safe codes only), token/cost totals at end.
+**Logged:** session id, TTFT ms, final-transcript confidence, diarization/degraded-mode coverage,
+STT reconnect count, stream fallback / incomplete / skip / error codes, question-capture / reject /
+generation-cancelled counters (privacy-safe codes only), token/cost totals at end.
+
+The Home dashboard reads only the most recent session-summary rows and displays aggregate quality
+indicators. It never loads transcript, résumé, prompt, or answer content.
 
 ## Local inspection
 ```bash

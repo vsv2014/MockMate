@@ -2,11 +2,13 @@
  * M2 question capture reliability — deterministic fragment / boundary / golden tests.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { createTranscriptBuffer, normalizeCaptureText, isDuplicateQuestion } from './transcriptBuffer.js'
+import { createTranscriptBuffer, normalizeCaptureText, isDuplicateQuestion, sanitizeCaptureText, mergeOverlappingText } from './transcriptBuffer.js'
 import {
   assessQuestionBoundary,
   isIncompleteUtterance,
   applyUtteranceCorrection,
+  isRevisionSignal,
+  isRefinementSignal,
   createQuestionCaptureController,
   STABILIZE_MS,
 } from './questionCapture.js'
@@ -69,6 +71,62 @@ describe('boundary helpers', () => {
     )
     expect(t.toLowerCase()).toContain('caching layer')
     expect(t.toLowerCase()).not.toMatch(/^how would you design redis/)
+  })
+
+  it('keeps only the corrected question after repeated wait markers', () => {
+    const t = applyUtteranceCorrection('Some data validation. Wait. Wait. So write a Python function to validate an API response against JSON schema?')
+    expect(t).toMatch(/^So write a Python function/i)
+    expect(t).not.toMatch(/some data validation/i)
+  })
+
+  it('cleans observed STT artifacts without deleting real AI terms', () => {
+    expect(sanitizeCaptureText('AI Okay. AI So can you write write a Python function AI End')).toBe('Okay. So can you write a Python function')
+    expect(sanitizeCaptureText('How do you validate AI models?')).toBe('How do you validate AI models?')
+  })
+
+  it('merges overlapping refinals instead of duplicating words', () => {
+    expect(mergeOverlappingText('How would you automate testing for an API', 'for an API that serves ML predictions?'))
+      .toBe('How would you automate testing for an API that serves ML predictions?')
+  })
+
+  it('recognizes interviewer revision controls', () => {
+    expect(isRevisionSignal('Wait. Wait. I will repeat')).toBe(true)
+    expect(isRevisionSignal('How does wait notify work?')).toBe(false)
+  })
+
+  it('recognizes format refinements as part of the previous question', () => {
+    expect(isRefinementSignal('So can you write it as code?')).toBe(true)
+    expect(isRefinementSignal('Be brief about it')).toBe(true)
+    expect(isRefinementSignal('What is code coverage?')).toBe(false)
+  })
+})
+
+describe('observed transcript regressions', () => {
+  it('does not commit a bare request-to-write fragment', () => {
+    const a = assessQuestionBoundary({
+      text: 'So can you please write', silenceMs: 1200, isFinal: true,
+      speakerRole: 'interviewer', laneAgeMs: 1200,
+    })
+    expect(a.action).toBe('wait')
+  })
+
+  it('revision signal cancels the pending lane', () => {
+    const revisions = []
+    const { ctrl, committed, advance } = makeCapture({ onRevision: e => revisions.push(e) })
+    ctrl.ingest({ text: 'Can you write a basic', isFinal: true, meta: { speakerRole: 'interviewer' } })
+    ctrl.ingest({ text: 'Wait. Wait. I will repeat', isFinal: true, meta: { speakerRole: 'interviewer' } })
+    advance(STABILIZE_MS.maxAccumulate + 100)
+    expect(committed).toHaveLength(0)
+    expect(revisions).toHaveLength(1)
+  })
+
+  it('routes write-it instruction as a refinement, not a new question', () => {
+    const refinements = []
+    const { ctrl, committed, advance } = makeCapture({ hadPrior: true, onRefinement: e => refinements.push(e) })
+    ctrl.ingest({ text: 'So can you write it as code?', isFinal: true, meta: { speakerRole: 'interviewer' } })
+    advance(STABILIZE_MS.maxAccumulate + 100)
+    expect(committed).toHaveLength(0)
+    expect(refinements[0]?.text).toMatch(/as code/i)
   })
 })
 

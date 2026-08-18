@@ -24,6 +24,7 @@ import {
   interviewSeedConfirmMessage,
 } from './lib/interviewJobSeed'
 import { copyText } from './lib/clipboard'
+import { canRunLanguage, runJavaScriptIsolated } from './lib/codeRunner'
 import {
   createScreenContextRecord,
   screenFingerprint,
@@ -36,6 +37,27 @@ const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform ==
 // here too — there's no interviewer watching, so it gets the roomy dashboard, not the
 // overlay. ONLY the Live companion drops to the compact always-on-top overlay.
 const SHELL_VIEWS = ['home', 'solo', 'duo', 'jobs', 'career', 'settings', 'account', 'history']
+
+function StealthSafetyPrompt({ confirmOff, notice, onCancel, onConfirmOff }) {
+  if (!confirmOff && !notice) return null
+  return (
+    <div data-mm-hit="1" style={{ position: 'fixed', inset: 0, zIndex: 20000, pointerEvents: 'none', display: 'flex', justifyContent: 'center', alignItems: confirmOff ? 'center' : 'flex-start', padding: confirmOff ? 18 : '54px 18px 0', boxSizing: 'border-box', fontFamily: T.font }}>
+      {confirmOff && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.62)', pointerEvents: 'all' }} onClick={onCancel} />}
+      <div role={confirmOff ? 'alertdialog' : 'status'} aria-live="assertive" style={{ position: 'relative', width: 'min(430px, 94vw)', background: confirmOff ? '#201116' : '#10211f', border: `1px solid ${confirmOff ? 'rgba(248,113,113,0.6)' : 'rgba(45,212,191,0.55)'}`, borderRadius: 12, boxShadow: '0 14px 44px rgba(0,0,0,0.6)', padding: '13px 15px', color: '#f8fafc', pointerEvents: 'all' }}>
+        {confirmOff ? (
+          <>
+            <div style={{ fontSize: 14, fontWeight: 750, color: '#fca5a5', marginBottom: 6 }}>Turn Stealth OFF?</div>
+            <div style={{ fontSize: 12.5, lineHeight: 1.5, color: '#e5e7eb' }}>MockMate may become visible in screen sharing and recordings. Turn it off only for a controlled visibility test.</div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+              <button type="button" onClick={onCancel} style={{ height: 34, padding: '0 13px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.16)', background: 'transparent', color: '#e5e7eb', cursor: 'pointer' }}>Keep Stealth ON</button>
+              <button type="button" onClick={onConfirmOff} style={{ height: 34, padding: '0 13px', borderRadius: 7, border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Turn OFF</button>
+            </div>
+          </>
+        ) : <div style={{ fontSize: 12.5, lineHeight: 1.45 }}>{notice}</div>}
+      </div>
+    </div>
+  )
+}
 
 // ── Not in Electron — show landing page ──────────────────────────────────────
 function BrowserGate() {
@@ -71,6 +93,9 @@ function ElectronShell({ auth }) {
   // Privacy-first default: hidden from supported capture APIs unless the user
   // explicitly turns Stealth off to test/demo the overlay.
   const [stealth, setStealth] = useState(true)
+  const [stealthConfirmOff, setStealthConfirmOff] = useState(false)
+  const [stealthNotice, setStealthNotice] = useState('')
+  const stealthNoticeTimer = useRef(null)
   const [clickThrough, setClickThrough] = useState(false)
   const [minimized, setMinimized] = useState(false)
   const [screenAnalysis, setScreenAnalysis] = useState(null)   // vision analysis result
@@ -93,6 +118,39 @@ function ElectronShell({ auth }) {
       if (stealth && result && !result.ok) setStealth(false)
     }).catch(() => { if (stealth) setStealth(false) })
   }, [stealth])
+
+  function showStealthNotice(message) {
+    clearTimeout(stealthNoticeTimer.current)
+    setStealthNotice(message)
+    stealthNoticeTimer.current = setTimeout(() => setStealthNotice(''), 4500)
+  }
+
+  async function applyStealth(next) {
+    if (!inElectron) return
+    try {
+      const result = await window.electronAPI?.setContentProtection?.(next)
+      if (!result?.ok) {
+        setStealth(false)
+        showStealthNotice(result?.unsupported
+          ? 'Stealth is unavailable on this platform. Do not share the MockMate window.'
+          : 'Capture protection could not be changed. Verify the meeting share preview.')
+        return
+      }
+      setStealth(next)
+      setStealthConfirmOff(false)
+      showStealthNotice(next
+        ? 'Stealth ON — capture protection enabled. Verify it in the meeting share preview.'
+        : '⚠ Stealth OFF — MockMate may now be visible to others and in recordings.')
+    } catch {
+      showStealthNotice('Capture protection could not be changed. Stealth state was not trusted — verify the share preview.')
+    }
+  }
+
+  function requestStealthToggle() {
+    if (!inElectron || isLinux) return
+    if (stealth) setStealthConfirmOff(true)
+    else applyStealth(true)
+  }
 
   const [noProviders, setNoProviders] = useState(false)
   const [meetingActive, setMeetingActive] = useState(false)
@@ -128,7 +186,7 @@ function ElectronShell({ auth }) {
   // Auto-detect meeting apps (Zoom, Teams, Meet) + coding platforms (LeetCode, etc.)
   useEffect(() => {
     const cleanups = []
-    cleanups.push(window.electronAPI?.onMeetingDetected(active => setMeetingActive(active)))
+    cleanups.push(window.electronAPI?.onMeetingDetected(context => setMeetingActive(context?.active ?? !!context)))
     cleanups.push(window.electronAPI?.onCodingDetected?.(active => setCodingDetected(active)))
     // Alt+H: collapse/expand on-screen pill everywhere after login — never vanish to tray.
     cleanups.push(window.electronAPI?.onShortcutStealth?.(() => {
@@ -168,9 +226,19 @@ function ElectronShell({ auth }) {
   })
 
   useEffect(() => {
-    window.electronAPI?.listScreenDisplays?.().then(r => {
-      if (r?.displays?.length) setCaptureDisplays(r.displays)
+    const refreshDisplays = () => window.electronAPI?.listScreenDisplays?.().then(r => {
+      if (r?.displays?.length) {
+        setCaptureDisplays(r.displays)
+        setCaptureDisplayId(current => {
+          if (!current || r.displays.some(d => String(d.id) === String(current))) return current
+          try { localStorage.removeItem('mm-capture-display-id') } catch {}
+          return ''
+        })
+      }
     }).catch(() => {})
+    refreshDisplays()
+    const off = window.electronAPI?.onDisplayChanged?.(refreshDisplays)
+    return () => { try { off?.() } catch {} }
   }, [])
 
   const runAnalysis = useCallback(async (shot, language, { retry = 0 } = {}) => {
@@ -345,7 +413,7 @@ function ElectronShell({ auth }) {
     }
     const onUp = () => { resizing.current = false }
     // Alt+H in browser only (Electron handles it via global shortcut in main.cjs)
-    const onKey = e => { if (e.altKey && e.key === 'h' && !inElectron) handleStealthToggle() }
+    const onKey = e => { if (e.altKey && e.key === 'h' && !inElectron) setMinimized(m => !m) }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
     document.addEventListener('keydown', onKey)
@@ -355,12 +423,6 @@ function ElectronShell({ auth }) {
       document.removeEventListener('keydown', onKey)
     }
   }, [])
-
-  function handleStealthToggle() {
-    // Collapse to on-screen pill (same as —). Alt+H expands again. Never vanish.
-    setClickThrough(false)
-    setMinimized(true)
-  }
 
   function expandFromPill() {
     setMinimized(false)
@@ -467,13 +529,16 @@ function ElectronShell({ auth }) {
   // Collapsed pill for dashboard/shell — keep shell views mounted (hidden) so Career JD /
   // form state survives minimize. Live overlay keeps its own minimized handling.
   const shellPill = minimized && !(view === 'companion' && companionPhase === 'live') && SHELL_VIEWS.includes(view)
+  const stealthSafety = <StealthSafetyPrompt confirmOff={stealthConfirmOff} notice={stealthNotice}
+    onCancel={() => setStealthConfirmOff(false)} onConfirmOff={() => applyStealth(false)} />
 
   // ── First-run welcome — guide a brand-new user straight to adding a key ──
   if (showWelcome) return (
     <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
       onDrag={startDrag} onResize={startResize}
-      onStealth={handleStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
+      onStealth={requestStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
       onClose={dismissWelcome} title="Connect your AI" autoHeight>
+      {stealthSafety}
       <div style={{ padding: '14px 16px 16px', fontFamily: T.font }}>
         <div style={{ fontSize: 17, fontWeight: 600, color: T.text1, marginBottom: 4 }}>Connect your AI</div>
         <div style={{ fontSize: 12.5, color: T.text2, lineHeight: 1.55, marginBottom: 12 }}>
@@ -578,6 +643,7 @@ function ElectronShell({ auth }) {
 
     return (
       <>
+        {stealthSafety}
         {shellPill && (
           <OverlayPanel minimized
             onMinimize={expandFromPill}
@@ -587,7 +653,7 @@ function ElectronShell({ auth }) {
         )}
         <div style={shellPill ? { display: 'none' } : undefined} aria-hidden={shellPill || undefined}>
           <AppShell active={view} onNav={setView} auth={auth} meetingActive={meetingActive}
-            stealth={stealth} onStealth={() => setStealth(s => !s)}
+            stealth={stealth} onStealth={requestStealthToggle}
             onMinimize={collapseToPill} onClose={() => window.close?.()}>
             <WhatsNew openSignal={whatsNewSignal} />
             {content}
@@ -600,9 +666,11 @@ function ElectronShell({ auth }) {
   // Live Interview is the only view that renders as the compact floating overlay — everything
   // else lives in the dashboard shell (handled above).
   if (view === 'companion') return (
+    <>
+    {stealthSafety}
     <LiveCompanion onHome={goHome} onPhaseChange={setCompanionPhase} panelSize={panelSize} stealth={stealth} opacity={opacity} onOpacity={setOverlayOpacity} minimized={minimized}
       onSessionStart={resetLiveSessionContext} onSessionEnd={resetLiveSessionContext}
-      onStealth={() => setStealth(s => !s)}
+      onStealth={requestStealthToggle}
       onMinimize={() => {
         if (minimized) expandFromPill()
         else collapseToPill()
@@ -614,6 +682,7 @@ function ElectronShell({ auth }) {
       onReanalyze={reanalyze}
       onLiveSpokenQuestion={onLiveSpokenQuestion}
       captureDisplays={captureDisplays} captureDisplayId={captureDisplayId} onCaptureDisplayId={setCaptureDisplayId} />
+    </>
   )
 
   return null   // every other view is handled by the dashboard shell above
@@ -649,27 +718,45 @@ function highlightCode(code) {
 // ── Code block with one-tap copy + syntax highlighting — the core of Coding mode ──
 export function CodeBlock({ code, language }) {
   const [copied, setCopied] = useState(false)
+  const [runState, setRunState] = useState(null)
   async function copy() {
     const ok = await copyText(code || '')
     if (ok) { setCopied(true); setTimeout(() => setCopied(false), 1500) }
   }
+  async function run() {
+    setRunState({ running: true })
+    setRunState(await runJavaScriptIsolated(code))
+  }
+  const runnable = canRunLanguage(language)
   return (
     <div style={{ background: '#0d1117', border: '1px solid #1f2733', borderRadius: 8, marginBottom: 8, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderBottom: '1px solid #1f2733', background: 'rgba(255,255,255,0.02)' }}>
         <span style={{ fontSize: 10, color: '#7d8590', fontFamily: 'monospace' }}>{language || 'code'}</span>
-        <button onClick={copy} style={{ marginLeft: 'auto', background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copied ? '#4ade80' : T.text2, border: 'none', borderRadius: 5, padding: '2px 9px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+        {runnable && <button onClick={run} disabled={runState?.running}
+          title="Runs JavaScript in a disposable worker with network/DOM access disabled and a 1.5s timeout"
+          style={{ marginLeft: 'auto', background: 'rgba(94,234,212,0.1)', color: '#5eead4', border: '1px solid rgba(94,234,212,0.25)', borderRadius: 5, padding: '2px 9px', fontSize: 10, fontWeight: 600, cursor: runState?.running ? 'default' : 'pointer' }}>
+          {runState?.running ? 'Running…' : '▶ Run JS'}
+        </button>}
+        <button onClick={copy} style={{ marginLeft: runnable ? 0 : 'auto', background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copied ? '#4ade80' : T.text2, border: 'none', borderRadius: 5, padding: '2px 9px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
           {copied ? '✓ Copied' : '⧉ Copy'}
         </button>
       </div>
       <pre style={{ margin: 0, padding: '10px 12px', overflowX: 'auto', maxHeight: 260 }}>
         <code style={{ fontFamily: "'Menlo','Consolas',monospace", fontSize: 12, lineHeight: 1.6, color: '#e6edf3', whiteSpace: 'pre' }}>{highlightCode(code || '')}</code>
       </pre>
+      {runState && !runState.running && <div role="status" style={{ padding: '6px 10px', borderTop: '1px solid #1f2733', fontFamily: 'monospace', whiteSpace: 'pre-wrap', fontSize: 10, color: runState.ok ? '#86efac' : '#fca5a5', maxHeight: 100, overflow: 'auto' }}>
+        {runState.ok
+          ? ([...(runState.logs || []), runState.result].filter(x => x != null && x !== '').join('\n') || '✓ Executed successfully (no console output)')
+          : `✗ ${runState.error || 'Execution failed'}`}
+      </div>}
     </div>
   )
 }
 
 // ── Screen Analysis Panel — shown when Ctrl+Shift+U is pressed ───────────────
 export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyze, onRecapture, captureDisplays, captureDisplayId, onCaptureDisplayId, liveAttachHint }) {
+  const [requestedLanguage, setRequestedLanguage] = useState('')
+  useEffect(() => { if (!analyzing) setRequestedLanguage('') }, [analyzing, analysis])
   if (!analyzing && !analysis) return null
   // Supports wrapped screen-context records { analysis, status, error } and legacy flat analysis.
   const record = analysis?.analysis || analysis
@@ -717,7 +804,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
         </div>
       )}
       {analyzing
-        ? <div style={{ fontSize: 12, color: '#fbbf24' }}>Analyzing screen…</div>
+        ? <div style={{ fontSize: 12, color: '#fbbf24' }}>{requestedLanguage ? `Rewriting complete solution in ${requestedLanguage}…` : 'Analyzing screen…'}</div>
         : err
           ? <div style={{ fontSize: 12, color: '#f87171' }}>⚠ {err}</div>
           : isCoding
@@ -734,7 +821,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
                     {CODING_LANGUAGES.map(lang => {
                       const on = (record.language || '').toLowerCase() === lang.toLowerCase()
                       return (
-                        <button key={lang} onClick={() => onReanalyze(lang)} title={`Solve in ${lang}`}
+                        <button key={lang} disabled={analyzing} onClick={() => { setRequestedLanguage(lang); onReanalyze(lang) }} title={`Solve in ${lang}`}
                           style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer', border: 'none', fontWeight: 600,
                             background: on ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.05)', color: on ? '#4ade80' : T.text3 }}>{lang}</button>
                       )

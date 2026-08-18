@@ -150,7 +150,8 @@ function loadEnv() {
 }
 
 function hasApiKeys() {
-  return !!(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.LLM_API_KEY)
+  return !!(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY
+    || process.env.ANTHROPIC_API_KEY || process.env.CEREBRAS_API_KEY || process.env.LLM_API_KEY)
 }
 
 function portInUse(port) {
@@ -647,9 +648,15 @@ app.on('will-quit', () => {
 })
 
 // Auto-detect, by open window/tab titles: (1) a video meeting, (2) a coding platform.
-const MEETING_RE = /zoom meeting|google meet|microsoft teams|webex|whereby/i
+const MEETING_PATTERNS = [
+  { id: 'zoom', label: 'Zoom', re: /zoom meeting|zoom workplace/i },
+  { id: 'meet', label: 'Google Meet', re: /google meet|meet\.google\.com/i },
+  { id: 'teams', label: 'Microsoft Teams', re: /microsoft teams|teams meeting/i },
+  { id: 'webex', label: 'Webex', re: /webex/i },
+  { id: 'whereby', label: 'Whereby', re: /whereby/i },
+]
 const CODING_RE  = /leetcode|hackerrank|coderpad|codesignal|hackerearth|codility|codingame|geeksforgeeks|interviewbit|codewars|online assessment|codepair|byteboard|replit/i
-let meetingWasActive = false, codingWasActive = false
+let meetingWasActive = false, meetingContext = { active: false, app: null, label: null }, codingWasActive = false
 // NOTE: on Linux/Wayland, desktopCapturer.getSources() routes through the pipewire
 // ScreenCast portal — it can't enumerate window titles, fails ("ScreenCastPortal
 // failed"), and repeated polling stalls the main process (app shows "not responding").
@@ -659,12 +666,19 @@ if (process.platform !== 'linux') setInterval(async () => {
   try {
     const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } })
     const names = sources.map(s => s.name)
-    const meeting = names.some(n => MEETING_RE.test(n))
-    if (meeting !== meetingWasActive) { meetingWasActive = meeting; mainWindow.webContents.send('meeting-detected', meeting) }
+    const match = MEETING_PATTERNS.find(p => names.some(n => p.re.test(n)))
+    const meeting = !!match
+    const nextContext = { active: meeting, app: match?.id || null, label: match?.label || null, detectedAt: meeting ? Date.now() : null }
+    if (meeting !== meetingWasActive || nextContext.app !== meetingContext.app) {
+      meetingWasActive = meeting
+      meetingContext = nextContext
+      mainWindow.webContents.send('meeting-detected', meetingContext)
+    }
     const coding = names.some(n => CODING_RE.test(n))
     if (coding !== codingWasActive) { codingWasActive = coding; mainWindow.webContents.send('coding-detected', coding) }
   } catch {}
 }, 3000)
+ipcMain.handle('get-meeting-context', () => meetingContext)
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 
@@ -884,6 +898,37 @@ ipcMain.handle('append-session-metrics', (_, row) => {
   } catch (e) { return { ok: false, error: e.message } }
 })
 
+ipcMain.handle('read-session-metrics-summary', () => {
+  try {
+    const f = path.join(app.getPath('userData'), 'session-metrics.jsonl')
+    if (!fs.existsSync(f)) return { sessions: 0 }
+    const stat = fs.statSync(f)
+    const bytes = Math.min(stat.size, 2 * 1024 * 1024)
+    const buffer = Buffer.alloc(bytes)
+    const fd = fs.openSync(f, 'r')
+    try { fs.readSync(fd, buffer, 0, bytes, Math.max(0, stat.size - bytes)) } finally { fs.closeSync(fd) }
+    const rows = buffer.toString('utf8').split(/\r?\n/).filter(Boolean).slice(-1000)
+      .map(line => { try { return JSON.parse(line) } catch { return null } }).filter(Boolean)
+    const sessions = rows.filter(r => r.type === 'session_end').slice(-30)
+    const avg = key => {
+      const vals = sessions.map(s => Number(s[key])).filter(Number.isFinite)
+      return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null
+    }
+    return {
+      sessions: sessions.length,
+      avgTtftMs: avg('ttftAvgMs'),
+      avgCommitMs: avg('avgTimeToCommitMs'),
+      avgSttConfidence: (() => {
+        const vals = sessions.map(s => Number(s.avgSttConfidence)).filter(Number.isFinite)
+        return vals.length ? Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(3)) : null
+      })(),
+      sttReconnects: sessions.reduce((n, s) => n + (Number(s.sttReconnects) || 0), 0),
+      incompleteStreams: sessions.reduce((n, s) => n + (Number(s.incompleteStreams) || 0), 0),
+      degradedSttFinals: sessions.reduce((n, s) => n + (Number(s.degradedSttFinals) || 0), 0),
+    }
+  } catch (e) { return { sessions: 0, error: e.message } }
+})
+
 ipcMain.handle('write-env', (_, content) => {
   try {
     // Write encrypted userData/.env.enc when safeStorage works (Phase 4). Never write the
@@ -892,6 +937,29 @@ ipcMain.handle('write-env', (_, content) => {
     const incoming = parseEnvText(content)
     const ALLOWED = /(_API_KEY|_MODEL|_BASE_URL|_APP_ID|_APP_KEY)$/
     for (const [k, v] of Object.entries(incoming)) if (v && ALLOWED.test(k)) { existing[k] = v; process.env[k] = v }
+    const merged = Object.entries(existing).map(([k, v]) => `${k}=${v}`).join('\n') + '\n'
+    const { encrypted } = writeUserEnvText(merged)
+    return { ok: true, encrypted }
+  } catch (e) { return { ok: false, error: e.message } }
+})
+ipcMain.handle('remove-provider-key', (_, provider) => {
+  const keysByProvider = {
+    openai: ['OPENAI_API_KEY', 'OPENAI_MODEL', 'OPENAI_GPT5_MODEL', 'OPENAI_MINI_MODEL'],
+    anthropic: ['ANTHROPIC_API_KEY', 'ANTHROPIC_OPUS_MODEL', 'ANTHROPIC_SONNET5_MODEL'],
+    gemini: ['GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_3_MODEL', 'GEMINI_FLASH_LITE_MODEL'],
+    groq: ['GROQ_API_KEY', 'GROQ_MODEL', 'GROQ_VISION_MODEL'],
+    cerebras: ['CEREBRAS_API_KEY', 'CEREBRAS_MODEL'],
+    deepgram: ['DEEPGRAM_API_KEY'],
+    openai_model: ['OPENAI_MODEL', 'OPENAI_GPT5_MODEL', 'OPENAI_MINI_MODEL'],
+    groq_vision: ['GROQ_VISION_MODEL'],
+    custom_vision: ['VISION_API_KEY', 'VISION_MODEL', 'VISION_BASE_URL'],
+    adzuna: ['ADZUNA_APP_ID', 'ADZUNA_APP_KEY'],
+  }
+  const keys = keysByProvider[String(provider || '').toLowerCase()]
+  if (!keys) return { ok: false, error: 'Unknown provider' }
+  try {
+    const existing = parseEnvText(readUserEnvText())
+    for (const key of keys) { delete existing[key]; delete process.env[key] }
     const merged = Object.entries(existing).map(([k, v]) => `${k}=${v}`).join('\n') + '\n'
     const { encrypted } = writeUserEnvText(merged)
     return { ok: true, encrypted }

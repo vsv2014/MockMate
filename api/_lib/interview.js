@@ -105,12 +105,12 @@ export function packCandidateContext(profile = {}, extraContext = '', opts = {})
     }
   } else {
     if (resume && resumeMode === 'full') {
-      parts.push('CANDIDATE RESUME (ground truth — never invent beyond this):\n' + resume.slice(0, 1800))
+      parts.push('CANDIDATE RESUME (ground truth — never invent beyond this):\n' + resume.slice(0, 3600))
     } else if (resume && resumeMode === 'short') {
       parts.push('RESUME FACT CARD (use only if the question is about the candidate — never invent):\n' + resume.slice(0, 600))
     }
     if (jd && jdMode === 'full') {
-      parts.push('JOB DESCRIPTION:\n' + jd.slice(0, 900))
+      parts.push('JOB DESCRIPTION (prioritize its skills when choosing examples/tools, but never claim experience absent from the resume):\n' + jd.slice(0, 2400))
     } else if (jd && jdMode === 'short') {
       parts.push('JD CONTEXT (use only if relevant):\n' + jd.slice(0, 400))
     }
@@ -279,6 +279,27 @@ function classificationBlock(c) {
   return `\n\n[INTERNAL ROUTING — do not mention to the candidate: ${bits.join('; ')}]`
 }
 
+export function answerRequirementBlock(question = '', profile = {}) {
+  const q = String(question || '')
+  const rules = [
+    'EVIDENCE: Resume is the only source for first-person work claims. JD describes desired skills, not candidate experience.',
+    'If a requested skill is absent from the resume, say so briefly, then give a practical conceptual approach. Never fabricate hands-on use.',
+    'FIT: For career/project questions, frame truthful resume evidence toward the JD priorities. For knowledge questions, answer the current question directly.',
+  ]
+  const wantsCode = /\b(write|show|give|provide|implement|code|function|script|pseudo[ -]?code)\b/i.test(q)
+    && /\b(code|function|script|test|implementation|pseudo[ -]?code|python|javascript|typescript|java|sql)\b/i.test(q)
+  if (wantsCode) rules.push('OUTPUT CONTRACT: The interviewer requested code. Put complete runnable code (or pseudocode only if explicitly allowed) first; keep explanation after it very short. Do not answer with explanation alone.')
+  if (/\b(brief|briefly|short|concise|one line|quickly)\b/i.test(q)) {
+    rules.push('OUTPUT CONTRACT: Keep the answer brief and direct.')
+  }
+  const explicitLanguage = q.match(/\b(Python|JavaScript|TypeScript|Java|SQL|C\+\+|C#|Go)\b/i)?.[1]
+  if (explicitLanguage) rules.push(`LANGUAGE CONTRACT: Use ${explicitLanguage}; do not silently switch languages.`)
+  else if (wantsCode && /\bJavaScript\b/i.test(String(profile.jobDescription || ''))) {
+    rules.push('LANGUAGE CONTRACT: No language was explicitly chosen; prefer JavaScript because it is central to the target JD.')
+  }
+  return `\n\nCURRENT-TURN REQUIREMENTS:\n- ${rules.join('\n- ')}`
+}
+
 // BANNED_WORDS is imported from delivery.js (single source shared with the live coach).
 const META_LINE = '1) FIRST LINE ONLY: a single-line VALID JSON object (every value a quoted string or null — no unquoted text), then a newline. Shape: META: {"type":"dsa|coding|technical|system_design|behavioral|resume|culture|intro|experience|follow_up|product|other","confidence":"resume|general","pattern":"<pattern name, or null>","complexity":"<e.g. O(n) time, O(1) space, or null>","watch":"<one specific mistake to avoid for THIS question, <=12 words>"}'
 
@@ -290,8 +311,8 @@ If the input is NOT a real interview question (greeting, filler, the candidate's
 
 Otherwise output, in this exact order:
 ${META_LINE}
-2) Then a newline, then the SPOKEN answer prose (no markdown headers).
-CRITICAL: Never repeat the META JSON (or any JSON) inside the spoken answer. Spoken answer = plain sentences only.
+2) Then a newline, then the answer. For coding requests, include a short practical approach followed by one COMPLETE runnable fenced code block in the requested language. For non-coding questions, return spoken prose with no markdown headers.
+CRITICAL: Never repeat the META JSON (or any JSON) inside the answer. Code must never be emitted as loose plain-text lines.
 
 SPOKEN STYLE (said out loud, not read): real-person contractions and connectors ("so", "honestly", "basically"); start mid-thought, never a textbook definition; plain words over jargon when possible; ALWAYS state the WHY / the trade-off, not just the what. Never use these AI-tell words: ${BANNED_WORDS}.
 
@@ -408,6 +429,7 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   // Auto-skip OFF → force an answer for every input (override the [SKIP] instruction).
   const skipDirective = autoSkip ? '' : '\n\nALWAYS ANSWER: respond to every input — do NOT output [SKIP], even for small talk, filler, or a partial/unclear question. Do your best with what was said.'
   const system = baseSystem + directive + skipDirective + classificationBlock(classification)
+    + answerRequirementBlock(question, profile)
 
   let buf = '', metaSent = false, skipped = false, proseEmitted = false
   const emitProse = t => { if (t) { proseEmitted = true; onToken?.(t) } }
@@ -542,7 +564,7 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
   const hint = await completeJSON({
     maxTokens, provider: chosen,
     messages: [
-      { role: 'system', content: baseSystem + directive + skipDirective + classificationBlock(classification) + schemaNote },
+      { role: 'system', content: baseSystem + directive + skipDirective + classificationBlock(classification) + answerRequirementBlock(question, profile) + schemaNote },
       { role: 'user', content: `${packed ? packed + '\n\n' : ''}${historyBlock}${searchBlock}${followParent}${screenNote}\n\nCurrent question: "${String(question).slice(0, 800)}"` },
     ],
   })
@@ -599,7 +621,8 @@ export async function analyzeScreen({
   imageBase64, profile = {}, language, style = 'balanced', mime,
   spokenQuestion = '', contentTypeHint = '',
   useSpokenContext = false,
-  requestId = '', fingerprint = '', imageDimensions = null, signal, _visionCall = visionComplete,
+  requestId = '', fingerprint = '', imageDimensions = null, signal,
+  _visionCall = visionComplete, _textCall = completeTextQuick,
 } = {}) {
   if (!imageBase64) { const e = new Error('No screenshot captured. Try the capture shortcut again.'); e.status = 400; e.code = 'SCREEN_EMPTY'; throw e }
   let b64 = String(imageBase64)
@@ -640,7 +663,7 @@ NEVER FABRICATE candidate experience. Never claim tools/projects not in candidat
 Prefer answering the visible question/task. Do not return a relevance warning when the screen itself contains a clear, answerable question.
 
 For CODING problems:
-- Write the solution in ${codeLang} unless the screen requires another language (then set "language").
+- ${language ? `EXPLICIT USER LANGUAGE OVERRIDE: Write the entire solution in ${codeLang}. Ignore any different language shown or requested in the screenshot; the user deliberately switched languages. Set "language" to exactly "${codeLang}".` : `Write the solution in ${codeLang} unless the visible task explicitly requires another language.`}
 - "code" = COMPLETE runnable solution with signature — raw code, NO markdown fences.
 - "approach" = 3-5 short steps; "edgeCases" = specific edges to mention.
 
@@ -679,13 +702,31 @@ Return ONE JSON object, no markdown:
   try {
     out = extractJSON(raw)
   } catch {
-    const fixed = await completeTextQuick({
+    const fixed = await _textCall({
       prompt: 'Convert the following into ONE valid JSON object matching the screen-analysis schema (contentType, screenFamily, detectedText, keyPoints, fullAnswer, code, approach, edgeCases, etc). Output ONLY JSON, no markdown.\n\n' + String(raw || '').slice(0, 8000),
       maxTokens: 1500,
       signal,
       requestId: rid,
     })
     out = extractJSON(fixed)
+  }
+  // Language tabs are an explicit transform command. Vision models sometimes cling
+  // to the language visible in the screenshot, so enforce the selected language with
+  // a text-only rewrite (no second screenshot/vision call).
+  if (language && out && normalizeScreenContentType(out.screenFamily || out.contentType) === 'screen_code') {
+    const rewritten = await _textCall({
+      prompt: `Rewrite this coding-solution JSON so the complete runnable code is in ${codeLang}.
+The user explicitly selected ${codeLang}; ignore any other language in the screenshot or existing solution.
+Preserve the detected problem, algorithm, complexity, approach, edge cases, and watch-out.
+Set "language" to exactly "${codeLang}". Return ONE valid JSON object only, no markdown fences.
+
+${JSON.stringify(out).slice(0, 10000)}`,
+      maxTokens: 1500,
+      signal,
+      requestId: `${rid}_lang`,
+    })
+    out = extractJSON(rewritten)
+    out.language = codeLang
   }
   if (out && typeof out.code === 'string') {
     out.code = out.code.replace(/^\s*```[a-zA-Z0-9+#]*\n?/, '').replace(/\n?```\s*$/, '').trim()

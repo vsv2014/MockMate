@@ -181,6 +181,13 @@ export async function listModels() {
       ;((await r.json())?.data || []).map(m => m.id).filter(id => !/whisper|tts|guard/i.test(id))
         .forEach(id => push('groq', id, `Groq · ${id}`))
     }),
+    // Cerebras (OpenAI-compatible).
+    process.env.CEREBRAS_API_KEY && settle(async () => {
+      const r = await fetchWithTimeout('https://api.cerebras.ai/v1/models', { headers: { Authorization: `Bearer ${process.env.CEREBRAS_API_KEY}` } })
+      if (!r.ok) return
+      ;((await r.json())?.data || []).map(m => m.id).filter(Boolean)
+        .forEach(id => push('cerebras', id, `Cerebras · ${id}`))
+    }),
   ].filter(Boolean))
   return out
 }
@@ -761,7 +768,11 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       const supportsUsage = /openai\.com|groq\.com/.test(prov.baseURL || '')
       if (supportsUsage) params.stream_options = { include_usage: true }
       let usage = null
-      const stream = await llm.chat.completions.create(params, signal ? { signal } : undefined)
+      // A live interview cannot wait indefinitely for first byte. The SDK timeout
+      // covers connection + time-to-first-token; transient timeout then enters the
+      // existing provider failover path before any token has been shown.
+      const requestOpts = { timeout: 9000, ...(signal ? { signal } : {}) }
+      const stream = await llm.chat.completions.create(params, requestOpts)
       for await (const chunk of stream) {
         if (chunk?.usage) usage = chunk.usage
         const tok = chunk?.choices?.[0]?.delta?.content || ''

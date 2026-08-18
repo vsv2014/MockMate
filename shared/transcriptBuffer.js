@@ -6,6 +6,19 @@
 
 export const TRANSCRIPT_BUFFER_VERSION = 'transcript_buffer_v1'
 
+/** Remove recurrent STT control-word artifacts without deleting real terms such as
+ * "AI model" or "end-to-end". Deepgram commonly emits the app/audio markers in
+ * combinations like "AI End", "AI Okay" and repeated adjacent words. */
+export function sanitizeCaptureText(value) {
+  return String(value || '')
+    .replace(/\bAI\s+End\b/gi, ' ')
+    .replace(/\bAI(?=\s+(?:okay|correct|sorry|wait|so|may|fine)\b)/gi, ' ')
+    .replace(/\b(\p{L}[\p{L}\p{N}'-]*)\s+\1\b/giu, '$1')
+    .replace(/\s+([,?.!])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 /** @typedef {'interviewer'|'candidate'|'unknown'} SpeakerRole */
 
 function nid() {
@@ -58,7 +71,7 @@ export function createTranscriptBuffer(opts = {}) {
    * Speaker change flushes prior lane (does NOT drop it).
    */
   function push({ text, isFinal = false, confidence = null, ts = Date.now(), meta = {} } = {}) {
-    const trimmed = String(text || '').trim()
+    const trimmed = sanitizeCaptureText(text)
     if (!trimmed) return { liveText: liveText(), flushed: null, rejected: 'empty' }
 
     const speaker = roleFromMeta(meta)
@@ -102,7 +115,7 @@ export function createTranscriptBuffer(opts = {}) {
         lane.texts[lane.texts.length - 1] = trimmed.length >= prev.length ? trimmed : prev
         if (isFinal) lane.finals += 1
       } else if (isContinuation(prev, trimmed)) {
-        lane.texts.push(trimmed)
+        lane.texts[lane.texts.length - 1] = mergeOverlappingText(prev, trimmed)
         if (isFinal) lane.finals += 1
       } else {
         // Likely correction mid-utterance ("actually…")
@@ -164,11 +177,33 @@ export function createTranscriptBuffer(opts = {}) {
 }
 
 export function normalizeCaptureText(s) {
-  return String(s || '')
+  return sanitizeCaptureText(s)
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+/** Merge repeated streaming/refinal windows using the longest word overlap. */
+export function mergeOverlappingText(prev, next) {
+  const a = sanitizeCaptureText(prev)
+  const b = sanitizeCaptureText(next)
+  if (!a) return b
+  if (!b) return a
+  const an = normalizeCaptureText(a)
+  const bn = normalizeCaptureText(b)
+  if (an === bn) return a.length >= b.length ? a : b
+  if (bn.startsWith(an)) return b
+  if (an.startsWith(bn)) return a
+  const aw = a.split(/\s+/)
+  const bw = b.split(/\s+/)
+  const max = Math.min(aw.length, bw.length)
+  for (let n = max; n >= 2; n--) {
+    const tail = normalizeCaptureText(aw.slice(-n).join(' '))
+    const head = normalizeCaptureText(bw.slice(0, n).join(' '))
+    if (tail === head) return [...aw, ...bw.slice(n)].join(' ')
+  }
+  return `${a} ${b}`.replace(/\s+/g, ' ').trim()
 }
 
 export function isContinuation(prev, next) {
@@ -179,7 +214,11 @@ export function isContinuation(prev, next) {
   const an = normalizeCaptureText(a)
   const bn = normalizeCaptureText(b)
   if (!an || !bn) return false
-  if (bn.startsWith(an) || an.endsWith(bn.slice(0, Math.min(24, bn.length)))) return true
+  if (bn.startsWith(an) || an.startsWith(bn)) return true
+  const aw = an.split(' '), bw = bn.split(' ')
+  for (let n = Math.min(aw.length, bw.length); n >= 2; n--) {
+    if (aw.slice(-n).join(' ') === bw.slice(0, n).join(' ')) return true
+  }
   // Short additive clause
   if (b.split(/\s+/).length <= 12 && !/^[A-Z]/.test(b.replace(/^(okay|so|alright|actually)[,.]?\s+/i, ''))) return true
   if (/^(and|or|with|for|to|that|which|who|when|where|of|the|a|an)\b/i.test(b)) return true

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { stripHintMeta, glanceLayers, isHintMetaObject } from './hintLayers.js'
+import { stripHintMeta, glanceLayers, isHintMetaObject, ensureCodingCodeBlock } from './hintLayers.js'
 
 describe('stripHintMeta', () => {
   it('strips META: line + keeps prose', () => {
@@ -48,5 +48,19 @@ describe('isHintMetaObject', () => {
     expect(isHintMetaObject({ type: 'technical', confidence: 'general' })).toBe(true)
     expect(isHintMetaObject({ META: { type: 'dsa' } })).toBe(true)
     expect(isHintMetaObject({ foo: 1 })).toBe(false)
+  })
+})
+
+describe('ensureCodingCodeBlock', () => {
+  it('wraps loose Playwright JavaScript as a fenced code block', () => {
+    const raw = 'Use locators and auto-waiting.\n\njavascript\nawait page.goto("https://amazon.com");\nconst item = page.locator(".result").first();\nawait item.click();'
+    const out = ensureCodingCodeBlock(raw, 'coding')
+    expect(out).toContain('```js\nawait page.goto')
+    expect(out).toContain('\n```')
+    expect(out).not.toContain('\njavascript\n')
+  })
+
+  it('does not format ordinary technical prose as code', () => {
+    expect(ensureCodingCodeBlock('JWT is a signed token.', 'technical')).toBe('JWT is a signed token.')
   })
 })

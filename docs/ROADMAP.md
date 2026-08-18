@@ -19,6 +19,25 @@ caught. Fix the *process*, not just the bugs.
 - [ ] Adopt it: no tag/upload until the checklist passes on the packaged artifact
 - [ ] (Later) CI: `npm ci && npm run build && npm test` on every PR
 
+## P0 — Live intent and answer reliability
+- [x] 700–1500ms semantic question stabilization; incomplete-clause blocking *(1.4.8)*
+- [x] STT overlap merge, conservative artifact cleanup, duplicate suppression *(1.4.8)*
+- [x] Correction/refinement controls: wait/repeat cancels; “write it as code” updates the active card *(1.4.8)*
+- [x] Stale-generation cancellation, explicit terminal card states, 12s total answer deadline *(1.4.8)*
+- [x] Resume-truth/JD-fit evidence policy and requested output/language contracts *(1.4.8)*
+- [x] Session-scoped coding context for screenshot → language/debug/optimization follow-ups, isolated from career turns *(1.4.8)*
+- [x] Two-stage Stealth preflight: OS protection applied + user-confirmed meeting preview *(1.4.8)*
+- [x] Privacy-safe STT quality diagnostics: confidence, degraded mode, diarization coverage *(1.4.8)*
+- [x] Nova-3 global-accent/noisy-meeting profile with keyterms, VAD endpointing, OS noise suppression, voice isolation and Nova-2 fallback *(1.4.8)*
+- [x] Safe JavaScript execution in a disposable, networkless, timeout-limited worker *(1.4.8)*
+- [x] Meeting-app recognition plus share-mode-specific Stealth verification *(1.4.8)*
+- [x] Local quality dashboard for transcript confidence and capture/answer latency *(1.4.8)*
+- [ ] Deploy a hardened multi-language execution service (container isolation, no network, CPU/memory/process limits, ephemeral filesystem) before claiming Python/Java/C++ execution
+- [ ] Validate 30+ real spoken turns on packaged Windows using System Audio: fragments, corrections,
+      code requests, notes/nodes ambiguity, rapid topic switches, and slow-provider failover
+- [ ] Record time-to-commit and time-to-first-token percentiles from the packaged soak; tune only
+      from evidence (target: useful first text within 2–5s, hard stop by 12s)
+
 ## P0 — Next version: production authentication and shared accounts
 The desktop currently falls back to a device-local `auth-db.json`. That is useful for offline/dev
 work, but it is **not** a production account system: users created on one installation are not

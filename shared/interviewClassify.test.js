@@ -43,6 +43,18 @@ describe('classifyTurn P0 experience vs technical', () => {
     expect(c.contextNeeds.rag).toBe(true)
     expect(shouldRetrieveDocs(c)).toBe(true)
   })
+
+  it('routes a coding request in the middle of a QA interview to coding', () => {
+    const c = classifyTurn({
+      question: 'Give me Playwright JS code for Amazon where you search, scroll, select an item and add it to cart',
+      profile: { targetRole: 'QA Automation Engineer' },
+      lastClassification: { questionType: 'experience', parentTopic: 'Tell me about your QA work' },
+      conversationHistory: [{ role: 'interviewer', text: 'Tell me about your QA work' }],
+    })
+    expect(c.questionType).toBe('coding')
+    expect(c.playbookKey).toBe('dsa')
+    expect(c.contextNeeds.codingLanguage).toBe(true)
+  })
 })
 
 describe('contextNeedsFor (soft advisory)', () => {
