@@ -27,7 +27,7 @@ const PROVIDERS = [
   { k: 'ANTHROPIC_API_KEY', name: 'Anthropic', hint: 'Claude — paid API', match: /anthropic|claude/i,
     note: 'Needs billing credit at', link: { href: 'https://console.anthropic.com/settings/keys', label: 'console.anthropic.com' } },
 ]
-const EMPTY = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', GROQ_API_KEY: '', DEEPGRAM_API_KEY: '', OPENAI_MODEL: '', ADZUNA_APP_ID: '', ADZUNA_APP_KEY: '' }
+const EMPTY = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', GROQ_API_KEY: '', DEEPGRAM_API_KEY: '', OPENAI_MODEL: '', GROQ_VISION_MODEL: '', VISION_API_KEY: '', VISION_MODEL: '', VISION_BASE_URL: '', ADZUNA_APP_ID: '', ADZUNA_APP_KEY: '' }
 
 function Pill({ color, bg, children }) {
   return <span style={{ fontSize: 9.5, fontWeight: 600, color, background: bg, padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap' }}>{children}</span>
@@ -194,6 +194,14 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
           <KeyField name="Custom OpenAI model id" hint="optional" secret={false}
             value={keyVals.OPENAI_MODEL} onChange={set('OPENAI_MODEL')}
             note="Blank = GPT-4o. Set any OpenAI model id to run it on your key. For Claude/Gemini/Groq, add the key above and pick the model in-app." />
+          <KeyField name="Groq vision model id" hint="optional · screenshots" secret={false}
+            value={keyVals.GROQ_VISION_MODEL} onChange={set('GROQ_VISION_MODEL')}
+            note="Uses the Groq key above only for screenshot analysis. Leave blank unless your Groq account exposes a vision-capable model." />
+          <div style={{ height: 1, background: T.border }} />
+          <div style={{ fontSize: 11, color: T.text2, lineHeight: 1.45 }}><strong style={{ color: T.text1 }}>Custom vision gateway</strong> — OpenAI-compatible endpoints only.</div>
+          <KeyField name="Vision base URL" secret={false} value={keyVals.VISION_BASE_URL} onChange={set('VISION_BASE_URL')} />
+          <KeyField name="Vision model id" secret={false} value={keyVals.VISION_MODEL} onChange={set('VISION_MODEL')} />
+          <KeyField name="Vision API key" value={keyVals.VISION_API_KEY} onChange={set('VISION_API_KEY')} />
           <div style={{ height: 1, background: T.border }} />
           <div style={{ fontSize: 11, color: T.text2, lineHeight: 1.45 }}>
             <strong style={{ color: T.text1 }}>Job search (Adzuna)</strong> — free keys from <a href="https://developer.adzuna.com" style={{ color: T.accentFrom }}>developer.adzuna.com</a> add real local/on-site postings to Matching Jobs. Without them, only remote roles show.

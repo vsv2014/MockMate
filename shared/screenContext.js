@@ -195,11 +195,16 @@ export function buildScreenContextBlock(screen, { maxChars = 1800 } = {}) {
 }
 
 /** Cheap fingerprint for analysis cache (not cryptographic). */
-export function screenFingerprint(base64, { language = '', style = '' } = {}) {
+export function screenFingerprint(base64, { language = '', style = '', context = '' } = {}) {
   const s = String(base64 || '')
   if (!s) return ''
   const mid = Math.max(0, Math.floor(s.length / 2) - 20)
-  return `${s.length}:${s.slice(0, 48)}:${s.slice(mid, mid + 48)}:${s.slice(-48)}:${language}:${style}`
+  const ctx = String(context || '')
+  // Keep the key small while invalidating cached answers when candidate/session
+  // instructions change. This is a cache discriminator, not a security hash.
+  let ctxHash = 2166136261
+  for (let i = 0; i < ctx.length; i++) ctxHash = Math.imul(ctxHash ^ ctx.charCodeAt(i), 16777619)
+  return `${s.length}:${s.slice(0, 48)}:${s.slice(mid, mid + 48)}:${s.slice(-48)}:${language}:${style}:${(ctxHash >>> 0).toString(36)}`
 }
 
 export function createScreenContextRecord({

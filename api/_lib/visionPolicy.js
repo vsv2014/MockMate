@@ -108,7 +108,7 @@ export function makeVisionUnavailableError(managed = false) {
     'VISION_UNAVAILABLE',
     managed
       ? 'Screen analysis is temporarily unavailable. Please try again, or add your own OpenAI/Gemini key in Settings (⚙).'
-      : 'Screen analysis needs a vision model — add an OPENAI_API_KEY (GPT-4o) or GEMINI_API_KEY in ⚙ Settings.',
+      : 'Screen analysis needs a vision-capable model — add OpenAI/Gemini in ⚙ Settings, or configure GROQ_VISION_MODEL / VISION_API_KEY for a compatible vision model.',
     400,
   )
 }

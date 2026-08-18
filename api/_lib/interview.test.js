@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pickPlaybook, packCandidateContext } from './interview.js'
+import { pickPlaybook, packCandidateContext, analyzeScreen } from './interview.js'
 import { classifyTurn } from '../../shared/interviewClassify.js'
 import { glanceLayers } from '../../shared/hintLayers.js'
 
@@ -29,6 +29,44 @@ describe('pickPlaybook (question classification)', () => {
   }
   it('falls back to general for unclassifiable input', () => {
     expect(pickPlaybook('so anyway').key).toBe('general')
+  })
+})
+
+describe('manual screen capture precedence', () => {
+  it('does not send the previous spoken question unless the caller explicitly opts in', async () => {
+    let capturedPrompt = ''
+    let capturedDetail = ''
+    const analysis = await analyzeScreen({
+      imageBase64: 'aaaa',
+      spokenQuestion: 'previous OCR question that must not hijack the new screen',
+      _visionCall: async ({ prompt, detail }) => {
+        capturedPrompt = prompt
+        capturedDetail = detail
+        return JSON.stringify({
+          contentType: 'other', screenFamily: 'screen_text', detectedText: 'new visible QA question',
+          keyPoints: ['answer'], fullAnswer: 'new answer', code: null, approach: [], edgeCases: [],
+        })
+      },
+    })
+    expect(capturedPrompt).not.toContain('previous OCR question')
+    expect(capturedPrompt).toContain('answer THAT visible question directly')
+    expect(capturedDetail).toBe('auto')
+    expect(analysis.detectedText).toBe('new visible QA question')
+  })
+
+  it('allows matched spoken context only through an explicit opt-in', async () => {
+    let capturedPrompt = ''
+    await analyzeScreen({
+      imageBase64: 'aaaa',
+      spokenQuestion: 'explain this visible diagram',
+      useSpokenContext: true,
+      _visionCall: async ({ prompt }) => {
+        capturedPrompt = prompt
+        return JSON.stringify({ contentType: 'system_design', detectedText: 'diagram', keyPoints: [], fullAnswer: 'answer' })
+      },
+    })
+    expect(capturedPrompt).toContain('explain this visible diagram')
+    expect(capturedPrompt).toContain('secondary evidence only')
   })
 })
 

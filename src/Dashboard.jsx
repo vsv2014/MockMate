@@ -125,13 +125,13 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
         >{sidebarHidden ? '☰' : '◂'}</TopBtn>
         <img src="/icon.png" alt="" width={26} height={26} style={{ borderRadius: 7, display: 'block' }} />
         <span style={{ fontWeight: 600, fontSize: 14, letterSpacing: '0.2px' }}>MockMate</span>
-        <div title={isLinuxUA ? 'Overlay stealth is not supported on Linux' : 'Content protection may exclude the overlay from capture APIs — always verify in your meeting share preview. Browser matrix UNKNOWN.'}
-          style={{ marginLeft: 14, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: isLinuxUA ? '#fdba74' : '#fbbf24', background: isLinuxUA ? 'rgba(249,115,22,0.1)' : 'rgba(251,191,36,0.1)', border: `1px solid ${isLinuxUA ? 'rgba(249,115,22,0.3)' : 'rgba(251,191,36,0.35)'}`, padding: '3px 9px', borderRadius: 999 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: isLinuxUA ? '#fdba74' : '#fbbf24' }} />
-          {isLinuxUA ? 'Stealth limited (Linux)' : 'Content protection on · Verify share preview'}
-        </div>
+        <button type="button" onClick={!isLinuxUA ? onStealth : undefined}
+          title={isLinuxUA ? 'Overlay stealth is not supported on Linux' : `${stealth ? 'Stealth ON' : 'Stealth OFF'} — capture protection ${stealth ? 'enabled' : 'disabled'}. Always verify in your meeting share preview.`}
+          style={{ marginLeft: 14, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: isLinuxUA ? 'default' : 'pointer', color: isLinuxUA ? '#fdba74' : stealth ? '#5eead4' : T.text3, background: isLinuxUA ? 'rgba(249,115,22,0.1)' : stealth ? 'rgba(13,148,136,0.16)' : 'rgba(255,255,255,0.04)', border: `1px solid ${isLinuxUA ? 'rgba(249,115,22,0.3)' : stealth ? 'rgba(45,212,191,0.4)' : T.border}`, padding: '3px 9px', borderRadius: 999 }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: isLinuxUA ? '#fdba74' : stealth ? '#2dd4bf' : '#64748b' }} />
+          {isLinuxUA ? 'Stealth unavailable (Linux)' : stealth ? 'Stealth ON · Verify preview' : 'Stealth OFF'}
+        </button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-          <TopBtn title="Collapse to pill icon (stays on screen) · Alt+H" onClick={onStealth}>◐</TopBtn>
           <TopBtn title="Collapse to pill — click pill to restore" onClick={onMinimize}>—</TopBtn>
           <TopBtn title="Close" onClick={onClose} danger>✕</TopBtn>
         </div>

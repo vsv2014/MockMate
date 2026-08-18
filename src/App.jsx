@@ -68,7 +68,9 @@ function ElectronShell({ auth }) {
     } catch {}
     return 0.92
   })   // slightly translucent by default (stealth apps expose a transparency slider)
-  const [stealth, setStealth] = useState(false)
+  // Privacy-first default: hidden from supported capture APIs unless the user
+  // explicitly turns Stealth off to test/demo the overlay.
+  const [stealth, setStealth] = useState(true)
   const [clickThrough, setClickThrough] = useState(false)
   const [minimized, setMinimized] = useState(false)
   const [screenAnalysis, setScreenAnalysis] = useState(null)   // vision analysis result
@@ -82,6 +84,15 @@ function ElectronShell({ auth }) {
     document.documentElement.style.background = 'transparent'
     document.body.style.background = 'transparent'
   }, [])
+
+  // Stealth is explicit and on by default. Capture protection is independent
+  // from transparency, pinning, click-through, and collapse-to-pill.
+  useEffect(() => {
+    if (!inElectron) return
+    window.electronAPI?.setContentProtection?.(stealth).then(result => {
+      if (stealth && result && !result.ok) setStealth(false)
+    }).catch(() => { if (stealth) setStealth(false) })
+  }, [stealth])
 
   const [noProviders, setNoProviders] = useState(false)
   const [meetingActive, setMeetingActive] = useState(false)
@@ -175,7 +186,10 @@ function ElectronShell({ auth }) {
     analysisAbortRef.current = abort
     const gen = ++analysisGenRef.current
     const style = screenshotStyle()
-    const fp = screenFingerprint(base64, { language: language || '', style })
+    const fp = screenFingerprint(base64, {
+      language: language || '', style,
+      context: JSON.stringify(profileRef.current || {}),
+    })
     const requestId = `scr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
     const imageDimensions = (shot?.width && shot?.height)
       ? { width: shot.width, height: shot.height }
@@ -291,6 +305,19 @@ function ElectronShell({ auth }) {
   // Live tells App the latest interviewer question for vision scoping.
   const onLiveSpokenQuestion = useCallback((q) => { liveSpokenQRef.current = q || '' }, [])
 
+  // A Live session owns its question/screen context. Never carry the previous
+  // session's last STT question or F7 analysis into a new LiveOverlay.
+  const resetLiveSessionContext = useCallback(() => {
+    try { analysisAbortRef.current?.abort() } catch {}
+    analysisAbortRef.current = null
+    analysisGenRef.current += 1
+    liveSpokenQRef.current = ''
+    lastShotRef.current = null
+    analysisCacheRef.current.clear()
+    setScreenAnalyzing(false)
+    setScreenAnalysis(null)
+  }, [])
+
   // Resize + stealth keyboard shortcut
   useEffect(() => {
     const onMove = e => {
@@ -383,7 +410,7 @@ function ElectronShell({ auth }) {
     try { localStorage.setItem('mm-overlay-opacity', String(n)) } catch {}
   }
 
-  function goHome() { setReport(null); setOpenSession(null); refreshSessions(); setView('home') }
+  function goHome() { resetLiveSessionContext(); setReport(null); setOpenSession(null); refreshSessions(); setView('home') }
   function openHistory() { refreshSessions(); setOpenSession(null); setView('history') }
 
   /** Explicit Jobs/Career → Solo/Live JD handoff (confirm before writing shared profile JD). */
@@ -560,7 +587,7 @@ function ElectronShell({ auth }) {
         )}
         <div style={shellPill ? { display: 'none' } : undefined} aria-hidden={shellPill || undefined}>
           <AppShell active={view} onNav={setView} auth={auth} meetingActive={meetingActive}
-            stealth={stealth} onStealth={collapseToPill}
+            stealth={stealth} onStealth={() => setStealth(s => !s)}
             onMinimize={collapseToPill} onClose={() => window.close?.()}>
             <WhatsNew openSignal={whatsNewSignal} />
             {content}
@@ -574,7 +601,8 @@ function ElectronShell({ auth }) {
   // else lives in the dashboard shell (handled above).
   if (view === 'companion') return (
     <LiveCompanion onHome={goHome} onPhaseChange={setCompanionPhase} panelSize={panelSize} stealth={stealth} opacity={opacity} onOpacity={setOverlayOpacity} minimized={minimized}
-      onStealth={collapseToPill}
+      onSessionStart={resetLiveSessionContext} onSessionEnd={resetLiveSessionContext}
+      onStealth={() => setStealth(s => !s)}
       onMinimize={() => {
         if (minimized) expandFromPill()
         else collapseToPill()
@@ -585,8 +613,7 @@ function ElectronShell({ auth }) {
       codingDetected={codingDetected} onCaptureScreen={capturePreferredScreen}
       onReanalyze={reanalyze}
       onLiveSpokenQuestion={onLiveSpokenQuestion}
-      captureDisplays={captureDisplays} captureDisplayId={captureDisplayId} onCaptureDisplayId={setCaptureDisplayId}
-      onPipActive={active => setStealth(active)} />
+      captureDisplays={captureDisplays} captureDisplayId={captureDisplayId} onCaptureDisplayId={setCaptureDisplayId} />
   )
 
   return null   // every other view is handled by the dashboard shell above
@@ -657,7 +684,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
     : status === 'failed' || err ? 'SCREEN ANALYSIS FAILED'
     : status === 'analyzed_cached' ? 'SCREEN ANALYZED (cached)'
     : liveAttachHint === 'attached' ? 'SCREEN CONTEXT ATTACHED'
-    : liveAttachHint === 'irrelevant' ? 'SCREEN CAPTURED · NOT RELEVANT TO LAST Q'
+    : liveAttachHint === 'irrelevant' ? 'SCREEN SOLVED INDEPENDENTLY'
     : 'SCREEN ANALYZED'
   return (
     <div style={{ background: accentBg, border: `1px solid ${accent}`, borderRadius: 10, padding: '12px', marginBottom: 10 }}>
@@ -987,7 +1014,8 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
     confirmTimer.current = setTimeout(() => setConfirming(false), 3000)
   }
 
-  // Collapsed → on-screen logo pill (never a full close). Window stays visible & content-protected.
+  // Collapsed → on-screen logo pill (never a full close). Protection follows the
+  // explicit Stealth toggle; collapsing does not silently enable it.
   if (minimized) return (
     <div id="mockmate-overlay" style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }}>
       <button type="button" data-mm-hit="1"
@@ -1025,7 +1053,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         WebkitBackdropFilter: 'blur(24px)',
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
-        opacity: stealth ? 0.2 : opacity,
+        opacity,
         transition: 'opacity 0.1s',
         // Always 'all' — click-through is handled by Electron setIgnoreMouseEvents + region hover.
         pointerEvents: 'all',
@@ -1046,6 +1074,12 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
             : <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.88)', fontWeight: 600, fontFamily: T.font }}>{title || 'MockMate'}</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }} onMouseDown={e => e.stopPropagation()} data-mm-hit="1">
             {actions}
+            {inElectron && typeof onStealth === 'function' && (
+              <button onClick={onStealth} onMouseDown={e => e.stopPropagation()}
+                title={stealth ? 'Stealth ON — capture protection enabled. Verify the meeting share preview.' : 'Stealth OFF — overlay may appear in capture. Click to enable protection.'}
+                aria-label={stealth ? 'Disable stealth capture protection' : 'Enable stealth capture protection'} aria-pressed={!!stealth}
+                style={{ height: 28, minWidth: 28, padding: '0 7px', display: 'grid', placeItems: 'center', background: stealth ? 'rgba(13,148,136,0.42)' : 'transparent', color: stealth ? '#5eead4' : 'rgba(255,255,255,0.55)', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13 }}>🛡️</button>
+            )}
             {typeof onOpacity === 'function' && (
               <label title="Transparency (like LockedIn) — lower = more see-through"
                 style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 4px', cursor: 'pointer' }}

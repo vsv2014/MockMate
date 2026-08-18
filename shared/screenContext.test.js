@@ -5,8 +5,18 @@ import {
   contextNeedsForScreenAnalysis,
   normalizeScreenContentType,
   createScreenContextRecord,
+  screenFingerprint,
   SCREEN_FRESH_MS,
 } from './screenContext.js'
+
+describe('screenFingerprint', () => {
+  it('invalidates cached analysis when session/profile context changes', () => {
+    const image = 'a'.repeat(200)
+    const first = screenFingerprint(image, { style: 'balanced', context: '{"role":"QA"}' })
+    const second = screenFingerprint(image, { style: 'balanced', context: '{"role":"SDE"}' })
+    expect(first).not.toBe(second)
+  })
+})
 import { classifyTurn } from './interviewClassify.js'
 import { pickPlaybook, packCandidateContext } from '../api/_lib/interview.js'
 

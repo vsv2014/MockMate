@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.4.7 — 2026-08-18
+
+Reliability patch for live screenshot solving, interview-session isolation, local authentication,
+and newest-question navigation. Production hosted accounts remain planned work; this release keeps
+device-local sign-in honest and preserves guest/BYOK access if the account service is unavailable.
+
+### Added
+- **Vision provider settings** — optional Groq vision model and custom OpenAI-compatible vision gateway fields under Advanced settings.
+- **Jump to latest** — appears when a new question arrives while the candidate is reading an older answer.
+- Regression coverage for manual screenshot precedence, context-sensitive screen caching, and provider-compatible image detail.
+
+### Changed
+- **Explicit Stealth mode** — capture protection is ON by default and controlled by a visible shield toggle. Turn it OFF only to test/demo the overlay in capture. It no longer changes opacity/collapse state; protected hints remain a separate opt-in window. Always verify the meeting share preview.
+- **Manual screenshot precedence** — F7 / Ctrl+Shift+U answers the readable question on the newly captured screen instead of allowing a previous spoken/OCR question to override it.
+- **Provider-compatible screenshots** — image detail uses `auto` so vision gateways can balance OCR quality, latency, and cost.
+- **Authentication fallback** — failure of the optional local account service no longer closes MockMate; guest/BYOK interview modes remain available.
+- **Autoscroll respects the user** — the newest card is followed only while the feed is already at the latest position.
+
+### Fixed
+- Previous interview question/screenshot state appearing in a newly started Live interview.
+- Cached screenshot answers leaking across sessions or profile/context changes.
+- New-account failures being presented as generic credential errors when the local account service was unreachable.
+- Misleading “not relevant to last question” status after an independently solved manual capture.
+- **Question/answer copying in Live** — both cards allow manual text selection and expose Electron-safe copy buttons with visible success/failure feedback.
+
 ## v1.4.6 — 2026-08-12
 
 Live interview engine hardening, Career export polish (PDF primary), Jobs→interview JD seeding,

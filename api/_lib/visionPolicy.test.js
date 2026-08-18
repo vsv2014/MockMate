@@ -14,7 +14,7 @@ import {
 } from './visionPolicy.js'
 
 // visionComplete lives in core.js — inject _callProvider for isolation.
-import { visionComplete } from './core.js'
+import { visionComplete, listVisionProviders } from './core.js'
 import { extractJSON } from './core.js'
 
 beforeEach(() => {
@@ -57,6 +57,30 @@ describe('visionPolicy cooldown', () => {
     expect(isVisionCooling('openai')).toBe(true)
     expect(isVisionCooling('openai_mini')).toBe(true)
     expect(isVisionCooling('gemini')).toBe(false)
+  })
+})
+
+describe('vision provider configuration', () => {
+  it('does not treat Groq text models as vision-capable without an explicit vision model', () => {
+    const oldKey = process.env.GROQ_API_KEY
+    const oldModel = process.env.GROQ_VISION_MODEL
+    process.env.GROQ_API_KEY = 'test-groq-key'
+    delete process.env.GROQ_VISION_MODEL
+    expect(listVisionProviders().some(p => p.id === 'groq_vision')).toBe(false)
+    if (oldKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = oldKey
+    if (oldModel === undefined) delete process.env.GROQ_VISION_MODEL; else process.env.GROQ_VISION_MODEL = oldModel
+  })
+
+  it('accepts an explicitly configured Groq vision model', () => {
+    const oldKey = process.env.GROQ_API_KEY
+    const oldModel = process.env.GROQ_VISION_MODEL
+    process.env.GROQ_API_KEY = 'test-groq-key'
+    process.env.GROQ_VISION_MODEL = 'vision-model'
+    expect(listVisionProviders()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'groq_vision', model: 'vision-model' }),
+    ]))
+    if (oldKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = oldKey
+    if (oldModel === undefined) delete process.env.GROQ_VISION_MODEL; else process.env.GROQ_VISION_MODEL = oldModel
   })
 })
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { T } from './tokens'
 import { AuthShell, brandMark } from './AuthShell'
 import { Field, FormError, PrimaryButton, TextLink, ProgressSteps } from './ui'
+import { usesDeviceLocalAccounts } from './api'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -58,6 +59,11 @@ export default function Signup({ onSubmit, onSwitchToLogin }) {
           background: T.chrome, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent',
         }}>Create your account</h1>
         <p style={{ marginTop: 4, fontSize: 13, fontWeight: 400, color: T.text2 }}>Practice. Go live. Get hired.</p>
+        {usesDeviceLocalAccounts && (
+          <p style={{ margin: '8px 0 0', maxWidth: 330, textAlign: 'center', fontSize: 10.5, lineHeight: 1.45, color: T.text3 }}>
+            This build creates a device-local account. It will not automatically work on another computer.
+          </p>
+        )}
       </div>
 
       <ProgressSteps step={1} total={2} label="Step 1 of 2 · Account" />

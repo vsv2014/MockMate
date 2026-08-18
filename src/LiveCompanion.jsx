@@ -29,6 +29,7 @@ import { resolveContextSources, formatInterviewDevTrace } from '../shared/contex
 import { createTranscriptBuffer } from '../shared/transcriptBuffer.js'
 import { createQuestionCaptureController, formatCaptureDebugLine } from '../shared/questionCapture.js'
 import { streamLiveHint, fetchLiveHintFallback } from './live/hintTransport.js'
+import { copyText } from './lib/clipboard'
 
 function newQuestionId() {
   return `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -462,6 +463,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const [error, setError] = useState('')
   const [extraContext, setExtraContext] = useState('')
   const [expandedAnswers, setExpandedAnswers] = useState(() => new Set())
+  const [copiedKey, setCopiedKey] = useState('')
   const extraContextRef = useRef('')
   const [verifyTip, setVerifyTip] = useState(false)
   const inElectronLive = typeof window !== 'undefined' && !!window.electronAPI
@@ -495,8 +497,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const degradedRef = useRef(false)
   const startedAt = useRef(Date.now())
   const streamTimer = useRef(null)
-  const bottomRef = useRef(null)
-  const topRef = useRef(null)
+  const latestQuestionRef = useRef(null)
+  const feedRef = useRef(null)
+  const followLatestRef = useRef(true)
+  const [showJumpLatest, setShowJumpLatest] = useState(false)
   const ragSpec = useRef({ q: '', p: null })
   const metricsRef = useRef(null)
   const hintTimingRef = useRef(null)
@@ -655,7 +659,34 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     return () => clearInterval(id)
   }, [])
 
-  useEffect(() => { topRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [transcript, hintLoading])
+  const latestQuestionId = [...transcript].filter(s => s.isQuestion).at(-1)?.questionId
+  useEffect(() => {
+    if (!latestQuestionId) return
+    if (!followLatestRef.current) {
+      setShowJumpLatest(true)
+      return
+    }
+    const frame = requestAnimationFrame(() => {
+      latestQuestionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [latestQuestionId, hintLoading])
+
+  const jumpToLatest = useCallback(() => {
+    followLatestRef.current = true
+    setShowJumpLatest(false)
+    latestQuestionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
+  }, [])
+
+  const copyFeedText = useCallback(async (key, value) => {
+    const ok = await copyText(String(value || ''))
+    if (!ok) {
+      setError('Could not copy text — select it manually or retry')
+      return
+    }
+    setCopiedKey(key)
+    setTimeout(() => setCopiedKey(current => current === key ? '' : current), 1400)
+  }, [])
 
   // Hint generation — only after QUESTION_COMMITTED (or manual Answer this).
   async function generateHint(question, { force, questionId: existingQuestionId } = {}) {
@@ -1425,14 +1456,28 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       {verifyTip && (
         <div role="status" style={{ margin: '8px 12px 0', padding: '10px 12px', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.35)', borderRadius: 8, fontSize: 11.5, color: T.text2, lineHeight: 1.5 }}>
           <div style={{ fontWeight: 700, color: '#5eead4', marginBottom: 4 }}>Verify share preview</div>
-          This overlay already uses OS content protection{inElectronLive ? ' (Electron)' : ''}. Open Zoom/Meet/Teams → Share → look at the preview:
-          you should <strong style={{ color: T.text1 }}>not</strong> see MockMate. If you do, don&apos;t trust stealth for that app.
+          {stealth
+            ? <>Stealth is ON and OS capture protection is enabled{inElectronLive ? ' (Electron)' : ''}. Open Zoom/Meet/Teams → Share and confirm MockMate is absent from the preview.</>
+            : <>Stealth is OFF, so the main MockMate overlay may appear in screen capture. Turn on the shield in the toolbar before testing the share preview.</>}
           {pipSupported ? ' Tip: open the protected hints window (shield) and confirm that stays hidden too.' : ' (Browser PiP isn\'t available here — preview check is the real test.)'}
           <button type="button" onClick={() => setVerifyTip(false)} style={{ display: 'block', marginTop: 8, background: 'none', border: 'none', color: '#5eead4', cursor: 'pointer', fontSize: 11, padding: 0 }}>Dismiss</button>
         </div>
       )}
       {/* ── Single scrollable chat feed ── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column' }}>
+      <div ref={feedRef} onScroll={e => {
+        const el = e.currentTarget
+        // The feed is newest-first. Scrolling down means the user is reading an
+        // older answer, so do not pull them back when a new question arrives.
+        const nearLatest = el.scrollTop < 56
+        followLatestRef.current = nearLatest
+        if (nearLatest) setShowJumpLatest(false)
+      }} style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column' }}>
+        {showJumpLatest && (
+          <button type="button" onClick={jumpToLatest}
+            style={{ position: 'sticky', top: 2, zIndex: 4, alignSelf: 'center', background: '#0f766e', color: '#fff', border: '1px solid rgba(94,234,212,0.55)', borderRadius: 999, padding: '5px 12px', marginBottom: 8, cursor: 'pointer', fontSize: 10.5, fontWeight: 700, boxShadow: '0 4px 14px rgba(0,0,0,0.35)' }}>
+            Jump to latest ↓
+          </button>
+        )}
         {error && (
           <div role="alert" style={{ background: '#450a0a', border: '1px solid #ef4444', borderRadius: 5, padding: '5px 8px', fontSize: 10, color: '#fca5a5', marginBottom: 6, lineHeight: 1.4 }}>
             ⚠ {error.includes('rate-limit') || error.includes('quota') ? 'API rate limited — try again or check Settings' : error}
@@ -1577,7 +1622,6 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         )}
 
         {/* STATE C — Thinking… question text stays in transcript (STATE B), not replaced */}
-        <div ref={topRef} />
         {hintLoading && (
           <div style={{ marginBottom: 10, marginLeft: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 7, padding: '7px 10px', border: '1px solid rgba(255,255,255,0.05)' }}>
             <div style={{ fontSize: 11, color: '#5eead4', marginBottom: 4, fontWeight: 600 }}>{buyTimePhrase || thinkingLabel(profileRef.current?.language)}</div>
@@ -1592,10 +1636,19 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         {[...transcript].filter(s => s.isQuestion).reverse().map((s, i) => {
           const isLatest = i === 0
           return (
-          <div key={s.questionId || s.ts || s.text} style={{ marginBottom: 14, opacity: isLatest ? 1 : 0.72 }}>
+          <div
+            key={s.questionId || s.ts || s.text}
+            ref={isLatest ? latestQuestionRef : null}
+            style={{ marginBottom: 14, opacity: isLatest ? 1 : 0.72, scrollMarginTop: 10 }}
+          >
             {/* Q bubble — never replaced by Thinking… */}
-            <div style={{ fontSize: isLatest ? 13 : 12, color: T.text1, background: 'rgba(255,255,255,0.06)', borderRadius: '0 8px 8px 8px', padding: '7px 11px', marginBottom: 6, lineHeight: 1.5, fontWeight: isLatest ? 600 : 400 }}>
-              ❓ {s.text}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: isLatest ? 13 : 12, color: T.text1, background: 'rgba(255,255,255,0.06)', borderRadius: '0 8px 8px 8px', padding: '7px 8px 7px 11px', marginBottom: 6, lineHeight: 1.5, fontWeight: isLatest ? 600 : 400, userSelect: 'text', WebkitUserSelect: 'text' }}>
+              <span style={{ flex: 1, minWidth: 0 }}>❓ {s.text}</span>
+              <button type="button" onMouseDown={e => e.stopPropagation()}
+                onClick={() => copyFeedText(`q:${s.questionId || s.ts}`, s.text)}
+                style={btn('rgba(255,255,255,0.04)', T.text3)} title="Copy question" aria-label="Copy question">
+                {copiedKey === `q:${s.questionId || s.ts}` ? '✓' : '📋'}
+              </button>
             </div>
             {/* A bubble (or incomplete stub with Retry) */}
             {s.hint && (s.answer !== undefined || s.hint.incomplete) && (
@@ -1606,7 +1659,11 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                     {s.hint.incomplete && (
                       <button type="button" onClick={() => generateHint(s.text, { force: true, questionId: s.questionId })} style={btn('rgba(251,191,36,0.15)', '#fbbf24')}>Retry</button>
                     )}
-                    <button onClick={() => navigator.clipboard?.writeText(s.hint.fullAnswer || s.hint.sampleAnswer || '')} style={btn('rgba(255,255,255,0.04)', T.text3)} title="Copy answer">📋</button>
+                    <button type="button" onMouseDown={e => e.stopPropagation()}
+                      onClick={() => copyFeedText(`a:${s.questionId || s.ts}`, s.hint.fullAnswer || s.hint.sampleAnswer || s.answer || '')}
+                      style={btn('rgba(255,255,255,0.04)', T.text3)} title="Copy answer" aria-label="Copy answer">
+                      {copiedKey === `a:${s.questionId || s.ts}` ? '✓' : '📋'}
+                    </button>
                   </div>
                 </div>
                 {s.hint.resumeStory && <div style={{ borderLeft: '2px solid #4ade80', paddingLeft: 7, fontSize: 10, color: '#86efac', marginBottom: 6, fontStyle: 'italic' }}>{s.hint.resumeStory}</div>}
@@ -1660,7 +1717,6 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           </div>
           )
         })}
-        <div ref={bottomRef} />
         </div>
 
         {/* Type a question when STT fails / for silent practice — Enter → LLM */}
@@ -1740,7 +1796,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId }) {
+export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, onSessionEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId }) {
   const [phase, setPhase] = useState('setup')
   const [sessionConfig, setSessionConfig] = useState(null)
   const [sessionNotes, setSessionNotes] = useState(null)
@@ -1764,6 +1820,7 @@ export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealt
     <SetupScreen
       onStart={config => {
         // Do not auto-open Protected/PiP — user opens it explicitly from the live overlay.
+        onSessionStart?.()
         setSessionConfig({ ...config, pip: null })
         setPhase('live')
       }}
@@ -1782,6 +1839,7 @@ export default function LiveCompanion({ onHome, onPhaseChange, panelSize, stealt
       onResize={onResize} onDrag={onDrag}
       opacity={opacity} onOpacity={onOpacity}
       onEnd={data => {
+        onSessionEnd?.()
         setSessionNotes(data); setPhase('notes')
         // Persist to Sessions only when we actually scored candidate speech.
         if (data?.report && data.report.overallScore != null && data?.conversation?.length) {

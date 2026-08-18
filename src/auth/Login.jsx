@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { T } from './tokens'
 import { AuthShell, brandMark } from './AuthShell'
 import { Field, FormError, PrimaryButton, TextLink } from './ui'
+import { usesDeviceLocalAccounts } from './api'
 
 // ── Login screen ──────────────────────────────────────────────────────────────
 // Presentational + local form state. Transport lives in the parent via `onSubmit`
@@ -46,6 +47,11 @@ export default function Login({ onSubmit, onSwitchToSignup, onForgot, onGuest })
           background: T.chrome, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent',
         }}>Welcome back</h1>
         <p style={{ marginTop: 4, fontSize: 13, fontWeight: 400, color: T.text2 }}>Sign in to continue to MockMate</p>
+        {usesDeviceLocalAccounts && (
+          <p style={{ margin: '8px 0 0', maxWidth: 330, textAlign: 'center', fontSize: 10.5, lineHeight: 1.45, color: T.text3 }}>
+            This build stores accounts on this device. An account created on another computer will not appear here.
+          </p>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} noValidate>

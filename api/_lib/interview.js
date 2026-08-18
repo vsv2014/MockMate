@@ -598,7 +598,8 @@ Return ONE JSON object, no prose:
 export async function analyzeScreen({
   imageBase64, profile = {}, language, style = 'balanced', mime,
   spokenQuestion = '', contentTypeHint = '',
-  requestId = '', fingerprint = '', imageDimensions = null, signal,
+  useSpokenContext = false,
+  requestId = '', fingerprint = '', imageDimensions = null, signal, _visionCall = visionComplete,
 } = {}) {
   if (!imageBase64) { const e = new Error('No screenshot captured. Try the capture shortcut again.'); e.status = 400; e.code = 'SCREEN_EMPTY'; throw e }
   let b64 = String(imageBase64)
@@ -609,19 +610,20 @@ export async function analyzeScreen({
   }
   if (!b64.trim()) { const e = new Error('Empty screenshot — recapture with F7 / Ctrl+Shift+U.'); e.status = 400; e.code = 'SCREEN_EMPTY'; throw e }
 
-  const needs = contextNeedsForScreenAnalysis({
-    spokenQuestion, profile, contentTypeHint,
-  })
+  // Explicit capture solves the new screen. The most recent STT question often
+  // belongs to the previous turn, so it must not silently hijack F7. Callers may
+  // opt in only when they know the speech and image belong to the same turn.
+  const spoken = useSpokenContext === true ? String(spokenQuestion || '').trim() : ''
+  const needs = contextNeedsForScreenAnalysis({ spokenQuestion: spoken, profile, contentTypeHint })
   const packed = packCandidateContext(profile, '', { contextNeeds: needs })
   const codeLang = language || profile.codingLanguage || 'Python'
   const fast = style === 'concise'
-  const spoken = String(spokenQuestion || '').trim()
   const rid = requestId || `scr_${Date.now().toString(36)}`
 
   const prompt = `You are a private interview coach analyzing a screenshot taken during a live interview.
 ${packed ? `\n${packed}\n` : ''}
-${spoken ? `\nCURRENT SPOKEN QUESTION (highest priority — answer THIS; the screen is evidence only):\n"${spoken.slice(0, 500)}"\nIf the screen is unrelated to this question, set contentType appropriately and say so briefly in fullAnswer — do not invent a connection.\n` : ''}
-First identify what is actually on screen, then give guidance the candidate can use RIGHT NOW.
+${spoken ? `\nRECENT SPOKEN CONTEXT (secondary evidence only; speech recognition may be incomplete or wrong):\n"${spoken.slice(0, 500)}"\nUse it only when it clearly matches the visible screen. Never let garbled or unrelated speech override a readable question on screen.\n` : ''}
+This is an explicit user-triggered screen capture. First identify what is actually on screen. If a readable question or task is visible, answer THAT visible question directly and treat it as the primary ask. Only fall back to recent spoken context when the screen has no actionable question. Then give guidance the candidate can use RIGHT NOW.
 
 CONTENT TYPE — pick the best match:
 "coding" | "system_design" | "behavioral" | "slide" | "other"
@@ -635,7 +637,7 @@ STRATEGY BY TYPE (apply ONLY the matching branch — do NOT force HLD or STAR on
 - other (doc/ui/spreadsheet/unknown): extract visible info and answer the spoken question if any; otherwise concise observations.
 
 NEVER FABRICATE candidate experience. Never claim tools/projects not in candidate context.
-Prefer answering the spoken question over producing a huge generic analysis.
+Prefer answering the visible question/task. Do not return a relevance warning when the screen itself contains a clear, answerable question.
 
 For CODING problems:
 - Write the solution in ${codeLang} unless the screen requires another language (then set "language").
@@ -665,8 +667,10 @@ Return ONE JSON object, no markdown:
 
   const faster = fast ? '\n\nFASTER MODE: Lead with the answer/solution first. Keep prose minimal.' : ''
   // ONE image-analysis call (with provider failover inside visionComplete). Repair is text-only.
-  const raw = await visionComplete({
-    imageBase64: b64, mime: imageMime, detail: 'low',
+  const raw = await _visionCall({
+    // "auto" is supported across OpenAI-compatible gateways and lets each
+    // provider balance OCR quality, latency, and token cost.
+    imageBase64: b64, mime: imageMime, detail: 'auto',
     prompt: prompt + faster, maxTokens: fast ? 1400 : 1500,
     requestId: rid, fingerprint: fingerprint || undefined,
     imageDimensions, signal,

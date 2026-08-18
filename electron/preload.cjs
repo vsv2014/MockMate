@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   captureScreen: (opts) => ipcRenderer.invoke('capture-screen', opts || {}),
   listScreenDisplays: () => ipcRenderer.invoke('list-screen-displays'),
   excludeFromCapture: () => ipcRenderer.invoke('exclude-from-capture'),
+  setContentProtection: on => ipcRenderer.invoke('set-content-protection', !!on),
   onShortcutStealth: cb => {
     const handler = () => cb()
     ipcRenderer.on('shortcut-stealth', handler)

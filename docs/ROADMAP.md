@@ -19,6 +19,30 @@ caught. Fix the *process*, not just the bugs.
 - [ ] Adopt it: no tag/upload until the checklist passes on the packaged artifact
 - [ ] (Later) CI: `npm ci && npm run build && npm test` on every PR
 
+## P0 — Next version: production authentication and shared accounts
+The desktop currently falls back to a device-local `auth-db.json`. That is useful for offline/dev
+work, but it is **not** a production account system: users created on one installation are not
+automatically recognised on another. Do not describe local accounts as cross-device accounts.
+
+- [ ] Deploy one HTTPS auth/managed-API service using the existing `backend/` application and a
+      durable hosted database (`MONGO_URI`); configure a stable `MOCKMATE_API_BASE` in installers
+- [ ] Keep `JWT_SECRET` stable across instances; enforce HTTPS, production CORS allowlists, proxy
+      trust, rate limits, health/readiness probes, secret rotation and monitored startup failures
+- [ ] Add a safe, authenticated migration/claim flow for existing device-local accounts; never
+      upload password hashes or silently merge users without explicit confirmation
+- [ ] Complete password recovery with a production mail provider, one-time expiring tokens and a
+      hosted `RESET_URL_BASE`; verify Google OAuth redirect/audience configuration if enabled
+- [ ] Define duplicate-email/account-linking behaviour across password and Google sign-in
+- [ ] Make offline mode explicit: local profile/session access may continue, but shared-account and
+      managed-AI actions must show a clear unavailable/retry state instead of false credential errors
+- [ ] Validate clean signup, login, logout, refresh, reset, upgrade and migration on two Windows
+      machines plus reinstall/update; confirm old and new accounts against the same hosted database
+- [ ] Add packaged-build integration tests for backend unreachable, expired JWT, database outage,
+      duplicate signup and account-not-found paths before tagging the next release
+
+**Release gate:** do not call authentication production-ready until the hosted deployment,
+cross-device test matrix and local-account migration decision are complete.
+
 ## P1 — Kill the dual-paradigm debt (consistency reads as quality)
 Legacy browser app (`Home.jsx`, old `styles.css`) vs the token dashboard — largely retired in 1.4.3.
 - [x] Re-theme `Room.jsx` to design tokens (`T`), then delete `styles.css` legacy classes *(1.4.3)*

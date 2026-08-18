@@ -15,6 +15,8 @@ const API_BASE =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE) ||
   'http://localhost:4000'
 
+export const usesDeviceLocalAccounts = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(API_BASE)
+
 // ── Token storage ─────────────────────────────────────────────────────────────
 let memToken = null   // browser-dev fallback only
 export async function getToken() {
@@ -53,7 +55,12 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
     })
   } catch {
     // Network / backend-down. Distinct, actionable message — not a bare throw.
-    throw new ApiError('Can’t reach MockMate. Check your connection and try again.', 0)
+    throw new ApiError(
+      usesDeviceLocalAccounts
+        ? 'MockMate’s account service did not start. Restart the app and try again.'
+        : 'Can’t reach MockMate. Check your connection and try again.',
+      0,
+    )
   }
 
   if (res.status === 401 && auth) {

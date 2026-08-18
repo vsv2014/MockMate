@@ -521,6 +521,25 @@ export function listVisionProviders() {
     const oaiModel = process.env.OPENAI_MODEL && /4o|4\.1|gpt-4|gpt-5/.test(process.env.OPENAI_MODEL) ? process.env.OPENAI_MODEL : 'gpt-4o'
     list.push({ id: 'openai', key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: oaiModel })
   }
+  // Groq and custom OpenAI-compatible gateways can expose vision models, but their
+  // default text models are not vision-capable. Opt in with an explicit model so a
+  // normal GROQ_API_KEY never produces a misleading 400 on image input.
+  if (process.env.GROQ_API_KEY && process.env.GROQ_VISION_MODEL) {
+    list.push({
+      id: 'groq_vision',
+      key: process.env.GROQ_API_KEY,
+      baseURL: 'https://api.groq.com/openai/v1',
+      model: process.env.GROQ_VISION_MODEL,
+    })
+  }
+  if (process.env.VISION_API_KEY && process.env.VISION_MODEL && process.env.VISION_BASE_URL) {
+    list.push({
+      id: 'custom_vision',
+      key: process.env.VISION_API_KEY,
+      baseURL: process.env.VISION_BASE_URL,
+      model: process.env.VISION_MODEL,
+    })
+  }
   return list
 }
 

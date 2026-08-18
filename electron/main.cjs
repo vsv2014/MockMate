@@ -248,25 +248,40 @@ function getJwtSecret() {
 // MongoDB needed); set MONGO_URI to switch to Mongo. Data lives in userData.
 function startBackend() {
   const entry = path.join(app.getAppPath(), 'backend', 'server-entry.cjs')
-  if (!fs.existsSync(entry)) { console.error('[backend] entry not found:', entry); return }
-  ensurePortFree(Number(BACKEND_PORT) || 4000, 'backend').then(() => {
-  backendServer = fork(entry, [], {
-    cwd: path.join(app.getAppPath(), 'backend'),
-    env: {
-      ...process.env,
-      PORT: BACKEND_PORT,
-      JWT_SECRET: getJwtSecret(),
-      JWT_EXPIRES: process.env.JWT_EXPIRES || '7d',
-      MOCKMATE_DATA_DIR: app.getPath('userData'),   // file store lives beside the user's keys
-      NODE_ENV: 'production',
-    },
-    stdio: 'pipe',
-  })
-  backendServer.stdout?.on('data', d => console.log('[backend]', d.toString().trim()))
-  backendServer.stderr?.on('data', d => console.error('[backend]', d.toString().trim()))
-  backendServer.on('error', e => console.error('[backend] fork error:', e.message))
-  backendServer.on('exit', code => { if (code) console.error('[backend] exited with code', code) })
-  }).catch(e => console.error('[backend] ensurePortFree failed:', e.message))
+  if (!fs.existsSync(entry)) return Promise.reject(new Error(`backend entry not found: ${entry}`))
+  return ensurePortFree(Number(BACKEND_PORT) || 4000, 'backend').then(() => new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (fn, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      fn(value)
+    }
+    backendServer = fork(entry, [], {
+      cwd: path.join(app.getAppPath(), 'backend'),
+      env: {
+        ...process.env,
+        PORT: BACKEND_PORT,
+        JWT_SECRET: getJwtSecret(),
+        JWT_EXPIRES: process.env.JWT_EXPIRES || '7d',
+        MOCKMATE_DATA_DIR: app.getPath('userData'),   // file store lives beside the user's keys
+        NODE_ENV: 'production',
+      },
+      stdio: 'pipe',
+    })
+    const timer = setTimeout(() => finish(reject, new Error(`auth backend did not become ready on port ${BACKEND_PORT}`)), 10_000)
+    backendServer.stdout?.on('data', d => console.log('[backend]', d.toString().trim()))
+    backendServer.stderr?.on('data', d => console.error('[backend]', d.toString().trim()))
+    backendServer.on('message', msg => {
+      if (msg?.type === 'ready') finish(resolve, msg)
+      else if (msg?.type === 'server-error') finish(reject, new Error(msg.message || msg.code || 'backend startup failed'))
+    })
+    backendServer.on('error', e => finish(reject, e))
+    backendServer.on('exit', code => {
+      if (code) console.error('[backend] exited with code', code)
+      if (!settled) finish(reject, new Error(`auth backend exited before ready (${code ?? 'unknown'})`))
+    })
+  }))
 }
 
 function createSetupWindow() {
@@ -310,7 +325,10 @@ function createMainWindow() {
     icon: iconPath(),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   })
-  mainWindow.setContentProtection(true)
+  // Privacy-first startup: protect immediately so there is no brief capturable
+  // frame before React mounts. The user can explicitly turn Stealth off to
+  // test/demo the overlay.
+  mainWindow.setContentProtection(process.platform !== 'linux')
   // Default pinned (matches renderer mm-pinned default) so Live stays when switching to Zoom.
   pinnedState = true
   try {
@@ -503,11 +521,10 @@ async function listScreenDisplays() {
   }
 }
 
-// Protect EVERY window from screen capture — including the Document Picture-in-
-// Picture "hints" window the renderer opens during a session (it's a separate
-// top-level window that doesn't inherit the main window's affinity). No-op on Linux.
+// New windows start unprotected. Explicit protected-hints actions opt their
+// window in; normal MockMate windows remain visible in capture when Stealth is off.
 app.on('browser-window-created', (_, win) => {
-  try { win.setContentProtection(process.platform !== 'linux') } catch {}
+  try { win.setContentProtection(false) } catch {}
 })
 
 // Silent auto-update: download new releases in the background and install on the
@@ -573,12 +590,29 @@ if (!gotTheLock) {
     }
   })
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     loadEnv()
     // Fork a LOCAL auth backend only when NOT pointed at a hosted one. With MOCKMATE_API_BASE set
     // (production / Mongo-backed), the desktop talks to the hosted backend over HTTPS — no local
     // fork, and DB credentials (MONGO_URI) never ship on the client.
-    if (!process.env.MOCKMATE_API_BASE) startBackend()
+    if (!process.env.MOCKMATE_API_BASE) {
+      try {
+        await startBackend()
+      } catch (e) {
+        console.error('[backend] startup failed:', e.message)
+        // Authentication is optional: BYOK/guest interview modes use the local AI
+        // server and must remain available when the account service is unhealthy.
+        // AuthGate will surface normal connection errors if sign-in is attempted.
+        dialog.showMessageBox({
+          type: 'warning',
+          title: 'MockMate account service is unavailable',
+          message: 'Sign-in and account creation are temporarily unavailable.',
+          detail: `${e.message}\n\nYou can still continue without an account and use your own API keys. Restart MockMate to retry the account service.`,
+          buttons: ['Continue without account'],
+          defaultId: 0,
+        }).catch(() => {})
+      }
+    }
     // ALWAYS open the single overlay window — no separate setup window. With the
     // bundled .env keys present it goes straight to work; if no keys are found the
     // overlay shows its inline "Add your API keys" form. One window, never two.
@@ -645,7 +679,23 @@ ipcMain.handle('capture-screen', (_, opts) => captureScreen(opts || {}))   // "S
 ipcMain.handle('list-screen-displays', () => listScreenDisplays())
 // PiP windows are auto-protected by the browser-window-created listener above.
 // This confirms it to the renderer so it can warn honestly on Linux (no protection).
-ipcMain.handle('exclude-from-capture', () => ({ ok: process.platform !== 'linux', id: 'pip' }))
+ipcMain.handle('set-content-protection', (_e, on) => {
+  if (process.platform === 'linux') return { ok: false, unsupported: true }
+  try {
+    mainWindow?.setContentProtection(!!on)
+    return { ok: true, enabled: !!on }
+  } catch (e) { return { ok: false, error: e.message } }
+})
+ipcMain.handle('exclude-from-capture', e => {
+  if (process.platform === 'linux') return { ok: false, unsupported: true }
+  try {
+    // Document PiP is normally the focused top-level window even though the IPC
+    // bridge belongs to the opener's webContents.
+    const owner = BrowserWindow.getFocusedWindow() || BrowserWindow.fromWebContents(e.sender)
+    owner?.setContentProtection(true)
+    return { ok: true, id: owner?.id || 'window' }
+  } catch (err) { return { ok: false, error: err.message } }
+})
 ipcMain.on('get-userdata-path', e => { e.returnValue = app.getPath('userData') })
 
 // ── Duo co-pilot window (Phase 3) ───────────────────────────────────────────
