@@ -119,7 +119,7 @@ describe('manual screen capture precedence', () => {
         return JSON.stringify({
           contentType: 'coding', screenFamily: 'screen_code', isContinuation: true,
           detectedText: 'Write an asynchronous test that sends requests with at most five concurrent requests',
-          language: 'Python', code: 'async def run():\n    return 5\nprint(run())', approach: ['semaphore'], edgeCases: [],
+          language: 'Python', code: 'async def run():\n    return 5', runnableCode: 'async def run():\n    return 5\nprint(run())', approach: ['semaphore'], edgeCases: [],
           keyPoints: [], fullAnswer: 'Use a semaphore capped at five.',
         })
       },
@@ -180,7 +180,7 @@ describe('manual screen capture precedence', () => {
         visionPrompt = prompt
         return JSON.stringify({
           contentType: 'coding', screenFamily: 'screen_code', detectedText: 'find largest',
-          language: 'JavaScript', code: 'function max(a) { return Math.max(...a) }',
+          language: 'JavaScript', code: 'function max(a) { return Math.max(...a) }', runnableCode: 'function max(a) { return Math.max(...a) }\nconsole.log(max([1, 2]))',
           approach: ['scan'], edgeCases: ['empty'], keyPoints: [], fullAnswer: 'scan once',
         })
       },
@@ -188,7 +188,7 @@ describe('manual screen capture precedence', () => {
         rewritePrompt = prompt
         return JSON.stringify({
           contentType: 'coding', screenFamily: 'screen_code', detectedText: 'find largest',
-          language: 'Python', code: 'def max_value(values):\n    return max(values)\nprint(max_value([1, 2]))',
+          language: 'Python', code: 'def max_value(values):\n    return max(values)', runnableCode: 'def max_value(values):\n    return max(values)\nprint(max_value([1, 2]))',
           approach: ['scan'], edgeCases: ['empty'], keyPoints: [], fullAnswer: 'scan once',
         })
       },
@@ -198,7 +198,7 @@ describe('manual screen capture precedence', () => {
     expect(visionPrompt).toMatch(/public class Main/i)
     expect(visionPrompt).toMatch(/illustrative/i)
     expect(rewritePrompt).toMatch(/explicitly selected Python/i)
-    expect(rewritePrompt).toMatch(/online-compiler-ready/i)
+    expect(rewritePrompt).toMatch(/runnableCode/i)
     expect(out.language).toBe('Python')
     expect(out.code).toMatch(/^def /)
     expect(out.code).not.toMatch(/function /)

@@ -893,8 +893,9 @@ function highlightCode(code) {
 }
 
 // ── Code block with one-tap copy + syntax highlighting — the core of Coding mode ──
-export function CodeBlock({ code, language }) {
+export function CodeBlock({ code, runnableCode, language }) {
   const [copied, setCopied] = useState(false)
+  const [copiedRunnable, setCopiedRunnable] = useState(false)
   const [runState, setRunState] = useState(null)
   async function copy() {
     const ok = await copyText(code || '')
@@ -902,9 +903,14 @@ export function CodeBlock({ code, language }) {
   }
   async function run() {
     setRunState({ running: true })
-    setRunState(await runJavaScriptIsolated(code))
+    setRunState(await runJavaScriptIsolated(runnableCode || code))
+  }
+  async function copyRunnable() {
+    const ok = await copyText(runnableCode || '')
+    if (ok) { setCopiedRunnable(true); setTimeout(() => setCopiedRunnable(false), 1500) }
   }
   const runnable = canRunLanguage(language)
+  const hasSeparateRunnable = Boolean(runnableCode && String(runnableCode).trim() !== String(code || '').trim())
   return (
     <div style={{ background: '#0d1117', border: '1px solid #1f2733', borderRadius: 8, marginBottom: 8, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderBottom: '1px solid #1f2733', background: 'rgba(255,255,255,0.02)' }}>
@@ -918,13 +924,23 @@ export function CodeBlock({ code, language }) {
           style={{ marginLeft: 'auto', color: '#7d8590', fontSize: 9 }}>
           Preview · Run supports JS only
         </span>}
-        <button onClick={copy} style={{ marginLeft: runnable ? 0 : 6, background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copied ? '#4ade80' : T.text2, border: 'none', borderRadius: 5, padding: '2px 9px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
-          {copied ? '✓ Copied' : '⧉ Copy'}
+        <button onClick={copy} title="Copy the clean interview-platform solution" style={{ marginLeft: runnable ? 0 : 6, background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copied ? '#4ade80' : T.text2, border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+          {copied ? '✓ Copied' : '⧉ Solution'}
         </button>
+        {hasSeparateRunnable && <button onClick={copyRunnable} title="Copy standalone code for Programiz or another online compiler"
+          style={{ background: copiedRunnable ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copiedRunnable ? '#4ade80' : T.text2, border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+          {copiedRunnable ? '✓ Copied' : '⧉ Runnable'}
+        </button>}
       </div>
       <pre style={{ margin: 0, padding: '10px 12px', overflowX: 'auto', maxHeight: 260 }}>
         <code style={{ fontFamily: "'Menlo','Consolas',monospace", fontSize: 12, lineHeight: 1.6, color: '#e6edf3', whiteSpace: 'pre' }}>{highlightCode(code || '')}</code>
       </pre>
+      {hasSeparateRunnable && <details style={{ borderTop: '1px solid #1f2733' }}>
+        <summary style={{ padding: '6px 10px', cursor: 'pointer', color: '#7d8590', fontSize: 10 }}>Runnable version · online compiler</summary>
+        <pre style={{ margin: 0, padding: '10px 12px', overflowX: 'auto', maxHeight: 220, borderTop: '1px solid #1f2733' }}>
+          <code style={{ fontFamily: "'Menlo','Consolas',monospace", fontSize: 12, lineHeight: 1.6, color: '#e6edf3', whiteSpace: 'pre' }}>{highlightCode(runnableCode)}</code>
+        </pre>
+      </details>}
       {runState && !runState.running && <div role="status" style={{ padding: '6px 10px', borderTop: '1px solid #1f2733', fontFamily: 'monospace', whiteSpace: 'pre-wrap', fontSize: 10, color: runState.ok ? '#86efac' : '#fca5a5', maxHeight: 100, overflow: 'auto' }}>
         {runState.ok
           ? ([...(runState.logs || []), runState.result].filter(x => x != null && x !== '').join('\n') || '✓ JavaScript loaded successfully. Add a function call or console.log to see output.')
@@ -1024,7 +1040,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
                     ))}
                   </div>
                 )}
-                {record.code && <CodeBlock code={record.code} language={record.language} />}
+                {record.code && <CodeBlock code={record.code} runnableCode={record.runnableCode} language={record.language} />}
                 {Array.isArray(record.testCases) && record.testCases.length > 0 && (
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>SAMPLE TESTS</div>

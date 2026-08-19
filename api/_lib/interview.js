@@ -690,7 +690,8 @@ Prefer answering the visible question/task. Do not return a relevance warning wh
 
 For CODING problems:
 - ${language ? `EXPLICIT USER LANGUAGE OVERRIDE: Write the entire solution in ${codeLang}. Ignore any different language shown or requested in the screenshot; the user deliberately switched languages. Set "language" to exactly "${codeLang}".` : `Write the solution in ${codeLang} unless the visible task explicitly requires another language.`}
-- "code" = COMPLETE, STANDALONE online-compiler-ready solution — raw code, NO markdown fences. Include the required entry point plus one minimal executable sample invocation/input and print its result (console.log, print, stdout, etc.). For Java use public class Main; for C++/Go/C# include the normal main entry point. Keep the algorithm in a reusable function/method so the candidate can explain it.
+- "code" = clean interview-platform solution matching the requested function/class signature — raw code, NO markdown fences. Do not force demo prints or a main entry point into this field unless the visible question requires them.
+- "runnableCode" = separate COMPLETE, STANDALONE online-compiler-ready version of the same solution — raw code, NO markdown fences. Include the required entry point plus one minimal executable sample invocation/input and print its result (console.log, print, stdout, etc.). For Java use public class Main; for C++/Go/C# include the normal main entry point.
 - "testCases" = visible examples from the question when readable. Mark those with source "question". If the question has no example, add 1-2 small correctness checks and mark source "illustrative". Never present an invented value as the interviewer's expected output.
 - "approach" = 3-5 short steps; "edgeCases" = specific edges to mention.
 
@@ -707,7 +708,8 @@ Return ONE JSON object, no markdown:
   "complexity": "<coding only, else null>",
   "language": "<coding language or null>",
   "approach": ["<step>"],
-  "code": "<raw code or null>",
+  "code": "<raw interview-ready code or null>",
+  "runnableCode": "<raw standalone online-compiler code or null>",
   "testCases": [{ "input": "<input>", "expectedOutput": "<expected output>", "source": "question" | "illustrative" }],
   "edgeCases": ["<edge>"],
   "confidence": "resume" | "general",
@@ -723,7 +725,7 @@ Return ONE JSON object, no markdown:
     // "auto" is supported across OpenAI-compatible gateways and lets each
     // provider balance OCR quality, latency, and token cost.
     imageBase64: b64, mime: imageMime, detail: 'auto',
-    prompt: prompt + faster, maxTokens: fast ? 1400 : 1500,
+    prompt: prompt + faster, maxTokens: fast ? 1900 : 2400,
     requestId: rid, fingerprint: fingerprint || undefined,
     imageDimensions, signal,
   })
@@ -733,7 +735,7 @@ Return ONE JSON object, no markdown:
   } catch {
     const fixed = await _textCall({
       prompt: 'Convert the following into ONE valid JSON object matching the screen-analysis schema (contentType, screenFamily, detectedText, keyPoints, fullAnswer, code, approach, edgeCases, etc). Output ONLY JSON, no markdown.\n\n' + String(raw || '').slice(0, 8000),
-      maxTokens: 1500,
+      maxTokens: 2400,
       signal,
       requestId: rid,
     })
@@ -744,13 +746,13 @@ Return ONE JSON object, no markdown:
   // a text-only rewrite (no second screenshot/vision call).
   if (language && out && normalizeScreenContentType(out.screenFamily || out.contentType) === 'screen_code') {
     const rewritten = await _textCall({
-      prompt: `Rewrite this coding-solution JSON so the complete standalone, online-compiler-ready code is in ${codeLang}.
+      prompt: `Rewrite this coding-solution JSON so both code fields are completely in ${codeLang}.
 The user explicitly selected ${codeLang}; ignore any other language in the screenshot or existing solution.
-Include the language's normal entry point, one minimal executable sample invocation/input, and printed output. Preserve the detected problem, algorithm, complexity, approach, edge cases, testCases, and watch-out. Mark invented sanity tests as illustrative, never question-provided.
+Keep "code" as the clean interview-platform function/class solution. Put the language's normal entry point, one minimal executable sample invocation/input, and printed output only in separate "runnableCode". Preserve the detected problem, algorithm, complexity, approach, edge cases, testCases, and watch-out. Mark invented sanity tests as illustrative, never question-provided.
 Set "language" to exactly "${codeLang}". Return ONE valid JSON object only, no markdown fences.
 
 ${JSON.stringify(out).slice(0, 10000)}`,
-      maxTokens: 1500,
+      maxTokens: 2400,
       signal,
       requestId: `${rid}_lang`,
     })
@@ -758,10 +760,10 @@ ${JSON.stringify(out).slice(0, 10000)}`,
     out.language = codeLang
   }
   if (out && normalizeScreenContentType(out.screenFamily || out.contentType) === 'screen_code'
-      && !hasOnlineCompilerHarness(out.code, out.language || codeLang)) {
+      && !hasOnlineCompilerHarness(out.runnableCode, out.language || codeLang)) {
     const repaired = await _textCall({
       prompt: `Make this coding-solution JSON genuinely runnable in an online compiler for ${out.language || codeLang}.
-Keep the reusable algorithm, but make "code" standalone: include the normal entry point, one minimal sample invocation/input, and print the result. For Java use public class Main. For C++/Go/C# include main.
+Keep "code" as the clean interview-platform function/class solution. Create a separate "runnableCode" containing that algorithm plus the normal entry point, one minimal sample invocation/input, and printed result. For Java use public class Main. For C++/Go/C# include main.
 Add "testCases" with input, expectedOutput, and source. Preserve examples visible in detectedText as source "question"; otherwise use a small source "illustrative" sanity test. Never call an invented output interviewer-provided.
 Return ONE valid JSON object only, with raw code and no markdown fences.
 
@@ -775,6 +777,9 @@ ${JSON.stringify(out).slice(0, 10000)}`,
   }
   if (out && typeof out.code === 'string') {
     out.code = out.code.replace(/^\s*```[a-zA-Z0-9+#]*\n?/, '').replace(/\n?```\s*$/, '').trim()
+  }
+  if (out && typeof out.runnableCode === 'string') {
+    out.runnableCode = out.runnableCode.replace(/^\s*```[a-zA-Z0-9+#]*\n?/, '').replace(/\n?```\s*$/, '').trim()
   }
   if (out) {
     if (Array.isArray(out.testCases)) {
