@@ -5,9 +5,10 @@
 ### Fixed
 - JavaScript **Run JS** now works in packaged builds. The runner's dedicated Worker receives the narrowly scoped evaluation permission it requires, while the main renderer keeps its strict CSP and evaluated code remains unable to access the network, DOM, or persistent storage.
 - Successful execution of a function-only snippet now explains that a function call or `console.log` is required to display output instead of implying that missing output is a failure.
+- Coding answers now enforce a standalone online-compiler entry point, executable sample invocation/input, printed output, and structured sample tests in every supported language. Visible question examples are distinguished from MockMate-generated illustrative checks.
 
 ### Changed
-- Non-JavaScript code blocks explicitly say that execution currently supports JavaScript only; Python, Java, C++, TypeScript, Go, C#, and Ruby solutions remain syntax-highlighted and copyable without pretending a local compiler is available.
+- Non-JavaScript code blocks explicitly say that in-overlay execution currently supports JavaScript only. Python, Java, C++, TypeScript, Go, C#, and Ruby solutions remain syntax-highlighted, copyable, and generated as standalone programs for external online compilers without pretending a local compiler is installed.
 
 ## v1.4.9 — 2026-08-19
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pickPlaybook, packCandidateContext, analyzeScreen, answerRequirementBlock } from './interview.js'
+import { pickPlaybook, packCandidateContext, analyzeScreen, answerRequirementBlock, hasOnlineCompilerHarness } from './interview.js'
 import { classifyTurn } from '../../shared/interviewClassify.js'
 import { glanceLayers } from '../../shared/hintLayers.js'
 
@@ -18,6 +18,24 @@ describe('current-turn output and evidence contracts', () => {
     const out = answerRequirementBlock('Write the function in Python', { jobDescription: 'JavaScript' })
     expect(out).toMatch(/Use Python/i)
     expect(out).not.toMatch(/prefer JavaScript/i)
+  })
+})
+
+describe('online compiler harness detection', () => {
+  it.each([
+    ['JavaScript', 'function solve(a) { return a.length }\nconsole.log(solve([1, 2]))'],
+    ['Python', 'def solve(a): return len(a)\nprint(solve([1, 2]))'],
+    ['Java', 'public class Main { public static void main(String[] a) { System.out.println(2); } }'],
+    ['C++', '#include <iostream>\nint main() { std::cout << 2; }'],
+    ['Go', 'package main\nimport "fmt"\nfunc main() { fmt.Println(2) }'],
+    ['C#', 'class Program { static void Main() { Console.WriteLine(2); } }'],
+    ['Ruby', 'def solve(a) a.length end\nputs solve([1,2])'],
+  ])('accepts a standalone %s example', (language, code) => {
+    expect(hasOnlineCompilerHarness(code, language)).toBe(true)
+  })
+
+  it('rejects a function-only JavaScript answer with no printed invocation', () => {
+    expect(hasOnlineCompilerHarness('function solve(a) { return a.length }', 'JavaScript')).toBe(false)
   })
 })
 
@@ -101,7 +119,7 @@ describe('manual screen capture precedence', () => {
         return JSON.stringify({
           contentType: 'coding', screenFamily: 'screen_code', isContinuation: true,
           detectedText: 'Write an asynchronous test that sends requests with at most five concurrent requests',
-          language: 'Python', code: 'async def run():\n    pass', approach: ['semaphore'], edgeCases: [],
+          language: 'Python', code: 'async def run():\n    return 5\nprint(run())', approach: ['semaphore'], edgeCases: [],
           keyPoints: [], fullAnswer: 'Use a semaphore capped at five.',
         })
       },
@@ -170,13 +188,17 @@ describe('manual screen capture precedence', () => {
         rewritePrompt = prompt
         return JSON.stringify({
           contentType: 'coding', screenFamily: 'screen_code', detectedText: 'find largest',
-          language: 'Python', code: 'def max_value(values):\n    return max(values)',
+          language: 'Python', code: 'def max_value(values):\n    return max(values)\nprint(max_value([1, 2]))',
           approach: ['scan'], edgeCases: ['empty'], keyPoints: [], fullAnswer: 'scan once',
         })
       },
     })
     expect(visionPrompt).toMatch(/EXPLICIT USER LANGUAGE OVERRIDE/i)
+    expect(visionPrompt).toMatch(/STANDALONE online-compiler-ready/i)
+    expect(visionPrompt).toMatch(/public class Main/i)
+    expect(visionPrompt).toMatch(/illustrative/i)
     expect(rewritePrompt).toMatch(/explicitly selected Python/i)
+    expect(rewritePrompt).toMatch(/online-compiler-ready/i)
     expect(out.language).toBe('Python')
     expect(out.code).toMatch(/^def /)
     expect(out.code).not.toMatch(/function /)

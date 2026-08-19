@@ -617,6 +617,20 @@ Return ONE JSON object, no prose:
   return report
 }
 
+export function hasOnlineCompilerHarness(code = '', language = '') {
+  const src = String(code || '')
+  const lang = String(language || '').toLowerCase().replace(/\s+/g, '')
+  if (!src.trim()) return false
+  if (/^(javascript|js|node|nodejs|typescript|ts)$/.test(lang)) return /console\.log\s*\(|process\.stdout\.write\s*\(/.test(src)
+  if (/^python/.test(lang)) return /\bprint\s*\(/.test(src)
+  if (/^(java)$/.test(lang)) return /public\s+static\s+void\s+main\s*\(/.test(src) && /System\.out\.(?:print|println)\s*\(/.test(src)
+  if (/^(c\+\+|cpp)$/.test(lang)) return /\b(?:int|auto)\s+main\s*\(/.test(src) && /(?:std::)?cout\s*<<|printf\s*\(/.test(src)
+  if (/^(go|golang)$/.test(lang)) return /package\s+main/.test(src) && /func\s+main\s*\(/.test(src) && /fmt\.Print/.test(src)
+  if (/^(c#|csharp)$/.test(lang)) return /static\s+void\s+Main\s*\(/i.test(src) && /Console\.Write/i.test(src)
+  if (/^ruby/.test(lang)) return /(^|\s)(puts|print|p)\s+/m.test(src)
+  return true
+}
+
 export async function analyzeScreen({
   imageBase64, profile = {}, language, style = 'balanced', mime,
   spokenQuestion = '', contentTypeHint = '',
@@ -676,7 +690,8 @@ Prefer answering the visible question/task. Do not return a relevance warning wh
 
 For CODING problems:
 - ${language ? `EXPLICIT USER LANGUAGE OVERRIDE: Write the entire solution in ${codeLang}. Ignore any different language shown or requested in the screenshot; the user deliberately switched languages. Set "language" to exactly "${codeLang}".` : `Write the solution in ${codeLang} unless the visible task explicitly requires another language.`}
-- "code" = COMPLETE runnable solution with signature — raw code, NO markdown fences.
+- "code" = COMPLETE, STANDALONE online-compiler-ready solution — raw code, NO markdown fences. Include the required entry point plus one minimal executable sample invocation/input and print its result (console.log, print, stdout, etc.). For Java use public class Main; for C++/Go/C# include the normal main entry point. Keep the algorithm in a reusable function/method so the candidate can explain it.
+- "testCases" = visible examples from the question when readable. Mark those with source "question". If the question has no example, add 1-2 small correctness checks and mark source "illustrative". Never present an invented value as the interviewer's expected output.
 - "approach" = 3-5 short steps; "edgeCases" = specific edges to mention.
 
 BANNED WORDS: ${BANNED_WORDS}.
@@ -693,6 +708,7 @@ Return ONE JSON object, no markdown:
   "language": "<coding language or null>",
   "approach": ["<step>"],
   "code": "<raw code or null>",
+  "testCases": [{ "input": "<input>", "expectedOutput": "<expected output>", "source": "question" | "illustrative" }],
   "edgeCases": ["<edge>"],
   "confidence": "resume" | "general",
   "resumeStory": "<behavioral+resume match only, else null>",
@@ -728,9 +744,9 @@ Return ONE JSON object, no markdown:
   // a text-only rewrite (no second screenshot/vision call).
   if (language && out && normalizeScreenContentType(out.screenFamily || out.contentType) === 'screen_code') {
     const rewritten = await _textCall({
-      prompt: `Rewrite this coding-solution JSON so the complete runnable code is in ${codeLang}.
+      prompt: `Rewrite this coding-solution JSON so the complete standalone, online-compiler-ready code is in ${codeLang}.
 The user explicitly selected ${codeLang}; ignore any other language in the screenshot or existing solution.
-Preserve the detected problem, algorithm, complexity, approach, edge cases, and watch-out.
+Include the language's normal entry point, one minimal executable sample invocation/input, and printed output. Preserve the detected problem, algorithm, complexity, approach, edge cases, testCases, and watch-out. Mark invented sanity tests as illustrative, never question-provided.
 Set "language" to exactly "${codeLang}". Return ONE valid JSON object only, no markdown fences.
 
 ${JSON.stringify(out).slice(0, 10000)}`,
@@ -741,10 +757,33 @@ ${JSON.stringify(out).slice(0, 10000)}`,
     out = extractJSON(rewritten)
     out.language = codeLang
   }
+  if (out && normalizeScreenContentType(out.screenFamily || out.contentType) === 'screen_code'
+      && !hasOnlineCompilerHarness(out.code, out.language || codeLang)) {
+    const repaired = await _textCall({
+      prompt: `Make this coding-solution JSON genuinely runnable in an online compiler for ${out.language || codeLang}.
+Keep the reusable algorithm, but make "code" standalone: include the normal entry point, one minimal sample invocation/input, and print the result. For Java use public class Main. For C++/Go/C# include main.
+Add "testCases" with input, expectedOutput, and source. Preserve examples visible in detectedText as source "question"; otherwise use a small source "illustrative" sanity test. Never call an invented output interviewer-provided.
+Return ONE valid JSON object only, with raw code and no markdown fences.
+
+${JSON.stringify(out).slice(0, 10000)}`,
+      maxTokens: 2200,
+      signal,
+      requestId: `${rid}_runnable`,
+    })
+    out = extractJSON(repaired)
+    out.language = out.language || codeLang
+  }
   if (out && typeof out.code === 'string') {
     out.code = out.code.replace(/^\s*```[a-zA-Z0-9+#]*\n?/, '').replace(/\n?```\s*$/, '').trim()
   }
   if (out) {
+    if (Array.isArray(out.testCases)) {
+      out.testCases = out.testCases.slice(0, 4).map(test => ({
+        input: String(test?.input ?? '').slice(0, 500),
+        expectedOutput: String(test?.expectedOutput ?? '').slice(0, 500),
+        source: test?.source === 'question' ? 'question' : 'illustrative',
+      }))
+    }
     const family = normalizeScreenContentType(out.screenFamily || out.contentType)
     out.screenFamily = family
     out.contentType = toLegacyContentType(family)

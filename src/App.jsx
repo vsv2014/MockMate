@@ -1025,6 +1025,20 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
                   </div>
                 )}
                 {record.code && <CodeBlock code={record.code} language={record.language} />}
+                {Array.isArray(record.testCases) && record.testCases.length > 0 && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>SAMPLE TESTS</div>
+                    {record.testCases.slice(0, 4).map((test, i) => (
+                      <div key={i} style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '5px 7px', marginBottom: 4, fontFamily: 'monospace', fontSize: 10, color: T.text2 }}>
+                        <div><span style={{ color: T.text3 }}>input:</span> {String(test?.input ?? '')}</div>
+                        <div><span style={{ color: T.text3 }}>expected:</span> {String(test?.expectedOutput ?? '')}</div>
+                        <div style={{ color: test?.source === 'question' ? '#86efac' : '#fbbf24', marginTop: 2, fontFamily: T.font }}>
+                          {test?.source === 'question' ? 'From visible question' : 'Illustrative sanity test'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {Array.isArray(record.edgeCases) && record.edgeCases.length > 0 && (
                   <div style={{ marginBottom: 6 }}>
                     <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>EDGE CASES</div>

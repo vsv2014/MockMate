@@ -8,11 +8,13 @@ Windows hotfix for the packaged JavaScript coding runner.
 - Evaluation permission is restricted to the disposable code-runner Worker; the main MockMate window keeps its strict policy.
 - Runner code remains isolated from network, DOM, storage, and long-running execution.
 - Function-only snippets now explain why they produce no visible output.
+- Coding answers now include a standalone entry point, executable sample invocation/input, printed output, and labeled sample tests for external online compilers.
 
 ## Clarified
 
 - JavaScript is the only locally executable answer language in this release.
-- Python, Java, C++, TypeScript, Go, C#, and Ruby answers remain selectable, syntax-highlighted, and copyable.
+- Python, Java, C++, TypeScript, Go, C#, and Ruby answers remain selectable, syntax-highlighted, copyable, and online-compiler-ready; only their in-overlay execution is unavailable.
+- Visible interviewer examples are labeled separately from illustrative sanity tests generated when no example was provided.
 
 ## Validation
 
