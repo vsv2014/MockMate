@@ -11,6 +11,7 @@ import * as Sentry from '@sentry/node'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { registerApiRoutes } from './api/_lib/apiRoutes.js'
+import { CODE_RUNNER_WORKER_CSP } from './shared/codeRunnerPolicy.js'
 
 // Error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies so a
 // candidate's resume/transcript never rides along to Sentry (privacy-first).
@@ -67,6 +68,16 @@ app.use(helmet({
   },
   crossOriginResourcePolicy: false,
 }))
+
+// The disposable code runner intentionally evaluates candidate JavaScript inside a
+// dedicated Worker. Keep `unsafe-eval` out of the renderer's CSP and grant it only
+// to this one worker response. `connect-src 'none'` ensures evaluated code cannot
+// call the network even if it replaces the worker's stubbed browser APIs.
+app.get('/code-runner-worker.js', (_req, res) => {
+  res.setHeader('Content-Security-Policy', CODE_RUNNER_WORKER_CSP)
+  res.setHeader('Cache-Control', 'no-store')
+  res.sendFile(path.join(distDir, 'code-runner-worker.js'))
+})
 app.use(cors({ origin: [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/] }))
 app.use(express.json({ limit: '2mb' }))
 app.use('/api', rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }))

@@ -914,7 +914,11 @@ export function CodeBlock({ code, language }) {
           style={{ marginLeft: 'auto', background: 'rgba(94,234,212,0.1)', color: '#5eead4', border: '1px solid rgba(94,234,212,0.25)', borderRadius: 5, padding: '2px 9px', fontSize: 10, fontWeight: 600, cursor: runState?.running ? 'default' : 'pointer' }}>
           {runState?.running ? 'Running…' : '▶ Run JS'}
         </button>}
-        <button onClick={copy} style={{ marginLeft: runnable ? 0 : 'auto', background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copied ? '#4ade80' : T.text2, border: 'none', borderRadius: 5, padding: '2px 9px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+        {!runnable && <span title="Execution is currently available for JavaScript only; this solution can still be copied"
+          style={{ marginLeft: 'auto', color: '#7d8590', fontSize: 9 }}>
+          Preview · Run supports JS only
+        </span>}
+        <button onClick={copy} style={{ marginLeft: runnable ? 0 : 6, background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copied ? '#4ade80' : T.text2, border: 'none', borderRadius: 5, padding: '2px 9px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
           {copied ? '✓ Copied' : '⧉ Copy'}
         </button>
       </div>
@@ -923,7 +927,7 @@ export function CodeBlock({ code, language }) {
       </pre>
       {runState && !runState.running && <div role="status" style={{ padding: '6px 10px', borderTop: '1px solid #1f2733', fontFamily: 'monospace', whiteSpace: 'pre-wrap', fontSize: 10, color: runState.ok ? '#86efac' : '#fca5a5', maxHeight: 100, overflow: 'auto' }}>
         {runState.ok
-          ? ([...(runState.logs || []), runState.result].filter(x => x != null && x !== '').join('\n') || '✓ Executed successfully (no console output)')
+          ? ([...(runState.logs || []), runState.result].filter(x => x != null && x !== '').join('\n') || '✓ JavaScript loaded successfully. Add a function call or console.log to see output.')
           : `✗ ${runState.error || 'Execution failed'}`}
       </div>}
     </div>
