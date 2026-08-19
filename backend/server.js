@@ -8,7 +8,7 @@ import { initStore } from './src/store.js'
 import authRoutes from './src/routes/auth.js'
 import meRoutes from './src/routes/me.js'
 import { requireAuth } from './src/middleware/auth.js'
-import { checkCap, recordLlm } from './src/middleware/meter.js'
+import { checkCap, recordLlm, releaseLlm, enforceManagedModelPolicy } from './src/middleware/meter.js'
 import { registerApiRoutes } from '../api/_lib/apiRoutes.js'
 import billingRoutes, { stripeWebhook } from './src/routes/billing.js'
 
@@ -49,6 +49,7 @@ if (process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_WEBHOOK_SECRET) {
 process.env.MOCKMATE_MANAGED = '1'
 
 const app = express()
+if (PUBLIC_BIND) app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS || 1))
 // CORS allowlist — CORS_ORIGIN (comma-separated) from deploy docs; loopback always allowed for Electron.
 // Never use cors() with no options on a hosted backend (any website + stolen JWT → API abuse).
 const CORS_ALLOW = (process.env.CORS_ORIGIN || '')
@@ -74,6 +75,15 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), stripeWe
 
 app.use(express.json({ limit: '2mb' }))
 
+app.use((req, res, next) => {
+  const supplied = String(req.get('X-MockMate-Request-Id') || '')
+  req.requestId = /^[a-zA-Z0-9_-]{6,96}$/.test(supplied) ? supplied : `srv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+  res.setHeader('X-MockMate-Request-Id', req.requestId)
+  const started = Date.now()
+  res.on('finish', () => console.log(JSON.stringify({ ts: new Date().toISOString(), component: 'http', event: 'request_completed', requestId: req.requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - started, authenticated: !!req.userId })))
+  next()
+})
+
 app.get('/health', (req, res) => res.json({ ok: true }))
 app.use('/auth', authRoutes)
 app.use('/me', meRoutes)
@@ -85,7 +95,12 @@ app.use('/billing', billingRoutes)    // /billing/checkout + /billing/portal (au
 // auth      = requireAuth + LLM-response cap (gates the LLM routes).
 // authLight = requireAuth only — for /api/deepgram-token, so transcription can start/reconnect
 //             even when the user has hit their monthly AI-response cap (STT is metered separately).
-registerApiRoutes(app, { auth: [requireAuth, checkCap], authLight: [requireAuth], onLlm: recordLlm })
+registerApiRoutes(app, {
+  auth: [requireAuth, checkCap, enforceManagedModelPolicy],
+  authLight: [requireAuth],
+  onLlm: recordLlm,
+  onLlmFailure: releaseLlm,
+})
 
 const PORT = Number(process.env.PORT) || 4000
 

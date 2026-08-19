@@ -44,6 +44,7 @@ export function registerApiRoutes(app, opts = {}) {
   const guardLight = opts.authLight ? [].concat(opts.authLight) : guard
   const report = typeof opts.report === 'function' ? opts.report : () => {}
   const onLlm = typeof opts.onLlm === 'function' ? opts.onLlm : null
+  const onLlmFailure = typeof opts.onLlmFailure === 'function' ? opts.onLlmFailure : null
 
   // ── Metadata — gated on managed proxy; open on local BYOK ──
   app.get('/api/providers', ...guardLight, (req, res) => res.json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured() }))
@@ -87,6 +88,7 @@ export function registerApiRoutes(app, opts = {}) {
       if (onLlm) { try { await onLlm(req, path) } catch {} }   // metering must NEVER break the response
       res.json(key ? { [key]: out } : out)
     } catch (e) {
+      if (onLlmFailure) { try { await onLlmFailure(req, path) } catch {} }
       report(e); console.error(`[api] POST ${path} → ${e.status || 500}: ${e.message}`)
       res.status(e.status || 500).json({ error: e.message })
     }
@@ -104,6 +106,7 @@ export function registerApiRoutes(app, opts = {}) {
       if (onLlm) { try { await onLlm(req, '/api/analyze-screen') } catch {} }
       if (!ac.signal.aborted) res.json({ analysis: out })
     } catch (e) {
+      if (onLlmFailure) { try { await onLlmFailure(req, '/api/analyze-screen') } catch {} }
       if (ac.signal.aborted || e?.name === 'AbortError') return
       report(e)
       console.error(`[api] POST /api/analyze-screen → ${e.status || 500}: ${e.message}`)
@@ -128,11 +131,14 @@ export function registerApiRoutes(app, opts = {}) {
     const send = (event, data) => { if (!closed) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`) }
     try {
       const out = await streamHint(req.body || {}, {
-        onMeta: m => send('meta', m), onToken: t => send('token', t), onUsage: u => send('usage', u), signal: ac.signal
+        onMeta: m => send('meta', m), onToken: t => send('token', t), onUsage: u => send('usage', u),
+        onProviderEvent: e => send('provider', e), signal: ac.signal
       })
-      if (onLlm && !out?.skipped) { try { await onLlm(req, '/api/hint-stream') } catch {} }
+      if (out?.skipped) { if (onLlmFailure) { try { await onLlmFailure(req, '/api/hint-stream') } catch {} } }
+      else if (onLlm) { try { await onLlm(req, '/api/hint-stream') } catch {} }
       send(out?.skipped ? 'skip' : 'done', {})
     } catch (e) {
+      if (onLlmFailure) { try { await onLlmFailure(req, '/api/hint-stream') } catch {} }
       if (!closed && !ac.signal.aborted && e?.name !== 'AbortError') { report(e); send('error', { error: e.message }) }
     }
     if (!closed) res.end()

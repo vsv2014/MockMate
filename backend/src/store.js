@@ -135,6 +135,8 @@ function makeFileBackend() {
       await persist()
       return r
     },
+    async reserveLlmUsage() { return true },
+    async releaseLlmUsage() { return true },
   }
 }
 
@@ -199,6 +201,24 @@ async function makeMongoBackend() {
         { $inc: { llmCalls, sttSeconds } },
         { new: true, upsert: true }
       )
+    },
+    async reserveLlmUsage(userId, period, limit) {
+      try {
+        await Usage.updateOne({ userId, period }, { $setOnInsert: { llmCalls: 0, sttSeconds: 0 } }, { upsert: true })
+      } catch (e) {
+        // Two first requests can race to create the monthly row; the unique index safely picks one.
+        if (e?.code !== 11000) throw e
+      }
+      const reserved = await Usage.findOneAndUpdate(
+        { userId, period, llmCalls: { $lt: limit } },
+        { $inc: { llmCalls: 1 } },
+        { new: true }
+      )
+      return !!reserved
+    },
+    async releaseLlmUsage(userId, period) {
+      await Usage.updateOne({ userId, period, llmCalls: { $gt: 0 } }, { $inc: { llmCalls: -1 } })
+      return true
     },
   }
 }

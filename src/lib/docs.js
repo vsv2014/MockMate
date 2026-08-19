@@ -4,6 +4,7 @@
 import { apiFetch } from './apiClient'
 import { chunkText, topK, groundingBlock } from '../../shared/retrieval.js'
 import { getDocThreshold } from './aiSettings'
+import { diagnostic } from './diagnostics'
 
 const KEY = 'mm-docs'
 const load = () => {
@@ -152,9 +153,19 @@ export function removeDoc(id) { save(load().filter(d => d.id !== id)); indexCach
 // ── Embedded index (in-memory, rebuilt on change) ──
 const indexCache = new Map()   // docId → { sig, chunks:[{text,vector}] }
 async function embed(texts) {
+  const startedAt = performance.now()
+  const inputCount = Array.isArray(texts) ? texts.length : 0
   const r = await apiFetch('/api/embed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input: texts }) })
-  if (!r.ok) throw new Error(`embed ${r.status}`)
-  return (await r.json()).vectors || []
+  if (!r.ok) {
+    diagnostic('rag', 'embedding_failed', { status: r.status, inputCount, durationMs: Math.round(performance.now() - startedAt) }, 'warn')
+    throw new Error(`embed ${r.status}`)
+  }
+  const vectors = (await r.json()).vectors || []
+  diagnostic('rag', 'embedding_completed', {
+    inputCount, vectorCount: vectors.length, dimensions: vectors[0]?.length || 0,
+    durationMs: Math.round(performance.now() - startedAt),
+  })
+  return vectors
 }
 
 export function warmDocs(docIds) {
@@ -218,18 +229,43 @@ export async function retrieveContext(question, { k = 4, minScore, budgetMs = 20
   const docs = filterDocs(load(), { docIds, types })
   if (!docs.length) return ''
   const threshold = typeof minScore === 'number' ? minScore : getDocThreshold()
+  const startedAt = performance.now()
+  let deadlineExceeded = false
+  diagnostic('rag', 'retrieval_started', { documentCount: docs.length, requestedK: k, threshold, budgetMs })
   const work = (async () => {
     const items = await ensureIndexed(docs)
-    if (!items.length) return ''
+    if (!items.length) {
+      diagnostic('rag', deadlineExceeded ? 'retrieval_completed_after_timeout' : 'retrieval_completed', { documentCount: docs.length, indexedChunkCount: 0, hitCount: 0, durationMs: Math.round(performance.now() - startedAt) })
+      return ''
+    }
     const [qv] = await embed([question])
-    if (!qv?.length) return ''
+    if (!qv?.length) {
+      diagnostic('rag', deadlineExceeded ? 'retrieval_completed_after_timeout' : 'retrieval_completed', { documentCount: docs.length, indexedChunkCount: items.length, hitCount: 0, durationMs: Math.round(performance.now() - startedAt) })
+      return ''
+    }
     let chunks = topK(qv, items, { k, minScore: threshold })
     // Soft: if threshold empties the pack, keep the best 1–2 chunks rather than silence.
     if (!chunks.length) chunks = topK(qv, items, { k: Math.min(2, k), minScore: 0 })
+    diagnostic('rag', deadlineExceeded ? 'retrieval_completed_after_timeout' : 'retrieval_completed', {
+      documentCount: docs.length, indexedChunkCount: items.length, hitCount: chunks.length,
+      maxScore: chunks.length ? Number(Math.max(...chunks.map(c => c.score)).toFixed(3)) : 0,
+      minScore: chunks.length ? Number(Math.min(...chunks.map(c => c.score)).toFixed(3)) : 0,
+      durationMs: Math.round(performance.now() - startedAt),
+    })
     return groundingBlock(chunks)
-  })().catch(() => '')
-  const timeout = new Promise(res => setTimeout(() => res(''), budgetMs))
-  return Promise.race([work, timeout])
+  })().catch(e => {
+    diagnostic('rag', deadlineExceeded ? 'retrieval_failed_after_timeout' : 'retrieval_failed', { reason: e?.name || 'error', durationMs: Math.round(performance.now() - startedAt) }, 'warn')
+    return ''
+  })
+  let timeoutId
+  const timeout = new Promise(res => { timeoutId = setTimeout(() => {
+    deadlineExceeded = true
+    diagnostic('rag', 'retrieval_timed_out', { documentCount: docs.length, budgetMs, durationMs: Math.round(performance.now() - startedAt) }, 'warn')
+    res('')
+  }, budgetMs) })
+  const result = await Promise.race([work, timeout])
+  clearTimeout(timeoutId)
+  return result
 }
 
 /** Pure helper for tests — filter without I/O. */

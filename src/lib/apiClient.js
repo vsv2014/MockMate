@@ -1,5 +1,5 @@
 // Client-side /api router (Phase 2b B5). One drop-in replacement for fetch('/api/…'):
-//   • Managed mode  → the hosted/authed backend (getApiBase → MOCKMATE_API_BASE, else :4000),
+//   • Managed mode  → the hosted/authed backend baked by release CI (local :4000 only in development),
 //                     with the user's JWT attached → metered per user (Mongo when hosted).
 //   • BYOK mode     → relative /api (the local private server on :3002). No auth, keys stay local.
 // Same signature as fetch(path, opts) and returns a Response, so call sites don't change shape.
@@ -8,8 +8,8 @@ import { getToken } from '../auth/api'
 import { diagnostic, createDiagnosticRequestId } from './diagnostics'
 
 function managedBase() {
-  return (typeof window !== 'undefined' && window.electronAPI?.getApiBase?.())
-    || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE)
+  return (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.electronAPI?.getApiBase?.())
     || 'http://localhost:4000'
 }
 
@@ -19,6 +19,7 @@ export async function apiFetch(path, opts = {}) {
   const requestId = diagnosticRequestId || createDiagnosticRequestId('api')
   const startedAt = performance.now()
   const headers = { ...(rest.headers || {}) }
+  headers['X-MockMate-Request-Id'] = requestId
   if (base) {   // managed → attach the JWT so the backend can auth + meter this user
     try { const t = await getToken(); if (t) headers.Authorization = `Bearer ${t}` } catch {}
   }

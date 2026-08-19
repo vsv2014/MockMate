@@ -23,8 +23,15 @@ import {
 // Forward metadata-only provider events to Electron's local diagnostic store when running in
 // the forked API process. Hosted/serverless runtimes have no IPC channel and simply skip it.
 function providerDiagnostic(event, fields = {}, level = 'info') {
-  try { process.send?.({ type: 'diagnostic', row: { component: 'llm', event, level, ...fields } }) } catch {}
+  const row = { component: 'llm', event, level, ...fields }
+  try {
+    if (process.send) process.send({ type: 'diagnostic', row })
+    else if (process.env.MOCKMATE_HOSTED === '1') console.log(JSON.stringify({ ts: new Date().toISOString(), ...row }))
+  } catch {}
 }
+
+let providerAttemptSequence = 0
+const newProviderAttemptId = () => `llm_${Date.now().toString(36)}_${(++providerAttemptSequence).toString(36)}`
 
 // ── Provider registry ───────────────────────────────────────────────────────
 // Keys live in env (server-side, never shipped to the browser). The client
@@ -35,6 +42,21 @@ function providerDiagnostic(event, fields = {}, level = 'info') {
 // degrades gracefully rather than breaking a session.
 const CATALOG = {
   // ── OpenAI ──
+  gpt_56_sol: {
+    label: 'GPT-5.6 Sol (maximum quality)', envKey: 'OPENAI_API_KEY',
+    baseURL: 'https://api.openai.com/v1',
+    model: () => process.env.OPENAI_MAX_MODEL || 'gpt-5.6-sol'
+  },
+  gpt_56_terra: {
+    label: 'GPT-5.6 Terra (balanced)', envKey: 'OPENAI_API_KEY',
+    baseURL: 'https://api.openai.com/v1',
+    model: () => process.env.OPENAI_BALANCED_MODEL || 'gpt-5.6-terra'
+  },
+  gpt_56_luna: {
+    label: 'GPT-5.6 Luna (fast)', envKey: 'OPENAI_API_KEY',
+    baseURL: 'https://api.openai.com/v1',
+    model: () => process.env.OPENAI_FAST_MODEL || 'gpt-5.6-luna'
+  },
   gpt_5: {
     label: 'GPT-5.4', envKey: 'OPENAI_API_KEY',
     baseURL: 'https://api.openai.com/v1',
@@ -79,10 +101,15 @@ const CATALOG = {
     model: () => process.env.CEREBRAS_MODEL || 'llama-3.3-70b'
   },
   // ── Anthropic via its OpenAI-compatible endpoint (works with the openai client) ──
-  claude_opus: {
-    label: 'Claude Opus 4.8', envKey: 'ANTHROPIC_API_KEY',
+  claude_fable: {
+    label: 'Claude Fable 5 (maximum quality)', envKey: 'ANTHROPIC_API_KEY',
     baseURL: 'https://api.anthropic.com/v1/',
-    model: () => process.env.ANTHROPIC_OPUS_MODEL || 'claude-opus-4-8'
+    model: () => process.env.ANTHROPIC_FABLE_MODEL || 'claude-fable-5'
+  },
+  claude_opus: {
+    label: 'Claude Opus 5', envKey: 'ANTHROPIC_API_KEY',
+    baseURL: 'https://api.anthropic.com/v1/',
+    model: () => process.env.ANTHROPIC_OPUS_MODEL || 'claude-opus-5'
   },
   claude_sonnet_5: {
     label: 'Claude Sonnet 5', envKey: 'ANTHROPIC_API_KEY',
@@ -97,8 +124,23 @@ const CATALOG = {
   claude_haiku: {
     label: 'Claude Haiku 4.5 (fast)', envKey: 'ANTHROPIC_API_KEY',
     baseURL: 'https://api.anthropic.com/v1/',
-    model: () => 'claude-haiku-4-5'
+    model: () => process.env.ANTHROPIC_HAIKU_MODEL || 'claude-haiku-4-5-20251001'
   }
+}
+
+// Populated by /api/models using the user's real key. Automatic routing may then choose a newer
+// stable model without guessing availability. Empty on cold start, where catalog defaults remain
+// the safe fallback until discovery completes.
+const discoveredModels = new Map()
+function rememberDiscovered(provider, model) {
+  if (!provider || !model) return
+  if (!discoveredModels.has(provider)) discoveredModels.set(provider, new Set())
+  discoveredModels.get(provider).add(model)
+}
+function newestDiscovered(provider, orderedIds) {
+  const known = discoveredModels.get(provider)
+  const found = orderedIds.find(id => known?.has(id))
+  return found ? `${provider}::${found}` : null
 }
 
 export function searchConfigured() {
@@ -123,17 +165,51 @@ export function availableProviders() {
 // Cerebras, GPT-5.4, Sonnet 5) stay selectable in the dropdown and remain in the failover queue.
 // FAST tier — Live hints / simple questions. Optimize time-to-first-token + generous limits.
 export function pickFastProvider() {
-  if (process.env.GEMINI_API_KEY) return 'gemini'          // 2.5-flash: fast, free, universally available
-  if (process.env.OPENAI_API_KEY) return 'openai_mini'     // gpt-4o-mini (override via OPENAI_MINI_MODEL)
+  // Prefer the model that current Gemini keys actually expose. 2.5/3 aliases are still
+  // selectable after live model discovery, but must not be the automatic first request.
+  if (process.env.GEMINI_API_KEY) return newestDiscovered('gemini', [
+    'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite',
+  ]) || 'gemini_flash_lite'
+  if (process.env.OPENAI_API_KEY) return newestDiscovered('openai', [
+    'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-4o-mini',
+  ]) || 'openai_mini'
   if (process.env.CEREBRAS_API_KEY) return 'cerebras'
   if (process.env.GROQ_API_KEY) return 'groq'
   return null
 }
 // STRONG tier — coding / system-design. A strong model the key can definitely use.
 export function pickStrongProvider() {
-  if (process.env.OPENAI_API_KEY) return 'openai'          // gpt-4o: strong + universally available
-  if (process.env.ANTHROPIC_API_KEY) return 'claude_opus'  // claude-opus-4-8
+  if (process.env.OPENAI_API_KEY) return newestDiscovered('openai', [
+    'gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4', 'gpt-4o',
+  ]) || 'openai'
+  if (process.env.ANTHROPIC_API_KEY) return newestDiscovered('claude_sonnet', [
+    'claude-sonnet-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-4-6',
+  ]) || 'claude_sonnet_5'
+  if (process.env.GEMINI_API_KEY) return newestDiscovered('gemini', [
+    'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite',
+  ]) || 'gemini_flash_lite'
   return pickFastProvider()
+}
+
+// MAXIMUM QUALITY — use only an exact model confirmed by the configured key. A catalog name
+// is not proof of account access, so cold starts fall back to the strong (conservative) lane.
+export function pickBestProvider() {
+  const candidates = [
+    process.env.ANTHROPIC_API_KEY && newestDiscovered('claude_sonnet', [
+      'claude-fable-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5',
+    ]),
+    process.env.OPENAI_API_KEY && newestDiscovered('openai', [
+      'gpt-5.6-sol', 'gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4-pro', 'gpt-5.4',
+    ]),
+    process.env.GEMINI_API_KEY && newestDiscovered('gemini', [
+      'gemini-3.6-pro', 'gemini-3.6-flash', 'gemini-3.5-pro', 'gemini-3.5-flash',
+    ]),
+  ].filter(Boolean)
+  return candidates[0] || pickStrongProvider()
+}
+
+export function _setDiscoveredModelsForTests(provider, models = []) {
+  discoveredModels.set(provider, new Set(models))
 }
 
 // EVERY model in the catalog, each flagged whether it has a key — for the UI dropdown.
@@ -153,7 +229,14 @@ export function allProviders() {
 // (best-effort discovery) so one bad key can't break the whole list.
 export async function listModels() {
   const out = []
-  const push = (provider, model, label) => { if (model) out.push({ id: `${provider}::${model}`, provider, model, label }) }
+  // A key may have been replaced in Settings. Never retain availability learned from the old
+  // credential; a failed refresh simply falls back to conservative catalog defaults.
+  for (const provider of ['openai', 'claude_sonnet', 'gemini', 'groq', 'cerebras']) discoveredModels.delete(provider)
+  const push = (provider, model, label) => {
+    if (!model) return
+    rememberDiscovered(provider, model)
+    out.push({ id: `${provider}::${model}`, provider, model, label })
+  }
   const settle = async (fn) => { try { await fn() } catch {} }
 
   await Promise.all([
@@ -195,6 +278,10 @@ export async function listModels() {
         .forEach(id => push('cerebras', id, `Cerebras · ${id}`))
     }),
   ].filter(Boolean))
+  providerDiagnostic('model_discovery_completed', {
+    modelCount: out.length,
+    providerCount: new Set(out.map(m => m.provider)).size,
+  })
   return out
 }
 
@@ -275,6 +362,8 @@ let lastWorkingVisionProvider = null
 // user's CHOSEN model comes back within the same interview instead of being switched
 // away for 5 minutes after one transient burst.
 const RATE_LIMIT_BAN_MS = 90 * 1000
+const HARD_FAILURE_BAN_MS = 15 * 60 * 1000
+const QUOTA_BAN_MS = 5 * 60 * 1000
 
 /** Permanent-looking provider failures — fail over (and briefly bench) before first token. */
 export function isProviderHardFail(e) {
@@ -292,17 +381,28 @@ export function shouldFailoverTextError(e, { emitted = false } = {}) {
 
 function banTextProvider(provId, ms = RATE_LIMIT_BAN_MS) {
   if (!provId) return
-  textBannedUntil[baseOf(provId)] = Date.now() + ms
+  // Aliases sharing one key/endpoint are one provider family. If gemini-2.5 is rejected,
+  // immediately trying two more hard-coded Gemini aliases only adds latency and repeats the
+  // same account/key failure. Store the cooldown against every sibling in that family.
+  const base = baseOf(provId)
+  const familyURL = baseUrlFor(base)
+  for (const id of availableProviders().map(p => p.id)) {
+    if (baseUrlFor(id) === familyURL) textBannedUntil[id] = Date.now() + ms
+  }
+  textBannedUntil[base] = Date.now() + ms
 }
 
 function noteTextProviderFailure(provId, e) {
-  if (isRateLimit(e) || isProviderHardFail(e)) banTextProvider(provId)
+  if (isQuotaExhausted(e)) banTextProvider(provId, QUOTA_BAN_MS)
+  else if (isProviderHardFail(e)) banTextProvider(provId, HARD_FAILURE_BAN_MS)
+  else if (isRateLimit(e)) banTextProvider(provId, RATE_LIMIT_BAN_MS)
 }
 
 /** Test helper — reset text/vision preference + text bans (vision cooldowns: visionPolicy). */
 export function _resetProviderHealthForTests() {
   lastWorkingTextProvider = null
   lastWorkingVisionProvider = null
+  discoveredModels.clear()
   for (const k of Object.keys(textBannedUntil)) delete textBannedUntil[k]
 }
 
@@ -384,15 +484,28 @@ export function getFallbackProviders(requestedId) {
   // of the failover, not just this hardcoded subset. That's what makes auto-switch actually work.
   // Known-good current models first so failover never leads with a speculative id that 400s; the
   // newer entries (gpt_5 / gemini_3_flash / flash-lite / sonnet_5 / cerebras) are still in the queue.
-  const order = ['gemini', 'openai_mini', 'groq', 'openai', 'cerebras', 'claude_haiku', 'gemini_3_flash', 'gemini_flash_lite', 'gpt_5', 'claude_sonnet', 'claude_sonnet_5', 'claude_opus']
+  // One automatic candidate per API-key family. Additional models remain available through
+  // /api/models when the user explicitly selects them, but fallback must never spray every
+  // hard-coded alias belonging to the same key (the v1.4.9 log tried four Claude aliases).
+  const order = ['gemini_flash_lite', 'openai_mini', 'groq', 'cerebras', 'claude_haiku', 'custom']
   const configured = availableProviders().map(p => p.id)
   const now = Date.now()
   const reqBase = baseOf(requestedId)
   const encoded = !!requestedId && requestedId !== reqBase   // 'provider::model' dynamic pick
   // Filter out recently banned text providers (bans are keyed by the base provider id).
-  const available = [...new Set([reqBase, ...order, ...configured])]
+  const candidates = [...new Set([reqBase, lastWorkingTextProvider, ...order, ...configured])]
     .filter(id => configured.includes(id))
     .filter(id => !textBannedUntil[id] || textBannedUntil[id] < now)
+  const seenFamilies = new Set()
+  const available = candidates.filter(id => {
+    // Always retain the explicitly requested model first. For automatic fallbacks retain only
+    // the first candidate using a given endpoint/key family.
+    if (id === reqBase) { seenFamilies.add(baseUrlFor(id)); return true }
+    const family = baseUrlFor(id)
+    if (seenFamilies.has(family)) return false
+    seenFamilies.add(family)
+    return true
+  })
   // Dynamic-model pick → lead with the EXACT encoded choice so its chosen model is used,
   // then the remaining configured providers as automatic failover.
   if (encoded && available.includes(reqBase)) {
@@ -430,7 +543,8 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
     try { prov = resolveProvider(provId) } catch { continue }
     const llm = clientFor(prov), model = prov.model
     const providerStartedAt = Date.now()
-    providerDiagnostic('attempt_started', { operation: 'json', provider: provId, model, maxTokens })
+    const attemptId = newProviderAttemptId()
+    providerDiagnostic('attempt_started', { attemptId, operation: 'json', provider: provId, model, maxTokens })
 
     // Gemini 2.5 models THINK by default — reasoning silently eats the token
     // budget, so the actual answer gets truncated into invalid JSON. Disable it
@@ -485,14 +599,14 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
         parsed = extractJSON(fixed)
       }
       lastWorkingTextProvider = baseOf(provId)   // remember only AFTER a clean parse — not for garbage output
-      providerDiagnostic('attempt_succeeded', { operation: 'json', provider: provId, model, durationMs: Date.now() - providerStartedAt })
+      providerDiagnostic('attempt_succeeded', { attemptId, operation: 'json', provider: provId, model, durationMs: Date.now() - providerStartedAt })
       return parsed
     } catch (e) {
       lastError = e
-      providerDiagnostic('attempt_failed', { operation: 'json', provider: provId, model, status: e?.status || 0, durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
+      providerDiagnostic('attempt_failed', { attemptId, operation: 'json', provider: provId, model, status: e?.status || 0, durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
       // Check quota BEFORE rate-limit: "insufficient_quota" also matches the rate-limit regex,
       // but out-of-credits is a different, more actionable problem.
-      if (isQuotaExhausted(e)) { sawQuota = true; console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
+      if (isQuotaExhausted(e)) { sawQuota = true; noteTextProviderFailure(provId, e); console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
       if (isRateLimit(e)) {
         sawRate = true
         noteTextProviderFailure(provId, e)
@@ -763,17 +877,42 @@ export async function completeTextQuick({ prompt, maxTokens = 1200, signal, requ
 // Streaming text completion — emits tokens via onToken as they arrive (true SSE).
 // Provider fallback only kicks in BEFORE the first token; once streaming has begun
 // we don't restart on another provider (that would duplicate output).
-export async function streamText({ messages, maxTokens = 700, provider, onToken, onUsage, signal }) {
+function withDeadline(upstreamSignal, ms) {
+  const controller = new AbortController()
+  let timedOut = false
+  const abortFromUpstream = () => controller.abort(upstreamSignal?.reason)
+  if (upstreamSignal?.aborted) abortFromUpstream()
+  else upstreamSignal?.addEventListener?.('abort', abortFromUpstream, { once: true })
+  const timer = setTimeout(() => { timedOut = true; controller.abort(new Error('LLM stream timed out')) }, ms)
+  timer.unref?.()
+  return {
+    signal: controller.signal,
+    timedOut: () => timedOut,
+    cleanup: () => {
+      clearTimeout(timer)
+      upstreamSignal?.removeEventListener?.('abort', abortFromUpstream)
+    },
+  }
+}
+
+export async function streamText({ messages, maxTokens = 700, provider, onToken, onUsage, onProviderEvent, signal }) {
   assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
   let lastError, emitted = false, sawQuota = false, sawRate = false, sawTransient = false
-  for (const provId of providerQueue) {
+  for (let attemptIndex = 0; attemptIndex < providerQueue.length; attemptIndex++) {
+    const provId = providerQueue[attemptIndex]
     let prov
     try { prov = resolveProvider(provId) } catch { continue }
     const llm = clientFor(prov), model = prov.model
     const providerStartedAt = Date.now()
     let firstTokenAt = null
-    providerDiagnostic('attempt_started', { operation: 'stream', provider: provId, model, maxTokens })
+    const attemptId = newProviderAttemptId()
+    const deadline = withDeadline(signal, Number(process.env.LLM_STREAM_TIMEOUT_MS) || 11000)
+    providerDiagnostic('attempt_started', {
+      attemptId, operation: 'stream', provider: provId, model, maxTokens,
+      requestedProvider: provider || 'auto', selectionReason: attemptIndex > 0 ? 'fallback' : (provider && provider !== 'auto' ? 'requested' : 'automatic'),
+    })
+    try { onProviderEvent?.({ type: 'started', attemptId, attemptIndex, provider: provId, model }) } catch {}
     try {
       const params = { model, max_tokens: maxTokens, messages, stream: true }
       if (/gemini/i.test(model)) params.reasoning_effort = 'none'
@@ -784,7 +923,7 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       // A live interview cannot wait indefinitely for first byte. The SDK timeout
       // covers connection + time-to-first-token; transient timeout then enters the
       // existing provider failover path before any token has been shown.
-      const requestOpts = { timeout: 9000, ...(signal ? { signal } : {}) }
+      const requestOpts = { timeout: 9000, signal: deadline.signal }
       const stream = await llm.chat.completions.create(params, requestOpts)
       for await (const chunk of stream) {
         if (chunk?.usage) usage = chunk.usage
@@ -793,18 +932,26 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       }
       lastWorkingTextProvider = baseOf(provId)
       if (usage && onUsage) onUsage({ model, input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0 })
-      providerDiagnostic('attempt_succeeded', { operation: 'stream', provider: provId, model, durationMs: Date.now() - providerStartedAt, ttftMs: firstTokenAt ? firstTokenAt - providerStartedAt : null, inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0 })
+      providerDiagnostic('attempt_succeeded', { attemptId, operation: 'stream', provider: provId, model, durationMs: Date.now() - providerStartedAt, ttftMs: firstTokenAt ? firstTokenAt - providerStartedAt : null, inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0 })
+      try { onProviderEvent?.({ type: 'succeeded', attemptId, attemptIndex, provider: provId, model, durationMs: Date.now() - providerStartedAt }) } catch {}
       return
     } catch (e) {
       // Client disconnected (question superseded / overlay closed) — stop immediately and
       // do NOT fail over to another provider, which would re-spend tokens on a dead request.
-      if (signal?.aborted || e?.name === 'AbortError') throw e
+      if (signal?.aborted) {
+        providerDiagnostic('attempt_cancelled', { attemptId, operation: 'stream', provider: provId, model, emitted, durationMs: Date.now() - providerStartedAt }, 'warn')
+        try { onProviderEvent?.({ type: 'cancelled', attemptId, attemptIndex, provider: provId, emitted }) } catch {}
+        throw e
+      }
       lastError = e
-      providerDiagnostic('attempt_failed', { operation: 'stream', provider: provId, model, status: e?.status || 0, emitted, durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
+      const timedOut = deadline.timedOut() || /timed? ?out|ETIMEDOUT/i.test(e?.message || '')
+      if (timedOut && !e?.status) e.status = 504
+      providerDiagnostic(timedOut ? 'attempt_timed_out' : 'attempt_failed', { attemptId, operation: 'stream', provider: provId, model, status: e?.status || 0, emitted, durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
+      try { onProviderEvent?.({ type: timedOut ? 'timed_out' : 'failed', attemptId, attemptIndex, provider: provId, status: e?.status || 0, emitted }) } catch {}
       if (emitted) throw e   // already streamed partial output — don't restart elsewhere
       // Before any token: same failover classes as completeJSON (rate / transient / hard fail / quota).
       if (!shouldFailoverTextError(e, { emitted: false })) throw e
-      if (isQuotaExhausted(e)) { sawQuota = true; console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
+      if (isQuotaExhausted(e)) { sawQuota = true; noteTextProviderFailure(provId, e); console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
       if (isRateLimit(e)) {
         sawRate = true
         noteTextProviderFailure(provId, e)
@@ -818,6 +965,8 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       }
       if (isProviderHardFail(e)) noteTextProviderFailure(provId, e)
       console.error(`[llm] ${provId} (${model}) stream failed (${e?.status || ''}): ${e?.message || e} → trying next provider`)
+    } finally {
+      deadline.cleanup()
     }
   }
   if (sawQuota) { const e = aiError('quota', 402); e.code = 'insufficient_quota'; throw e }
@@ -839,8 +988,8 @@ export function deepgramConfigured() { return !!process.env.DEEPGRAM_API_KEY }
 // Local MOCKMATE_MANAGED=1 is fine — it is still this laptop's key, not a multi-tenant leak.
 // Opt out anytime with MOCKMATE_DEEPGRAM_KEY_FALLBACK=0.
 //
-// DEV NOTE: keep DEEPGRAM_API_KEY (+ GROQ/Gemini) in bundled/user .env so a fresh laptop
-// install works out-of-box. Owner-scoped Deepgram keys can mint grants; Member keys need
+// DEV NOTE: local/BYOK testing reads DEEPGRAM_API_KEY from the encrypted user config or a
+// developer .env. Public installers never bundle it. Owner-scoped keys can mint grants; Member keys need
 // this fallback. Tighten for production hosted only — do not break local solo testing.
 export async function deepgramToken(opts = {}) {
   if (!process.env.DEEPGRAM_API_KEY) { const e = new Error('Deepgram not configured (set DEEPGRAM_API_KEY).'); e.status = 500; throw e }
@@ -905,18 +1054,41 @@ export async function mintToken({ room, identity, name } = {}) {
 
 // ── Embeddings — powers document RAG (chunk → embed → retrieve, see shared/retrieval.js) ─────
 // Provider-agnostic, reusing the configured LLM keys: OpenAI text-embedding-3-small (preferred),
-// else Gemini text-embedding-004. Returns one vector per input string. Cheap; keep the doc index
+// else Gemini gemini-embedding-001. Returns one vector per input string. Cheap; keep the doc index
 // on the client and only hit this to embed chunks (once) + each question.
+export function resolveEmbeddingProvider() {
+  if (process.env.OPENAI_API_KEY) return { key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: process.env.EMBED_MODEL || 'text-embedding-3-small' }
+  // text-embedding-004 was retired by Google on 2026-01-14. The stable text replacement is
+  // gemini-embedding-001; deployments can opt into gemini-embedding-2 through EMBED_MODEL.
+  if (process.env.GEMINI_API_KEY) return { key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: process.env.EMBED_MODEL || 'gemini-embedding-001' }
+  const e = new Error('Document search needs an OpenAI or Gemini key (for embeddings).'); e.status = 501; throw e
+}
+
 export async function embed(input) {
   const list = (Array.isArray(input) ? input : [input]).filter(t => t && String(t).trim())
   if (!list.length) return []
-  let prov
-  if (process.env.OPENAI_API_KEY) prov = { key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: process.env.EMBED_MODEL || 'text-embedding-3-small' }
-  else if (process.env.GEMINI_API_KEY) prov = { key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: process.env.EMBED_MODEL || 'text-embedding-004' }
-  else { const e = new Error('Document search needs an OpenAI or Gemini key (for embeddings).'); e.status = 501; throw e }
-  const llm = clientFor(prov)
-  const r = await llm.embeddings.create({ model: prov.model, input: list.map(t => String(t).slice(0, 8000)) })
-  return r.data.map(d => d.embedding)
+  const candidates = []
+  if (process.env.OPENAI_API_KEY) candidates.push({ key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: process.env.OPENAI_EMBED_MODEL || process.env.EMBED_MODEL || 'text-embedding-3-small' })
+  if (process.env.GEMINI_API_KEY) candidates.push({ key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: process.env.GEMINI_EMBED_MODEL || 'gemini-embedding-001' })
+  if (!candidates.length) return resolveEmbeddingProvider() // throws the existing actionable 501
+  let lastError
+  for (const prov of candidates) {
+    const llm = clientFor(prov)
+    const attemptId = newProviderAttemptId()
+    const startedAt = Date.now()
+    const provider = /googleapis/i.test(prov.baseURL) ? 'gemini' : 'openai'
+    providerDiagnostic('embedding_started', { attemptId, provider, model: prov.model, inputCount: list.length })
+    try {
+      const r = await llm.embeddings.create({ model: prov.model, input: list.map(t => String(t).slice(0, 8000)) })
+      const vectors = r.data.map(d => d.embedding)
+      providerDiagnostic('embedding_succeeded', { attemptId, provider, model: prov.model, inputCount: list.length, vectorCount: vectors.length, dimensions: vectors[0]?.length || 0, durationMs: Date.now() - startedAt })
+      return vectors
+    } catch (e) {
+      lastError = e
+      providerDiagnostic('embedding_failed', { attemptId, provider, model: prov.model, inputCount: list.length, status: e?.status || 0, durationMs: Date.now() - startedAt }, 'warn')
+    }
+  }
+  throw lastError
 }
 
 

@@ -9,12 +9,16 @@ const PROVIDER_LABELS = {
 
 const SCORE_RULES = {
   openai: [
-    [/gpt-5(?:\.\d+)?(?:$|-chat|-mini)/i, 100],
+    [/gpt-5\.6-sol/i, 180],
+    [/gpt-5\.6-terra/i, 170],
+    [/gpt-5\.6-luna/i, 145],
+    [/gpt-5\.5-pro/i, 165],
+    [/gpt-5(?:\.\d+)?(?:$|-chat|-mini|-pro)/i, 130],
     [/gpt-4\.1/i, 80],
     [/gpt-4o-mini/i, 70],
     [/gpt-4o(?:$|-)/i, 60],
   ],
-  claude_sonnet: [[/sonnet/i, 100], [/haiku/i, 80], [/opus/i, 70]],
+  claude_sonnet: [[/fable-5/i, 190], [/opus-5/i, 180], [/sonnet-5/i, 165], [/opus/i, 150], [/sonnet/i, 140], [/haiku/i, 100]],
   gemini: [[/flash-lite/i, 100], [/flash/i, 90], [/pro/i, 70]],
   groq: [[/llama.*70b/i, 100], [/llama/i, 80], [/qwen/i, 70], [/mixtral/i, 60]],
 }
@@ -24,6 +28,11 @@ function score(model) {
   const rules = SCORE_RULES[model.provider] || []
   const match = rules.find(([re]) => re.test(id))
   let n = match?.[1] || 20
+  // Within the same capability tier prefer the newest stable generation exposed by
+  // this exact API key. Preview/experimental entries are still penalized below.
+  if (/gemini-3\.6-/i.test(id)) n += 36
+  else if (/gemini-3\.5-/i.test(id)) n += 35
+  else if (/gemini-3\.1-/i.test(id)) n += 31
   if (/latest/i.test(id)) n += 4
   if (/preview|experimental|exp-|deprecated|legacy|vision|image|audio|realtime/i.test(id)) n -= 100
   // Prefer stable aliases over date-stamped snapshots in the compact picker.
@@ -55,7 +64,7 @@ export function configuredProviderNames(models = [], providers = []) {
   if (!names.size) {
     for (const p of providers) {
       const id = String(p.id || '')
-      const family = id.startsWith('openai') || id === 'gpt_5' ? 'OpenAI'
+      const family = id.startsWith('openai') || id === 'gpt_5' || id.startsWith('gpt_') ? 'OpenAI'
         : id.startsWith('claude') ? 'Anthropic'
           : id.startsWith('gemini') ? 'Gemini'
             : PROVIDER_LABELS[id] || p.label || id
@@ -67,11 +76,18 @@ export function configuredProviderNames(models = [], providers = []) {
 
 /** One catalog default per actual key family when live model discovery is unavailable. */
 export function curateProviderFallbacks(providers = []) {
+  const preferred = { openai: 'openai_mini', anthropic: 'claude_haiku', gemini: 'gemini_flash_lite' }
+  const ordered = [...providers].sort((a, b) => {
+    const family = id => String(id || '').startsWith('openai') || id === 'gpt_5' || String(id || '').startsWith('gpt_') ? 'openai'
+      : String(id || '').startsWith('claude') ? 'anthropic'
+        : String(id || '').startsWith('gemini') ? 'gemini' : String(id || '')
+    return Number(b.id === preferred[family(b.id)]) - Number(a.id === preferred[family(a.id)])
+  })
   const seen = new Set()
   const out = []
-  for (const provider of providers) {
+  for (const provider of ordered) {
     const id = String(provider.id || '')
-    const family = id.startsWith('openai') || id === 'gpt_5' ? 'openai'
+    const family = id.startsWith('openai') || id === 'gpt_5' || id.startsWith('gpt_') ? 'openai'
       : id.startsWith('claude') ? 'anthropic'
         : id.startsWith('gemini') ? 'gemini'
           : id

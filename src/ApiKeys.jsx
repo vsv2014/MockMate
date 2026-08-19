@@ -153,7 +153,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
           onRemove={() => removeProvider('deepgram', 'Deepgram')}
           note="Required for Live Interview and Solo voice. Prefer a Project/Owner key (Member keys may fail token grant). Free tier at" link={{ href: 'https://console.deepgram.com', label: 'console.deepgram.com' }} />
         {mode === 'managed' && !dg && (
-          <div role="status" style={{ fontSize: 11, color: '#fbbf24', lineHeight: 1.4 }}>Managed AI does not include voice — add a Deepgram key here (Live will not start without it).</div>
+          <div role="status" style={{ fontSize: 11, color: '#fbbf24', lineHeight: 1.4 }}>Managed voice is included on supported hosted plans. BYOK/private mode requires your own Deepgram key.</div>
         )}
       </div>
 

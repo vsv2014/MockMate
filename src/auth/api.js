@@ -11,10 +11,10 @@ import { diagnostic, createDiagnosticRequestId } from '../lib/diagnostics'
 const electronAuth = typeof window !== 'undefined' ? window.electronAPI?.auth : null
 
 // Base URL is env-configurable so we can point at a hosted backend later with no
-// code change. Order: Electron-provided → Vite env → local fork default.
+// code change. A build-time hosted URL wins over the local Electron fallback.
 const API_BASE =
-  (typeof window !== 'undefined' && window.electronAPI?.getApiBase?.()) ||
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE) ||
+  (typeof window !== 'undefined' && window.electronAPI?.getApiBase?.()) ||
   'http://localhost:4000'
 
 export const usesDeviceLocalAccounts = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(API_BASE)
@@ -45,6 +45,7 @@ async function request(path, { method = 'GET', body, auth = false, timeoutMs = 1
   const requestId = createDiagnosticRequestId('auth')
   const startedAt = performance.now()
   const headers = {}
+  headers['X-MockMate-Request-Id'] = requestId
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (auth) {
     const token = await getToken()

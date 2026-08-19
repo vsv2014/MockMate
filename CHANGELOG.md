@@ -2,13 +2,26 @@
 
 ## v1.4.10 — 2026-08-19
 
+- Migrated the desktop runtime to Electron 43 (Chromium 150, Node 24.17 line) and electron-builder 26; release CI explicitly bootstraps Electron's new lazy-downloaded runtime before packaging, and Windows signing options now follow builder 26's stricter schema.
+- Added **Fast / Balanced / Maximum quality** answer routing. Maximum quality selects the strongest exact model confirmed by the configured key (including GPT-5.6 Sol or Claude Fable 5 when the account exposes them); explicit model selection always wins.
+- Model discovery and the compact picker now rank current GPT-5.6 and Claude 5 families without advertising inaccessible models as available.
+- Provider removal clears every related quality-model override, diagnostics record the exact Electron/Chromium/Node/V8 runtime, and cost/evaluation metadata covers the current GPT-5.6 and Claude 5 families.
+
 ### Fixed
 - JavaScript **Run JS** now works in packaged builds. The runner's dedicated Worker receives the narrowly scoped evaluation permission it requires, while the main renderer keeps its strict CSP and evaluated code remains unable to access the network, DOM, or persistent storage.
 - Successful execution of a function-only snippet now explains that a function call or `console.log` is required to display output instead of implying that missing output is a failure.
 - Coding answers now provide both a clean interview-platform solution and a separate standalone online-compiler version with entry point, executable sample invocation/input, printed output, and structured sample tests. Visible question examples are distinguished from MockMate-generated illustrative checks.
+- Gemini document retrieval now uses the supported `gemini-embedding-001` model instead of the retired `text-embedding-004`, restoring résumé/JD/knowledge grounding for Gemini BYOK sessions.
+- Automatic answer routing now starts with the QA-verified Gemini Flash-Lite model and tries only one model per configured API-key family during failover. Hard model/auth failures and quota failures cool down the complete provider family instead of retrying every alias on every question.
+- Every streaming provider attempt now has an opaque correlation ID and a terminal success, failure, timeout, or cancellation event. An 11-second end-to-end deadline prevents orphaned answer streams.
+- Live session summaries now count internal provider fallbacks, failures, timeouts, cancellations, and recovered errors instead of incorrectly reporting a clean session after hidden provider failures.
+- Solo/Duo microphone transcription now uses Deepgram Nova-3 first with a Nova-2 compatibility fallback, matching the Live transcription lane.
+- Release builds now use Node.js 24 LTS instead of EOL Node.js 20, and the package rejects unsupported pre-24 runtimes.
 
 ### Changed
 - Non-JavaScript code blocks explicitly say that in-overlay execution currently supports JavaScript only. Python, Java, C++, TypeScript, Go, C#, and Ruby solutions remain syntax-highlighted, copyable, and generated as standalone programs for external online compilers without pretending a local compiler is installed.
+- Automatic model choice uses live key-specific discovery to rank newer stable Gemini models rather than assuming that every account can call the newest public model name.
+- Diagnostics add privacy-safe model-selection, RAG retrieval, embedding-shape and audio-buffer health metrics; no document, question, transcript, prompt, screenshot or audio content is persisted.
 
 ## v1.4.9 — 2026-08-19
 

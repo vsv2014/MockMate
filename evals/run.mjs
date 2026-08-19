@@ -21,15 +21,18 @@ const rubric = fs.readFileSync(path.join(DIR, 'rubric.md'), 'utf8')
 // ── Candidates. Prices are $/1M tokens (input/output) — verify against the provider before trusting
 // the cost column. For OpenAI-compatible providers (Groq, Gemini-OpenAI, …) add `baseURL`. ──
 const CANDIDATES = [
-  { label: 'gpt-5.4',         api: 'openai',    model: 'gpt-5.4',         keyEnv: 'OPENAI_API_KEY',    inP: 2.50, outP: 15.00 },
-  { label: 'gpt-5.4-mini',    api: 'openai',    model: 'gpt-5.4-mini',    keyEnv: 'OPENAI_API_KEY',    inP: 0.75, outP: 4.50 },
-  { label: 'claude-sonnet-5', api: 'anthropic', model: 'claude-sonnet-5', keyEnv: 'ANTHROPIC_API_KEY', inP: 3.00, outP: 15.00 },
-  { label: 'claude-haiku-4-5',api: 'anthropic', model: 'claude-haiku-4-5',keyEnv: 'ANTHROPIC_API_KEY', inP: 1.00, outP: 5.00 },
+  { label: 'gpt-5.6-sol',      api: 'openai',    model: 'gpt-5.6-sol',                keyEnv: 'OPENAI_API_KEY',    inP: 5.00, outP: 30.00 },
+  { label: 'gpt-5.6-terra',    api: 'openai',    model: 'gpt-5.6-terra',              keyEnv: 'OPENAI_API_KEY',    inP: 2.50, outP: 15.00 },
+  { label: 'gpt-5.6-luna',     api: 'openai',    model: 'gpt-5.6-luna',               keyEnv: 'OPENAI_API_KEY',    inP: 1.00, outP: 6.00 },
+  { label: 'claude-fable-5',   api: 'anthropic', model: 'claude-fable-5',             keyEnv: 'ANTHROPIC_API_KEY', inP: 10.00, outP: 50.00 },
+  { label: 'claude-opus-5',    api: 'anthropic', model: 'claude-opus-5',              keyEnv: 'ANTHROPIC_API_KEY', inP: 5.00, outP: 25.00 },
+  { label: 'claude-sonnet-5',  api: 'anthropic', model: 'claude-sonnet-5',             keyEnv: 'ANTHROPIC_API_KEY', inP: 2.00, outP: 10.00 },
+  { label: 'claude-haiku-4.5', api: 'anthropic', model: 'claude-haiku-4-5-20251001',  keyEnv: 'ANTHROPIC_API_KEY', inP: 1.00, outP: 5.00 },
   // e.g. Groq: { label:'llama-3.3-70b', api:'openai', model:'llama-3.3-70b-versatile', baseURL:'https://api.groq.com/openai/v1', keyEnv:'GROQ_API_KEY', inP:0.59, outP:0.79 },
 ]
 
 // One fixed judge scores every answer, so scores are comparable across candidates.
-const JUDGE = { api: 'openai', model: 'gpt-5.4', keyEnv: 'OPENAI_API_KEY', baseURL: undefined }
+const JUDGE = { api: 'openai', model: process.env.EVAL_JUDGE_MODEL || 'gpt-5.6-sol', keyEnv: 'OPENAI_API_KEY', baseURL: undefined }
 
 // Mirror your PRODUCTION interview-copilot prompt here for a faithful benchmark.
 const RESUME = `Software engineer, 5 yrs. Backend at Kore.ai: rebuilt the candidate-matching queue (skill-weighted scoring, cut wait times ~40%). Node, Go, Postgres, Kafka. Led a 3-engineer team.`

@@ -6,8 +6,9 @@
   "description": "Real-Time AI Interview Companion — Solo practice + Live overlay for Zoom/Teams/Meet (content protection on Win/macOS; verify share preview)",
   "author": "MockMate",
   "license": "MIT",
+  "managedApiBase": "",
   "engines": {
-    "node": ">=18"
+    "node": ">=24 <25"
   },
   "scripts": {
     "dev": "concurrently \"node server.js\" \"vite\"",
@@ -46,7 +47,6 @@
       "server-entry.cjs",
       "setup.html",
       "package.json",
-      ".env",
       "node_modules/**/*",
       "!node_modules/electron/**/*",
       "!node_modules/.cache/**/*"
@@ -68,10 +68,12 @@
       ],
       "icon": "assets/icon.png",
       "artifactName": "MockMate-Setup-${version}.${ext}",
-      "publisherName": "MockMate",
-      "signingHashAlgorithms": [
-        "sha256"
-      ],
+      "signtoolOptions": {
+        "publisherName": "MockMate",
+        "signingHashAlgorithms": [
+          "sha256"
+        ]
+      },
       "signAndEditExecutable": true,
       "verifyUpdateCodeSignature": false
     },
@@ -167,8 +169,8 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
-    "electron": "^32.3.3",
-    "electron-builder": "^24.0.0",
+    "electron": "43.0.0",
+    "electron-builder": "^26.0.12",
     "vite": "^6.0.7",
     "vitest": "^4.1.9",
     "wait-on": "^8.0.0"

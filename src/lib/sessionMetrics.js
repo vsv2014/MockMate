@@ -27,6 +27,9 @@ export function createSessionMetrics(kind = 'live') {
     incompleteStreams: 0,
     skips: 0,
     errors: 0,
+    providerAttemptFailures: 0,
+    providerTimeouts: 0,
+    providerCancellations: 0,
   }
   let flushed = false
   setDiagnosticContext({ sessionId, sessionKind: kind })
@@ -61,6 +64,21 @@ export function createSessionMetrics(kind = 'live') {
   function markIncomplete() { counters.incompleteStreams += 1; event('incomplete_stream') }
   function markSkip() { counters.skips += 1; event('skip') }
   function markError(code) { counters.errors += 1; event('error', { code: String(code || 'unknown').slice(0, 80) }) }
+  function markProviderEvent(payload = {}) {
+    const type = String(payload.type || '')
+    if (type === 'started' && Number(payload.attemptIndex) > 0) {
+      counters.streamFallbacks += 1
+      event('provider_fallback', { attemptIndex: payload.attemptIndex, provider: payload.provider })
+    } else if (type === 'failed' || type === 'timed_out') {
+      counters.providerAttemptFailures += 1
+      counters.errors += 1
+      if (type === 'timed_out') counters.providerTimeouts += 1
+      event(`provider_${type}`, { attemptIndex: payload.attemptIndex, provider: payload.provider, status: payload.status, emitted: payload.emitted })
+    } else if (type === 'cancelled') {
+      counters.providerCancellations += 1
+      event('provider_cancelled', { attemptIndex: payload.attemptIndex, provider: payload.provider, emitted: payload.emitted })
+    }
+  }
   function markSttReconnect() { counters.sttReconnects += 1; event('stt_reconnect') }
   function markSttFinal({ confidence = null, degraded = false, diarizationLocked = false } = {}) {
     counters.sttFinals = (counters.sttFinals || 0) + 1
@@ -113,6 +131,9 @@ export function createSessionMetrics(kind = 'live') {
       incompleteStreams: counters.incompleteStreams,
       skips: counters.skips,
       errors: counters.errors,
+      providerAttemptFailures: counters.providerAttemptFailures,
+      providerTimeouts: counters.providerTimeouts,
+      providerCancellations: counters.providerCancellations,
       questionCommits: counters.questionCommits || 0,
       questionRejects: counters.questionRejects || 0,
       cancelledGenerations: counters.cancelledGenerations || 0,
@@ -138,7 +159,7 @@ export function createSessionMetrics(kind = 'live') {
   event('session_start')
   return {
     sessionId, startHint, markFirstToken, markFallback, markIncomplete, markSkip, markError,
-    markSttReconnect, markSttFinal, markQuestionCapture, markQuestionReject, markGenerationCancelled,
+    markSttReconnect, markSttFinal, markQuestionCapture, markQuestionReject, markGenerationCancelled, markProviderEvent,
     summary, end, event,
   }
 }

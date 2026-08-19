@@ -292,6 +292,11 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       // runs to completion before any worklet message is processed (single-threaded),
       // so ordering with live audio is guaranteed.
       if (pcmQueue.current.length) {
+        diagnostic('stt', 'audio_buffer_flushed', {
+          mode: 'system_audio', bufferedBytes: pcmQueueBytes.current,
+          droppedBytes: pcmDroppedBytes.current,
+          model: degradedAudio.current ? 'nova-2' : 'nova-3',
+        }, pcmDroppedBytes.current > 0 ? 'warn' : 'info')
         if (pcmDroppedBytes.current > 0) {
           console.warn(`[audio] outage exceeded ${MAX_QUEUE_BYTES / BYTES_PER_SEC}s buffer — dropped ~${(pcmDroppedBytes.current / BYTES_PER_SEC).toFixed(1)}s of oldest audio`)
         }

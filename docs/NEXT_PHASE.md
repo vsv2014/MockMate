@@ -42,13 +42,14 @@ backend can authenticate, choose the key, meter, and rate-limit. The existing `a
 ---
 
 ## Build on the existing `backend/` folder
-There is already a half-built `backend/` (Express + Mongo + JWT, port 4000) — currently **unwired**.
-Use it as the foundation rather than starting fresh:
-- It has the auth/Mongo bootstrap. Wire it into the app's startup (npm script + electron fork, or deploy it as a hosted service).
-- Fold the AI engine (`api/_lib/*`) into it (or have it call the same shared lib) so there's ONE backend, not two.
+The `backend/` Express + Mongo + JWT service and shared AI engine are wired. The remaining work is
+operational deployment and packaged cross-device validation, not another backend rewrite:
 - **Decide hosting:** for a real product the backend should be a **hosted service** (Render/Fly/Railway/AWS), not bundled in the Electron app — the app talks to `https://api.mockmate.app/...`. (The local `server.js` stays for BYO/offline mode.)
 
-> ✅ **DONE (v1.4.0):** `backend/server.js` is now **forked from the Electron main process** (killed on quit). **Hosting decision:** shipped as a **local fork with a file-backed store by default** (offline-safe, zero infra), with **MongoDB opt-in via `MONGO_URI`** and an **env-configurable API base (`MOCKMATE_API_BASE`)** — so it can be pointed at a hosted service later with no code change. Auth endpoints (`/auth/signup|login|me|logout`) are complete; the AI engine has **not** yet been folded behind it (that's Phase 2). JWT secret is persisted per-install in `userData`; token stored encrypted via `safeStorage`.
+> ✅ **CODE COMPLETE (v1.4.10):** the hosted mount shares the `/api/*` AI engine, requires JWT,
+> atomically meters LLM calls and enforces server-owned model tiers. Public release CI embeds only
+> `MOCKMATE_API_BASE`; provider keys remain server-side. Hosted deployment and Windows cross-device
+> evidence remain required before calling the service production-verified.
 
 ---
 
@@ -94,17 +95,17 @@ Enforce in middleware: before each `/api/*`, check `Usage[userId][period]` vs pl
 
 ## Client (Electron) changes
 - ✅ **DONE** — **Login/Welcome/Signup/Onboarding screens** gate the app before the Home overlay. JWT stored in `userData`, encrypted via `safeStorage` (never localStorage). *(`src/auth/`)*
-- ✅ **DONE** — single API wrapper (`src/auth/api.js`) sends `Authorization: Bearer <jwt>` and handles 401 → clear token → redirect to Login. *(Note: this currently covers the **auth** endpoints; folding the `/api/*` AI routes through it is Phase 2.)*
+- ✅ **DONE** — auth and managed `/api/*` wrappers send `Authorization: Bearer <jwt>`, request correlation IDs, and handle expired sessions.
 - ✅ **DONE** — API base URL is env-configurable (`MOCKMATE_API_BASE`), local fork by default.
-- ✅ **DONE (partial)** — Account screen has the **"Use my own API keys"** (BYO) toggle. The managed-plan path arrives with Phase 2.
-- ✅ **DONE** — plan badge shows in the overlay header; Account screen shows plan + usage bars (display-only until Phase 2 metering is live), sourced from `/auth/me`.
+- ✅ **DONE** — Account supports Managed AI and encrypted device-local BYOK modes.
+- ✅ **DONE** — plan badge and usage bars are sourced from enforced server-side metering.
 
 ---
 
 ## Suggested phasing (so it ships incrementally)
 1. ✅ **DONE (v1.4.0) — Auth**: signup/login/JWT on `backend/`, Welcome/Login/Signup/Onboarding screens, Account screen, the app gated behind sign-in. Everyone is on `free`; no billing yet. *Gate for Phase 2: deploy + ≥1 real login first.*
-2. ⏳ **PENDING — Proxy + metering**: move `/api/*` behind auth; record usage (the `Usage` model + usage bars already exist, currently display-only); platform keys server-side; 402 on limit.
-3. ⏳ **PENDING — Stripe**: checkout + webhook + plan gating + limits. (Account screen's *Upgrade to Pro* CTA is already present but disabled until this lands.)
+2. ✅ **DONE — Proxy + metering**: authenticated managed routes, atomic call reservation, server-owned model tiers, platform keys server-side, and 402 limits.
+3. ✅ **DONE (deployment verification required) — Stripe**: checkout, signed webhook, portal, and plan limits are implemented; production price/webhook configuration must be validated on the hosted service.
 4. ⏳ **PENDING — Polish**: BYO toggle (✅ already shipped in the Account screen), usage dashboard, server-side history, team/referral, etc.
 
 ---

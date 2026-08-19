@@ -37,14 +37,14 @@ here are **infra/signing**, not code (tests + reviews pass while an update silen
    git push origin v1.3.0
    ```
    (Or run the workflow manually via **Actions → Release → Run workflow** and enter the tag.)
-5. CI writes a temporary bundled `.env` from Actions secrets (so downloaders get Live/voice
-   without setup), then builds Windows/Linux/macOS and uploads installers **and the
+5. CI requires the repository variable `MOCKMATE_API_BASE` and packages only that HTTPS URL.
+   Provider and Deepgram keys remain on the hosted backend; no public installer contains them.
+   CI then builds Windows/Linux/macOS and uploads installers **and the
    `latest*.yml` update feeds** to a public GitHub Release via softprops. Signing is
    **optional per platform**:
    - Windows signs when `WIN_CSC_LINK` + `WIN_CSC_KEY_PASSWORD` exist
    - macOS signs + notarizes when `MAC_CSC_*` + `APPLE_*` exist
-   - Runtime keys bundle when `DEEPGRAM_API_KEY` (+ optional LLM secrets) exist
-   - Otherwise that platform still ships (unsigned / BYOK required for voice)
+   - Provider secrets are never bundled; BYOK/private mode remains available per device
 
 ## Verify after the release
 
@@ -89,4 +89,4 @@ update the README + landing page to say macOS auto-updates.
 - ❌ macOS shipped unsigned but advertised as auto-updating → Mac users stuck on old version, silently.
 - ❌ Windows shipped unsigned while promising no SmartScreen/SAC friction → uninstall/install blocked on locked-down PCs.
 - ❌ `build.publish` owner/repo not matching the actual repo → updater 404s.
-- ❌ A committed `.env` → leaks keys **and** gets bundled. `.gitignore` covers it; double-check `git status`.
+- ❌ A committed or packaged `.env` → leaks keys. `.gitignore` and the builder exclusion cover it; double-check `git status`.

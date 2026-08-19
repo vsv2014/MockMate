@@ -1,6 +1,6 @@
 // Solo (you-vs-AI) interview engine for the web app. Open-ended, speech-first,
 // no difficulty knob — the interviewer calibrates to the target role.
-import { completeJSON, visionComplete, extractJSON, streamText, pickFastProvider, pickStrongProvider, completeTextQuick } from './core.js'
+import { completeJSON, visionComplete, extractJSON, streamText, pickFastProvider, pickStrongProvider, pickBestProvider, completeTextQuick } from './core.js'
 import { analyze, BANNED_WORDS } from '../../shared/delivery.js'
 import { glanceLayers, stripHintMeta } from '../../shared/hintLayers.js'
 import { classifyTurn } from '../../shared/interviewClassify.js'
@@ -364,7 +364,7 @@ function resolveTurnClassification({
 // complexity/watch) then streams the SPOKEN answer prose token-by-token, so the UI
 // shows words in <1s instead of waiting for a full JSON object. Outputs the sentinel
 // [SKIP] when the input isn't a real interview question.
-export async function streamHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', mode = 'answer', style = 'balanced', autoSkip = true, lastClassification = null, recentScreen = null, classification: clientClassification = null } = {}, { onMeta, onToken, onUsage, signal } = {}) {
+export async function streamHint({ question, profile = {}, conversationHistory = [], provider, language = 'English', extraContext = '', mode = 'answer', style = 'balanced', autoSkip = true, lastClassification = null, recentScreen = null, classification: clientClassification = null } = {}, { onMeta, onToken, onUsage, onProviderEvent, signal } = {}) {
   if (!question || !String(question).trim()) return { skipped: true }
 
   // Web-search grounding for company/product/current-events questions (same as generateHint).
@@ -422,7 +422,11 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   const escalateFast = pickFastProvider()
   const escalateStrong = pickStrongProvider()
   const userPicked = provider && provider !== 'auto'
-  const chosen = userPicked ? provider : ((tier === 'strong' ? escalateStrong : escalateFast) || provider)
+  const strategy = ['fast', 'balanced', 'quality'].includes(profile.modelStrategy) ? profile.modelStrategy : 'balanced'
+  const automatic = strategy === 'quality' ? pickBestProvider()
+    : strategy === 'fast' ? escalateFast
+      : (tier === 'strong' ? escalateStrong : escalateFast)
+  const chosen = userPicked ? provider : (automatic || provider)
 
   // Apply the verbosity control on top of the tier's base budget.
   const { directive, maxTokens } = styleFor(style, (tier === 'strong' || mode === 'coach') ? 900 : 700)
@@ -444,9 +448,10 @@ export async function streamHint({ question, profile = {}, conversationHistory =
     screenRelevance: relevance.reason,
     screenContextId: relevance.attach ? recentScreen?.screenContextId : null,
     screenContextVersion: SCREEN_CONTEXT_VERSION,
+    modelStrategy: strategy,
   }
   await streamText({
-    provider: chosen, maxTokens,
+    provider: chosen, maxTokens, onProviderEvent,
     onUsage, signal,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     onToken: tok => {
@@ -541,7 +546,11 @@ async function generateHintImpl({ question, profile = {}, conversationHistory = 
   const userPicked = provider && provider !== 'auto'
   const escalateFast = pickFastProvider()
   const escalateStrong = pickStrongProvider()
-  const chosen = userPicked ? provider : ((pb.tier === 'strong' ? escalateStrong : escalateFast) || provider)
+  const strategy = ['fast', 'balanced', 'quality'].includes(profile.modelStrategy) ? profile.modelStrategy : 'balanced'
+  const automatic = strategy === 'quality' ? pickBestProvider()
+    : strategy === 'fast' ? escalateFast
+      : (pb.tier === 'strong' ? escalateStrong : escalateFast)
+  const chosen = userPicked ? provider : (automatic || provider)
   const { directive } = styleFor(style, 700)
   const maxTokens = style === 'detailed' ? 1100 : (pb.tier === 'strong' || mode === 'coach') ? 900 : 700
   const skipDirective = autoSkip
@@ -585,6 +594,7 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
     screenRelevance: relevance.reason,
     screenContextId: relevance.attach ? recentScreen?.screenContextId : null,
     screenContextVersion: SCREEN_CONTEXT_VERSION,
+    modelStrategy: strategy,
   }
   return normalized
 }

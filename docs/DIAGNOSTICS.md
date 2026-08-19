@@ -20,9 +20,13 @@ Files rotate at 5 MB and retain four generations (about 20 MB maximum).
 - Authentication request outcome and timeout (never the JWT)
 - API route, method, mode, status and latency (never request bodies)
 - Deepgram grant/fallback, socket, reconnect, confidence and degradation
+- LLM attempt correlation and terminal lifecycle (success, failure, timeout or cancellation),
+  including provider-family fallback counts in the final session summary
 - Session question capture/reject, generation cancellation, TTFT and summary counters
 - Screenshot request, dimensions, continuation/cache/outcome (never image or OCR content)
 - LLM provider/model attempt, failover class, TTFT and token counts
+- Model discovery/selection reason, embedding dimensions and RAG document/chunk/hit counts
+- Audio source lane, model, confidence and buffered/dropped byte counts (never audio content)
 - Auto-update availability/download/check/errors
 
 ## Privacy contract

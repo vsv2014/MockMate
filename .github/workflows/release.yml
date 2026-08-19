@@ -44,14 +44,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24 LTS
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      # Electron 42+ fetches the platform binary lazily rather than in postinstall.
+      - name: Bootstrap Electron runtime
+        run: npx electron --version
 
       - name: Verify release tag matches package version
         shell: bash
@@ -71,42 +75,30 @@ jobs:
       - name: Unit and API smoke tests
         run: npm test && npm run smoke:api
 
-      - name: Build frontend (Vite)
-        run: npm run build
-
-      # Temporary internal-team distribution: bundle the team's runtime keys so QA is not
-      # blocked by per-device setup. Replace this with server-held keys before public SaaS use.
-      - name: Write bundled .env for internal QA packaging
+      - name: Configure hosted Managed AI endpoint
         shell: bash
         env:
-          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          MANAGED_API_BASE: ${{ vars.MOCKMATE_API_BASE }}
         run: |
           node <<'NODE'
           const fs = require('fs')
-          const keys = [
-            'DEEPGRAM_API_KEY',
-            'GROQ_API_KEY',
-            'GEMINI_API_KEY',
-            'OPENAI_API_KEY',
-            'ANTHROPIC_API_KEY',
-            'CEREBRAS_API_KEY',
-          ]
-          const lines = []
-          for (const k of keys) {
-            const v = (process.env[k] || '').trim()
-            if (v) lines.push(`${k}=${v}`)
+          const raw = String(process.env.MANAGED_API_BASE || '').trim().replace(/\/$/, '')
+          let url
+          try { url = new URL(raw) } catch { console.error('Repository variable MOCKMATE_API_BASE must be a valid hosted URL.'); process.exit(1) }
+          if (url.protocol !== 'https:' || /^(localhost|127\.0\.0\.1)$/i.test(url.hostname)) {
+            console.error('MOCKMATE_API_BASE must use HTTPS and must not point to loopback.')
+            process.exit(1)
           }
-          fs.writeFileSync('.env', lines.length ? lines.join('\n') + '\n' : '')
-          console.log(`Bundled ${lines.length} internal QA runtime key(s); values not logged.`)
-          if (!process.env.DEEPGRAM_API_KEY) {
-            console.warn('WARN: DEEPGRAM_API_KEY is missing — Live voice will require BYOK.')
-          }
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          pkg.managedApiBase = raw
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
+          console.log(`Managed AI endpoint configured: ${url.origin}`)
           NODE
+
+      - name: Build frontend (Vite)
+        env:
+          VITE_API_BASE: ${{ vars.MOCKMATE_API_BASE }}
+        run: npm run build
 
       # Signing is optional and per-platform:
       # - Windows: WIN_CSC_LINK + WIN_CSC_KEY_PASSWORD (Authenticode .pfx/.p12, base64)

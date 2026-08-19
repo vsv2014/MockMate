@@ -9,7 +9,7 @@ question. Matches LockedIn-style documents panel (incl. the "filter document" re
 ### Server core
 - ✅ `shared/retrieval.js` — `chunkText`, `cosineSim`, `topK(minScore)`, `groundingBlock`.
   *(No dedicated `retrieval.test.js` yet — do not claim suite coverage until added.)*
-- ✅ `embed()` in `api/_lib/core.js` — OpenAI `text-embedding-3-small` → Gemini `text-embedding-004`;
+- ✅ `embed()` in `api/_lib/core.js` — OpenAI `text-embedding-3-small` → Gemini `gemini-embedding-001`;
   optional `EMBED_MODEL` override.
 - ✅ `/api/embed` on local + auth backends (auth-gated where applicable, not cap-metered as an “AI response”).
 

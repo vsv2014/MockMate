@@ -42,4 +42,29 @@ describe('checkCap fail-closed (hosted)', () => {
     expect(nextCalled).toBe(true)
     expect(req._plan).toBe('local')
   })
+
+  it('reserves usage atomically before allowing a hosted call', async () => {
+    const reserve = vi.fn(async () => true)
+    vi.doMock('../store.js', () => ({
+      currentPeriod: () => '2026-08',
+      store: () => ({ findUserById: async () => ({ plan: 'pro' }), reserveLlmUsage: reserve }),
+    }))
+    vi.doMock('../plans.js', () => ({ limitFor: () => ({ llmCalls: 100 }) }))
+    const { checkCap } = await import('./meter.js')
+    const req = { userId: 'u1' }
+    let nextCalled = false
+    await checkCap(req, {}, () => { nextCalled = true })
+    expect(nextCalled).toBe(true)
+    expect(req._llmReserved).toBe(true)
+    expect(reserve).toHaveBeenCalledWith('u1', '2026-08', 100)
+  })
+
+  it('enforces server-owned strategy and removes explicit provider selection', async () => {
+    const { enforceManagedModelPolicy } = await import('./meter.js')
+    const req = { _plan: 'free', body: { provider: 'gpt_56_sol', profile: { modelStrategy: 'quality', targetRole: 'QA' } } }
+    enforceManagedModelPolicy(req, {}, () => {})
+    expect(req.body.provider).toBe('')
+    expect(req.body.profile.modelStrategy).toBe('fast')
+    expect(req.body.profile.targetRole).toBe('QA')
+  })
 })

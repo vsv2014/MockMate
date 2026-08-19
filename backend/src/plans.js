@@ -6,6 +6,7 @@
 export const PLAN_LIMITS = {
   free: { llmCalls: 40, sttSeconds: 30 * 60 },
   pro:  { llmCalls: 100000, sttSeconds: 500 * 60 * 60 },   // fair-use ceiling, not a hard product limit
+  max:  { llmCalls: 100000, sttSeconds: 500 * 60 * 60 },
 }
 
 export function limitFor(plan) {

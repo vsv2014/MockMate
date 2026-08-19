@@ -16,21 +16,19 @@
 - Successful reset bumps `tokenVersion` (revokes prior JWTs).
 - Never log full reset URLs in production (see `backend/src/mailer.js`).
 
-## Bundled runtime keys (out-of-box Live/Solo for downloaders)
+## Managed runtime keys
 
-MockMate can ship provider keys **inside the installer** so end users can try Live without
-opening Settings. That is intentional for a personal/distribution build.
-
-**How (safe):** put keys in **GitHub Actions secrets**. CI writes a temporary `.env` at
-package time; `.env` stays gitignored and is never committed.
+**Public releases never package provider keys.** Keep managed-provider credentials only on the
+hosted backend. GitHub Actions requires the non-secret repository variable
+`MOCKMATE_API_BASE` and bakes only that HTTPS endpoint into installers.
 
 | Secret | Required for |
 |---|---|
 | `DEEPGRAM_API_KEY` | Live + Solo voice (everyone who installs) |
 | `GROQ_API_KEY` / `GEMINI_API_KEY` / `OPENAI_API_KEY` / … | At least one LLM for answers |
 
-Rotate by updating the secret and cutting a new release. Anyone can still extract keys from
-the installed `resources/app/.env` — treat them as **shared product keys**, set billing caps
+Rotate keys in the hosting provider; no new desktop release is required. Users cannot extract
+keys from a correctly configured backend, but still treat them as **shared product keys**, set billing caps
 in each provider console, and rotate if abused.
 
 ## Provider API keys (BYOK)
@@ -38,7 +36,7 @@ in each provider console, and rotate if abused.
 - Legacy plaintext `userData/.env` is migrated to `.env.enc` on first launch after upgrade, then deleted.
 - Headless / no-keychain environments fall back to `userData/.env` mode `0600`.
 - Rotate by replacing keys in Settings; old keys remain valid at the provider until revoked in that provider’s console.
-- User BYOK **overrides** bundled keys for that install.
+- User BYOK is used only in private/BYOK mode and never uploaded to MockMate.
 
 ## Deepgram (local vs production)
 
@@ -49,7 +47,5 @@ in each provider console, and rotate if abused.
   testing and fresh laptop installs without hunting Owner keys.
 - **Remote production (`MOCKMATE_HOSTED=1`):** never return the raw project key to clients.
 - Opt out of local fallback: `MOCKMATE_DEEPGRAM_KEY_FALLBACK=0`.
-- Keep `DEEPGRAM_API_KEY` (+ at least one of `GROQ_API_KEY` / Gemini / OpenAI) in bundled or
-  user `.env` so a new machine works out-of-box.
-- Rotate the key in Deepgram console + update the `DEEPGRAM_API_KEY` GitHub secret + rebuild.
-
+- Hosted Managed AI keeps `DEEPGRAM_API_KEY` and LLM keys only in the backend environment.
+- Rotate hosted keys in the provider and deployment environment; no desktop rebuild is required.

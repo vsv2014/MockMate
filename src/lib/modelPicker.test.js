@@ -20,7 +20,7 @@ describe('compact model picker', () => {
       { id: 'gpt_5' }, { id: 'openai' }, { id: 'openai_mini' },
       { id: 'claude_opus' }, { id: 'claude_haiku' },
     ])
-    expect(out.map(x => x.id)).toEqual(['gpt_5', 'claude_opus'])
+    expect(out.map(x => x.id)).toEqual(['openai_mini', 'claude_haiku'])
   })
 
   it('removes a stale saved model when Automatic is selected', () => {
@@ -33,5 +33,27 @@ describe('compact model picker', () => {
     localStorage.setItem('llmProvider', 'openai::old-model')
     persistModelSelection('')
     expect(loadModelSelection()).toBe('')
+  })
+
+  it('prefers the newest stable Gemini model returned by live discovery', () => {
+    const out = curateModelOptions([
+      { id: 'gemini::gemini-3.1-flash-lite', provider: 'gemini', model: 'gemini-3.1-flash-lite' },
+      { id: 'gemini::gemini-3.5-flash-lite', provider: 'gemini', model: 'gemini-3.5-flash-lite' },
+      { id: 'gemini::gemini-3.6-flash', provider: 'gemini', model: 'gemini-3.6-flash' },
+      { id: 'gemini::gemini-3-flash-preview', provider: 'gemini', model: 'gemini-3-flash-preview' },
+    ], { maxPerProvider: 3 })
+    expect(out[0].model).toBe('gemini-3.5-flash-lite')
+    expect(out.some(m => m.model === 'gemini-3-flash-preview')).toBe(false)
+  })
+
+  it('surfaces the strongest current OpenAI and Claude models returned by each key', () => {
+    const out = curateModelOptions([
+      { id: 'openai::gpt-5.6-sol', provider: 'openai', model: 'gpt-5.6-sol' },
+      { id: 'openai::gpt-5.6-luna', provider: 'openai', model: 'gpt-5.6-luna' },
+      { id: 'claude_sonnet::claude-fable-5', provider: 'claude_sonnet', model: 'claude-fable-5' },
+      { id: 'claude_sonnet::claude-sonnet-5', provider: 'claude_sonnet', model: 'claude-sonnet-5' },
+    ], { maxPerProvider: 2 })
+    expect(out.find(m => m.provider === 'openai').model).toBe('gpt-5.6-sol')
+    expect(out.find(m => m.provider === 'claude_sonnet').model).toBe('claude-fable-5')
   })
 })

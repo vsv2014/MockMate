@@ -32,6 +32,7 @@ async function setPlan(user, plan, extra) {
 // POST /billing/checkout → Stripe Checkout URL for the Pro subscription. Authed.
 router.post('/checkout', requireAuth, async (req, res) => {
   const s = await stripe(); if (!s) return notConfigured(res)
+  if (!process.env.STRIPE_PRICE_ID) return res.status(503).json({ error: 'Billing price is not configured.' })
   try {
     const user = await store().findUserById(req.userId)
     if (!user) return res.status(401).json({ error: 'Account not found' })

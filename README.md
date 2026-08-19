@@ -187,11 +187,11 @@ works even when it's not visible.
 
 | Key | Purpose | Free? | Link |
 |---|---|---|---|
-| `OPENAI_API_KEY` | GPT-5.4 / GPT-4o answers + screen/coding vision + document embeddings (RAG) | Pay per use | [platform.openai.com](https://platform.openai.com/api-keys) |
+| `OPENAI_API_KEY` | GPT-5.6 / GPT-5.4 / GPT-4o answers (subject to key access) + screen/coding vision + document embeddings (RAG) | Pay per use | [platform.openai.com](https://platform.openai.com/api-keys) |
 | `GROQ_API_KEY` | Fast AI answers | ✅ Free | [console.groq.com](https://console.groq.com/keys) |
 | `GEMINI_API_KEY` | AI answers + vision + embeddings (RAG) alternative | ✅ Free | [aistudio.google.com](https://aistudio.google.com/apikey) |
 | `CEREBRAS_API_KEY` | Fastest-throughput answers (Llama, wafer-scale) | ✅ Free | [cloud.cerebras.ai](https://cloud.cerebras.ai) |
-| `ANTHROPIC_API_KEY` | Claude Opus 4.8 / Sonnet 5 / Haiku 4.5 answers | Pay per use | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
+| `ANTHROPIC_API_KEY` | Claude Fable 5 / Opus 5 / Sonnet 5 / Haiku 4.5 answers (subject to key access) | Pay per use | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
 | `DEEPGRAM_API_KEY` | Live audio transcription | ✅ $200 credits | [console.deepgram.com](https://console.deepgram.com) |
 | `TAVILY_API_KEY` | Web search for company questions | ✅ Free | [tavily.com](https://tavily.com) |
 | `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | **Duo** rooms (collaborative interview help) | ✅ Free tier | [cloud.livekit.io](https://cloud.livekit.io) |
@@ -200,7 +200,7 @@ works even when it's not visible.
 **Recommended:** configure **2+ LLM providers** — MockMate auto-falls-back when one is
 rate-limited, which matters for a full-hour interview (Groq's free tier alone exhausts quickly).
 On **Auto**, Live hints prefer the fastest current model (Gemini Flash-Lite / Cerebras / Groq) and
-hard questions escalate to a strong model (GPT-5.4 / Claude Sonnet 5). Model defaults are
+hard questions escalate to a strong model. **Maximum quality** routes every answer to the strongest exact model discovered for the configured keys (for example GPT-5.6 Sol or Claude Fable 5). Model defaults are
 `.env`-overridable (e.g. `OPENAI_GPT5_MODEL`, `GEMINI_FLASH_LITE_MODEL`, `CEREBRAS_MODEL`).
 
 ---
@@ -292,12 +292,19 @@ but the desktop deliberately does **not** upload it; résumé and transcripts re
 future explicit encrypted-sync option is enabled. **Desktop login wiring shipped in v1.4.0** —
 the backend is forked from the Electron main process, with a **file-backed store by default**
 (offline-safe; **MongoDB opt-in via `MONGO_URI`**) and an **env-configurable base URL
-(`MOCKMATE_API_BASE`)** for pointing at a hosted service later. API keys are **never** stored
-here — they stay on the user's machine.
+(`MOCKMATE_API_BASE`)** for hosted Managed AI. Managed provider keys stay on that backend;
+BYOK keys stay encrypted on the user's machine.
 
 ---
 
 ## Roadmap
+
+**Done (1.4.10)**
+- ✅ **Managed AI release boundary** — public installers contain no provider keys and release CI requires a valid hosted HTTPS endpoint.
+- ✅ **Server-owned entitlements** — managed clients cannot bypass plan model tiers; monthly LLM usage is reserved atomically and failed/cancelled calls are released.
+- ✅ **Provider/RAG resilience** — model-family failover is bounded and embeddings fall back from OpenAI to Gemini with provider-specific model IDs.
+- ✅ **Hosted diagnostics** — desktop/backend request correlation plus metadata-only provider attempt logs; no prompts, transcripts, screenshots, audio or secrets.
+- ✅ **Electron 43 / Node 24** — runtime, release workflow and packaging checks migrated.
 
 **Done (1.4.9)**
 - ✅ **Multi-screenshot questions** — queued captures can be combined into one bounded question/answer chain, with explicit Continue/New controls and Undo merge.
@@ -305,7 +312,7 @@ here — they stay on the user's machine.
 - ✅ **Production diagnostics** — buffered/rotated local JSONL timeline with two-stage redaction, session/request correlation, provider/model attempts, STT reconnects, screenshot continuation, auth/API latency and updater lifecycle; Export/Clear controls in Settings.
 - ✅ **Windows updater recovery** — updater state survives dashboard/auth startup, Check for updates always reports a state, and Later does not silently install on quit.
 - ✅ **Release gates** — tag/package version match, unit tests, API smoke and updater-artifact validation run before publishing.
-- ✅ **Internal QA scope made explicit** — local accounts and bundled team keys remain temporary; hosted accounts, managed server-held keys, billing and encrypted sync stay on the SaaS roadmap.
+- ✅ **Managed release boundary** — public installers contain no provider secrets and fail release unless an HTTPS managed endpoint is configured.
 
 **Done (1.4.8)**
 - ✅ **Live intent reliability** — slower semantic commit gate, overlap/artifact cleanup, correction cancellation, and active-card refinements for requests such as “write it as code.”
@@ -322,7 +329,7 @@ here — they stay on the user's machine.
 - ✅ **`npm run smoke:api`** + expanded vitest net. Referral follow-up/send stays **roadmap P6** (copy-only today).
 
 **Done (1.4.5)**
-- ✅ Compact Live HUD, pin/pill stay-or-hide, bundled runtime keys for downloaders, optional CI signing paths.
+- ✅ Compact Live HUD, pin/pill stay-or-hide, and optional CI signing paths. *(Legacy internal builds could bundle keys; public builds no longer do.)*
 
 **Done (1.4.4)**
 - ✅ Jobs → Resume Studio handoff, apply-tailor-to-resume, saved-job status/notes, Solo turn timeout, honest Home readiness / landing.
@@ -417,8 +424,8 @@ English, Spanish, French, German, Portuguese, Hindi, Japanese, Chinese, Korean, 
 ## Privacy
 
 - **BYOK mode:** your provider API keys stay in local `userData` / `.env` and are sent only to the providers you configure (OpenAI, Anthropic, Deepgram, etc.) — not to a MockMate key vault.
-- **Shipped builds** may also include **bundled** provider keys (injected at release time from GitHub Actions secrets, never committed) so Live works out of the box; user BYOK still overrides.
+- **Shipped builds never include provider keys.** Managed AI uses server-held credentials; BYOK/private mode uses the user's encrypted device-local keys.
 - **Interview content leaves the device** when features need it: audio → **Deepgram**; resume/JD/transcript → your chosen **LLM**; screenshots → **OpenAI / Gemini** when you press `Ctrl+Shift+U`.
-- **Managed MockMate AI** (when hosted): prompts and context go through MockMate’s authenticated proxy; platform keys stay on the server. Until that hosted path is enabled for your build, “Managed” may still use keys on the machine — check Settings.
+- **Managed MockMate AI:** prompts and context go through MockMate’s authenticated, metered proxy; platform keys stay on the server.
 - Optional accounts backend can store profile/resume/history if you choose — separate from API keys.
 - No third-party product analytics/tracking in the desktop app.

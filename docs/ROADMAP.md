@@ -11,26 +11,57 @@ Strengths to protect (already built): multi-provider failover, rate-limit/quota/
 classification, JSON-repair, abort-safe streaming, playbook prompts (`core.js`/`interview.js`);
 content-protected overlay (WDA_EXCLUDEFROMCAPTURE / PiP).
 
-## Current operating scope — solo owner + internal QA team (v1.4.9)
+## Current operating scope — solo owner + internal QA team (v1.4.10)
 
-The present build is an **internal/local-first BYOK release** for the owner and a small trusted QA
-team. Device-local accounts are acceptable in this scope. For the present internal QA cycle, release
-installers may bundle the team's provider keys to avoid blocking testers; this is temporary and must
-be removed before public/commercial distribution. BYOK remains available in Settings.
+The public build supports **hosted Managed AI** plus private BYOK. Provider credentials are never
+packaged in installers. Internal QA can use BYOK or the same hosted endpoint as production.
 
 **Unblock now:** Live/Solo/screenshot answer reliability, provider-aware model selection, clear
 BYOK setup and key errors, bounded request times, recoverable UI errors, safe updates, local session
 continuity, copyable/code-formatted answers, Stealth confirmation, and packaged Windows smoke tests.
 
-**Not a v1.4.9 blocker:** cross-device accounts, subscriptions, shared/team tenancy, server-side
-history, encrypted cloud sync, managed platform keys, production email recovery, analytics at
-competitor scale, or full Linux parity. These require the hosted backend below and remain roadmap
-work before MockMate is sold as a LockedIn/Parakeet-style public SaaS.
+**Post-1.4.10 roadmap:** shared/team tenancy, encrypted cloud history, production email recovery,
+analytics at competitor scale, full Linux parity, and precise per-user STT-second reconciliation.
+
+### Deferred because they require external infrastructure, credentials, or real devices
+
+These are intentionally not claimed as complete in v1.4.10. Each item has a measurable exit gate.
+
+- [ ] **Deploy Managed AI:** provision the existing backend with HTTPS, MongoDB, stable
+      `JWT_SECRET`, provider/Deepgram keys, CORS allowlist and `MOCKMATE_HOSTED=1`; set the GitHub
+      repository variable `MOCKMATE_API_BASE`. **Done when:** a clean Windows install can sign up
+      and complete Live, Solo and screen analysis without any device-local provider key.
+- [ ] **Exact voice metering:** associate Deepgram usage with account/session IDs, reconcile actual
+      streamed seconds and enforce `sttSeconds` atomically without charging reconnect gaps.
+      **Done when:** parallel sessions cannot exceed the plan and the Account usage total agrees
+      with Deepgram billing within an agreed tolerance.
+- [ ] **Managed billing validation:** configure Stripe price, webhook and customer portal URLs.
+      **Done when:** checkout → signed webhook → plan/model entitlement → cancellation/downgrade is
+      verified against test-mode Stripe and failure/replay cases are covered.
+- [ ] **Cross-device authentication and migration:** test shared accounts against the hosted store
+      and provide an explicit claim/migration decision for existing device-local users.
+      **Done when:** new and old accounts behave correctly across two Windows machines and reinstall.
+- [ ] **Packaged Windows certification:** run the full release checklist plus a 30-turn noisy/accent
+      interview and a two-hour soak on the actual signed/unsigned installer. **Done when:** evidence
+      is recorded in `docs/evidence/VALIDATION_STATUS.md` with updater, Stealth and recovery results.
+- [ ] **Installer signing and update channels:** obtain Windows/macOS certificates, verify signatures,
+      staged rollout and rollback. **Done when:** clean machines accept install/update without
+      avoidable trust warnings and updater metadata/signatures validate.
+- [ ] **Safe multi-language code execution:** deploy isolated runners for Python, Java and C++ with
+      no network, strict CPU/memory/process/time limits and ephemeral filesystems. Until then,
+      generated programs remain copy/run-online outputs; only the local JavaScript sandbox is claimed.
+- [ ] **Production account recovery and OAuth:** configure mail delivery and optional Google OAuth,
+      then test expiry, replay, account linking and duplicate-email behavior.
+- [ ] **Privacy-controlled centralized diagnostics:** opt-in upload, retention/deletion controls,
+      tenant isolation and support correlation without transcripts, screenshots, audio or secrets.
+- [ ] **Platform certification:** publish a tested capability matrix for Windows/macOS/Linux and each
+      meeting/share mode; advertise Stealth only for combinations proven in share-preview tests.
 
 ### Hosted-product backlog (LockedIn/Parakeet parity track)
-- [ ] Hosted HTTPS API + durable database; shared accounts across devices
-- [ ] Authenticated AI/STT proxy with server-held keys, quotas, metering and abuse protection
-- [ ] Stripe subscriptions, entitlement enforcement and billing recovery
+- [x] Hosted-capable HTTPS API + durable Mongo store; release URL is fail-closed
+- [x] Authenticated AI/STT proxy with server-held keys and atomic LLM entitlement enforcement
+- [x] Stripe checkout/webhook/portal and model tier enforcement (production configuration still requires validation)
+- [ ] Reconcile exact Deepgram seconds per user and enforce the STT cap independently of LLM calls
 - [ ] Production email/password recovery and optional Google sign-in/account linking
 - [ ] Encrypted opt-in profile, document and interview-history sync with migration/export tools
 - [ ] Signed/notarized installers, signature-verified updates and staged release channels
@@ -107,11 +138,12 @@ Long resumes used to be truncated into every prompt; RAG retrieves relevant chun
 
 ## P3 — Fix the funnel (convert the aha-moment)
 - [x] Guest / try locally BEFORE forcing full account value *(guest mode 1.4.3)*
-- [ ] Cap cliff: a graceful path when the managed free cap is hit locally (switch-to-BYOK prompt,
-      or don't hard-cap local managed) — never a mid-interview dead end *(local hard-cap removed 1.4.3; hosted path still TBD)*
+- [x] Cap cliff: hosted cap returns an actionable Upgrade/BYOK path; local mode is not hard-capped.
 
 ## P4 — Polish + modernize (mostly done; needs the green build to verify)
 - [x] Modernized model catalog (GPT-5.4, Gemini 3 Flash/Flash-Lite, Cerebras, Sonnet 5); un-hardcoded fast tier
+- [x] Electron 43 / Node 24 desktop migration with lazy-runtime bootstrap in release CI
+- [x] Key-aware quality routing: Fast, Balanced, and Maximum quality; live discovery for GPT-5.6 and Claude Fable/Opus/Sonnet 5
 - [x] Consolidated AI Settings (Response length · Screenshot replies · Auto-skip)
 - [x] What's New modal; mode-aware (managed vs BYOK) error messages; time-boxed web search (Live latency)
 - [x] Duo revived (LiveKit `mintToken` + `/api/token`, wired into dashboard)

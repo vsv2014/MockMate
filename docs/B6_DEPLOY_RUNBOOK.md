@@ -72,8 +72,9 @@ The desktop reads `MOCKMATE_API_BASE` (main process → auth + managed `/api`) a
 - **Test from dev** (no rebuild): `MOCKMATE_API_BASE=$API npm run electron:dev:nosandbox`
   → auth + managed calls go to the hosted backend; the local backend fork is skipped.
 - **For a release build**, bake the URL:
-  1. In `electron/main.cjs`, set the default: `const API_BASE = process.env.MOCKMATE_API_BASE || 'https://mockmate-api.onrender.com'`
-  2. Build the renderer with it: `VITE_API_BASE=$API npm run build`
+  1. Set the GitHub repository variable `MOCKMATE_API_BASE` to the hosted HTTPS URL.
+  2. Release CI writes that URL to package metadata and builds the renderer with `VITE_API_BASE`.
+     CI fails closed when the variable is absent, invalid, loopback, or non-HTTPS.
   3. `npm run electron:build` (`:win` for Windows) → ship.
 
 ## 6. Confirm the SaaS is live

@@ -65,7 +65,9 @@ function applyPillGeometry() {
 // Auth/SaaS backend. Base URL is env-configurable so we can point the app at a
 // hosted backend later with no code change; default is the local fork.
 const BACKEND_PORT = process.env.MOCKMATE_BACKEND_PORT || '4000'
-const API_BASE = process.env.MOCKMATE_API_BASE || `http://localhost:${BACKEND_PORT}`
+let BUILT_MANAGED_API_BASE = ''
+try { BUILT_MANAGED_API_BASE = String(require('../package.json').managedApiBase || '').trim() } catch {}
+const API_BASE = process.env.MOCKMATE_API_BASE || BUILT_MANAGED_API_BASE || `http://localhost:${BACKEND_PORT}`
 
 // Assets ship via extraFiles — next to the exe, not inside resources/app
 function assetsPath(...parts) {
@@ -86,8 +88,7 @@ function iconPath() {
 //   1. userData/.env  — keys a user typed into the in-app setup (their override)
 //   2. exe-dir/.env   — shipped beside the packaged binary (prod), if present
 //   3. appPath/.env   — the BUNDLED .env (dev: project root; prod: resources/app)
-// DELIBERATE PRODUCT DECISION: the bundled .env (3) ships with our keys so every
-// user works out-of-box with no setup — see .env for the security caveat. A user
+// Public installers never ship provider secrets. A user
 // who enters their OWN key (1) overrides ours because userData is read first.
 // Both dev and prod read the same bundled file, so hasApiKeys() in the main
 // process now matches what the server actually sees (that mismatch was the whole
@@ -143,7 +144,8 @@ function writeUserEnvText(txt) {
   return { encrypted: false }
 }
 function loadEnv() {
-  // Priority: user BYOK (override) → exe-dir → bundled app .env (fill gaps only).
+  // Priority: user BYOK (override) → optional developer-side exe-dir/app .env (fill gaps only).
+  // Public release packaging excludes .env.
   const userTxt = readUserEnvText()
   if (userTxt) applyEnvMap(parseEnvText(userTxt), { override: true })
   for (const envPath of [
@@ -327,6 +329,7 @@ function createMainWindow() {
     alwaysOnTop: true,
     frame: isLinux,                                   // Linux: normal window chrome so it's visible + movable
     transparent: !isLinux,                            // transparent overlay only on Win/macOS
+    roundedCorners: false,                            // preserve the existing frameless overlay on Electron 43+
     backgroundColor: isLinux ? '#08090e' : '#00000000',
     resizable: true, skipTaskbar: !isLinux,
     icon: iconPath(),
@@ -626,12 +629,18 @@ if (!gotTheLock) {
 
   app.whenReady().then(async () => {
     diagnostics = new DiagnosticStore({ userData: app.getPath('userData'), appVersion: app.getVersion(), platform: process.platform, arch: process.arch })
-    diag('app', 'ready', { packaged: isProd })
+    diag('app', 'ready', {
+      packaged: isProd,
+      electronVersion: process.versions.electron,
+      chromiumVersion: process.versions.chrome,
+      nodeVersion: process.versions.node,
+      v8Version: process.versions.v8,
+    })
     loadEnv()
     // Fork a LOCAL auth backend only when NOT pointed at a hosted one. With MOCKMATE_API_BASE set
     // (production / Mongo-backed), the desktop talks to the hosted backend over HTTPS — no local
     // fork, and DB credentials (MONGO_URI) never ship on the client.
-    if (!process.env.MOCKMATE_API_BASE) {
+    if (!process.env.MOCKMATE_API_BASE && !BUILT_MANAGED_API_BASE) {
       try {
         await startBackend()
         diag('backend', 'started', { mode: 'local' })
@@ -652,7 +661,7 @@ if (!gotTheLock) {
       }
     }
     // ALWAYS open the single overlay window — no separate setup window. With the
-    // bundled .env keys present it goes straight to work; if no keys are found the
+    // local developer/BYOK keys present it goes straight to work; if no keys are found the
     // overlay shows its inline "Add your API keys" form. One window, never two.
     createMainWindow()
     launchTrayAndShortcuts()
@@ -1009,13 +1018,13 @@ ipcMain.handle('write-env', (_, content) => {
 })
 ipcMain.handle('remove-provider-key', (_, provider) => {
   const keysByProvider = {
-    openai: ['OPENAI_API_KEY', 'OPENAI_MODEL', 'OPENAI_GPT5_MODEL', 'OPENAI_MINI_MODEL'],
-    anthropic: ['ANTHROPIC_API_KEY', 'ANTHROPIC_OPUS_MODEL', 'ANTHROPIC_SONNET5_MODEL'],
+    openai: ['OPENAI_API_KEY', 'OPENAI_MODEL', 'OPENAI_GPT5_MODEL', 'OPENAI_MINI_MODEL', 'OPENAI_MAX_MODEL', 'OPENAI_BALANCED_MODEL', 'OPENAI_FAST_MODEL'],
+    anthropic: ['ANTHROPIC_API_KEY', 'ANTHROPIC_FABLE_MODEL', 'ANTHROPIC_OPUS_MODEL', 'ANTHROPIC_SONNET5_MODEL', 'ANTHROPIC_HAIKU_MODEL'],
     gemini: ['GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_3_MODEL', 'GEMINI_FLASH_LITE_MODEL'],
     groq: ['GROQ_API_KEY', 'GROQ_MODEL', 'GROQ_VISION_MODEL'],
     cerebras: ['CEREBRAS_API_KEY', 'CEREBRAS_MODEL'],
     deepgram: ['DEEPGRAM_API_KEY'],
-    openai_model: ['OPENAI_MODEL', 'OPENAI_GPT5_MODEL', 'OPENAI_MINI_MODEL'],
+    openai_model: ['OPENAI_MODEL', 'OPENAI_GPT5_MODEL', 'OPENAI_MINI_MODEL', 'OPENAI_MAX_MODEL', 'OPENAI_BALANCED_MODEL', 'OPENAI_FAST_MODEL'],
     groq_vision: ['GROQ_VISION_MODEL'],
     custom_vision: ['VISION_API_KEY', 'VISION_MODEL', 'VISION_BASE_URL'],
     adzuna: ['ADZUNA_APP_ID', 'ADZUNA_APP_KEY'],

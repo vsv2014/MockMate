@@ -144,5 +144,5 @@ xcrun stapler validate /Applications/MockMate.app                    # validated
 ### Notes
 
 - Hardened runtime entitlements: `build/entitlements.mac.plist`
-- `notarize: true` in `package.json` uses Apple's `notarytool` (electron-builder 24+)
+- `notarize: true` in `package.json` uses Apple's `notarytool` (electron-builder 26)
 - Windows and macOS use **different** secret prefixes (`WIN_CSC_*` vs `MAC_CSC_*`) so both can be configured at once

@@ -463,6 +463,17 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
           </Field>
         )}
 
+        <Field label="Answer intelligence">
+          <select style={inp} value={profile.modelStrategy || 'balanced'} onChange={e => patch({ modelStrategy: e.target.value })}>
+            <option value="balanced">Balanced — fast normally, strongest for hard questions</option>
+            <option value="quality">Maximum quality — strongest model for every answer</option>
+            <option value="fast">Fast — lowest response latency</option>
+          </select>
+          <div style={{ fontSize: 11, color: T.text3, marginTop: 6 }}>
+            Maximum quality can answer better but costs more and may respond slower. Explicit model selection always wins.
+          </div>
+        </Field>
+
         <Field label="Interview language">
           <select style={inp} value={profile.language || 'English'} onChange={e => patch({ language: e.target.value })}>
             {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
@@ -1174,6 +1185,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           } else if (ev === 'usage') {
             const u = data || {}
             setUsage(s => ({ tokens: s.tokens + (u.input || 0) + (u.output || 0), cost: s.cost + estimateCost(u.model, u.input || 0, u.output || 0) }))
+          } else if (ev === 'provider') {
+            metricsRef.current?.markProviderEvent?.(data || {})
           } else if (ev === 'skip') {
             metricsRef.current?.markSkip?.()
             resetSkip()
