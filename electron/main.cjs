@@ -449,17 +449,21 @@ function launchTrayAndShortcuts() {
 // Keep resolution/quality modest: full 1920×1080 PNGs routinely trip vision 429s ("busy")
 // and slow TTFT; 1280-wide JPEG is enough for code/diagrams and fails over far more reliably.
 async function captureScreen(opts = {}) {
+  const publish = payload => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('screen-captured', payload)
+    return payload
+  }
   // Linux/Wayland routes desktopCapturer through the pipewire ScreenCast portal, which is
   // unreliable/absent here and can HANG or crash the process (SIGKILL). The screenshot-solve
   // feature just isn't available on Linux — notify instead of attempting the portal.
   if (process.platform === 'linux') {
     try { if (Notification.isSupported()) new Notification({ title: 'Screen capture unavailable on Linux', body: 'The screenshot-solve feature needs Windows or macOS (Wayland blocks it).' }).show() } catch {}
-    return { error: 'linux_unsupported' }
+    return publish({ error: 'linux_unsupported' })
   }
   suppressBlurHide(2500)
   try {
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1280, height: 720 } })
-    if (!sources.length) return { error: 'no_sources' }
+    if (!sources.length) return publish({ error: 'no_sources' })
     const primaryId = String(screen.getPrimaryDisplay().id)
     const preferredId = opts.displayId != null ? String(opts.displayId) : null
     // Prefer explicit display → primary → first. display_id is Electron's link to Display.id when available.
@@ -493,11 +497,10 @@ async function captureScreen(opts = {}) {
         displayName: chosen.name || null,
       }
     }
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('screen-captured', payload)
-    return payload
+    return publish(payload)
   } catch (e) {
     console.error('Screen capture failed:', e.message)
-    return { error: e.message || 'capture_failed' }
+    return publish({ error: e.message || 'capture_failed' })
   } finally { suppressBlurHide(800) }
 }
 

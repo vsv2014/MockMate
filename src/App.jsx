@@ -27,6 +27,8 @@ import { copyText } from './lib/clipboard'
 import { canRunLanguage, runJavaScriptIsolated } from './lib/codeRunner'
 import {
   createScreenContextRecord,
+  previousScreenForContinuation,
+  screenContinuationCandidate,
   screenFingerprint,
 } from '../shared/screenContext.js'
 
@@ -100,6 +102,7 @@ function ElectronShell({ auth }) {
   const [minimized, setMinimized] = useState(false)
   const [screenAnalysis, setScreenAnalysis] = useState(null)   // vision analysis result
   const [screenAnalyzing, setScreenAnalyzing] = useState(false)
+  const [screenFlowStatus, setScreenFlowStatus] = useState('')
   const profileRef = useRef({})
   const resizing = useRef(false)
   const resizeStart = useRef({})
@@ -219,6 +222,12 @@ function ElectronShell({ auth }) {
   const analysisAbortRef = useRef(null)
   const analysisGenRef = useRef(0)
   const analysisCacheRef = useRef(new Map()) // fingerprint → analysis
+  const screenChainRef = useRef(null)       // immediately previous successful manual capture
+  const captureQueueRef = useRef(Promise.resolve())
+  const queuedCaptureCountRef = useRef(0)
+  const screenSessionGenRef = useRef(0)
+  const nextCaptureModeRef = useRef('auto')
+  const screenUndoRef = useRef(null)         // exact state before the latest confirmed merge
   const liveSpokenQRef = useRef('')         // last Live interviewer Q (for vision scope)
   const [captureDisplays, setCaptureDisplays] = useState([])
   const [captureDisplayId, setCaptureDisplayId] = useState(() => {
@@ -254,9 +263,12 @@ function ElectronShell({ auth }) {
     analysisAbortRef.current = abort
     const gen = ++analysisGenRef.current
     const style = screenshotStyle()
+    const previousRecord = shot?.previousScreenRecord || null
+    const previousScreen = previousScreenForContinuation(previousRecord)
+    const continuationMode = shot?.continuationMode || 'auto'
     const fp = screenFingerprint(base64, {
       language: language || '', style,
-      context: JSON.stringify(profileRef.current || {}),
+      context: JSON.stringify({ profile: profileRef.current || {}, previousScreen, continuationMode }),
     })
     const requestId = `scr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
     const imageDimensions = (shot?.width && shot?.height)
@@ -265,15 +277,30 @@ function ElectronShell({ auth }) {
 
     const cached = analysisCacheRef.current.get(fp)
     if (cached && retry === 0) {
-      setScreenAnalysis(createScreenContextRecord({
+      const record = createScreenContextRecord({
         analysis: cached,
+        screenContextId: cached.isContinuation && previousRecord?.screenContextId
+          ? previousRecord.screenContextId
+          : '',
         displayId: shot?.displayId,
         displayName: shot?.displayName,
         fingerprint: fp,
         mime,
         status: 'analyzed_cached',
-      }))
-      setScreenAnalyzing(false)
+      })
+      if (!record.error) screenChainRef.current = record
+      if (!record.error && cached.isContinuation && previousRecord) {
+        screenUndoRef.current = { record: previousRecord, shot: shot?.previousShot || null }
+      } else if (!record.error) {
+        screenUndoRef.current = null
+      }
+      setScreenAnalysis(record)
+      if (!record.error) {
+        setScreenFlowStatus(cached.isContinuation
+          ? `Combined ${cached._captureCount || 2} screenshots — one answer updated`
+          : 'Captured as a new question')
+      }
+      setScreenAnalyzing(queuedCaptureCountRef.current > 1)
       return
     }
 
@@ -287,6 +314,8 @@ function ElectronShell({ auth }) {
           imageBase64: base64, mime, profile: profileRef.current, language,
           style,
           spokenQuestion: liveSpokenQRef.current || '',
+          previousScreen,
+          continuationMode,
           requestId, fingerprint: fp, imageDimensions,
         }),
       })
@@ -301,6 +330,7 @@ function ElectronShell({ auth }) {
         return runAnalysis({
           base64, mime, displayId: shot?.displayId, displayName: shot?.displayName,
           width: shot?.width, height: shot?.height,
+          previousScreenRecord, continuationMode,
         }, language, { retry: retry + 1 })
       }
       if (err) {
@@ -309,7 +339,11 @@ function ElectronShell({ auth }) {
           displayId: shot?.displayId, displayName: shot?.displayName, fingerprint: fp, mime,
         }))
       } else {
-        const analysis = d.analysis || { error: 'Empty analysis' }
+        let analysis = d.analysis || { error: 'Empty analysis' }
+        if (!analysis.error) {
+          const priorCount = Math.max(1, Number(previousRecord?.analysis?._captureCount) || 1)
+          analysis = { ...analysis, _captureCount: analysis.isContinuation ? priorCount + 1 : 1 }
+        }
         if (!analysis.error) {
           analysisCacheRef.current.set(fp, analysis)
           if (analysisCacheRef.current.size > 12) {
@@ -317,12 +351,28 @@ function ElectronShell({ auth }) {
             analysisCacheRef.current.delete(first)
           }
         }
-        setScreenAnalysis(createScreenContextRecord({
+        const continuationId = analysis.isContinuation && previousRecord?.screenContextId
+          ? previousRecord.screenContextId
+          : ''
+        const record = createScreenContextRecord({
           analysis: analysis.error ? null : analysis,
+          screenContextId: continuationId,
           error: analysis.error || null,
           status: analysis.error ? 'failed' : 'analyzed',
           displayId: shot?.displayId, displayName: shot?.displayName, fingerprint: fp, mime,
-        }))
+        })
+        if (!record.error) screenChainRef.current = record
+        if (!record.error && analysis.isContinuation && previousRecord) {
+          screenUndoRef.current = { record: previousRecord, shot: shot?.previousShot || null }
+        } else if (!record.error) {
+          screenUndoRef.current = null
+        }
+        setScreenAnalysis(record)
+        if (!record.error) {
+          setScreenFlowStatus(analysis.isContinuation
+            ? `Combined ${analysis._captureCount} screenshots — one answer updated`
+            : 'Captured as a new question')
+        }
       }
     } catch (e) {
       if (abort.signal.aborted || gen !== analysisGenRef.current) return // cancelled — no retry
@@ -331,7 +381,9 @@ function ElectronShell({ auth }) {
         displayId: shot?.displayId, displayName: shot?.displayName, mime,
       }))
     }
-    if (gen === analysisGenRef.current) setScreenAnalyzing(false)
+    // Keep the loading state stable when another captured screen is already
+    // queued; the next analysis begins immediately and should not flash idle.
+    if (gen === analysisGenRef.current) setScreenAnalyzing(queuedCaptureCountRef.current > 1)
   }, [])
 
   // Re-solve the SAME captured screen in a different language (no re-capture).
@@ -342,11 +394,43 @@ function ElectronShell({ auth }) {
     window.electronAPI?.captureScreen?.(opts)
   }, [captureDisplayId])
 
+  const captureAsContinuation = useCallback(() => {
+    nextCaptureModeRef.current = 'continue'
+    setScreenFlowStatus('Capture the next portion — it will be combined with this question')
+    capturePreferredScreen()
+  }, [capturePreferredScreen])
+
+  const captureAsNewQuestion = useCallback(() => {
+    nextCaptureModeRef.current = 'new'
+    setScreenFlowStatus('Capturing a separate new question')
+    capturePreferredScreen()
+  }, [capturePreferredScreen])
+
+  const undoScreenMerge = useCallback(() => {
+    const prior = screenUndoRef.current
+    if (!prior?.record) return
+    screenChainRef.current = prior.record
+    lastShotRef.current = prior.shot || null
+    screenUndoRef.current = null
+    setScreenAnalyzing(false)
+    setScreenAnalysis(prior.record)
+    setScreenFlowStatus('Merge undone — restored the previous question and answer')
+  }, [])
+
   // Listen for screen captures (Ctrl+Shift+U or "Solve it" button) from Electron
   useEffect(() => {
     const cleanup = window.electronAPI?.onScreenCaptured((payload) => {
-      if (payload?.error === 'linux_unsupported') {
-        setScreenAnalysis(createScreenContextRecord({ error: 'Screen capture unavailable on Linux', status: 'unsupported' }))
+      if (payload?.error) {
+        nextCaptureModeRef.current = 'auto'
+        const unsupported = payload.error === 'linux_unsupported'
+        const message = unsupported
+          ? 'Screen capture unavailable on Linux'
+          : payload.error === 'no_sources'
+            ? 'No screen source was available. Check OS screen-recording permission and try again.'
+            : `Screen capture failed: ${payload.error}`
+        setScreenFlowStatus('Capture failed — no continuation choice was carried forward')
+        setScreenAnalyzing(false)
+        setScreenAnalysis(createScreenContextRecord({ error: message, status: unsupported ? 'unsupported' : 'not_captured' }))
         return
       }
       const shot = typeof payload === 'string'
@@ -361,14 +445,60 @@ function ElectronShell({ auth }) {
           bytes: payload?.bytes || null,
         }
       if (!shot.base64) {
+        nextCaptureModeRef.current = 'auto'
+        setScreenFlowStatus('Capture failed — no continuation choice was carried forward')
         setScreenAnalysis(createScreenContextRecord({ error: 'Screen not captured', status: 'not_captured' }))
         return
       }
-      lastShotRef.current = shot
-      runAnalysis(shot)
+      shot.continuationMode = nextCaptureModeRef.current
+      nextCaptureModeRef.current = 'auto'
+      const queuedForSession = screenSessionGenRef.current
+      queuedCaptureCountRef.current += 1
+      if (queuedCaptureCountRef.current > 1) {
+        setScreenFlowStatus(`Screenshot queued (${queuedCaptureCountRef.current}) — earlier capture will not be cancelled`)
+      }
+      captureQueueRef.current = captureQueueRef.current.catch(() => {}).then(async () => {
+        if (queuedForSession !== screenSessionGenRef.current) return
+        const previous = screenChainRef.current
+        if (shot.continuationMode === 'new') {
+          screenChainRef.current = null
+          screenUndoRef.current = null
+        }
+        const forcedContinue = shot.continuationMode === 'continue' && !!previous
+        const automaticContinue = shot.continuationMode !== 'new' && screenContinuationCandidate(previous, shot)
+        if (forcedContinue || automaticContinue) {
+          shot.previousScreenRecord = previous
+          setScreenFlowStatus(forcedContinue
+            ? 'Combining this capture with the previous question…'
+            : 'Checking whether this continues the previous question…')
+        } else {
+          setScreenFlowStatus('Analyzing as a new question…')
+        }
+        shot.previousShot = lastShotRef.current
+        lastShotRef.current = shot
+        await runAnalysis(shot)
+      }).finally(() => {
+        queuedCaptureCountRef.current = Math.max(0, queuedCaptureCountRef.current - 1)
+      })
     })
     return () => cleanup?.()
   }, [runAnalysis])
+
+  const dismissScreenAnalysis = useCallback(() => {
+    try { analysisAbortRef.current?.abort() } catch {}
+    analysisAbortRef.current = null
+    analysisGenRef.current += 1
+    screenSessionGenRef.current += 1
+    captureQueueRef.current = Promise.resolve()
+    queuedCaptureCountRef.current = 0
+    nextCaptureModeRef.current = 'auto'
+    lastShotRef.current = null
+    screenChainRef.current = null
+    screenUndoRef.current = null
+    setScreenAnalyzing(false)
+    setScreenFlowStatus('')
+    setScreenAnalysis(null)
+  }, [])
 
   // Live tells App the latest interviewer question for vision scoping.
   const onLiveSpokenQuestion = useCallback((q) => { liveSpokenQRef.current = q || '' }, [])
@@ -381,6 +511,12 @@ function ElectronShell({ auth }) {
     analysisGenRef.current += 1
     liveSpokenQRef.current = ''
     lastShotRef.current = null
+    screenChainRef.current = null
+    screenUndoRef.current = null
+    screenSessionGenRef.current += 1
+    captureQueueRef.current = Promise.resolve()
+    queuedCaptureCountRef.current = 0
+    nextCaptureModeRef.current = 'auto'
     analysisCacheRef.current.clear()
     setScreenAnalyzing(false)
     setScreenAnalysis(null)
@@ -677,8 +813,10 @@ function ElectronShell({ auth }) {
       }}
       clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
       onResize={startResize} onDrag={startDrag}
-      screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} onDismissScreen={() => setScreenAnalysis(null)}
+      screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} screenFlowStatus={screenFlowStatus} onDismissScreen={dismissScreenAnalysis}
       codingDetected={codingDetected} onCaptureScreen={capturePreferredScreen}
+      onContinueScreen={captureAsContinuation} onNewScreen={captureAsNewQuestion}
+      onUndoScreen={screenUndoRef.current ? undoScreenMerge : undefined}
       onReanalyze={reanalyze}
       onLiveSpokenQuestion={onLiveSpokenQuestion}
       captureDisplays={captureDisplays} captureDisplayId={captureDisplayId} onCaptureDisplayId={setCaptureDisplayId} />
@@ -754,7 +892,7 @@ export function CodeBlock({ code, language }) {
 }
 
 // ── Screen Analysis Panel — shown when Ctrl+Shift+U is pressed ───────────────
-export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyze, onRecapture, captureDisplays, captureDisplayId, onCaptureDisplayId, liveAttachHint }) {
+export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss, onReanalyze, onRecapture, onContinueCapture, onNewCapture, onUndoMerge, captureDisplays, captureDisplayId, onCaptureDisplayId, liveAttachHint }) {
   const [requestedLanguage, setRequestedLanguage] = useState('')
   useEffect(() => { if (!analyzing) setRequestedLanguage('') }, [analyzing, analysis])
   if (!analyzing && !analysis) return null
@@ -801,6 +939,11 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
               <option key={d.id} value={d.id}>{d.primary ? `${d.label} (primary)` : d.label}</option>
             ))}
           </select>
+        </div>
+      )}
+      {flowStatus && (
+        <div role="status" aria-live="polite" style={{ marginBottom: 8, padding: '6px 8px', borderRadius: 6, background: 'rgba(45,212,191,0.1)', border: '1px solid rgba(45,212,191,0.24)', color: '#99f6e4', fontSize: 10.5, lineHeight: 1.4 }}>
+          {flowStatus}
         </div>
       )}
       {analyzing
@@ -862,6 +1005,22 @@ export function ScreenAnalysisPanel({ analysis, analyzing, onDismiss, onReanalyz
               </>
             )
       }
+      {!analyzing && !err && record && (onContinueCapture || onNewCapture) && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 9, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          {onContinueCapture && <button type="button" onClick={onContinueCapture}
+            style={{ flex: 1, minHeight: 32, borderRadius: 7, border: '1px solid rgba(45,212,191,0.4)', background: 'rgba(13,148,136,0.18)', color: '#99f6e4', cursor: 'pointer', fontSize: 10.5, fontWeight: 700 }}>
+            + Add next screenshot
+          </button>}
+          {onNewCapture && <button type="button" onClick={onNewCapture}
+            style={{ flex: 1, minHeight: 32, borderRadius: 7, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.05)', color: T.text2, cursor: 'pointer', fontSize: 10.5, fontWeight: 650 }}>
+            Start separate question
+          </button>}
+          {onUndoMerge && <button type="button" onClick={onUndoMerge}
+            style={{ flexBasis: '100%', minHeight: 30, borderRadius: 7, border: '1px solid rgba(251,191,36,0.32)', background: 'rgba(251,191,36,0.08)', color: '#fcd34d', cursor: 'pointer', fontSize: 10.5, fontWeight: 650 }}>
+            ↶ Undo merge
+          </button>}
+        </div>
+      )}
     </div>
   )
 }

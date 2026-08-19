@@ -9,6 +9,35 @@ export const SCREEN_CONTEXT_VERSION = 'screen_ctx_v1'
 /** Freshness window — older captures are not auto-attached to new spoken questions. */
 export const SCREEN_FRESH_MS = 3 * 60 * 1000
 
+/** A second manual capture shortly after the first may be the rest of one long question. */
+export const SCREEN_CONTINUATION_MS = 2 * 60 * 1000
+export const SCREEN_CONTINUATION_TEXT_MAX = 6000
+
+export function screenContinuationCandidate(previous, next = {}, now = Date.now()) {
+  if (!previous || previous.error || !previous.analysis || !previous.timestamp) return false
+  const age = now - previous.timestamp
+  if (age < 0 || age > SCREEN_CONTINUATION_MS) return false
+  const previousDisplay = previous.displayId == null ? '' : String(previous.displayId)
+  const nextDisplay = next.displayId == null ? '' : String(next.displayId)
+  return !previousDisplay || !nextDisplay || previousDisplay === nextDisplay
+}
+
+/** Only bounded, non-image evidence is sent to the next vision request. */
+export function previousScreenForContinuation(previous) {
+  if (!previous?.analysis || previous.error) return null
+  const a = previous.analysis
+  return {
+    screenContextId: previous.screenContextId,
+    detectedText: String(a.detectedText || '').slice(0, SCREEN_CONTINUATION_TEXT_MAX),
+    contentType: a.contentType || previous.contentType || 'other',
+    screenFamily: a.screenFamily || previous.contentType || 'screen_unknown',
+    language: a.language || null,
+    pattern: a.pattern || null,
+    fullAnswer: String(a.fullAnswer || '').slice(0, 1200),
+    captureCount: Math.max(1, Number(a._captureCount) || 1),
+  }
+}
+
 /** Map vision contentType / aliases → coarse screen family used for relevance. */
 export function normalizeScreenContentType(raw) {
   const t = String(raw || '').toLowerCase().trim()
@@ -209,6 +238,7 @@ export function screenFingerprint(base64, { language = '', style = '', context =
 
 export function createScreenContextRecord({
   analysis,
+  screenContextId = '',
   displayId = null,
   displayName = null,
   fingerprint = '',
@@ -216,7 +246,7 @@ export function createScreenContextRecord({
   error = null,
   status = 'analyzed',
 } = {}) {
-  const id = `sc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
+  const id = screenContextId || `sc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
   if (error) {
     return {
       screenContextId: id,

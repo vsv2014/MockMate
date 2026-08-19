@@ -620,6 +620,8 @@ Return ONE JSON object, no prose:
 export async function analyzeScreen({
   imageBase64, profile = {}, language, style = 'balanced', mime,
   spokenQuestion = '', contentTypeHint = '',
+  previousScreen = null,
+  continuationMode = 'auto',
   useSpokenContext = false,
   requestId = '', fingerprint = '', imageDimensions = null, signal,
   _visionCall = visionComplete, _textCall = completeTextQuick,
@@ -642,10 +644,20 @@ export async function analyzeScreen({
   const codeLang = language || profile.codingLanguage || 'Python'
   const fast = style === 'concise'
   const rid = requestId || `scr_${Date.now().toString(36)}`
+  const previous = previousScreen?.detectedText ? {
+    screenContextId: String(previousScreen.screenContextId || '').slice(0, 120),
+    detectedText: String(previousScreen.detectedText || '').slice(0, 6000),
+    contentType: String(previousScreen.contentType || '').slice(0, 40),
+    screenFamily: String(previousScreen.screenFamily || '').slice(0, 40),
+    language: String(previousScreen.language || '').slice(0, 40),
+    fullAnswer: String(previousScreen.fullAnswer || '').slice(0, 1200),
+    captureCount: Math.max(1, Number(previousScreen.captureCount) || 1),
+  } : null
 
   const prompt = `You are a private interview coach analyzing a screenshot taken during a live interview.
 ${packed ? `\n${packed}\n` : ''}
 ${spoken ? `\nRECENT SPOKEN CONTEXT (secondary evidence only; speech recognition may be incomplete or wrong):\n"${spoken.slice(0, 500)}"\nUse it only when it clearly matches the visible screen. Never let garbled or unrelated speech override a readable question on screen.\n` : ''}
+${previous ? `\nPOSSIBLE PREVIOUS SCREENSHOT FROM THE SAME LONG QUESTION:\n${JSON.stringify(previous)}\n${continuationMode === 'continue' ? 'The user explicitly selected CONTINUE QUESTION. Treat the new screenshot as the next portion, set isContinuation=true, merge both parts into detectedText, and regenerate one complete answer.' : 'First decide whether the NEW screenshot is clearly a continuation of that question. A continuation can show the next paragraph, constraints, examples, or the lower half of the same coding task even with little exact text overlap. If related, set isContinuation=true, merge both parts into detectedText, and regenerate one complete answer from the combined question. If it is a different question/page/task, set isContinuation=false and ignore the previous answer. Never join merely because captures are consecutive.'}\n` : ''}
 This is an explicit user-triggered screen capture. First identify what is actually on screen. If a readable question or task is visible, answer THAT visible question directly and treat it as the primary ask. Only fall back to recent spoken context when the screen has no actionable question. Then give guidance the candidate can use RIGHT NOW.
 
 CONTENT TYPE — pick the best match:
@@ -675,6 +687,7 @@ Return ONE JSON object, no markdown:
   "contentType": "coding" | "system_design" | "behavioral" | "slide" | "other",
   "screenFamily": "screen_code|screen_diagram|screen_document|screen_spreadsheet|screen_ui|screen_slide|screen_text|screen_unknown",
   "detectedText": "<main visible question or text>",
+  "isContinuation": <true only when this continues the supplied previous screenshot, otherwise false>,
   "pattern": "<coding only, else null>",
   "complexity": "<coding only, else null>",
   "language": "<coding language or null>",
@@ -737,6 +750,9 @@ ${JSON.stringify(out).slice(0, 10000)}`,
     out.contentType = toLegacyContentType(family)
     out._screenContextVersion = SCREEN_CONTEXT_VERSION
     out._screenRequestId = rid
+    const providerContinuation = /^(true|yes|1)$/i.test(String(out.isContinuation ?? '').trim())
+    out.isContinuation = previous ? (continuationMode === 'continue' || providerContinuation) : false
+    if (out.isContinuation) out.continuationOf = previous.screenContextId || null
   }
   return out
 }

@@ -510,7 +510,7 @@ function Section({ n, title, subtitle, defaultOpen = true, children }) {
 }
 
 // ── Live overlay ──────────────────────────────────────────────────────────────
-function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, pip: initialPip, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId, interviewConfig: initialInterviewConfig }) {
+function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, pip: initialPip, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId, interviewConfig: initialInterviewConfig }) {
   const interviewConfigRef = useRef(initialInterviewConfig || buildInterviewConfig({
     profile,
     selectedDocumentIds: getSelectedDocIds(),
@@ -575,8 +575,11 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const startedAt = useRef(Date.now())
   const streamTimer = useRef(null)
   const latestQuestionRef = useRef(null)
+  const latestAnswerRef = useRef(null)
   const feedRef = useRef(null)
   const followLatestRef = useRef(true)
+  const programmaticScrollRef = useRef(false)
+  const programmaticScrollTimerRef = useRef(null)
   const [showJumpLatest, setShowJumpLatest] = useState(false)
   const ragSpec = useRef({ q: '', p: null })
   const metricsRef = useRef(null)
@@ -741,7 +744,17 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     return () => clearInterval(id)
   }, [])
 
-  const latestQuestionId = [...transcript].filter(s => s.isQuestion).at(-1)?.questionId
+  const latestQuestion = [...transcript].filter(s => s.isQuestion).at(-1)
+  const latestQuestionId = latestQuestion?.questionId
+  const latestHasAnswer = !!(latestQuestion?.hint && (latestQuestion.answer !== undefined || latestQuestion.hint.incomplete))
+  const scrollLatestIntoView = useCallback((target, block = 'start') => {
+    if (!target) return
+    programmaticScrollRef.current = true
+    clearTimeout(programmaticScrollTimerRef.current)
+    target.scrollIntoView({ behavior: 'smooth', block, inline: 'nearest' })
+    programmaticScrollTimerRef.current = setTimeout(() => { programmaticScrollRef.current = false }, 500)
+  }, [])
+
   useEffect(() => {
     if (!latestQuestionId) return
     if (!followLatestRef.current) {
@@ -749,16 +762,29 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       return
     }
     const frame = requestAnimationFrame(() => {
-      latestQuestionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
+      scrollLatestIntoView(latestQuestionRef.current)
     })
     return () => cancelAnimationFrame(frame)
-  }, [latestQuestionId, hintLoading])
+  }, [latestQuestionId, scrollLatestIntoView])
+
+  // The question is shown before generation. When the answer bubble is created,
+  // move that bubble into view once; otherwise compact overlays leave it below
+  // the fold and make the user scroll during the interview.
+  useEffect(() => {
+    if (!latestQuestionId || !latestHasAnswer) return
+    if (!followLatestRef.current) {
+      setShowJumpLatest(true)
+      return
+    }
+    const frame = requestAnimationFrame(() => scrollLatestIntoView(latestAnswerRef.current))
+    return () => cancelAnimationFrame(frame)
+  }, [latestQuestionId, latestHasAnswer, scrollLatestIntoView])
 
   const jumpToLatest = useCallback(() => {
     followLatestRef.current = true
     setShowJumpLatest(false)
-    latestQuestionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
-  }, [])
+    scrollLatestIntoView(latestAnswerRef.current || latestQuestionRef.current)
+  }, [scrollLatestIntoView])
 
   const copyFeedText = useCallback(async (key, value) => {
     const ok = await copyText(String(value || ''))
@@ -949,6 +975,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     const clearTimers = () => {
       clearTimeout(lockTimeout)
       clearTimeout(postMetaTimerRef.current)
+      clearTimeout(programmaticScrollTimerRef.current)
     }
 
     const logTrace = (status) => {
@@ -1613,10 +1640,12 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       )}
       {/* ── Single scrollable chat feed ── */}
       <div ref={feedRef} onScroll={e => {
+        if (programmaticScrollRef.current) return
         const el = e.currentTarget
-        // The feed is newest-first. Scrolling down means the user is reading an
-        // older answer, so do not pull them back when a new question arrives.
-        const nearLatest = el.scrollTop < 56
+        // The feed is newest-first. Remaining anywhere inside the latest card is
+        // still "following latest"; scrolling beyond it means reading older turns.
+        const latestHeight = latestQuestionRef.current?.offsetHeight || 0
+        const nearLatest = el.scrollTop < Math.max(56, latestHeight - 24)
         followLatestRef.current = nearLatest
         if (nearLatest) setShowJumpLatest(false)
       }} style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column' }}>
@@ -1665,7 +1694,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
         <ScreenAnalysisPanel
           analysis={screenAnalysis} analyzing={screenAnalyzing}
+          flowStatus={screenFlowStatus}
           onDismiss={onDismissScreen} onReanalyze={onReanalyze} onRecapture={onCaptureScreen}
+          onContinueCapture={onContinueScreen} onNewCapture={onNewScreen}
+          onUndoMerge={onUndoScreen}
           captureDisplays={captureDisplays} captureDisplayId={captureDisplayId} onCaptureDisplayId={onCaptureDisplayId}
           liveAttachHint={screenAttachHint}
         />
@@ -1809,7 +1841,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             )}
             {/* A bubble (or incomplete stub with Retry) */}
             {s.hint && (s.answer !== undefined || s.hint.incomplete) && (
-              <div style={{ marginLeft: 10 }}>
+              <div ref={isLatest ? latestAnswerRef : null} style={{ marginLeft: 10, scrollMarginTop: 8 }}>
                 <div style={{ display: 'flex', gap: 4, marginBottom: 5, flexWrap: 'wrap', alignItems: 'center' }}>
                   {s.hint.incomplete && <span style={badge('rgba(251,191,36,0.2)', '#fbbf24')}>⚠ INCOMPLETE</span>}
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
@@ -1953,7 +1985,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, onSessionEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, onDismissScreen, codingDetected, onCaptureScreen, onReanalyze, onPipActive, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId }) {
+export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, onSessionEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId }) {
   const [phase, setPhase] = useState('setup')
   const [sessionConfig, setSessionConfig] = useState(null)
   const [sessionNotes, setSessionNotes] = useState(null)
@@ -2006,6 +2038,8 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
         }
       }}
       screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} onDismissScreen={onDismissScreen}
+      screenFlowStatus={screenFlowStatus} onContinueScreen={onContinueScreen} onNewScreen={onNewScreen}
+      onUndoScreen={onUndoScreen}
       codingDetected={codingDetected} onCaptureScreen={onCaptureScreen} onReanalyze={onReanalyze}
       onLiveSpokenQuestion={onLiveSpokenQuestion}
       captureDisplays={captureDisplays} captureDisplayId={captureDisplayId} onCaptureDisplayId={onCaptureDisplayId}

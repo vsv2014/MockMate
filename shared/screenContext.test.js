@@ -6,6 +6,10 @@ import {
   normalizeScreenContentType,
   createScreenContextRecord,
   screenFingerprint,
+  previousScreenForContinuation,
+  screenContinuationCandidate,
+  SCREEN_CONTINUATION_MS,
+  SCREEN_CONTINUATION_TEXT_MAX,
   SCREEN_FRESH_MS,
 } from './screenContext.js'
 
@@ -15,6 +19,47 @@ describe('screenFingerprint', () => {
     const first = screenFingerprint(image, { style: 'balanced', context: '{"role":"QA"}' })
     const second = screenFingerprint(image, { style: 'balanced', context: '{"role":"SDE"}' })
     expect(first).not.toBe(second)
+  })
+})
+
+describe('multi-capture continuation bounds', () => {
+  it('offers a recent capture from the same display as continuation context', () => {
+    const previous = createScreenContextRecord({
+      analysis: { contentType: 'coding', detectedText: 'Write a function that processes' },
+      displayId: '1',
+    })
+    expect(screenContinuationCandidate(previous, { displayId: '1' }, previous.timestamp + 1000)).toBe(true)
+    expect(previousScreenForContinuation(previous)).toMatchObject({
+      screenContextId: previous.screenContextId,
+      detectedText: 'Write a function that processes',
+      captureCount: 1,
+    })
+  })
+
+  it('rejects stale or different-display captures', () => {
+    const previous = createScreenContextRecord({
+      analysis: { contentType: 'other', detectedText: 'first half' },
+      displayId: '1',
+    })
+    expect(screenContinuationCandidate(previous, { displayId: '2' }, previous.timestamp + 1000)).toBe(false)
+    expect(screenContinuationCandidate(previous, { displayId: '1' }, previous.timestamp + SCREEN_CONTINUATION_MS + 1)).toBe(false)
+  })
+
+  it('can preserve a question id when a confirmed continuation replaces its answer', () => {
+    const first = createScreenContextRecord({ analysis: { contentType: 'other', detectedText: 'first' } })
+    const combined = createScreenContextRecord({
+      screenContextId: first.screenContextId,
+      analysis: { contentType: 'other', detectedText: 'first second', isContinuation: true },
+    })
+    expect(combined.screenContextId).toBe(first.screenContextId)
+  })
+
+  it('retains long multi-part question text within a bounded budget', () => {
+    const longText = 'constraint '.repeat(900)
+    const previous = createScreenContextRecord({ analysis: { contentType: 'other', detectedText: longText } })
+    const packed = previousScreenForContinuation(previous)
+    expect(packed.detectedText.length).toBe(SCREEN_CONTINUATION_TEXT_MAX)
+    expect(packed.detectedText.length).toBeGreaterThan(1800)
   })
 })
 import { classifyTurn } from './interviewClassify.js'

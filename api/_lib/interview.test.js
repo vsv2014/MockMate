@@ -87,6 +87,71 @@ describe('manual screen capture precedence', () => {
     expect(capturedPrompt).toContain('secondary evidence only')
   })
 
+  it('merges a confirmed second screenshot into one complete question', async () => {
+    let capturedPrompt = ''
+    const out = await analyzeScreen({
+      imageBase64: 'bbbb',
+      previousScreen: {
+        screenContextId: 'sc_first',
+        detectedText: 'Write an asynchronous test that sends requests',
+        contentType: 'coding',
+      },
+      _visionCall: async ({ prompt }) => {
+        capturedPrompt = prompt
+        return JSON.stringify({
+          contentType: 'coding', screenFamily: 'screen_code', isContinuation: true,
+          detectedText: 'Write an asynchronous test that sends requests with at most five concurrent requests',
+          language: 'Python', code: 'async def run():\n    pass', approach: ['semaphore'], edgeCases: [],
+          keyPoints: [], fullAnswer: 'Use a semaphore capped at five.',
+        })
+      },
+    })
+    expect(capturedPrompt).toContain('POSSIBLE PREVIOUS SCREENSHOT')
+    expect(capturedPrompt).toContain('Write an asynchronous test that sends requests')
+    expect(out.isContinuation).toBe(true)
+    expect(out.continuationOf).toBe('sc_first')
+    expect(out.detectedText).toMatch(/five concurrent/i)
+  })
+
+  it('cannot claim continuation when no previous screenshot was supplied', async () => {
+    const out = await analyzeScreen({
+      imageBase64: 'cccc',
+      _visionCall: async () => JSON.stringify({
+        contentType: 'other', screenFamily: 'screen_text', isContinuation: true,
+        detectedText: 'Independent question', keyPoints: [], fullAnswer: 'Independent answer',
+      }),
+    })
+    expect(out.isContinuation).toBe(false)
+    expect(out.continuationOf).toBeUndefined()
+  })
+
+  it('honors an explicit Continue question override', async () => {
+    const out = await analyzeScreen({
+      imageBase64: 'dddd',
+      continuationMode: 'continue',
+      previousScreen: { screenContextId: 'sc_manual', detectedText: 'first portion' },
+      _visionCall: async () => JSON.stringify({
+        contentType: 'other', screenFamily: 'screen_text', isContinuation: false,
+        detectedText: 'first portion plus second portion', keyPoints: [], fullAnswer: 'combined',
+      }),
+    })
+    expect(out.isContinuation).toBe(true)
+    expect(out.continuationOf).toBe('sc_manual')
+  })
+
+  it('normalizes provider string continuation values', async () => {
+    const out = await analyzeScreen({
+      imageBase64: 'eeee',
+      previousScreen: { screenContextId: 'sc_string', detectedText: 'first half' },
+      _visionCall: async () => JSON.stringify({
+        contentType: 'other', screenFamily: 'screen_text', isContinuation: 'true',
+        detectedText: 'first half and second half', keyPoints: [], fullAnswer: 'combined answer',
+      }),
+    })
+    expect(out.isContinuation).toBe(true)
+    expect(out.continuationOf).toBe('sc_string')
+  })
+
   it('treats a selected coding language as a strict transform', async () => {
     let visionPrompt = ''
     let rewritePrompt = ''

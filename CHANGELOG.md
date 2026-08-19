@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.4.9 — 2026-08-19
+
+### Fixed
+- Consecutive screenshots showing different portions of one long interview question are now evaluated as a bounded continuation chain. When the second capture is confirmed as related, MockMate merges the extracted question, regenerates one complete answer, and updates the existing question card instead of creating a duplicate.
+- Screenshot continuation context is limited to the immediately preceding successful capture, the same display, and a two-minute window. Unrelated screens, stale captures, and new Live sessions still start cleanly and cannot inherit an earlier question.
+- Rapid consecutive captures are queued and analyzed in order rather than cancelling the first half. The overlay reports queued, continuation-checking, combining, and answer-updated states.
+- Screen analysis now provides explicit **Continue question** and **New question** capture actions. Dismissing the panel cancels pending analysis and clears its continuation chain.
+- OS/Electron capture failures are now returned to the overlay with an actionable message and always clear pending continuation choices. Provider responses using string-form continuation flags are normalized defensively.
+- Live autoscroll now moves the newly rendered answer—not only its question—into view in compact overlays. Programmatic scrolling no longer disables follow-latest mode, manual reading of older turns remains respected, and **Jump to latest** prefers the latest answer.
+- Confirmed screenshot continuations expose **Undo last merge**, restoring the exact previous question/answer state. Multi-part extracted question context now has a larger but still bounded 6,000-character budget for dense three-plus-screen problems.
+- Queued screenshot analysis keeps one stable loading state between captures, and overlapping automatic scrolls share one guarded timer so follow-latest cannot be disabled by an earlier animation finishing late.
+
 ## v1.4.8 — 2026-08-19
 
 Live interview intent, latency, grounding, and preflight-window reliability patch based on a
