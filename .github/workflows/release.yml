@@ -55,7 +55,17 @@ jobs:
 
       # Electron 42+ fetches the platform binary lazily rather than in postinstall.
       - name: Bootstrap Electron runtime
-        run: npx electron --version
+        shell: bash
+        env:
+          BUILD_PLATFORM: ${{ matrix.platform }}
+        run: |
+          if [ "$BUILD_PLATFORM" = "linux" ]; then
+            # GitHub's Ubuntu runner cannot initialize Chromium's SUID sandbox merely to print
+            # the version. This step only downloads/verifies the build-time Electron runtime.
+            npx electron --no-sandbox --version
+          else
+            npx electron --version
+          fi
 
       - name: Verify release tag matches package version
         shell: bash
