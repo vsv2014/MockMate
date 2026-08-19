@@ -9,7 +9,7 @@
 ## Managed AI and release security
 
 - Public installers no longer contain `.env` or provider/Deepgram credentials.
-- Release CI fails unless the `MOCKMATE_API_BASE` repository variable is a non-loopback HTTPS URL.
+- Release CI enables Managed AI only when `MOCKMATE_API_BASE` is a valid non-loopback HTTPS URL; otherwise it produces an explicit BYOK-only build.
 - Managed model strategy is enforced by the backend according to account plan; modified clients cannot select an unauthorized premium provider/model.
 - Monthly LLM usage is reserved atomically before generation and released after failed, cancelled or skipped work.
 - Desktop and hosted requests share privacy-safe request IDs; hosted provider-attempt logs contain metadata only.

@@ -19,8 +19,9 @@
 ## Managed runtime keys
 
 **Public releases never package provider keys.** Keep managed-provider credentials only on the
-hosted backend. GitHub Actions requires the non-secret repository variable
-`MOCKMATE_API_BASE` and bakes only that HTTPS endpoint into installers.
+hosted backend. When Managed AI is deployed, GitHub Actions reads the non-secret repository
+variable `MOCKMATE_API_BASE` and bakes only that HTTPS endpoint into installers. Without it,
+the installer is BYOK-only.
 
 | Secret | Required for |
 |---|---|

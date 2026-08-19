@@ -300,7 +300,7 @@ BYOK keys stay encrypted on the user's machine.
 ## Roadmap
 
 **Done (1.4.10)**
-- ✅ **Managed AI release boundary** — public installers contain no provider keys and release CI requires a valid hosted HTTPS endpoint.
+- ✅ **Safe release boundary** — public installers contain no provider keys; builds without a hosted HTTPS endpoint are explicitly BYOK-only.
 - ✅ **Server-owned entitlements** — managed clients cannot bypass plan model tiers; monthly LLM usage is reserved atomically and failed/cancelled calls are released.
 - ✅ **Provider/RAG resilience** — model-family failover is bounded and embeddings fall back from OpenAI to Gemini with provider-specific model IDs.
 - ✅ **Hosted diagnostics** — desktop/backend request correlation plus metadata-only provider attempt logs; no prompts, transcripts, screenshots, audio or secrets.
@@ -312,7 +312,7 @@ BYOK keys stay encrypted on the user's machine.
 - ✅ **Production diagnostics** — buffered/rotated local JSONL timeline with two-stage redaction, session/request correlation, provider/model attempts, STT reconnects, screenshot continuation, auth/API latency and updater lifecycle; Export/Clear controls in Settings.
 - ✅ **Windows updater recovery** — updater state survives dashboard/auth startup, Check for updates always reports a state, and Later does not silently install on quit.
 - ✅ **Release gates** — tag/package version match, unit tests, API smoke and updater-artifact validation run before publishing.
-- ✅ **Managed release boundary** — public installers contain no provider secrets and fail release unless an HTTPS managed endpoint is configured.
+- ✅ **Managed release boundary** — public installers contain no provider secrets; Managed AI is disabled unless an HTTPS endpoint is configured.
 
 **Done (1.4.8)**
 - ✅ **Live intent reliability** — slower semantic commit gate, overlap/artifact cleanup, correction cancellation, and active-card refinements for requests such as “write it as code.”

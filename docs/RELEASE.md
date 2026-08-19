@@ -37,8 +37,8 @@ here are **infra/signing**, not code (tests + reviews pass while an update silen
    git push origin v1.3.0
    ```
    (Or run the workflow manually via **Actions → Release → Run workflow** and enter the tag.)
-5. CI requires the repository variable `MOCKMATE_API_BASE` and packages only that HTTPS URL.
-   Provider and Deepgram keys remain on the hosted backend; no public installer contains them.
+5. If hosted Managed AI is deployed, set the repository variable `MOCKMATE_API_BASE` to its HTTPS URL.
+   If it is unset, CI safely produces a BYOK-only build. Provider and Deepgram keys are never packaged.
    CI then builds Windows/Linux/macOS and uploads installers **and the
    `latest*.yml` update feeds** to a public GitHub Release via softprops. Signing is
    **optional per platform**:

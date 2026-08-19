@@ -75,7 +75,7 @@ jobs:
       - name: Unit and API smoke tests
         run: npm test && npm run smoke:api
 
-      - name: Configure hosted Managed AI endpoint
+      - name: Configure release AI mode
         shell: bash
         env:
           MANAGED_API_BASE: ${{ vars.MOCKMATE_API_BASE }}
@@ -83,21 +83,26 @@ jobs:
           node <<'NODE'
           const fs = require('fs')
           const raw = String(process.env.MANAGED_API_BASE || '').trim().replace(/\/$/, '')
-          let url
-          try { url = new URL(raw) } catch { console.error('Repository variable MOCKMATE_API_BASE must be a valid hosted URL.'); process.exit(1) }
-          if (url.protocol !== 'https:' || /^(localhost|127\.0\.0\.1)$/i.test(url.hostname)) {
-            console.error('MOCKMATE_API_BASE must use HTTPS and must not point to loopback.')
-            process.exit(1)
+          let managed = false
+          if (raw) {
+            let url
+            try { url = new URL(raw) } catch { console.error('When set, MOCKMATE_API_BASE must be a valid hosted URL.'); process.exit(1) }
+            if (url.protocol !== 'https:' || /^(localhost|127\.0\.0\.1)$/i.test(url.hostname)) {
+              console.error('MOCKMATE_API_BASE must use HTTPS and must not point to loopback.')
+              process.exit(1)
+            }
+            managed = true
+            console.log(`Managed AI endpoint configured: ${url.origin}`)
+          } else {
+            console.log('MOCKMATE_API_BASE is unset — building a safe BYOK-only release.')
           }
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
           pkg.managedApiBase = raw
           fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
-          console.log(`Managed AI endpoint configured: ${url.origin}`)
+          fs.writeFileSync('.env.production.local', `VITE_MANAGED_AI_AVAILABLE=${managed}\n${managed ? `VITE_API_BASE=${raw}\n` : ''}`)
           NODE
 
       - name: Build frontend (Vite)
-        env:
-          VITE_API_BASE: ${{ vars.MOCKMATE_API_BASE }}
         run: npm run build
 
       # Signing is optional and per-platform:

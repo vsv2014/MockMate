@@ -63,12 +63,12 @@ function KeyField({ name, hint, value, onChange, added, free, secret = true, not
 }
 
 // Big selectable AI-provider card (Managed vs BYOK) — the design #37 chooser.
-function ProviderCard({ selected, onSelect, icon, accent, title, subtitle, recommended, desc, checks, cta }) {
+function ProviderCard({ selected, onSelect, icon, accent, title, subtitle, recommended, desc, checks, cta, disabled = false }) {
   return (
-    <div role="radio" aria-checked={selected} tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect() } }}
-      style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 12, cursor: 'pointer',
+    <div role="radio" aria-checked={selected} aria-disabled={disabled} tabIndex={disabled ? -1 : 0}
+      onClick={() => { if (!disabled) onSelect() }}
+      onKeyDown={e => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect() } }}
+      style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 12, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.58 : 1,
         background: T.surface1, border: `1.5px solid ${selected ? accent : T.border}`, borderRadius: T.rCard, padding: '16px' }}>
       {recommended && <span style={{ position: 'absolute', top: 12, right: 12, fontSize: 10, fontWeight: 600, color: T.success, background: 'rgba(16,185,129,0.14)', padding: '2px 9px', borderRadius: 999 }}>Recommended</span>}
       <div style={{ width: 40, height: 40, borderRadius: 10, display: 'grid', placeItems: 'center', fontSize: 18, background: `${accent}1f`, border: `1px solid ${accent}44` }} aria-hidden="true">{icon}</div>
@@ -80,8 +80,8 @@ function ProviderCard({ selected, onSelect, icon, accent, title, subtitle, recom
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
         {checks.map(c => <div key={c} style={{ display: 'flex', gap: 8, fontSize: 12, color: T.text2 }}><span style={{ color: T.success, flexShrink: 0 }}>✓</span><span>{c}</span></div>)}
       </div>
-      <button type="button" onClick={e => { e.stopPropagation(); onSelect() }}
-        style={{ marginTop: 'auto', height: 42, borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font, fontSize: 13, fontWeight: 600,
+      <button type="button" disabled={disabled} onClick={e => { e.stopPropagation(); if (!disabled) onSelect() }}
+        style={{ marginTop: 'auto', height: 42, borderRadius: T.rCtrl, cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: T.font, fontSize: 13, fontWeight: 600,
           background: selected ? accent : 'transparent', color: selected ? '#fff' : accent, border: `1px solid ${accent}` }}>
         {selected ? `✓ ${cta}` : cta}
       </button>
@@ -162,10 +162,11 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       <div role="radiogroup" aria-label="AI mode" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
         <ProviderCard selected={mode === 'managed'} onSelect={() => setMode('managed')}
           icon="✨" accent={T.accentFrom} title="Managed AI" subtitle="Hosted proxy (when configured)"
+          disabled={!MANAGED_AVAILABLE}
           recommended={MANAGED_AVAILABLE}
           desc="Routes through MockMate’s authenticated backend with platform keys. Requires sign-in and a configured hosted API. Until then, add BYOK keys so Live/Solo still work."
           checks={['No personal API keys (when hosted)', 'Automatic model routing', 'Built-in failover', 'Usage caps may apply', 'Needs account + hosted API']}
-          cta="Use Managed AI" />
+          cta={MANAGED_AVAILABLE ? 'Use Managed AI' : 'Coming after hosted launch'} />
         <ProviderCard selected={mode === 'byok'} onSelect={() => setMode('byok')}
           icon="🔑" accent="#8b5cf6" title="Bring your own API key" subtitle={byokRecommended ? 'Best choice until Managed is hosted' : 'Use your own provider keys'}
           recommended={!MANAGED_AVAILABLE}

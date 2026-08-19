@@ -1,16 +1,16 @@
 // AI mode — managed-vs-BYOK, persisted locally.
 //
-// Managed AI is LIVE (default). Locally it auto-routes across the keys the server is configured
-// with (no key entry / no model picker in the UI). The hosted proxy (2b) swaps those for
-// MockMate's own keys + metering so end users need nothing — same client experience.
-export const MANAGED_AVAILABLE = true
+// Public builds only expose Managed AI when release CI baked a hosted endpoint into the app.
+// Local developers can opt in with VITE_MANAGED_AI_AVAILABLE=true.
+export const MANAGED_AVAILABLE = String(import.meta.env?.VITE_MANAGED_AI_AVAILABLE || '').toLowerCase() === 'true'
 
 const KEY = 'mm-ai-mode'
 
 export function getAiMode() {
+  if (!MANAGED_AVAILABLE) return 'byok'
   try { return localStorage.getItem(KEY) === 'byok' ? 'byok' : 'managed' } catch { return 'managed' }
 }
 export function setAiMode(mode) {
-  try { localStorage.setItem(KEY, mode === 'byok' ? 'byok' : 'managed') } catch {}
+  try { localStorage.setItem(KEY, MANAGED_AVAILABLE && mode !== 'byok' ? 'managed' : 'byok') } catch {}
 }
 export const isManaged = () => MANAGED_AVAILABLE && getAiMode() === 'managed'

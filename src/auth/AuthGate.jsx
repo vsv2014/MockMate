@@ -8,7 +8,7 @@ import Onboarding from './Onboarding'
 import { WindowControls } from './AuthShell'
 import { login, signup, fetchMe, logout as apiLogout, updateProfile, forgotPassword, getToken, setUnauthorizedHandler, refreshSession, usesDeviceLocalAccounts } from './api'
 import { loadProfile, saveProfile } from '../lib/profile'
-import { setAiMode } from '../lib/aiMode'
+import { setAiMode, MANAGED_AVAILABLE } from '../lib/aiMode'
 
 const SEEN_WELCOME = 'mm-seen-welcome'
 const seenWelcome = () => { try { return localStorage.getItem(SEEN_WELCOME) === '1' } catch { return false } }
@@ -102,7 +102,7 @@ export default function AuthGate({ children }) {
   }, [])
   // Undo the guest-forced BYOK on a real sign-in (only if guest set it — not a deliberate choice).
   const restoreManagedIfGuest = () => {
-    try { if (sessionStorage.getItem('mm-guest-byok') === '1') { setAiMode('managed'); sessionStorage.removeItem('mm-guest-byok') } } catch {}
+    try { if (sessionStorage.getItem('mm-guest-byok') === '1') { if (MANAGED_AVAILABLE) setAiMode('managed'); sessionStorage.removeItem('mm-guest-byok') } } catch {}
   }
   const goSignIn = useCallback(() => { setSession(null); setView('login'); setStatus('auth') }, [])
 

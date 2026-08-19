@@ -58,7 +58,7 @@ These are intentionally not claimed as complete in v1.4.10. Each item has a meas
       meeting/share mode; advertise Stealth only for combinations proven in share-preview tests.
 
 ### Hosted-product backlog (LockedIn/Parakeet parity track)
-- [x] Hosted-capable HTTPS API + durable Mongo store; release URL is fail-closed
+- [x] Hosted-capable HTTPS API + durable Mongo store; invalid URLs fail closed and an absent URL produces BYOK-only builds
 - [x] Authenticated AI/STT proxy with server-held keys and atomic LLM entitlement enforcement
 - [x] Stripe checkout/webhook/portal and model tier enforcement (production configuration still requires validation)
 - [ ] Reconcile exact Deepgram seconds per user and enforce the STT cap independently of LLM calls

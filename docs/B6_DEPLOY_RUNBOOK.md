@@ -74,7 +74,7 @@ The desktop reads `MOCKMATE_API_BASE` (main process → auth + managed `/api`) a
 - **For a release build**, bake the URL:
   1. Set the GitHub repository variable `MOCKMATE_API_BASE` to the hosted HTTPS URL.
   2. Release CI writes that URL to package metadata and builds the renderer with `VITE_API_BASE`.
-     CI fails closed when the variable is absent, invalid, loopback, or non-HTTPS.
+     Invalid, loopback or non-HTTPS values fail closed. An absent value creates a BYOK-only build.
   3. `npm run electron:build` (`:win` for Windows) → ship.
 
 ## 6. Confirm the SaaS is live
