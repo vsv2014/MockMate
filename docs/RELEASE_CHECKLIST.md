@@ -72,6 +72,8 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] Bump `version` in package.json + add a CHANGELOG entry
 - [ ] Tag + upload
 - [ ] Post-publish: download the published installer on a clean machine and repeat §1–§4 (auto-update path)
+- [ ] Keep the previous Windows version installed → Check for updates → Downloading → Ready → Restart & install; **do not uninstall** during this test
+- [ ] Settings → Diagnostics → Export logs; verify updater/provider/STT/session events exist and no key/token/transcript/prompt/screenshot content appears
 
 ---
 *Scripted pre-checks (fast gate, run before the manual pass):*

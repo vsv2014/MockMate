@@ -6,7 +6,7 @@ import Login from './Login'
 import Signup from './Signup'
 import Onboarding from './Onboarding'
 import { WindowControls } from './AuthShell'
-import { login, signup, fetchMe, logout as apiLogout, updateProfile, forgotPassword, getToken, setUnauthorizedHandler, refreshSession } from './api'
+import { login, signup, fetchMe, logout as apiLogout, updateProfile, forgotPassword, getToken, setUnauthorizedHandler, refreshSession, usesDeviceLocalAccounts } from './api'
 import { loadProfile, saveProfile } from '../lib/profile'
 import { setAiMode } from '../lib/aiMode'
 
@@ -136,7 +136,8 @@ export default function AuthGate({ children }) {
   if (view === 'onboarding') {
     return <Onboarding onComplete={handleOnboarding} />
   }
-  return <Login onSubmit={handleLogin} onSwitchToSignup={() => setView('signup')} onForgot={forgotPassword} onGuest={enterGuest} />
+  return <Login onSubmit={handleLogin} onSwitchToSignup={() => setView('signup')}
+    onForgot={usesDeviceLocalAccounts ? undefined : forgotPassword} onGuest={enterGuest} />
 }
 
 function LoadingScreen() {

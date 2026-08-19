@@ -7,6 +7,7 @@ const fs = require('fs')
 const crypto = require('crypto')
 const net = require('net')
 const { fork, execSync } = require('child_process')
+const { DiagnosticStore } = require('./diagnostics.cjs')
 
 // Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
 // so a candidate's resume/transcript never leaves the device via Sentry (privacy-first).
@@ -20,6 +21,10 @@ const DEV_URL = 'http://localhost:5174'
 const PROD_URL = 'http://localhost:3002'
 
 let mainWindow, setupWindow, apiServer, backendServer
+let diagnostics = null
+function diag(component, event, fields = {}, level = 'info') {
+  try { diagnostics?.event(component, event, fields, level) } catch {}
+}
 // Pin default ON — Live overlay stays when switching to Zoom; unpin → collapse to pill on blur.
 let pinnedState = true
 // Ignore blur-hide/collapse during screenshot, mode switches, and brief focus handoffs.
@@ -218,6 +223,7 @@ function startApiServer(onReady) {
   const fire = () => { if (!done) { done = true; onReady() } }
   apiServer.on('message', msg => {
     if (msg?.type === 'ready') fire()
+    else if (msg?.type === 'diagnostic' && msg.row) diagnostics?.ingest(msg.row)
     // The server couldn't bind the port (e.g. a stale process is holding it). Don't
     // silently fall through to loading a dead URL — tell the user what happened.
     else if (msg?.type === 'server-error') {
@@ -536,23 +542,38 @@ app.on('browser-window-created', (_, win) => {
 // would expose the app. The user just gets the new version next time they reopen.
 let autoUpdaterRef = null
 let updaterStarted = false
-function sendUpdate(payload) { try { mainWindow?.webContents?.send('update-status', payload) } catch {} }
+let lastUpdateStatus = null
+let manualUpdateCheck = false
+function sendUpdate(payload) {
+  lastUpdateStatus = payload
+  try { mainWindow?.webContents?.send('update-status', payload) } catch {}
+}
 function setupAutoUpdate() {
   if (!isProd || updaterStarted) return   // guard re-entry: don't double-register listeners / interval
   updaterStarted = true
+  diag('updater', 'initialized', { currentVersion: app.getVersion(), autoDownload: true })
   try {
     const { autoUpdater } = require('electron-updater')
     autoUpdaterRef = autoUpdater
     autoUpdater.autoDownload = true
-    autoUpdater.autoInstallOnAppQuit = true    // silent fallback: installs on quit even if the user ignores the toast
+    autoUpdater.autoInstallOnAppQuit = false   // never surprise an interview user after they choose to wait
     // Only surface errors once an update was actually found and then failed (download/install) —
     // NOT for benign background-check failures (offline, no release yet), which must stay silent.
     let updateFlowActive = false
-    autoUpdater.on('error', e => { console.error('[updater]', e?.message); if (updateFlowActive) sendUpdate({ state: 'error', message: e?.message || 'Update failed' }) })
+    autoUpdater.on('error', e => {
+      console.error('[updater]', e?.message)
+      diag('updater', 'error', { scope: manualUpdateCheck ? 'check' : 'download', code: e?.code, message: e?.message }, 'error')
+      if (updateFlowActive || manualUpdateCheck) sendUpdate({ state: 'error', scope: manualUpdateCheck ? 'check' : 'download', message: e?.message || 'Update failed' })
+      manualUpdateCheck = false
+    })
     // Forward progress to the renderer so it can show the update toast (workspace only).
-    autoUpdater.on('update-available', i => { updateFlowActive = true; sendUpdate({ state: 'available', version: i?.version }) })
+    autoUpdater.on('update-available', i => { updateFlowActive = true; manualUpdateCheck = false; diag('updater', 'available', { currentVersion: app.getVersion(), targetVersion: i?.version }); sendUpdate({ state: 'available', version: i?.version }) })
+    autoUpdater.on('update-not-available', i => {
+      if (manualUpdateCheck) { diag('updater', 'not_available', { currentVersion: app.getVersion(), releaseVersion: i?.version }); sendUpdate({ state: 'current', version: i?.version || app.getVersion() }) }
+      manualUpdateCheck = false
+    })
     autoUpdater.on('download-progress', p => sendUpdate({ state: 'downloading', percent: Math.round(p.percent || 0), transferred: p.transferred, total: p.total }))
-    autoUpdater.on('update-downloaded', i => sendUpdate({ state: 'ready', version: i?.version }))
+    autoUpdater.on('update-downloaded', i => { diag('updater', 'downloaded', { targetVersion: i?.version }); sendUpdate({ state: 'ready', version: i?.version }) })
     autoUpdater.checkForUpdates().catch(e => console.error('[updater] check failed:', e?.message))
     setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000)
   } catch (e) { console.error('[updater] unavailable:', e?.message) }
@@ -564,8 +585,17 @@ ipcMain.handle('install-update', () => { try { autoUpdaterRef?.quitAndInstall() 
 ipcMain.handle('download-update', () => { try { autoUpdaterRef?.downloadUpdate()?.catch(e => console.error('[updater]', e?.message)) } catch (e) { console.error('[updater]', e?.message) } ; return { ok: true } })
 // Manual check. In prod → real check; in dev → simulate the toast sequence so the UI is verifiable.
 let demoUpdateTimer = null
+ipcMain.handle('get-update-status', () => lastUpdateStatus)
 ipcMain.handle('check-updates-now', () => {
-  if (isProd && autoUpdaterRef) { autoUpdaterRef.checkForUpdates().catch(() => {}); return { ok: true } }
+  if (isProd && autoUpdaterRef) {
+    manualUpdateCheck = true
+    sendUpdate({ state: 'checking' })
+    autoUpdaterRef.checkForUpdates().catch(e => {
+      manualUpdateCheck = false
+      sendUpdate({ state: 'error', scope: 'check', message: e?.message || 'Could not check for updates' })
+    })
+    return { ok: true }
+  }
   clearInterval(demoUpdateTimer)   // repeated clicks must not stack concurrent progress loops
   const total = 125_000_000
   sendUpdate({ state: 'available', version: 'demo' })
@@ -595,6 +625,8 @@ if (!gotTheLock) {
   })
 
   app.whenReady().then(async () => {
+    diagnostics = new DiagnosticStore({ userData: app.getPath('userData'), appVersion: app.getVersion(), platform: process.platform, arch: process.arch })
+    diag('app', 'ready', { packaged: isProd })
     loadEnv()
     // Fork a LOCAL auth backend only when NOT pointed at a hosted one. With MOCKMATE_API_BASE set
     // (production / Mongo-backed), the desktop talks to the hosted backend over HTTPS — no local
@@ -602,7 +634,9 @@ if (!gotTheLock) {
     if (!process.env.MOCKMATE_API_BASE) {
       try {
         await startBackend()
+        diag('backend', 'started', { mode: 'local' })
       } catch (e) {
+        diag('backend', 'startup_failed', { mode: 'local', message: e.message }, 'error')
         console.error('[backend] startup failed:', e.message)
         // Authentication is optional: BYOK/guest interview modes use the local AI
         // server and must remain available when the account service is unhealthy.
@@ -644,6 +678,8 @@ if (!gotTheLock) {
 }
 
 app.on('will-quit', () => {
+  diag('app', 'will_quit')
+  try { diagnostics?.flush() } catch {}
   globalShortcut.unregisterAll()
   try { apiServer?.kill('SIGKILL') } catch {}
   try { backendServer?.kill('SIGKILL') } catch {}
@@ -899,6 +935,32 @@ ipcMain.handle('append-session-metrics', (_, row) => {
     fs.appendFileSync(f, raw + '\n', { mode: 0o600 })
     return { ok: true }
   } catch (e) { return { ok: false, error: e.message } }
+})
+
+// General production diagnostics: renderer sends metadata-only batches; main performs another
+// redaction pass, buffers writes, rotates at 5 MB, and never blocks the interview path.
+ipcMain.handle('append-diagnostics', (_, rows) => {
+  try { diagnostics?.ingest(rows); return { ok: true } }
+  catch (e) { return { ok: false, error: e.message } }
+})
+
+ipcMain.handle('export-diagnostics', async () => {
+  try {
+    const defaultPath = path.join(app.getPath('downloads'), `MockMate-Diagnostics-${Date.now()}.jsonl`)
+    const picked = await dialog.showSaveDialog(mainWindow || undefined, {
+      title: 'Export MockMate diagnostics', defaultPath,
+      filters: [{ name: 'MockMate diagnostic bundle', extensions: ['jsonl'] }],
+    })
+    if (picked.canceled || !picked.filePath) return { ok: false, canceled: true }
+    const result = await diagnostics?.exportTo(picked.filePath)
+    diag('diagnostics', 'exported', { files: result?.files || 0 })
+    return { ok: true, ...result }
+  } catch (e) { return { ok: false, error: e.message } }
+})
+
+ipcMain.handle('clear-diagnostics', async () => {
+  try { await diagnostics?.clear(); diag('diagnostics', 'cleared'); return { ok: true } }
+  catch (e) { return { ok: false, error: e.message } }
 })
 
 ipcMain.handle('read-session-metrics-summary', () => {

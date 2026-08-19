@@ -11,13 +11,41 @@ Strengths to protect (already built): multi-provider failover, rate-limit/quota/
 classification, JSON-repair, abort-safe streaming, playbook prompts (`core.js`/`interview.js`);
 content-protected overlay (WDA_EXCLUDEFROMCAPTURE / PiP).
 
+## Current operating scope — solo owner + internal QA team (v1.4.9)
+
+The present build is an **internal/local-first BYOK release** for the owner and a small trusted QA
+team. Device-local accounts are acceptable in this scope. For the present internal QA cycle, release
+installers may bundle the team's provider keys to avoid blocking testers; this is temporary and must
+be removed before public/commercial distribution. BYOK remains available in Settings.
+
+**Unblock now:** Live/Solo/screenshot answer reliability, provider-aware model selection, clear
+BYOK setup and key errors, bounded request times, recoverable UI errors, safe updates, local session
+continuity, copyable/code-formatted answers, Stealth confirmation, and packaged Windows smoke tests.
+
+**Not a v1.4.9 blocker:** cross-device accounts, subscriptions, shared/team tenancy, server-side
+history, encrypted cloud sync, managed platform keys, production email recovery, analytics at
+competitor scale, or full Linux parity. These require the hosted backend below and remain roadmap
+work before MockMate is sold as a LockedIn/Parakeet-style public SaaS.
+
+### Hosted-product backlog (LockedIn/Parakeet parity track)
+- [ ] Hosted HTTPS API + durable database; shared accounts across devices
+- [ ] Authenticated AI/STT proxy with server-held keys, quotas, metering and abuse protection
+- [ ] Stripe subscriptions, entitlement enforcement and billing recovery
+- [ ] Production email/password recovery and optional Google sign-in/account linking
+- [ ] Encrypted opt-in profile, document and interview-history sync with migration/export tools
+- [ ] Signed/notarized installers, signature-verified updates and staged release channels
+- [ ] Team administration, centralized QA diagnostics and privacy-controlled analytics
+- [ ] Full platform capability matrix; only advertise Stealth/screen capture where certified
+- [ ] Durable encrypted local storage (SQLite/userData) with backup, quota and clear-data controls
+
 ## P0 — Release verification discipline (protects everything)
 The most dangerous gap: 1.4.2 shipped bugs that a single packaged-build click-through would have
 caught. Fix the *process*, not just the bugs.
 - [x] `docs/RELEASE_CHECKLIST.md` — packaged-build smoke gate (sign in → Solo → Live → screenshot → Duo)
 - [x] `npm run smoke:api` — in-process `/api` route contract smoke (fast pre-check)
+- [x] CI release gate: `npm ci`, tag/version match, unit tests, API smoke, build, and required updater metadata *(1.4.9)*
 - [ ] Adopt it: no tag/upload until the checklist passes on the packaged artifact
-- [ ] (Later) CI: `npm ci && npm run build && npm test` on every PR
+- [ ] Add the same verification as a required check on every pull request (release workflow is gated today)
 
 ## P0 — Live intent and answer reliability
 - [x] 700–1500ms semantic question stabilization; incomplete-clause blocking *(1.4.8)*
@@ -32,6 +60,7 @@ caught. Fix the *process*, not just the bugs.
 - [x] Safe JavaScript execution in a disposable, networkless, timeout-limited worker *(1.4.8)*
 - [x] Meeting-app recognition plus share-mode-specific Stealth verification *(1.4.8)*
 - [x] Local quality dashboard for transcript confidence and capture/answer latency *(1.4.8)*
+- [x] Rotated production diagnostics with redaction, correlation, provider/STT/screen/auth/updater events, and Export/Clear controls *(1.4.9)*
 - [ ] Deploy a hardened multi-language execution service (container isolation, no network, CPU/memory/process limits, ephemeral filesystem) before claiming Python/Java/C++ execution
 - [ ] Validate 30+ real spoken turns on packaged Windows using System Audio: fragments, corrections,
       code requests, notes/nodes ambiguity, rapid topic switches, and slow-provider failover

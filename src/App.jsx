@@ -25,6 +25,7 @@ import {
 } from './lib/interviewJobSeed'
 import { copyText } from './lib/clipboard'
 import { canRunLanguage, runJavaScriptIsolated } from './lib/codeRunner'
+import { diagnostic } from './lib/diagnostics'
 import {
   createScreenContextRecord,
   previousScreenForContinuation,
@@ -159,6 +160,22 @@ function ElectronShell({ auth }) {
   const [meetingActive, setMeetingActive] = useState(false)
   const [codingDetected, setCodingDetected] = useState(false)
   const [browserShareWarning, setBrowserShareWarning] = useState(false)
+  const [diagnosticStatus, setDiagnosticStatus] = useState('')
+  const exportDiagnostics = useCallback(async () => {
+    setDiagnosticStatus('Preparing…')
+    try {
+      const r = await window.electronAPI?.exportDiagnostics?.()
+      if (r?.canceled) setDiagnosticStatus('')
+      else setDiagnosticStatus(r?.ok ? 'Exported' : (r?.error || 'Export failed'))
+    } catch { setDiagnosticStatus('Export failed') }
+  }, [])
+  const clearDiagnostics = useCallback(async () => {
+    if (!window.confirm('Clear local diagnostic logs? Saved interview sessions are not affected.')) return
+    try {
+      const r = await window.electronAPI?.clearDiagnostics?.()
+      setDiagnosticStatus(r?.ok ? 'Cleared' : (r?.error || 'Clear failed'))
+    } catch { setDiagnosticStatus('Clear failed') }
+  }, [])
   const recheckProviders = useCallback(() => {
     apiFetch('/api/providers').then(r => r.json()).then(d => {
       setNoProviders(!d.providers?.length)
@@ -276,7 +293,12 @@ function ElectronShell({ auth }) {
       : null
 
     const cached = analysisCacheRef.current.get(fp)
+    diagnostic('screen', 'analysis_started', {
+      requestId, language: language || 'auto', retry, continuationMode,
+      hasPreviousScreen: !!previousScreen, width: imageDimensions?.width, height: imageDimensions?.height,
+    })
     if (cached && retry === 0) {
+      diagnostic('screen', 'analysis_cache_hit', { requestId, continuation: !!cached.isContinuation })
       const record = createScreenContextRecord({
         analysis: cached,
         screenContextId: cached.isContinuation && previousRecord?.screenContextId
@@ -334,6 +356,7 @@ function ElectronShell({ auth }) {
         }, language, { retry: retry + 1 })
       }
       if (err) {
+        diagnostic('screen', 'analysis_failed', { requestId, status: res.status, code: code || 'unknown', retry }, 'error')
         setScreenAnalysis(createScreenContextRecord({
           error: err, status: 'failed',
           displayId: shot?.displayId, displayName: shot?.displayName, fingerprint: fp, mime,
@@ -369,6 +392,10 @@ function ElectronShell({ auth }) {
         }
         setScreenAnalysis(record)
         if (!record.error) {
+          diagnostic('screen', 'analysis_completed', {
+            requestId, continuation: !!analysis.isContinuation,
+            captureCount: analysis._captureCount || 1, language: language || analysis.language || 'auto',
+          })
           setScreenFlowStatus(analysis.isContinuation
             ? `Combined ${analysis._captureCount} screenshots — one answer updated`
             : 'Captured as a new question')
@@ -376,6 +403,7 @@ function ElectronShell({ auth }) {
       }
     } catch (e) {
       if (abort.signal.aborted || gen !== analysisGenRef.current) return // cancelled — no retry
+      diagnostic('screen', 'analysis_exception', { requestId, retry, errorName: e?.name, reason: e?.message }, 'error')
       setScreenAnalysis(createScreenContextRecord({
         error: e.message || 'Screen analysis failed', status: 'failed',
         displayId: shot?.displayId, displayName: shot?.displayName, mime,
@@ -758,6 +786,17 @@ function ElectronShell({ auth }) {
           </div>
           <button onClick={() => window.electronAPI?.checkForUpdates?.()}
             style={{ height: 36, padding: '0 16px', background: 'transparent', color: T.text1, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Check for updates</button>
+        </div>
+        <div style={{ marginTop: 12, padding: '14px 16px', background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: T.text1 }}>Diagnostics</div>
+              <div style={{ fontSize: 11.5, color: T.text2, marginTop: 2, lineHeight: 1.45 }}>Privacy-safe local events for API, transcription, screenshots, sessions, auth and updates. Keys, tokens, passwords, résumé, transcripts, prompts and screenshots are redacted.</div>
+            </div>
+            <button onClick={exportDiagnostics} style={{ height: 36, padding: '0 14px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Export logs</button>
+            <button onClick={clearDiagnostics} style={{ height: 36, padding: '0 14px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Clear</button>
+          </div>
+          {diagnosticStatus && <div role="status" style={{ marginTop: 8, fontSize: 11.5, color: diagnosticStatus === 'Exported' || diagnosticStatus === 'Cleared' ? '#5eead4' : T.text2 }}>{diagnosticStatus}</div>}
         </div>
       </div>
     )

@@ -20,6 +20,12 @@ import {
   getVisionCooldown,
 } from './visionPolicy.js'
 
+// Forward metadata-only provider events to Electron's local diagnostic store when running in
+// the forked API process. Hosted/serverless runtimes have no IPC channel and simply skip it.
+function providerDiagnostic(event, fields = {}, level = 'info') {
+  try { process.send?.({ type: 'diagnostic', row: { component: 'llm', event, level, ...fields } }) } catch {}
+}
+
 // ── Provider registry ───────────────────────────────────────────────────────
 // Keys live in env (server-side, never shipped to the browser). The client
 // chooses which provider by id; the server resolves it here.
@@ -423,6 +429,8 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
     let prov
     try { prov = resolveProvider(provId) } catch { continue }
     const llm = clientFor(prov), model = prov.model
+    const providerStartedAt = Date.now()
+    providerDiagnostic('attempt_started', { operation: 'json', provider: provId, model, maxTokens })
 
     // Gemini 2.5 models THINK by default — reasoning silently eats the token
     // budget, so the actual answer gets truncated into invalid JSON. Disable it
@@ -477,9 +485,11 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
         parsed = extractJSON(fixed)
       }
       lastWorkingTextProvider = baseOf(provId)   // remember only AFTER a clean parse — not for garbage output
+      providerDiagnostic('attempt_succeeded', { operation: 'json', provider: provId, model, durationMs: Date.now() - providerStartedAt })
       return parsed
     } catch (e) {
       lastError = e
+      providerDiagnostic('attempt_failed', { operation: 'json', provider: provId, model, status: e?.status || 0, durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
       // Check quota BEFORE rate-limit: "insufficient_quota" also matches the rate-limit regex,
       // but out-of-credits is a different, more actionable problem.
       if (isQuotaExhausted(e)) { sawQuota = true; console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
@@ -761,6 +771,9 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
     let prov
     try { prov = resolveProvider(provId) } catch { continue }
     const llm = clientFor(prov), model = prov.model
+    const providerStartedAt = Date.now()
+    let firstTokenAt = null
+    providerDiagnostic('attempt_started', { operation: 'stream', provider: provId, model, maxTokens })
     try {
       const params = { model, max_tokens: maxTokens, messages, stream: true }
       if (/gemini/i.test(model)) params.reasoning_effort = 'none'
@@ -776,16 +789,18 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       for await (const chunk of stream) {
         if (chunk?.usage) usage = chunk.usage
         const tok = chunk?.choices?.[0]?.delta?.content || ''
-        if (tok) { emitted = true; onToken?.(tok) }
+        if (tok) { if (!firstTokenAt) firstTokenAt = Date.now(); emitted = true; onToken?.(tok) }
       }
       lastWorkingTextProvider = baseOf(provId)
       if (usage && onUsage) onUsage({ model, input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0 })
+      providerDiagnostic('attempt_succeeded', { operation: 'stream', provider: provId, model, durationMs: Date.now() - providerStartedAt, ttftMs: firstTokenAt ? firstTokenAt - providerStartedAt : null, inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0 })
       return
     } catch (e) {
       // Client disconnected (question superseded / overlay closed) — stop immediately and
       // do NOT fail over to another provider, which would re-spend tokens on a dead request.
       if (signal?.aborted || e?.name === 'AbortError') throw e
       lastError = e
+      providerDiagnostic('attempt_failed', { operation: 'stream', provider: provId, model, status: e?.status || 0, emitted, durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
       if (emitted) throw e   // already streamed partial output — don't restart elsewhere
       // Before any token: same failover classes as completeJSON (rate / transient / hard fail / quota).
       if (!shouldFailoverTextError(e, { emitted: false })) throw e

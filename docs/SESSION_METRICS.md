@@ -2,6 +2,10 @@
 
 Live sessions append **privacy-safe** JSONL rows to Electron `userData/session-metrics.jsonl` via IPC.
 
+For correlated production-wide events (API, provider, STT, screenshot, auth and updater), see
+[`DIAGNOSTICS.md`](DIAGNOSTICS.md). Session metrics remain the compact aggregate source used by the
+quality dashboard; diagnostics are the detailed troubleshooting timeline.
+
 **Never logged:** resume text, transcripts, answers, prompts.
 
 **Logged:** session id, TTFT ms, final-transcript confidence, diarization/degraded-mode coverage,

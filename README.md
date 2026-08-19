@@ -24,12 +24,15 @@ Grab the latest build from the [**Releases page**](https://github.com/vsv2014/Mo
 | **Linux** | `MockMate-<version>.AppImage` | `chmod +x` → run it |
 | **macOS** | `MockMate-<version>-arm64.dmg` (Apple Silicon) / `MockMate-<version>-x64.dmg` (Intel) | Open the dmg → drag to Applications |
 
-On first launch you sign in and land on the **dashboard**. AI is **managed by default** (MockMate
-AI — nothing to configure), or open **Settings → Bring your own key** to use your own OpenAI /
-Anthropic / Gemini / Groq / Cerebras key (stored locally). Then **Begin interview** (Solo) or **Start Live**.
+On first launch you sign in or continue as a guest and land on the **dashboard**. Internal QA
+installers can include team providers; otherwise open **Settings → Bring your own key** to use your
+own OpenAI / Anthropic / Gemini / Groq / Cerebras key (stored locally). Keyless **MockMate AI** only
+applies when the hosted managed proxy is configured. Then **Begin interview** (Solo) or **Start Live**.
 
-**Auto-update (Windows & Linux):** new versions download silently in the background and install
-the next time you reopen MockMate — no re-download needed. **macOS updates are manual for now**
+**Auto-update (Windows & Linux):** new versions download in the background and MockMate shows
+**Restart & install** when ready. Choosing **Later** never installs unexpectedly; use
+**Settings → Check for updates** for an explicit Checking / Up to date / Downloading / Ready /
+failure result. **macOS updates are manual for now**
 (the build isn't code-signed yet) — grab the latest `.dmg` from the [releases page](https://github.com/vsv2014/MockMate/releases/latest).
 
 > **macOS:** the DMG is **not** notarized yet, so on first open Gatekeeper shows
@@ -57,8 +60,11 @@ npm run electron:dev            # macOS / Windows: Electron app + API server + V
 npm run electron:dev:nosandbox
 ```
 
-> **Debugging:** the API server tees all logs (LLM errors, provider failover, model discovery)
-> to **`logs/server.log`** — `tail -n 40 logs/server.log` is the fastest way to see what broke.
+> **Debugging:** packaged builds write privacy-safe structured events to
+> **`%APPDATA%\mockmate\logs\diagnostics.jsonl`** on Windows. Use
+> **Settings → Diagnostics → Export logs** to share a redacted timeline covering API, STT,
+> provider/model failover, screenshot, auth, session and updater behavior. Development API logs
+> also tee to `logs/server.log`. See [`docs/DIAGNOSTICS.md`](docs/DIAGNOSTICS.md).
 
 **Developer config — set it once.** Copy `.env.example` → `.env` and fill in your keys
 (OpenAI / Anthropic / Gemini / Groq / Deepgram), an optional `OPENAI_MODEL`, or a full
@@ -260,7 +266,8 @@ hard questions escalate to a strong model (GPT-5.4 / Claude Sonnet 5). Model def
   Accounts backend  (backend/, optional, separate service — early)
     Express + MongoDB (Mongoose) · JWT auth
     /auth/signup · /auth/login · /auth/google · /me · /sessions
-    Stores profile + resume + session history.  API keys stay LOCAL.
+    Account fields + optional future sync endpoints. Desktop résumé/transcripts stay LOCAL by default.
+    API keys stay LOCAL until the hosted managed-key proxy is built.
 ```
 
 **Why the UI loads over http (not `file://`):** serving the built app and the API from the same
@@ -280,7 +287,9 @@ npm install && npm start             # → http://127.0.0.1:4000
 ```
 
 Implemented: email/password auth (bcrypt + JWT), `/auth/signup|login|me|logout`, Google OAuth
-endpoints, and `GET/PATCH /me` (profile + resume). **Desktop login wiring shipped in v1.4.0** —
+endpoints, and `GET/PATCH /me` account/profile fields. The backend schema can accept résumé data,
+but the desktop deliberately does **not** upload it; résumé and transcripts remain local unless a
+future explicit encrypted-sync option is enabled. **Desktop login wiring shipped in v1.4.0** —
 the backend is forked from the Electron main process, with a **file-backed store by default**
 (offline-safe; **MongoDB opt-in via `MONGO_URI`**) and an **env-configurable base URL
 (`MOCKMATE_API_BASE`)** for pointing at a hosted service later. API keys are **never** stored
@@ -289,6 +298,14 @@ here — they stay on the user's machine.
 ---
 
 ## Roadmap
+
+**Done (1.4.9)**
+- ✅ **Multi-screenshot questions** — queued captures can be combined into one bounded question/answer chain, with explicit Continue/New controls and Undo merge.
+- ✅ **Latest answer visibility** — compact Live follows the rendered answer while respecting manual reading; Jump to latest targets the newest answer.
+- ✅ **Production diagnostics** — buffered/rotated local JSONL timeline with two-stage redaction, session/request correlation, provider/model attempts, STT reconnects, screenshot continuation, auth/API latency and updater lifecycle; Export/Clear controls in Settings.
+- ✅ **Windows updater recovery** — updater state survives dashboard/auth startup, Check for updates always reports a state, and Later does not silently install on quit.
+- ✅ **Release gates** — tag/package version match, unit tests, API smoke and updater-artifact validation run before publishing.
+- ✅ **Internal QA scope made explicit** — local accounts and bundled team keys remain temporary; hosted accounts, managed server-held keys, billing and encrypted sync stay on the SaaS roadmap.
 
 **Done (1.4.8)**
 - ✅ **Live intent reliability** — slower semantic commit gate, overlap/artifact cleanup, correction cancellation, and active-card refinements for requests such as “write it as code.”
@@ -331,7 +348,7 @@ here — they stay on the user's machine.
 - ✅ **Auto-update CI guards** — release fails loudly if the tag ≠ `package.json` version or `latest*.yml` is missing.
 
 **Done**
-- ✅ Auto-update via `electron-updater` (Windows + Linux) — silent background install on restart
+- ✅ Auto-update via `electron-updater` (Windows + Linux) — background download with explicit Restart & install
 - ✅ **Real-time accuracy + speed core**: Deepgram **keyterm boosting** (resume/role jargon), **diarization** (answers the interviewer, not your own voice), and **true token streaming** (first words in <1s, replacing the cosmetic word-reveal)
 - ✅ **Matching Jobs** (live) — your resume ranked against real postings with reasons + gaps (keyless Remotive source)
 

@@ -66,6 +66,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateStatus: cb => {
     const h = (_, d) => cb(d)
     ipcRenderer.on('update-status', h)
+    // The updater may finish checking/downloading before React mounts after auth.
+    // Replay the latest main-process state so Windows never loses the ready toast.
+    ipcRenderer.invoke('get-update-status').then(d => { if (d) cb(d) }).catch(() => {})
     return () => ipcRenderer.removeListener('update-status', h)
   },
   installUpdate: () => ipcRenderer.invoke('install-update'),
@@ -75,6 +78,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeProviderKey: provider => ipcRenderer.invoke('remove-provider-key', provider),
   appendSessionMetrics: row => ipcRenderer.invoke('append-session-metrics', row),
   readSessionMetricsSummary: () => ipcRenderer.invoke('read-session-metrics-summary'),
+  appendDiagnostics: rows => ipcRenderer.invoke('append-diagnostics', rows),
+  exportDiagnostics: () => ipcRenderer.invoke('export-diagnostics'),
+  clearDiagnostics: () => ipcRenderer.invoke('clear-diagnostics'),
   relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
   applyKeys: () => ipcRenderer.invoke('apply-keys'),
   openKeySetup: () => ipcRenderer.invoke('open-key-setup'),

@@ -23,7 +23,7 @@ export default class ErrorBoundary extends React.Component {
             {this.state.err?.stack ? '\n\n' + this.state.err.stack.split('\n').slice(0, 6).join('\n') : ''}
           </pre>
         )}
-        <button onClick={() => this.setState({ err: null })}
+        <button onClick={() => window.location.reload()}
           style={{ padding: '8px 14px', background: '#14B8A6', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
           Reload
         </button>

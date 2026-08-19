@@ -1,5 +1,6 @@
 // Local Live-session metrics (Phase 6). No transcript / resume / answer text — timings,
 // counters, and opaque error codes only. Persisted via Electron IPC → userData JSONL.
+import { diagnostic, setDiagnosticContext } from './diagnostics'
 const SENSITIVE = /resume|transcript|answer|question|prompt|sample|fullAnswer|text|content|say/i
 
 export function sanitizeMetric(obj = {}) {
@@ -28,6 +29,7 @@ export function createSessionMetrics(kind = 'live') {
     errors: 0,
   }
   let flushed = false
+  setDiagnosticContext({ sessionId, sessionKind: kind })
 
   function event(type, payload = {}) {
     const row = sanitizeMetric({
@@ -38,6 +40,7 @@ export function createSessionMetrics(kind = 'live') {
       ...payload,
     })
     try { window.electronAPI?.appendSessionMetrics?.(row) } catch {}
+    diagnostic('session', type, row)
     return row
   }
 
@@ -128,6 +131,7 @@ export function createSessionMetrics(kind = 'live') {
     flushed = true
     const row = { ...summary(), ...sanitizeMetric(extra), type: 'session_end' }
     try { window.electronAPI?.appendSessionMetrics?.(row) } catch {}
+    diagnostic('session', 'session_end', row)
     return row
   }
 

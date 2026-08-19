@@ -20,6 +20,7 @@ export default function Login({ onSubmit, onSwitchToSignup, onForgot, onGuest })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [forgotSent, setForgotSent] = useState(false)   // shows the generic "reset link sent" notice
+  const [forgotBusy, setForgotBusy] = useState(false)
 
   const canSubmit = email.trim() && password && !busy
 
@@ -73,14 +74,23 @@ export default function Login({ onSubmit, onSwitchToSignup, onForgot, onGuest })
           <PrimaryButton busy={busy} busyLabel="Signing in…" disabled={!canSubmit}>Sign in</PrimaryButton>
         </div>
 
-        <div style={{ textAlign: 'center', marginTop: 14 }}>
+        {onForgot && <div style={{ textAlign: 'center', marginTop: 14 }}>
           {forgotSent
             ? <span style={{ fontSize: 12, color: T.text2, lineHeight: 1.5 }}>If an account exists for that email, a reset link is on its way.</span>
-            : <TextLink onClick={() => {
+            : <TextLink onClick={async () => {
                 if (!email.trim()) { setError('Enter your email above to reset it.'); return }
-                setError(null); setForgotSent(true); try { onForgot?.(email.trim()) } catch {}
-              }}>Forgot password?</TextLink>}
-        </div>
+                if (forgotBusy) return
+                setError(null); setForgotBusy(true)
+                try {
+                  await onForgot(email.trim())
+                  setForgotSent(true)
+                } catch (err) {
+                  setError(err?.message || 'Could not request a reset link. Please try again.')
+                } finally {
+                  setForgotBusy(false)
+                }
+              }}>{forgotBusy ? 'Requesting reset…' : 'Forgot password?'}</TextLink>}
+        </div>}
       </form>
 
       <div style={{

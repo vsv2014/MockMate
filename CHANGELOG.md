@@ -2,6 +2,18 @@
 
 ## v1.4.9 — 2026-08-19
 
+### Added
+- Production-safe structured diagnostics across application/backend startup, authentication, API calls, Deepgram token/socket/reconnect health, session quality, screenshot continuation, LLM provider/model attempts, token/latency metadata, and updater state.
+- Buffered JSONL storage under Electron `userData/logs` with two-stage redaction, 5 MB rotation, bounded retention, session/request correlation, and Settings actions to **Export logs** or **Clear** without deleting interview history.
+- Release workflow gates for tag/package version consistency, unit tests, API smoke tests, and required Windows/Linux updater artifacts.
+
+### Changed
+- Windows/Linux updates download in the background but install only after **Restart & install**; choosing Later no longer causes an unexpected install on quit.
+- Authentication calls now have a 15-second deadline and distinguish timeout, local account-service startup, and network failure.
+- Device-local builds hide non-functional email password recovery; hosted recovery now waits for the backend request before claiming a reset was sent.
+- The render crash recovery action performs a real reload instead of merely clearing the error boundary and immediately crashing again.
+- Internal QA scope is documented explicitly: local accounts and bundled team keys are temporary; hosted/shared accounts, billing, managed keys, encrypted sync and production recovery remain roadmap work.
+
 ### Fixed
 - Consecutive screenshots showing different portions of one long interview question are now evaluated as a bounded continuation chain. When the second capture is confirmed as related, MockMate merges the extracted question, regenerates one complete answer, and updates the existing question card instead of creating a duplicate.
 - Screenshot continuation context is limited to the immediately preceding successful capture, the same display, and a two-minute window. Unrelated screens, stale captures, and new Live sessions still start cleanly and cannot inherit an earlier question.
@@ -11,6 +23,7 @@
 - Live autoscroll now moves the newly rendered answer—not only its question—into view in compact overlays. Programmatic scrolling no longer disables follow-latest mode, manual reading of older turns remains respected, and **Jump to latest** prefers the latest answer.
 - Confirmed screenshot continuations expose **Undo last merge**, restoring the exact previous question/answer state. Multi-part extracted question context now has a larger but still bounded 6,000-character budget for dense three-plus-screen problems.
 - Queued screenshot analysis keeps one stable loading state between captures, and overlapping automatic scrolls share one guarded timer so follow-latest cannot be disabled by an earlier animation finishing late.
+- Windows update notifications are no longer lost when update discovery/download finishes before the authenticated dashboard mounts. Manual checks now report Checking, Up to date, Ready, or an actionable failure instead of silently doing nothing.
 
 ## v1.4.8 — 2026-08-19
 

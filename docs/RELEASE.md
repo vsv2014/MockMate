@@ -7,7 +7,7 @@ here are **infra/signing**, not code (tests + reviews pass while an update silen
 
 | Platform | Auto-update on existing installs? | Why |
 |---|---|---|
-| **Windows** | ✅ Yes — silent background, installs on next launch | NSIS + `latest.yml` + `.blockmap`; auto-update works unsigned, but **Smart App Control / SmartScreen block unsigned install+uninstall** until `WIN_CSC_*` secrets are set |
+| **Windows** | ✅ Yes — background download, explicit Restart & install | NSIS + `latest.yml` + `.blockmap`; auto-update works unsigned, but **Smart App Control / SmartScreen block unsigned install+uninstall** until `WIN_CSC_*` secrets are set |
 | **Linux** | ✅ Yes (AppImage) | `latest-linux.yml` |
 | **macOS** | ❌ **No — users must manually re-download the `.dmg`** | Squirrel.Mac **refuses unsigned updates**; needs Apple Developer ID signing + notarization |
 
@@ -51,8 +51,10 @@ here are **infra/signing**, not code (tests + reviews pass while an update silen
 - The GitHub Release exists, is **public, not a draft/prerelease**, tag `vX.Y.Z`.
 - Assets include, per platform: the installer **and** its `latest*.yml` (the update feed) +
   Windows `.blockmap`. **No `latest.yml` ⇒ no auto-update**, even if the installer is there.
-- Sanity-check auto-update on a real Windows install: open an older version, wait/relaunch, confirm
-  it moves to the new version. (`%APPDATA%/MockMate/logs` or console shows `[updater] ready`.)
+- Sanity-check auto-update on a real Windows install: open an older version, use Settings → Check
+  for updates, confirm Checking → Downloading → Ready → Restart & install, then confirm the new
+  version. Export Settings → Diagnostics if it fails; updater events are in
+  `%APPDATA%\mockmate\logs\diagnostics.jsonl`.
 
 ## Enabling code signing (one-time)
 

@@ -6,6 +6,8 @@
 // bridge — NEVER localStorage. In plain-browser dev (no Electron) it falls back
 // to an in-memory value, which is fine because the product only ships in Electron.
 
+import { diagnostic, createDiagnosticRequestId } from '../lib/diagnostics'
+
 const electronAuth = typeof window !== 'undefined' ? window.electronAPI?.auth : null
 
 // Base URL is env-configurable so we can point at a hosted backend later with no
@@ -39,7 +41,9 @@ let onUnauthorized = () => {}
 export function setUnauthorizedHandler(fn) { onUnauthorized = fn || (() => {}) }
 
 // ── Core request ────────────────────────────────────────────────────────────
-async function request(path, { method = 'GET', body, auth = false } = {}) {
+async function request(path, { method = 'GET', body, auth = false, timeoutMs = 15000 } = {}) {
+  const requestId = createDiagnosticRequestId('auth')
+  const startedAt = performance.now()
   const headers = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (auth) {
@@ -48,22 +52,32 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
   }
 
   let res
+  diagnostic('auth', 'request_started', { requestId, path, method, authenticated: auth, timeoutMs })
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
+  const timer = controller && timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null
   try {
     res = await fetch(`${API_BASE}${path}`, {
       method, headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller?.signal,
     })
-  } catch {
+  } catch (err) {
+    diagnostic('auth', 'request_failed', { requestId, path, method, durationMs: Math.round(performance.now() - startedAt), reason: err?.name === 'AbortError' ? 'timeout' : 'network' }, 'error')
     // Network / backend-down. Distinct, actionable message — not a bare throw.
     throw new ApiError(
-      usesDeviceLocalAccounts
+      err?.name === 'AbortError'
+        ? 'MockMate took too long to respond. Please try again.'
+        : usesDeviceLocalAccounts
         ? 'MockMate’s account service did not start. Restart the app and try again.'
         : 'Can’t reach MockMate. Check your connection and try again.',
       0,
     )
+  } finally {
+    if (timer) clearTimeout(timer)
   }
 
   if (res.status === 401 && auth) {
+    diagnostic('auth', 'session_unauthorized', { requestId, path, durationMs: Math.round(performance.now() - startedAt) }, 'warn')
     await clearToken()
     onUnauthorized()
     throw new ApiError('Your session expired. Please sign in again.', 401)
@@ -73,8 +87,10 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
   try { data = await res.json() } catch { /* empty/no-json body */ }
 
   if (!res.ok) {
+    diagnostic('auth', 'request_rejected', { requestId, path, method, status: res.status, durationMs: Math.round(performance.now() - startedAt) }, 'warn')
     throw new ApiError(data?.error || 'Something went wrong. Please try again.', res.status)
   }
+  diagnostic('auth', 'request_completed', { requestId, path, method, status: res.status, durationMs: Math.round(performance.now() - startedAt) })
   return data
 }
 
@@ -85,7 +101,7 @@ export class ApiError extends Error {
 // ── Auth endpoints ────────────────────────────────────────────────────────────
 // Always resolves (backend returns 200 regardless, to avoid email enumeration).
 export async function forgotPassword(email) {
-  try { await request('/auth/forgot-password', { method: 'POST', body: { email } }) } catch { /* never reveal */ }
+  return request('/auth/forgot-password', { method: 'POST', body: { email } })
 }
 export async function signup({ name, email, password }) {
   const { token, user } = await request('/auth/signup', { method: 'POST', body: { name, email, password } })

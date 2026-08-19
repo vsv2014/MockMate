@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { apiFetch } from './lib/apiClient'
+import { diagnostic } from './lib/diagnostics'
 import { toPCM16 } from './audio-pcm'
 
 async function getStream(sourceId) {
@@ -234,6 +235,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     ws.current = null
 
     let tokenRes, tokenStatus
+    diagnostic('stt', 'token_requested', { generation: gen, reconnectAttempt: reconnectAttempts.current })
     try {
       const r = await apiFetch('/api/deepgram-token', { method: 'POST' })
       tokenStatus = r.status
@@ -249,6 +251,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     }
     if (!tokenRes?.access_token) {
       connecting.current = false
+      diagnostic('stt', 'token_failed', { status: tokenStatus || 0, reconnectAttempt: reconnectAttempts.current }, 'error')
       // 401/403 = bad/missing key (config error) → stop, retrying won't help.
       // 402/429 = over the managed monthly cap → also permanent for this period; reconnecting
       // would loop forever and silently hang Live. Surface the server's message instead.
@@ -259,6 +262,11 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     }
 
     const sock = new WebSocket(buildDgUrl(keytermsRef.current, degradedAudio.current, langRef.current), ['token', tokenRes.access_token])
+    diagnostic('stt', 'socket_connecting', {
+      generation: gen, model: degradedAudio.current ? 'nova-2' : 'nova-3',
+      language: langRef.current, keytermCount: keytermsRef.current.length,
+      credentialMode: tokenRes.fallback === 'api_key' ? 'local_key_fallback' : 'grant',
+    })
     if (gen !== connectGen.current || suspendPaused.current) {
       abandonSocket(sock)
       connecting.current = false
@@ -277,6 +285,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       everConnected.current = true
       reconnectAttempts.current = 0
       setActive(true); setReconnecting(false)
+      diagnostic('stt', 'socket_open', { generation: gen, degraded: degradedAudio.current, reconnectAttempt: reconnectAttempts.current })
       try { ctx.current?.resume?.() } catch {}
       // Flush audio captured while the socket was down, in FIFO order, BEFORE any live
       // chunk — so words spoken during the reconnect/cold-start gap aren't lost. This
@@ -301,6 +310,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       if (!owns()) return
       let m; try { m = JSON.parse(ev.data) } catch { return }
       if (m.type === 'Error' || m.err_code) {
+        diagnostic('stt', 'provider_error', { code: m.err_code || 'unknown' }, 'error')
         // Fatal Deepgram errors (auth/quota) shouldn't loop forever.
         return fail(m.err_msg || m.err_code || 'Deepgram error')
       }
@@ -310,6 +320,11 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       const sp = dominantSpeaker(alt?.words)
       const isCandidate = candidateSpeaker.current != null && sp === candidateSpeaker.current
       if (m.is_final) {
+        diagnostic('stt', 'final_received', {
+          confidence: Number.isFinite(alt?.confidence) ? alt.confidence : null,
+          wordCount: text.split(/\s+/).filter(Boolean).length,
+          speakerDetected: sp != null, degraded: !!degradedAudio.current,
+        })
         // Update per-speaker stats and (re)derive the interviewer = whoever asks the
         // most question-shaped utterances. We only mark a candidate once the
         // interviewer is positively identified (>=2 questions), so until then Mic mode
@@ -357,6 +372,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       connecting.current = false
       clearInterval(keepAlive.current); keepAlive.current = null
       if (userStop.current || suspendPaused.current) return
+      diagnostic('stt', 'socket_closed', { code: ev?.code || 0, clean: !!ev?.wasClean, generation: gen }, FATAL_CLOSE.has(ev?.code) ? 'error' : 'warn')
       // Auth/quota/policy failures can arrive as a WebSocket close code rather than
       // an in-band Error frame — those won't fix themselves, so fail fast instead of
       // looping "Reconnecting…" forever. Transient drops (1006/1011/network) still retry.
@@ -374,6 +390,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       setDegraded(true)
       reconnectAttempts.current = 0
       console.warn('[audio] enhanced transcription failed pre-connect — falling back to plain config:', reason)
+      diagnostic('stt', 'degraded_fallback', { reason }, 'warn')
       connectSocket()
       return
     }
@@ -390,6 +407,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   function scheduleReconnect(reason) {
     if (userStop.current || suspendPaused.current) return
     reconnectAttempts.current += 1
+    diagnostic('stt', 'reconnect_scheduled', { attempt: reconnectAttempts.current, reason }, 'warn')
     try { onReconnectRef.current?.(reconnectAttempts.current, reason) } catch {}
     if (reconnectAttempts.current > MAX_RECONNECTS) {
       return failOrDegrade(`${reason} — gave up after ${MAX_RECONNECTS} consecutive reconnect attempts`)
