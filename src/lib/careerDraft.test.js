@@ -22,9 +22,10 @@ describe('careerDraft', () => {
   })
 
   it('keeps prior fields on partial save', () => {
-    saveCareerDraft({ jd: 'JD A', person: 'Alex' })
+    saveCareerDraft({ jd: 'JD A', person: 'Alex', company: 'Acme' })
     saveCareerDraft({ jd: 'JD B' })
     expect(loadCareerDraft().jd).toBe('JD B')
     expect(loadCareerDraft().person).toBe('Alex')
+    expect(loadCareerDraft().company).toBe('Acme')
   })
 })

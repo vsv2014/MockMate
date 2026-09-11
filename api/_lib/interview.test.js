@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pickPlaybook, packCandidateContext, analyzeScreen, answerRequirementBlock, hasOnlineCompilerHarness } from './interview.js'
+import { pickPlaybook, packCandidateContext, analyzeScreen, answerRequirementBlock, hasOnlineCompilerHarness, isLogisticalCheck, streamHint } from './interview.js'
 import { classifyTurn } from '../../shared/interviewClassify.js'
 import { glanceLayers } from '../../shared/hintLayers.js'
 
@@ -18,6 +18,28 @@ describe('current-turn output and evidence contracts', () => {
     const out = answerRequirementBlock('Write the function in Python', { jobDescription: 'JavaScript' })
     expect(out).toMatch(/Use Python/i)
     expect(out).not.toMatch(/prefer JavaScript/i)
+  })
+
+  it('forbids invented experience and stale-topic carry-over', () => {
+    const out = answerRequirementBlock('How many years did you use Cypress?', {})
+    expect(out).toMatch(/Never invent years of experience/i)
+    expect(out).toMatch(/current question is authoritative/i)
+    expect(out).toMatch(/resume does not explicitly prove/i)
+  })
+
+  it.each([
+    'Am I audible now?',
+    'Can you hear me?',
+    'Is my screen visible to you?',
+    'Can you see it?',
+  ])('recognizes logistical checks without invoking an answer model: %s', async question => {
+    expect(isLogisticalCheck(question)).toBe(true)
+    const out = await streamHint({ question, autoSkip: true }, {})
+    expect(out).toMatchObject({ skipped: true, reason: 'logistical_check' })
+  })
+
+  it('does not classify a technical visibility question as logistics', () => {
+    expect(isLogisticalCheck('How do you wait until an element is visible in Playwright?')).toBe(false)
   })
 })
 
@@ -307,8 +329,21 @@ describe('packCandidateContext (source hierarchy + gating)', () => {
 
   it('includes custom voice instructions', () => {
     const out = packCandidateContext({ customPrompt: 'Sound casual, say "I shipped"' })
-    expect(out).toMatch(/CANDIDATE VOICE/)
+    expect(out).toMatch(/CUSTOM INTERVIEW PLAYBOOK/)
     expect(out).toMatch(/Sound casual/)
+  })
+
+  it('routes relevant instructions located after the old 2,000 character cutoff', () => {
+    const customPrompt = `VOICE:Be concise.\n\nTRUTH:Never invent.\n\nNOTES:${'irrelevant filler '.repeat(150)}\n\nSQL SUPPORT:Use the exact schema and return simple correct SQL first.`
+    expect(customPrompt.indexOf('SQL SUPPORT')).toBeGreaterThan(2000)
+    const c = classifyTurn({ question: 'Write a SQL query to find duplicate names' })
+    const out = packCandidateContext({ customPrompt }, '', {
+      classification: c,
+      question: 'Write a SQL query to find duplicate names',
+    })
+    expect(out).toMatch(/Selected sections:.*SQL SUPPORT/)
+    expect(out).toMatch(/return simple correct SQL first/)
+    expect(out).not.toMatch(/irrelevant filler/)
   })
 
   it('system_design uses soft resume fact card (not full dump / not veto)', () => {

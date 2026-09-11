@@ -13,7 +13,7 @@ import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { createSessionId, createGeneration, hasEnoughAnswerLength } from './lib/sessionGen'
 import { retrieveContext, warmDocs, addDoc, getSelectedDocIds } from './lib/docs'
-import { buildInterviewConfig } from './lib/interviewConfig'
+import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import Documents from './Documents'
 import { extractPdfText } from './pdf'
 
@@ -79,7 +79,6 @@ function Waveform({ active }) {
   )
 }
 
-const COMPANIES = ['Google', 'Meta', 'Amazon', 'OpenAI', 'Microsoft', 'Startup']
 const TIPS_BY_TYPE = {
   Technical: ['State your assumptions first', 'Talk through tradeoffs, not just the answer', 'Give a concrete example'],
   Behavioral: ['Use STAR: Situation, Task, Action, Result', 'Lead with the outcome / impact', 'Keep it to one clear story'],
@@ -542,17 +541,21 @@ export default function Solo({ onHome, noProviders }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config, transcript: transcriptRef.current, profile, provider: effProvider })
       }).then(r => r.json())
-      const rep = res.report || { error: res.error || 'Evaluation failed' }
+      let rep = res.report || { error: res.error || 'Evaluation failed' }
+      const stored = saveSession({ report: rep, transcript: transcriptRef.current, config: { ...config, interviewSetup: interviewConfigRef.current }, profile })
+      if (!stored) rep = { ...rep, _storageWarning: 'This session could not be saved. Copy the transcript before leaving this screen.' }
+      else if (stored.storagePruned) rep = { ...rep, _storageWarning: `Saved this session after removing ${stored.storagePruned} oldest local session${stored.storagePruned === 1 ? '' : 's'} to free space.` }
       setReport(rep)
       setPhase('report')
       phaseRef.current = 'report'
-      saveSession({ report: rep, transcript: transcriptRef.current, config, profile })
     } catch (e) {
-      const rep = { error: e.message || 'Evaluation failed' }
+      let rep = { error: e.message || 'Evaluation failed' }
+      const stored = saveSession({ report: rep, transcript: transcriptRef.current, config: { ...config, interviewSetup: interviewConfigRef.current }, profile, note: 'evaluate_error' })
+      if (!stored) rep = { ...rep, _storageWarning: 'This session could not be saved. Copy the transcript before leaving this screen.' }
+      else if (stored.storagePruned) rep = { ...rep, _storageWarning: `Saved this session after removing ${stored.storagePruned} oldest local session${stored.storagePruned === 1 ? '' : 's'} to free space.` }
       setReport(rep)
       setPhase('report')
       phaseRef.current = 'report'
-      saveSession({ report: rep, transcript: transcriptRef.current, config, profile, note: 'evaluate_error' })
     }
     sessionActiveRef.current = false
     setEvaluating(false)
@@ -662,6 +665,28 @@ export default function Solo({ onHome, noProviders }) {
         </div>
       </Section>
 
+      <Section title="Interview Playbook" hint="Recommended — controls how the interviewer and feedback behave for this practice session.">
+        <div style={{ fontSize: 11.5, color: T.text2, lineHeight: 1.5 }}>
+          Add interview-specific rules for tone, truth boundaries, answer depth, SQL/coding style and project context. The same playbook is visible in Live—never applied as a hidden setting.
+        </div>
+        <textarea
+          aria-label="Interview Playbook"
+          rows={7}
+          maxLength={CUSTOM_INSTRUCTIONS_STORE_MAX}
+          style={{ ...textInput, resize: 'vertical', minHeight: 130, borderColor: profile.customPrompt?.trim() ? 'rgba(34,211,238,0.7)' : T.border }}
+          value={profile.customPrompt || ''}
+          placeholder={'Example:\nVOICE: Keep answers confident and concise.\nTRUTH: Never invent experience or ownership.\nSQL SUPPORT: Give simple correct SQL first.\nCODING/DSA: Approach → code → complexity → edge cases.'}
+          onChange={e => patchProfile({ customPrompt: e.target.value.slice(0, CUSTOM_INSTRUCTIONS_STORE_MAX) })}
+        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 10.5, color: T.text3 }}>
+          <span>{profile.customPrompt?.trim() ? '✓ Active for this practice interview' : 'Optional, but recommended for role-specific behavior'}</span>
+          <span>{(profile.customPrompt || '').length.toLocaleString()} / {CUSTOM_INSTRUCTIONS_STORE_MAX.toLocaleString()}</span>
+        </div>
+        <div style={{ fontSize: 10.5, color: '#67e8f9', lineHeight: 1.4 }}>
+          Routes core + question-relevant sections up to {CUSTOM_INSTRUCTIONS_PACK_MAX.toLocaleString()} characters. Truthfulness protections cannot be overridden.
+        </div>
+      </Section>
+
       <Section title="Interview">
         <div>
           <Label>Your name</Label>
@@ -685,9 +710,11 @@ export default function Solo({ onHome, noProviders }) {
         </div>
       </Section>
 
-      <Section title="Target company" hint="Optional — tailors questions to a company's bar & style.">
-        <Chips options={COMPANIES} value={profile.targetCompany || ''} onChange={v => patchProfile({ targetCompany: profile.targetCompany === v ? '' : v })} />
-        <input style={textInput} value={profile.targetCompany || ''} placeholder="Or type any company…" onChange={e => patchProfile({ targetCompany: e.target.value })} />
+      <Section title="Target company" hint="Optional — every company and every attempt can use a different setup.">
+        <input style={textInput} value={profile.targetCompany || ''} placeholder="Type any company, e.g. RealPage, Teradata, Amazon…" onChange={e => patchProfile({ targetCompany: e.target.value })} />
+        <div style={{ fontSize: 11, color: T.text3, lineHeight: 1.45 }}>
+          This does not restrict your account to one company. MockMate snapshots the active company, role, playbook and selected documents when the session begins.
+        </div>
       </Section>
 
       <details style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '12px 16px' }}>

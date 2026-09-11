@@ -1,4 +1,4 @@
-# MockMate — Real-Time AI Interview Companion
+# MockMate — Interview Performance Companion
 
 A desktop app for interview prep **and** live help: a full **dashboard workspace** (Solo practice,
 Resume Studio, Job matching, Sessions) plus a **live overlay** that floats over your
@@ -28,6 +28,24 @@ On first launch you sign in or continue as a guest and land on the **dashboard**
 installers can include team providers; otherwise open **Settings → Bring your own key** to use your
 own OpenAI / Anthropic / Gemini / Groq / Cerebras key (stored locally). Keyless **MockMate AI** only
 applies when the hosted managed proxy is configured. Then **Begin interview** (Solo) or **Start Live**.
+
+### Mobile foundation (iOS + Android)
+
+The first Expo/React Native foundation lives in [`mobile/`](mobile/): hosted sign-up/sign-in,
+Prepare/History/Duo/Account navigation, validated Live/Mock/Coding goals, secure token storage and
+cross-device session contracts. It is currently a development foundation, not an App Store/Play
+Store release; microphone streaming and real Duo pairing remain explicit next milestones.
+
+```bash
+cd mobile
+npm install
+cp .env.example .env           # set the hosted HTTPS API
+npm run ios                    # requires macOS/Xcode, or scan with an Expo development client
+npm run android
+```
+
+See [`docs/MOBILE_APP_PLAN.md`](docs/MOBILE_APP_PLAN.md) for product boundaries and
+[`docs/ROADMAP.md`](docs/ROADMAP.md) for the build sequence.
 
 **Auto-update (Windows & Linux):** new versions download in the background and MockMate shows
 **Restart & install** when ready. Choosing **Later** never installs unexpectedly; use
@@ -298,6 +316,14 @@ BYOK keys stay encrypted on the user's machine.
 ---
 
 ## Roadmap
+
+**Done (1.4.11)**
+- ✅ **Visible Interview Playbook** — highlighted before Start Live; long custom rules are routed by question type instead of prefix-truncated, with immutable source-mode and résumé-truth boundaries.
+- ✅ **Visible interview sources** — Interview Documents follows the playbook, shows the active source count and keeps per-document retrieval selection explicit before Start Live.
+- ✅ **Bounded question assembly** — usable partial questions commit by 4.5 seconds and stale fragments expire by 6.5 seconds; no indefinite stabilization or minute-old context carry-over.
+- ✅ **Transcript term repair** — conservative, context-gated correction for CTE, polling, RBAC and CI/Jenkins misrecognitions observed in the real SysCloud interview.
+- ✅ **Truth and topic isolation** — stronger resume-only work-claim policy, no invented experience durations/tools, and prior history is used only for explicit follow-ups.
+- ✅ **Meeting-noise suppression** — audible/visible/screen-share checks are skipped before creating a card or spending a model call.
 
 **Done (1.4.10)**
 - ✅ **Safe release boundary** — public installers contain no provider keys; builds without a hosted HTTPS endpoint are explicitly BYOK-only.

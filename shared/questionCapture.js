@@ -3,14 +3,15 @@
  * Does NOT commit solely because Deepgram emitted one final fragment.
  */
 
-import { normalizeCaptureText, isDuplicateQuestion, sanitizeCaptureText } from './transcriptBuffer.js'
+import { normalizeCaptureText, isDuplicateQuestion, sanitizeCaptureText, repairInterviewTerms } from './transcriptBuffer.js'
+import { isLogisticalCheck } from './interviewClassify.js'
 
-export const QUESTION_CAPTURE_VERSION = 'question_capture_v1'
+export const QUESTION_CAPTURE_VERSION = 'question_capture_v2_bounded'
 
 /** Incomplete / wait-for-more shapes */
 const INCOMPLETE_OPENERS = /^(can you design|how would you design|how would you|what about|how about|tell me about(?: a time)?|tell me about|walk me through|describe|explain|why(?:\s+\w+)?|what are|what is|what was|given an|design a|design an|let'?s (?:start|switch|do)|okay\.?\s*(?:forget|let'?s)?)$/i
 const INCOMPLETE_TRAILING = /\b(design a|design an|tell me about(?: a time)?|how would you|what about|can you|walk me through)\s*$/i
-const CORRECTION_MARK = /(?:\b(?:actually|no,?\s*i meant|rather|i mean|what i(?:'m| am) saying is|let me (?:repeat|rephrase)|i(?:'ll| will) repeat(?: the question)?|you(?:'re| are) answering (?:it )?wrong)\b|\bwait[,.!]+(?:\s*wait[,.!]+)*)/i
+const CORRECTION_MARK = /(?:\b(?:actually|no,?\s*i meant|rather|i mean|i(?:'m| am) asking|what i(?:'m| am) saying is|let me (?:repeat|rephrase)|i(?:'ll| will) repeat(?: the question)?|you(?:'re| are) answering (?:it )?wrong)\b|\bwait[,.!]+(?:\s*wait[,.!]+)*)/i
 const REVISION_SIGNAL = /^(?:(?:ai\s+)?(?:wait|sorry|no|hold on|one second)[,.!\s]*)+(?:i(?:'ll| will) repeat|let me (?:repeat|rephrase)|you(?:'re| are) answering (?:it )?wrong)?[,.!\s]*$/i
 const REFINEMENT_SIGNAL = /^(?:so\s+)?(?:(?:can|could|would) you\s+)?(?:please\s+)?(?:write|show|give|provide|do)\s+(?:it|that|this)(?:\s+(?:as|in|using|with)\b[\s\S]*)?[?.!]*$|^(?:be\s+)?brief(?:ly)?(?:\s+about it)?[?.!]*$/i
 
@@ -27,6 +28,7 @@ export const STABILIZE_MS = {
   incomplete: 1400,
   unknownSpeaker: 1500,
   maxAccumulate: 4500,
+  hardExpire: 6500,
 }
 
 /**
@@ -49,6 +51,10 @@ export function assessQuestionBoundary({
   const q = String(text || '').trim()
   if (!q) {
     return { action: 'reject', reason: 'empty', waitMs: 0, confidence: 0, completeness: 'incomplete' }
+  }
+
+  if (isLogisticalCheck(q)) {
+    return { action: 'reject', reason: 'logistical_check', waitMs: 0, confidence: 1, completeness: 'complete' }
   }
 
   if (speakerRole === 'candidate') {
@@ -87,12 +93,15 @@ export function assessQuestionBoundary({
   if (incomplete || completeness === 'incomplete') {
     if (laneAgeMs >= STABILIZE_MS.maxAccumulate && interrogative && words >= 5) {
       return {
-        action: 'stabilize',
+        action: 'commit',
         reason: 'max_accumulate',
-        waitMs: STABILIZE_MS.likelyComplete,
+        waitMs: 0,
         confidence: 0.55,
         completeness: 'likely',
       }
+    }
+    if (laneAgeMs >= STABILIZE_MS.hardExpire) {
+      return { action: 'reject', reason: 'stale_incomplete', waitMs: 0, confidence: 0.15, completeness: 'incomplete' }
     }
     return {
       action: 'wait',
@@ -221,7 +230,7 @@ export function createQuestionCaptureController(opts = {}) {
   }
 
   function ensureCandidate(text, speaker) {
-    const cleaned = applyUtteranceCorrection(text)
+    const cleaned = repairInterviewTerms(applyUtteranceCorrection(text), getLastCommittedText())
     if (!candidate) {
       candidate = {
         id: `qc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
@@ -257,7 +266,7 @@ export function createQuestionCaptureController(opts = {}) {
 
   function commitCurrent(reason) {
     if (!candidate) return null
-    const text = applyUtteranceCorrection(candidate.text)
+    const text = repairInterviewTerms(applyUtteranceCorrection(candidate.text), getLastCommittedText())
     const last = getLastCommittedText()
     if (last && isDuplicateQuestion(text, last)) {
       metrics.duplicates += 1
@@ -326,9 +335,17 @@ export function createQuestionCaptureController(opts = {}) {
     debug('BOUNDARY', { ...assessment, text: lane.text, speaker: lane.speaker, silenceMs })
 
     if (assessment.action === 'reject') {
+      reject(assessment.reason, { text: lane.text, speaker: lane.speaker })
       // Keep accumulating if incomplete was already shown as unclear — don't wipe live UI aggressively
       if (assessment.reason === 'low_confidence' || assessment.reason === 'speaker_unknown') {
         onLive({ text: lane.text, status: 'unclear', reason: assessment.reason })
+      }
+      // Never let a rejected lane survive for minutes and inflate the next
+      // question's latency/context. A fresh STT fragment starts a fresh lane.
+      if (assessment.reason === 'logistical_check' || assessment.reason === 'stale_incomplete' || (now() - lane.startedAt >= STABILIZE_MS.hardExpire)) {
+        candidate = null
+        buffer.clearLane()
+        clearTimers()
       }
       return assessment
     }
@@ -376,6 +393,19 @@ export function createQuestionCaptureController(opts = {}) {
       return { liveText: '', flushed: null, rejected: 'refinement_signal' }
     }
     fragment = { ...fragment, text: incoming }
+
+    // A lane that has been silent past the hard boundary belongs to an old
+    // utterance. Drop it before pushing the new fragment; otherwise the buffer
+    // can join a weak old phrase to a clear new question and report minute-scale
+    // capture latency.
+    const priorLane = buffer.getLane()
+    const fragmentTs = Number(fragment.ts) || now()
+    if (priorLane?.text && fragmentTs - priorLane.updatedAt >= STABILIZE_MS.hardExpire) {
+      reject('stale_gap', { text: priorLane.text, idleMs: fragmentTs - priorLane.updatedAt })
+      candidate = null
+      buffer.clearLane()
+      clearTimers()
+    }
     const result = buffer.push(fragment)
 
     // Flushed prior speaker lane — evaluate it as possible question

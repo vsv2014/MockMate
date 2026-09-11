@@ -7,6 +7,16 @@ import { getDocThreshold } from './aiSettings'
 import { diagnostic } from './diagnostics'
 
 const KEY = 'mm-docs'
+export const MAX_INDEX_CHUNKS_PER_DOC = 40
+export const LONG_DOC_CHARS = 20000
+
+export function sampleChunksForIndex(chunks, max = MAX_INDEX_CHUNKS_PER_DOC) {
+  if (!Array.isArray(chunks) || chunks.length <= max) return Array.isArray(chunks) ? chunks : []
+  if (max <= 1) return chunks.slice(0, Math.max(0, max))
+  return Array.from({ length: max }, (_, i) => (
+    chunks[Math.round(i * (chunks.length - 1) / (max - 1))]
+  ))
+}
 const load = () => {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || '[]')
@@ -30,7 +40,14 @@ const load = () => {
   } catch { return [] }
 }
 
-const save = d => { try { localStorage.setItem(KEY, JSON.stringify(d)) } catch {} }
+const save = d => {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(d))
+    return true
+  } catch {
+    return false
+  }
+}
 
 /** Canonical doc types for UI + retrieval policy. */
 export const DOC_TYPES = ['resume', 'jd', 'knowledge', 'supporting', 'training', 'document']
@@ -67,6 +84,7 @@ function toMeta(d) {
     type: d.type,
     addedAt: d.addedAt,
     chars: (d.text || '').length,
+    retrievalCoverage: (d.text || '').length > LONG_DOC_CHARS ? 'representative' : 'full',
     selected: d.selected !== false,
   }
 }
@@ -87,8 +105,7 @@ export function setDocSelected(id, selected) {
   const i = docs.findIndex(d => d.id === id)
   if (i < 0) return null
   docs[i] = { ...docs[i], selected: !!selected }
-  save(docs)
-  return toMeta(docs[i])
+  return save(docs) ? toMeta(docs[i]) : null
 }
 
 export function setDocType(id, type) {
@@ -107,8 +124,7 @@ export function setDocType(id, type) {
     }
   }
   docs[i] = { ...docs[i], type: nextType }
-  save(docs)
-  return toMeta(docs[i])
+  return save(docs) ? toMeta(docs[i]) : null
 }
 
 // Resume/JD are profile-derived materials: upsert by type so Begin/Start never stacks stale copies.
@@ -133,8 +149,7 @@ export function addDoc({ name, type = 'document', text, selected = true }) {
         addedAt: new Date().toISOString(),
       }
       docs[i] = doc
-      save(docs)
-      return toMeta(doc)
+      return save(docs) ? toMeta(doc) : null
     }
   }
   const doc = {
@@ -145,10 +160,14 @@ export function addDoc({ name, type = 'document', text, selected = true }) {
     selected: selected !== false,
     addedAt: new Date().toISOString(),
   }
-  docs.push(doc); save(docs)
-  return toMeta(doc)
+  docs.push(doc)
+  return save(docs) ? toMeta(doc) : null
 }
-export function removeDoc(id) { save(load().filter(d => d.id !== id)); indexCache.delete(id) }
+export function removeDoc(id) {
+  const ok = save(load().filter(d => d.id !== id))
+  if (ok) indexCache.delete(id)
+  return ok
+}
 
 // ── Embedded index (in-memory, rebuilt on change) ──
 const indexCache = new Map()   // docId → { sig, chunks:[{text,vector}] }
@@ -181,9 +200,7 @@ function filterDocs(docs, { docIds, types } = {}) {
   }
   if (Array.isArray(types) && types.length) {
     const allowT = new Set(types.map(normalizeDocType))
-    const typed = out.filter(d => allowT.has(normalizeDocType(d.type)))
-    // Soft: type filter must not wipe the user's selected library to empty.
-    if (typed.length) out = typed
+    out = out.filter(d => allowT.has(normalizeDocType(d.type)))
   }
   return out
 }
@@ -196,7 +213,10 @@ async function ensureIndexed(docs) {
     const sig = `${t.length}:${t.slice(0, 48)}:${t.slice(mid, mid + 48)}:${t.slice(-48)}`
     let entry = indexCache.get(doc.id)
     if (!entry || entry.sig !== sig) {
-      const chunks = chunkText(doc.text, { size: 600, overlap: 100 }).slice(0, 40)
+      const allChunks = chunkText(doc.text, { size: 600, overlap: 100 })
+      // Keep the existing embedding-cost ceiling, but sample evenly across long
+      // documents instead of silently indexing only the opening pages.
+      const chunks = sampleChunksForIndex(allChunks)
       const vectors = chunks.length ? await embed(chunks) : []
       entry = { sig, chunks: chunks.map((text, i) => ({ text, vector: vectors[i] || [] })) }
       indexCache.set(doc.id, entry)
@@ -220,7 +240,7 @@ async function ensureIndexed(docs) {
  * Retrieve a grounding block for `question`, or '' if none / slow / unavailable.
  * @param {object} [opts]
  * @param {string[]} [opts.docIds] — only these docs (session selection). Empty array → no retrieval.
- * @param {string[]} [opts.types] — optional type filter (Live soft policy omits this; selection is the gate).
+ * @param {string[]} [opts.types] — optional strict type filter (Live normally uses explicit selection as its gate).
  */
 export async function retrieveContext(question, { k = 4, minScore, budgetMs = 2000, docIds, types } = {}) {
   if (!question || !String(question).trim()) return ''
@@ -243,9 +263,7 @@ export async function retrieveContext(question, { k = 4, minScore, budgetMs = 20
       diagnostic('rag', deadlineExceeded ? 'retrieval_completed_after_timeout' : 'retrieval_completed', { documentCount: docs.length, indexedChunkCount: items.length, hitCount: 0, durationMs: Math.round(performance.now() - startedAt) })
       return ''
     }
-    let chunks = topK(qv, items, { k, minScore: threshold })
-    // Soft: if threshold empties the pack, keep the best 1–2 chunks rather than silence.
-    if (!chunks.length) chunks = topK(qv, items, { k: Math.min(2, k), minScore: 0 })
+    const chunks = topK(qv, items, { k, minScore: threshold })
     diagnostic('rag', deadlineExceeded ? 'retrieval_completed_after_timeout' : 'retrieval_completed', {
       documentCount: docs.length, indexedChunkCount: items.length, hitCount: chunks.length,
       maxScore: chunks.length ? Number(Math.max(...chunks.map(c => c.score)).toFixed(3)) : 0,

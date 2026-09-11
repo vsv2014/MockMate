@@ -5,7 +5,7 @@ import SoloFeedback from './SoloFeedback'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { getAutoSkip, getAnswerStyle, setAnswerStyle as persistAnswerStyle } from './lib/aiSettings'
-import { retrieveContext, warmDocs, addDoc, getSelectedDocIds } from './lib/docs'
+import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, listDocs } from './lib/docs'
 import Documents from './Documents'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import { OverlayPanel, ScreenAnalysisPanel, IconBtn, CodeBlock } from './App'
@@ -150,6 +150,7 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
   const providerNames = configuredProviderNames(models, providers)
   // Inline API-key entry — same keys are also editable globally (Home → Settings).
   const [showKeys, setShowKeys] = useState(false)
+  const [documentMeta, setDocumentMeta] = useState(() => listDocs())
 
   function refetchProviders() {
     return apiFetch('/api/providers').then(r => r.json()).then(d => {
@@ -202,6 +203,8 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
   // Mic preflight is amber (may hear you); SysAudio on Win/mac is green.
   const micMode = sourceId === 'microphone'
   const audioPreflightColor = micMode ? '#fbbf24' : (isLinux ? '#fbbf24' : '#4ade80')
+  const selectedExtraCount = documentMeta.filter(d => d.type !== 'resume' && d.type !== 'jd' && d.selected !== false).length
+  const contextSourceCount = Number(!!profile.resume?.trim()) + Number(!!profile.jobDescription?.trim()) + selectedExtraCount
 
   const inp = { width: '100%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text1, padding: '10px 12px', borderRadius: T.rCtrl, fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: T.font }
   const preflightOk = (ok) => ok ? '#4ade80' : '#f87171'
@@ -359,33 +362,41 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
           })()}
         </div>
 
-        <button disabled={!canStart} onClick={() => {
-          if (profile.resume?.trim()) addDoc({ name: 'Resume', type: 'resume', text: profile.resume })
-          if (profile.jobDescription?.trim()) addDoc({ name: 'Job Description', type: 'jd', text: profile.jobDescription })
-          const selectedDocumentIds = getSelectedDocIds()
-          const interviewConfig = buildInterviewConfig({ profile, selectedDocumentIds, source: 'live' })
-          onStart({ profile, sourceId, provider: managed ? '' : provider, interviewConfig })
-        }}
-          style={{ height: 48, background: canStart ? T.accent : T.surface2, color: canStart ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: 15, fontWeight: 600, cursor: canStart ? 'pointer' : 'default', fontFamily: T.font }}>
-          Start Live →
-        </button>
-        {!canStart && (
-          <div style={{ fontSize: 11.5, color: T.text3, marginTop: -4 }}>
-            {!inElectron ? 'Open the desktop app to start.'
-              : !dgAvailable ? 'Add Voice (Deepgram) in Settings first.'
-              : noLLM ? 'Configure an AI model in Settings first.'
-              : isLinux ? 'Acknowledge the Linux screen-share risk above.'
-              : 'Check the share-preview box above to enable Start.'}
-          </div>
-        )}
-
         <Section n={1} title="Interview" subtitle="Optional — name, role, company" defaultOpen={false}>
         <Field label="Your name"><input style={inp} value={profile.name || ''} placeholder="e.g. Charan" onChange={e => patch({ name: e.target.value })} /></Field>
         <Field label="Target role"><input style={inp} value={profile.targetRole || ''} placeholder="e.g. Senior AI Engineer" onChange={e => patch({ targetRole: e.target.value })} /></Field>
         <Field label="Target company (sharpens 'why us' answers + web search)"><input style={inp} value={profile.targetCompany || ''} placeholder="e.g. Stripe" onChange={e => patch({ targetCompany: e.target.value })} /></Field>
         </Section>
 
-        <Section n={2} title="Documents & context" subtitle="Resume + JD for bio · extras for RAG" defaultOpen={false}>
+        <Section
+          n={2}
+          title="Interview Playbook"
+          subtitle="Recommended · controls how every answer behaves"
+          defaultOpen
+          highlight
+        >
+          <div style={{ fontSize: 11.5, color: T.text2, lineHeight: 1.5 }}>
+            Paste your interview-specific rules here: tone, truth boundaries, answer depth, SQL/coding approach and project instructions. MockMate keeps core rules and automatically routes the relevant section for each question.
+          </div>
+          <textarea
+            aria-label="Interview Playbook"
+            rows={6}
+            maxLength={CUSTOM_INSTRUCTIONS_STORE_MAX}
+            style={{ ...inp, resize: 'vertical', minHeight: 118, borderColor: profile.customPrompt?.trim() ? 'rgba(34,211,238,0.7)' : T.border }}
+            value={profile.customPrompt || ''}
+            placeholder={'Example:\nVOICE: Keep answers confident and concise.\nTRUTH: Never invent experience or ownership.\nSQL SUPPORT: Give simple correct SQL first.\nCODING/DSA: Approach → code → complexity → edge cases.'}
+            onChange={e => patch({ customPrompt: e.target.value.slice(0, CUSTOM_INSTRUCTIONS_STORE_MAX) })}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 10, color: T.text3 }}>
+            <span>{profile.customPrompt?.trim() ? '✓ Active for this interview' : 'Optional, but recommended for role-specific behavior'}</span>
+            <span>{(profile.customPrompt || '').length.toLocaleString()} / {CUSTOM_INSTRUCTIONS_STORE_MAX.toLocaleString()}</span>
+          </div>
+          <div style={{ fontSize: 10.5, color: '#67e8f9', lineHeight: 1.4 }}>
+            Routes core + question-relevant sections up to {CUSTOM_INSTRUCTIONS_PACK_MAX.toLocaleString()} characters. Truthfulness protections cannot be overridden.
+          </div>
+        </Section>
+
+        <Section n={3} title="Interview Documents" subtitle={`${contextSourceCount} source${contextSourceCount === 1 ? '' : 's'} ready · choose exactly what AI may use`} defaultOpen={false}>
         <div style={{ fontSize: 11, color: T.text3, lineHeight: 1.45, marginBottom: 4 }}>
           Resume &amp; JD below feed identity answers. Knowledge banks / notes go in the library — check what to use. They are not duplicated in the list.
         </div>
@@ -429,25 +440,11 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
           </div>
         </Field>
         <Field label="Knowledge & notes (checked = used for retrieval)">
-          <Documents hideBioTypes />
-        </Field>
-        <Field label="Your voice & instructions (optional — shapes every answer)">
-          <textarea
-            rows={3}
-            maxLength={CUSTOM_INSTRUCTIONS_STORE_MAX}
-            style={{ ...inp, resize: 'vertical' }}
-            value={profile.customPrompt || ''}
-            placeholder="e.g. 'Senior eng, talk like I'm chatting with a peer — casual, confident, short. Lean on my fintech work. Avoid buzzwords.'"
-            onChange={e => patch({ customPrompt: e.target.value.slice(0, CUSTOM_INSTRUCTIONS_STORE_MAX) })}
-          />
-          <div style={{ fontSize: 10, color: T.text3, marginTop: 4 }}>
-            {(profile.customPrompt || '').length.toLocaleString()} / {CUSTOM_INSTRUCTIONS_STORE_MAX.toLocaleString()} stored
-            {' · '}Live injects up to {CUSTOM_INSTRUCTIONS_PACK_MAX.toLocaleString()} chars (cannot override honesty rules)
-          </div>
+          <Documents hideBioTypes onLibraryChange={setDocumentMeta} />
         </Field>
         </Section>
 
-        <Section n={3} title="More options" subtitle="Model, language, coding" defaultOpen={false}>
+        <Section n={4} title="More options" subtitle="Model, language, coding" defaultOpen={false}>
         {!managed && (
           <Field label="AI model">
             <select style={inp} value={provider} onChange={e => setProvider(e.target.value)} disabled={!providers.length && !models.length}>
@@ -486,6 +483,26 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
           </select>
         </Field>
         </Section>
+
+        <button disabled={!canStart} onClick={() => {
+          if (profile.resume?.trim()) addDoc({ name: 'Resume', type: 'resume', text: profile.resume })
+          if (profile.jobDescription?.trim()) addDoc({ name: 'Job Description', type: 'jd', text: profile.jobDescription })
+          const selectedDocumentIds = getSelectedDocIds()
+          const interviewConfig = buildInterviewConfig({ profile, selectedDocumentIds, source: 'live' })
+          onStart({ profile, sourceId, provider: managed ? '' : provider, interviewConfig })
+        }}
+          style={{ position: 'sticky', bottom: 0, zIndex: 3, height: 52, background: canStart ? T.accent : T.surface2, color: canStart ? '#fff' : T.text3, border: `1px solid ${canStart ? 'rgba(103,232,249,0.45)' : T.border}`, borderRadius: T.rCtrl, boxShadow: '0 -10px 24px rgba(6,12,22,0.78)', fontSize: 15, fontWeight: 700, cursor: canStart ? 'pointer' : 'default', fontFamily: T.font }}>
+          Start Live →
+        </button>
+        {!canStart && (
+          <div style={{ fontSize: 11.5, color: T.text3, marginTop: -4 }}>
+            {!inElectron ? 'Open the desktop app to start.'
+              : !dgAvailable ? 'Add Voice (Deepgram) in Settings first.'
+              : noLLM ? 'Configure an AI model in Settings first.'
+              : isLinux ? 'Acknowledge the Linux screen-share risk above.'
+              : 'Check the share-preview box above to enable Start.'}
+          </div>
+        )}
       </div>
     </div>
     </OverlayPanel>
@@ -502,16 +519,22 @@ function Field({ label, children }) {
 }
 
 // Numbered, collapsible setup section (declutters the flat form — the LockedIn 1·2·3 pattern).
-function Section({ n, title, subtitle, defaultOpen = true, children }) {
+function Section({ n, title, subtitle, defaultOpen = true, highlight = false, children }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, overflow: 'hidden' }}>
+    <div style={{
+      background: highlight ? 'linear-gradient(145deg, rgba(8,145,178,0.13), rgba(15,23,42,0.96) 58%)' : T.surface1,
+      border: `1px solid ${highlight ? 'rgba(34,211,238,0.58)' : T.border}`,
+      boxShadow: highlight ? '0 0 0 1px rgba(34,211,238,0.08), 0 10px 28px rgba(8,145,178,0.10)' : 'none',
+      borderRadius: T.rCard,
+      overflow: 'hidden',
+    }}>
       <button onClick={() => setOpen(o => !o)}
         style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '13px 16px', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: T.font, textAlign: 'left' }}>
-        <span style={{ width: 24, height: 24, borderRadius: '50%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text2, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{n}</span>
+        <span style={{ width: 24, height: 24, borderRadius: '50%', background: highlight ? 'rgba(34,211,238,0.16)' : T.surface2, border: `1px solid ${highlight ? 'rgba(34,211,238,0.55)' : T.border}`, color: highlight ? '#67e8f9' : T.text2, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{n}</span>
         <span style={{ flex: 1 }}>
-          <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: T.text1 }}>{title}</span>
-          {subtitle && <span style={{ display: 'block', fontSize: 11.5, color: T.text3, marginTop: 1 }}>{subtitle}</span>}
+          <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: highlight ? '#ecfeff' : T.text1 }}>{title}</span>
+          {subtitle && <span style={{ display: 'block', fontSize: 11.5, color: highlight ? '#67e8f9' : T.text3, marginTop: 1 }}>{subtitle}</span>}
         </span>
         <span style={{ color: T.text3, fontSize: 12 }}>{open ? '▾' : '▸'}</span>
       </button>
@@ -2044,11 +2067,19 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
       opacity={opacity} onOpacity={onOpacity}
       onEnd={data => {
         onSessionEnd?.()
-        setSessionNotes(data); setPhase('notes')
+        let nextData = data
         // Persist to Sessions only when we actually scored candidate speech.
         if (data?.report && data.report.overallScore != null && data?.conversation?.length) {
-          try { saveSession({ report: data.report, transcript: data.conversation, config: { domainLabel: (sessionConfig?.profile?.targetRole) || 'Live interview' }, profile: sessionConfig?.profile || {} }) } catch {}
+          const stored = saveSession({
+            report: data.report,
+            transcript: data.conversation,
+            config: { domainLabel: (sessionConfig?.profile?.targetRole) || 'Live interview', interviewSetup: sessionConfig?.interviewConfig },
+            profile: sessionConfig?.profile || {},
+          })
+          if (!stored) nextData = { ...data, report: { ...data.report, _storageWarning: 'This session could not be saved. Copy the transcript before leaving this screen.' } }
+          else if (stored.storagePruned) nextData = { ...data, report: { ...data.report, _storageWarning: `Saved this session after removing ${stored.storagePruned} oldest local session${stored.storagePruned === 1 ? '' : 's'} to free space.` } }
         }
+        setSessionNotes(nextData); setPhase('notes')
       }}
       screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} onDismissScreen={onDismissScreen}
       screenFlowStatus={screenFlowStatus} onContinueScreen={onContinueScreen} onNewScreen={onNewScreen}

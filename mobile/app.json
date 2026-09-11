@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "MockMate",
+    "slug": "mockmate-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "mockmate",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mockmate.mobile",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "MockMate uses your microphone only when you start a voice practice or companion session."
+      }
+    },
+    "android": {
+      "package": "com.mockmate.mobile",
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}

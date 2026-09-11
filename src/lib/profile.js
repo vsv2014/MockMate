@@ -9,7 +9,36 @@ export function loadProfile() {
 }
 
 export function saveProfile(p) {
-  try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)) } catch {}
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(p))
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Resume tailoring is intentionally recoverable. The base resume is shared by
+// Career, Jobs, Solo and Live, so replacing it without a rollback point can
+// contaminate every later flow.
+export function applyTailorWithBackup(profile = {}, tailor = {}) {
+  const current = String(profile.resume || '')
+  return {
+    ...profile,
+    resume: applyTailorToResume(current, tailor),
+    resumeBackup: {
+      text: current,
+      createdAt: new Date().toISOString(),
+      reason: 'before_tailor',
+    },
+  }
+}
+
+export function restoreResumeBackup(profile = {}) {
+  const text = profile?.resumeBackup?.text
+  if (typeof text !== 'string') return profile
+  const next = { ...profile, resume: text }
+  delete next.resumeBackup
+  return next
 }
 
 /**

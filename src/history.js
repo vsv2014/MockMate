@@ -23,10 +23,22 @@ export function saveSession({ report, transcript = [], config = {}, profile = {}
   try {
     const ts = Date.now()
     const isError = !!report.error
+    const setup = config.interviewSetup || config
+    const company = setup.targetCompany || profile.targetCompany || ''
+    const role = setup.targetRole || config.domainLabel || profile.targetRole || ''
     const entry = {
       id: `s_${ts}`,
       ts,
-      label: config.domainLabel || profile.targetRole || 'Interview',
+      label: [company, role].filter(Boolean).join(' · ') || 'Interview',
+      mode: setup.source === 'live' ? 'live' : 'solo',
+      company,
+      role,
+      setup: {
+        selectedDocumentIds: Array.isArray(setup.selectedDocumentIds) ? [...setup.selectedDocumentIds] : [],
+        playbookActive: !!String(setup.customInstructions || profile.customPrompt || '').trim(),
+        resumeIncluded: !!String(setup.resumeText || profile.resume || '').trim(),
+        jobDescriptionIncluded: !!String(setup.jobDescriptionText || profile.jobDescription || '').trim(),
+      },
       score: typeof report.overallScore === 'number' ? report.overallScore : null,
       verdict: report.verdict || (isError ? 'Evaluation failed' : null),
       report,
@@ -34,8 +46,16 @@ export function saveSession({ report, transcript = [], config = {}, profile = {}
       note: note || (isError ? 'evaluate_error' : undefined),
     }
     const next = [entry, ...loadSessions()].slice(0, MAX_SESSIONS)
-    localStorage.setItem(KEY, JSON.stringify(next))
-    return entry
+    // Storage quotas vary. Always protect the newest session: if the complete
+    // history is too large, progressively remove the oldest entries and report
+    // that recovery to the caller instead of silently losing this session.
+    for (let keep = next.length; keep >= 1; keep--) {
+      try {
+        localStorage.setItem(KEY, JSON.stringify(next.slice(0, keep)))
+        return keep < next.length ? { ...entry, storagePruned: next.length - keep } : entry
+      } catch {}
+    }
+    return null
   } catch { return null }   // quota exceeded etc. — non-fatal
 }
 

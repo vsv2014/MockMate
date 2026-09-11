@@ -4,7 +4,32 @@
  * Never merges interviewer + candidate into one utterance.
  */
 
-export const TRANSCRIPT_BUFFER_VERSION = 'transcript_buffer_v1'
+export const TRANSCRIPT_BUFFER_VERSION = 'transcript_buffer_v2_term_repair'
+
+/**
+ * Repair a deliberately small set of high-impact interview terms that STT commonly
+ * confuses. Every replacement requires nearby technical context; this is not a
+ * general spell-checker and must not rewrite ordinary conversation.
+ */
+export function repairInterviewTerms(value, priorContext = '') {
+  let text = String(value || '')
+  const context = `${priorContext} ${text}`
+  const localContext = text
+
+  if (/\b(sql|query|window functions?|sub[ -]?quer(?:y|ies)|with clause|database)\b/i.test(localContext)) {
+    text = text.replace(/\b(?:the\s+)?(?:city|c\s*t)\b(?=\s*(?:[?,.]|$|or|and|what|window|sub|query|is|are))/gi, 'CTE')
+  }
+  if (/\b(wait|retry|interval|timeout|playwright|code|element|api|condition)\b/i.test(localContext)) {
+    text = text.replace(/\bpooling\b/gi, 'polling')
+  }
+  if (/\b(security|access|control|role|permission|authori[sz]|user|testing)\b/i.test(context)) {
+    text = text.replace(/\b(?:rbc|rbsc|rbse|rbdc)\b/gi, 'RBAC')
+  }
+  if (/\b(jenkins|pipeline|build|deploy|continuous integration|continuous delivery)\b/i.test(localContext)) {
+    text = text.replace(/\bchennai\b/gi, 'CI')
+  }
+  return text
+}
 
 /** Remove recurrent STT control-word artifacts without deleting real terms such as
  * "AI model" or "end-to-end". Deepgram commonly emits the app/audio markers in

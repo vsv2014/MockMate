@@ -1,6 +1,6 @@
 {
   "name": "mockmate",
-  "version": "1.4.10",
+  "version": "1.4.11",
   "type": "module",
   "main": "electron/main.cjs",
   "description": "Real-Time AI Interview Companion — Solo practice + Live overlay for Zoom/Teams/Meet (content protection on Win/macOS; verify share preview)",
@@ -27,7 +27,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:dry-run": "node scripts/check-dry-run-evidence.mjs",
-    "soak": "node scripts/soak-metrics.mjs"
+    "soak": "node scripts/soak-metrics.mjs",
+    "mobile:start": "npm --prefix mobile start",
+    "mobile:android": "npm --prefix mobile run android",
+    "mobile:ios": "npm --prefix mobile run ios",
+    "mobile:verify": "npm --prefix mobile run typecheck && npm --prefix mobile test"
   },
   "build": {
     "appId": "com.mockmate.app",

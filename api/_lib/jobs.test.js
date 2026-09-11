@@ -116,6 +116,7 @@ describe('findJobs provider/contract', () => {
     expect(out.jobs.length).toBeGreaterThan(0)
     expect(out.jobs[0].title).toMatch(/Backend/i)
     expect(out.jobs[0].source).toBe('remote')
+    expect(out.jobs[0].sourceName).toBe('Remotive')
     expect(String(fetchWithTimeout.mock.calls[0][0])).toContain('remotive.com')
     expect(completeJSON).not.toHaveBeenCalled()
   })

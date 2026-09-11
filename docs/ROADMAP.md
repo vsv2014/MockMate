@@ -1,17 +1,20 @@
 # MockMate roadmap
 
-## Strategy — pick the wedge, not the breadth race
-MockMate's moat is **invisible-to-screen-capture + local-first/BYOK + a genuinely robust answer
-engine**. LockedIn will always out-feature us on funnel/modes; they cannot easily copy "invisible to
-the interviewer's screen share" or "your data never leaves the device." **Win on depth + trust.**
-Every item below should ladder up to: *the most private, most invisible, best-answer interview
-copilot* — not surface-count parity.
+## Strategy — interview performance OS, not a breadth race
+MockMate's desktop wedge remains **content-protected guidance + local-first/BYOK + a genuinely
+robust answer engine**. The product now expands mobile-first into a persistent interview-performance
+system: prepare, practice, perform and learn across devices. **Win on answer quality, privacy and a
+candidate weakness graph** — not surface-count parity or a generic AI-IDE clone.
+
+The coding direction is **MockMate Code Arena**, a purpose-built interview workspace that evaluates
+correctness, explanation, trade-offs and follow-ups. It is not a VS Code fork and does not compete
+with Cursor on repository autocomplete or autonomous software delivery.
 
 Strengths to protect (already built): multi-provider failover, rate-limit/quota/transient
 classification, JSON-repair, abort-safe streaming, playbook prompts (`core.js`/`interview.js`);
 content-protected overlay (WDA_EXCLUDEFROMCAPTURE / PiP).
 
-## Current operating scope — solo owner + internal QA team (v1.4.10)
+## Current operating scope — solo owner + internal QA team (v1.4.11)
 
 The public build supports **hosted Managed AI** plus private BYOK. Provider credentials are never
 packaged in installers. Internal QA can use BYOK or the same hosted endpoint as production.
@@ -20,12 +23,114 @@ packaged in installers. Internal QA can use BYOK or the same hosted endpoint as 
 BYOK setup and key errors, bounded request times, recoverable UI errors, safe updates, local session
 continuity, copyable/code-formatted answers, Stealth confirmation, and packaged Windows smoke tests.
 
-**Post-1.4.10 roadmap:** shared/team tenancy, encrypted cloud history, production email recovery,
+**Post-1.4.11 roadmap:** shared/team tenancy, encrypted cloud history, production email recovery,
 analytics at competitor scale, full Linux parity, and precise per-user STT-second reconciliation.
+
+### v1.4.11 desktop baseline before mobile
+
+- [x] Show the same prominent Interview Playbook in Solo and Live; never apply custom behavior as
+      a hidden inherited setting
+- [x] Support unlimited target companies through per-session setup snapshots—not company-specific
+      defaults or restrictive workspaces
+- [x] Snapshot mode, company, role, selected-document IDs and active grounding flags in local History
+- [x] Enforce the configured document relevance threshold; no zero-score fallback that can inject an
+      unrelated résumé, JD or knowledge-bank passage
+- [x] Sample representative sections across long documents and label the coverage instead of silently
+      indexing only the beginning; surface local document-save failures
+- [x] Keep an automatic one-step resume backup before applying AI tailoring, with visible Undo
+- [x] Label resume scoring as an advisory AI match estimate rather than an employer ATS result
+- [x] Preserve the newest completed session under local-storage pressure by pruning oldest entries
+      first, and display a warning if local persistence still fails
+- [x] Identify Remotive/Adzuna on every job card and describe the action as opening the original
+      listing; AI ranks fetched listings but does not create job posts
+- [ ] Complete packaged Windows clean-install, authentication, Solo, Live, Resume Studio, Jobs,
+      History, diagnostic-redaction, Stealth/share-preview and 1.4.10→1.4.11 updater validation
+
+**Version boundary:** v1.4.11 is the final desktop reliability baseline. v1.5.0 begins mobile and
+cross-device work; it must not weaken or bypass these desktop truth, storage and session contracts.
+
+## P0 — Mobile-first expansion (iOS + Android)
+
+The first mobile foundation lives in `mobile/` as an Expo/React Native application. It uses the same
+hosted account, entitlement and session APIs as desktop. Device-local Electron accounts cannot sync
+to mobile; hosted authentication and an explicit local-account claim/migration flow are release
+prerequisites.
+
+### Milestone M0 — foundation (in progress)
+
+- [x] Cross-platform Expo/React Native shell with MockMate-owned design tokens
+- [x] Four primary destinations: Prepare, History, Duo and Account
+- [x] Live / Mock / Coding session setup with company, role and objective
+- [x] Hosted API client with bounded requests and OS-protected token storage
+- [x] Shared account, plan/usage and session-history contracts
+- [x] Duo link/code interaction shell and native share sheet
+- [ ] Configure a real HTTPS `EXPO_PUBLIC_API_BASE` and validate signup/login against staging
+- [ ] Add EAS development builds and physical-device CI smoke checks for iOS and Android
+
+### Milestone M1 — mobile practice MVP
+
+- [ ] Record microphone audio with explicit consent and a persistent recording indicator
+- [ ] Stream mobile microphone transcription through the authenticated Deepgram token endpoint
+- [ ] Reuse the bounded v1.4.11 question assembler and answer contracts through shared fixtures
+- [ ] Ten-minute voice mocks, behavioral drills and session debriefs
+- [ ] Resume/JD/document selection, prominent Interview Playbook and response-style controls
+- [ ] Persist session title/company/role/objective plus transcript and scores across devices
+- [ ] Push reminders for scheduled interviews and daily weak-area drills
+- [ ] Offline-safe cached profile/history with an explicit sync state (never silent divergence)
+
+### Milestone M2 — second-device companion + Duo
+
+- [ ] Pair desktop and mobile using a short-lived QR/link/code with authenticated account binding
+- [ ] Show the live transcript, latest answer and session health on the phone
+- [ ] Remote controls: pause/resume, shorter/longer, repeat, skip and end session
+- [ ] Mentor/helper join with consent, revocable permissions and audit events
+- [ ] Screen viewing before any remote control; keyboard/mouse control is a separate explicit grant
+- [ ] Deep-link notifications when a paired desktop interview starts
+
+### Mobile capability boundary
+
+- Do not claim desktop-style Stealth, invisible overlays or universal cross-app audio capture on
+  mobile. iOS/Android permissions, foreground indicators and source-app capture policies apply.
+- V1 uses MockMate's microphone for practice and another-device interviews. Same-device meeting
+  capture remains experimental until proven per OS/app combination.
+- No serious phone code editor in M1. Coding prompts, explanations and review work on mobile;
+  implementation stays in the desktop/web Code Arena.
+- Reference products inform information architecture only. Do not copy their visual assets,
+  wording, branding or personal data from research screenshots.
+
+### Mobile release gate
+
+Do not ship publicly until signup/login/logout, token expiry, account deletion, microphone consent,
+background interruption, network loss, session recovery, billing entitlements and privacy labels are
+verified on at least one physical iPhone and two materially different Android devices.
+
+## Strategic track A — Interview Intelligence Graph
+
+- [ ] Normalize skills, concepts, question types, attempts, evidence and outcomes per session
+- [ ] Track repeated misses, follow-up failures, over-explanation, unsupported claims and recovery
+- [ ] Generate the next drill from evidence-backed weak areas instead of a generic question bank
+- [ ] Show progress and readiness per job goal without inventing a universal score
+- [ ] Give users export/delete controls and keep employer/college views aggregate and consent-based
+
+## Strategic track B — MockMate Code Arena (after mobile practice MVP)
+
+- [ ] Desktop/web Monaco workspace for JavaScript, TypeScript, Python and Java first
+- [ ] Hardened no-network runners with hidden tests, time/memory/process limits and ephemeral files
+- [ ] Progressive assistance: nudge → hint → approach → pseudocode → solution
+- [ ] Evaluate correctness, complexity, edge cases, communication and think-aloud explanation
+- [ ] Ask adaptive interviewer follow-ups and replay where the candidate became stuck
+- [ ] Add system-design canvas and rubric; keep a VS Code/Cursor practice extension as a later client
+
+## Strategic track C — Placement OS validation (after individual retention)
+
+- [ ] Run one paid pilot each with a college, training institute and recruiting/staffing partner
+- [ ] Role/company tracks, cohort readiness and intervention suggestions
+- [ ] Aggregate dashboards with student-controlled transcript sharing
+- [ ] Keep employer assessment separate from undisclosed live-assistance positioning
 
 ### Deferred because they require external infrastructure, credentials, or real devices
 
-These are intentionally not claimed as complete in v1.4.10. Each item has a measurable exit gate.
+These are intentionally not claimed as complete in v1.4.11. Each item has a measurable exit gate.
 
 - [ ] **Deploy Managed AI:** provision the existing backend with HTTPS, MongoDB, stable
       `JWT_SECRET`, provider/Deepgram keys, CORS allowlist and `MOCKMATE_HOSTED=1`; set the GitHub
@@ -79,6 +184,9 @@ caught. Fix the *process*, not just the bugs.
 - [ ] Add the same verification as a required check on every pull request (release workflow is gated today)
 
 ## P0 — Live intent and answer reliability
+- [x] Prominent Live Setup **Interview Playbook** editor; compile long instructions into invariant core + question-relevant sections, preserve late SQL/coding/architecture rules and enforce personal/product/general/hypothetical source modes *(1.4.11)*
+- [x] Ordered Live setup with a visible **Interview Documents** source count immediately after the playbook, explicit per-document inclusion and a sticky final Start action *(1.4.11)*
+- [x] Real-interview regression patch: bounded candidate expiry/commit, contextual CTE/polling/RBAC/CI term repair, logistical-turn suppression, correction/topic isolation and stricter résumé-truth contracts *(1.4.11)*
 - [x] 700–1500ms semantic question stabilization; incomplete-clause blocking *(1.4.8)*
 - [x] STT overlap merge, conservative artifact cleanup, duplicate suppression *(1.4.8)*
 - [x] Correction/refinement controls: wait/repeat cancels; “write it as code” updates the active card *(1.4.8)*

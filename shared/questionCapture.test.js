@@ -2,7 +2,7 @@
  * M2 question capture reliability — deterministic fragment / boundary / golden tests.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { createTranscriptBuffer, normalizeCaptureText, isDuplicateQuestion, sanitizeCaptureText, mergeOverlappingText } from './transcriptBuffer.js'
+import { createTranscriptBuffer, normalizeCaptureText, isDuplicateQuestion, sanitizeCaptureText, mergeOverlappingText, repairInterviewTerms } from './transcriptBuffer.js'
 import {
   assessQuestionBoundary,
   isIncompleteUtterance,
@@ -84,6 +84,17 @@ describe('boundary helpers', () => {
     expect(sanitizeCaptureText('How do you validate AI models?')).toBe('How do you validate AI models?')
   })
 
+  it('repairs high-impact terms only when technical context supports them', () => {
+    expect(repairInterviewTerms('What is the city? What are window functions and a sub query?'))
+      .toMatch(/What is CTE\?/i)
+    expect(repairInterviewTerms('How would you implement pooling in Playwright code?')).toMatch(/polling/i)
+    expect(repairInterviewTerms('What is rbsc in security testing?')).toMatch(/RBAC/i)
+    expect(repairInterviewTerms('Chennai. So how did you set up the Jenkins pipeline?')).toMatch(/^CI\./i)
+    expect(repairInterviewTerms('Which city do you currently work in?')).toContain('city')
+    expect(repairInterviewTerms('The city is Hyderabad', 'Earlier we discussed SQL window functions')).toContain('city')
+    expect(repairInterviewTerms('We use connection pooling for the database')).toContain('pooling')
+  })
+
   it('merges overlapping refinals instead of duplicating words', () => {
     expect(mergeOverlappingText('How would you automate testing for an API', 'for an API that serves ML predictions?'))
       .toBe('How would you automate testing for an API that serves ML predictions?')
@@ -102,12 +113,58 @@ describe('boundary helpers', () => {
 })
 
 describe('observed transcript regressions', () => {
+  it('commits a viable incomplete-marked question at the bounded deadline', () => {
+    const a = assessQuestionBoundary({
+      text: 'Can you explain the retry approach for',
+      silenceMs: STABILIZE_MS.incomplete,
+      isFinal: true,
+      speakerRole: 'interviewer',
+      laneAgeMs: STABILIZE_MS.maxAccumulate,
+    })
+    expect(a.action).toBe('commit')
+    expect(a.reason).toBe('max_accumulate')
+  })
+
+  it('expires a stale unusable fragment instead of carrying it for minutes', () => {
+    const { ctrl, committed, rejected, advance } = makeCapture()
+    ctrl.ingest({ text: 'Can you', isFinal: true, ts: 1_000_000, meta: { speakerRole: 'interviewer' } })
+    for (let i = 0; i < 6; i++) advance(STABILIZE_MS.incomplete + 10)
+    expect(committed).toHaveLength(0)
+    expect(rejected.some(r => r.reason === 'stale_incomplete')).toBe(true)
+    expect(ctrl.getCandidate()).toBeNull()
+  })
+
+  it('starts a fresh lane after a long gap instead of joining an old phrase', () => {
+    const { ctrl, committed, advance } = makeCapture()
+    ctrl.ingest({ text: 'Maybe something', isFinal: true, ts: 1_000_000, meta: { speakerRole: 'interviewer' } })
+    advance(STABILIZE_MS.hardExpire + 100)
+    ctrl.ingest({ text: 'What is CTE?', isFinal: true, ts: 1_000_000 + STABILIZE_MS.hardExpire + 100, meta: { speakerRole: 'interviewer' } })
+    advance(STABILIZE_MS.completeQuestionMark + 50)
+    expect(committed).toHaveLength(1)
+    expect(committed[0].text).toBe('What is CTE?')
+    expect(committed[0].captureLatencyMs).toBeLessThan(STABILIZE_MS.maxAccumulate)
+  })
+
+  it('treats "I am asking" as a correction and drops the stale topic', () => {
+    const t = applyUtteranceCorrection('For the login page use POM. I am asking for orders and customers, okay?')
+    expect(t).toMatch(/^for orders and customers/i)
+    expect(t).not.toMatch(/login page/i)
+  })
+
   it('does not commit a bare request-to-write fragment', () => {
     const a = assessQuestionBoundary({
       text: 'So can you please write', silenceMs: 1200, isFinal: true,
       speakerRole: 'interviewer', laneAgeMs: 1200,
     })
     expect(a.action).toBe('wait')
+  })
+
+  it('drops meeting mechanics before creating a question card', () => {
+    const { ctrl, committed, rejected, advance } = makeCapture()
+    ctrl.ingest({ text: 'Am I audible now?', isFinal: true, meta: { speakerRole: 'interviewer' } })
+    advance(STABILIZE_MS.completeQuestionMark + 50)
+    expect(committed).toHaveLength(0)
+    expect(rejected.some(r => r.reason === 'logistical_check')).toBe(true)
   })
 
   it('revision signal cancels the pending lane', () => {

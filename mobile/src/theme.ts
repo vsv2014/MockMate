@@ -1,0 +1,17 @@
+export const theme = {
+  bg: '#08080C',
+  surface: '#111217',
+  elevated: '#181A20',
+  border: 'rgba(255,255,255,0.09)',
+  borderStrong: 'rgba(255,255,255,0.15)',
+  text: '#E8E8EC',
+  muted: '#8A8A8E',
+  subtle: '#71717A',
+  accent: '#14B8A6',
+  accentDeep: '#0F766E',
+  success: '#10B981',
+  warning: '#F59E0B',
+  danger: '#F43F5E',
+  radius: 18,
+  controlRadius: 13,
+} as const

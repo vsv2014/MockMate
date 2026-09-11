@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+const { apiFetchMock } = vi.hoisted(() => ({ apiFetchMock: vi.fn() }))
+vi.mock('./apiClient', () => ({ apiFetch: (...args) => apiFetchMock(...args) }))
 import {
   addDoc, listDocs, removeDoc, inferDocType, getSelectedDocIds, setDocSelected,
   setDocType, filterDocsForRetrieve, DOC_TYPES,
+  sampleChunksForIndex, retrieveContext,
 } from './docs.js'
 
 const store = new Map()
@@ -29,7 +32,7 @@ describe('inferDocType', () => {
 })
 
 describe('addDoc upsert + selection', () => {
-  beforeEach(() => { store.clear() })
+  beforeEach(() => { store.clear(); apiFetchMock.mockReset() })
 
   it('replaces existing resume instead of appending', () => {
     addDoc({ name: 'Resume', type: 'resume', text: 'First version of my resume with enough chars' })
@@ -50,6 +53,18 @@ describe('addDoc upsert + selection', () => {
     addDoc({ name: 'Notes A', type: 'document', text: 'Note one with enough content here' })
     addDoc({ name: 'Notes B', type: 'document', text: 'Note two with enough content here' })
     expect(listDocs().filter(d => d.type === 'document')).toHaveLength(2)
+  })
+
+  it('marks long documents as representative retrieval coverage', () => {
+    const d = addDoc({ name: 'Handbook', type: 'knowledge', text: 'x'.repeat(21000) })
+    expect(d.retrievalCoverage).toBe('representative')
+  })
+
+  it('reports a storage failure instead of pretending the document was saved', () => {
+    const original = localStorage.setItem
+    localStorage.setItem = () => { throw new Error('quota') }
+    expect(addDoc({ name: 'Too large', type: 'knowledge', text: 'content' })).toBeNull()
+    localStorage.setItem = original
   })
 
   it('removeDoc still works after upsert', () => {
@@ -90,12 +105,31 @@ describe('filterDocsForRetrieve isolation', () => {
     const out = filterDocsForRetrieve(docs, { docIds: ['1', '2', '3'], types: ['knowledge'] })
     expect(out.map(d => d.id)).toEqual(['2'])
   })
-  it('soft: type filter that matches nothing keeps selected docs', () => {
+  it('treats an explicit type filter as a hard grounding boundary', () => {
     const docs = [
       { id: '1', type: 'resume', text: 'a' },
       { id: '2', type: 'supporting', text: 'b' },
     ]
     const out = filterDocsForRetrieve(docs, { docIds: ['1', '2'], types: ['knowledge'] })
-    expect(out.map(d => d.id).sort()).toEqual(['1', '2'])
+    expect(out).toEqual([])
+  })
+})
+
+describe('long document indexing', () => {
+  it('samples the whole document instead of only its opening', () => {
+    const chunks = Array.from({ length: 100 }, (_, i) => `chunk-${i}`)
+    const sampled = sampleChunksForIndex(chunks, 5)
+    expect(sampled).toEqual(['chunk-0', 'chunk-25', 'chunk-50', 'chunk-74', 'chunk-99'])
+  })
+
+  it('returns no grounding when every document chunk is below the relevance threshold', async () => {
+    const d = addDoc({ name: 'Backend notes', type: 'knowledge', text: 'Node services and API reliability patterns.' })
+    apiFetchMock.mockImplementation(async (_path, options) => {
+      const input = JSON.parse(options.body).input
+      const query = input.length === 1 && input[0] === 'unrelated question'
+      return { ok: true, json: async () => ({ vectors: input.map(() => query ? [0, 1] : [1, 0]) }) }
+    })
+    const result = await retrieveContext('unrelated question', { docIds: [d.id], minScore: 0.2, budgetMs: 500 })
+    expect(result).toBe('')
   })
 })

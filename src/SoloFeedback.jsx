@@ -68,9 +68,9 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
       <div style={{ maxWidth: 720, margin: '0 auto', fontFamily: T.font, display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>Scoring unavailable</div>
         <div role="alert" style={{ ...panel, borderColor: 'rgba(248,113,113,0.35)', background: 'rgba(248,113,113,0.08)', color: '#fca5a5', fontSize: 13, lineHeight: 1.5 }}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>Session saved — evaluation failed</div>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>{report?._storageWarning ? 'Evaluation and local save need attention' : 'Session saved — evaluation failed'}</div>
           <div>{report?.error || 'The session ended without enough answers to score.'}</div>
-          <div style={{ marginTop: 8, color: '#fda4af', fontSize: 12 }}>Your transcript is kept in Sessions. You can practice again when ready.</div>
+          <div style={{ marginTop: 8, color: '#fda4af', fontSize: 12 }}>{report?._storageWarning || 'Your transcript is kept in Sessions. You can practice again when ready.'}</div>
         </div>
         {qa.length > 0 && (
           <div style={panel}>
@@ -99,6 +99,12 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
         <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>Your feedback</div>
         <div style={{ fontSize: 13, color: T.text2, marginTop: 3 }}>Honest, specific notes to help you improve — not a verdict on you.</div>
       </div>
+
+      {report._storageWarning && (
+        <div role="alert" style={{ ...panel, borderColor: 'rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#fbbf24', fontSize: 12.5, lineHeight: 1.5 }}>
+          {report._storageWarning}
+        </div>
+      )}
 
       {/* Overall + summary */}
       <div style={{ ...panel, display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>

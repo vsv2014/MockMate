@@ -55,7 +55,7 @@ function JobCard({ j, saved, onToggleSave, onOpenCareer, onUseForInterview, show
               background: j.source === 'local' ? 'rgba(16,185,129,0.12)' : 'rgba(56,189,248,0.12)',
               border: `1px solid ${j.source === 'local' ? 'rgba(16,185,129,0.3)' : 'rgba(56,189,248,0.3)'}`,
             }}>
-              {j.source === 'local' ? 'On-site' : 'Remote'}
+              {j.source === 'local' ? 'On-site' : 'Remote'} · {j.sourceName || (j.source === 'local' ? 'Adzuna' : 'Remotive')}
             </span>
           </div>
           <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>
@@ -98,7 +98,7 @@ function JobCard({ j, saved, onToggleSave, onOpenCareer, onUseForInterview, show
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
         {/^https?:\/\//.test(j.url || '')
-          ? <a href={j.url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: T.accentFrom, textDecoration: 'none' }}>Apply →</a>
+          ? <a href={j.url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: T.accentFrom, textDecoration: 'none' }}>Open original listing →</a>
           : <span style={{ fontSize: 12.5, color: T.text3 }}>No link</span>}
         {onOpenCareer && (
           <>

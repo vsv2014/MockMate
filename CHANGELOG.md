@@ -1,5 +1,54 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Added the initial Expo/React Native iOS and Android foundation under `mobile/`, including hosted
+  authentication, secure token storage, Prepare/History/Duo/Account navigation, session-goal
+  validation, native Duo sharing and account usage.
+- Added mobile product/release gates and the longer-term Interview Intelligence Graph, MockMate Code
+  Arena and Placement OS tracks to the roadmap.
+- Extended hosted session records with title, company, role, objective, source and mobile Mock/Coding
+  modes while preserving the older desktop Live/Solo sync contract.
+
+## v1.4.11 — 2026-08-20
+
+Focused live-interview reliability patch derived from the full v1.4.9 SysCloud Round 2 transcript and privacy-safe diagnostic bundle.
+
+### Fixed
+- Promoted custom instructions into a highlighted, expanded **Interview Playbook** card before Start
+  Live so users can see that it controls answer behavior for the current interview.
+- Reordered Live Setup into interview details → playbook → documents → advanced options → Start.
+  **Interview Documents** now exposes the active source count before expansion, and the Start action
+  stays visible at the bottom while reviewing long setup sections.
+- Long custom interview playbooks are compiled per question instead of being blindly truncated at
+  2,000 characters. Core voice/truth/ASR/unknown-handling rules are always retained, while relevant
+  SQL, coding, architecture, backend, AI or behavioral sections are selected for the current turn.
+- Answer prompts enforce explicit source modes: verified personal ownership, documented product
+  knowledge, general knowledge and hypothetical design. Custom instructions cannot turn product
+  documentation or conceptual knowledge into unsupported first-person experience.
+- Incomplete question candidates can no longer re-stabilize indefinitely. Viable questions commit by a bounded 4.5-second accumulation deadline; unusable fragments expire by 6.5 seconds instead of contaminating a later question and reporting minute-scale capture latency.
+- Rejected capture lanes are recorded and cleared deterministically, preventing old fragments from surviving until an unrelated question arrives.
+- Contextual STT repair handles the observed `city/CT → CTE`, `pooling → polling`, `RBSC/RBSE/RBDC → RBAC`, and `Chennai → CI` errors only when nearby SQL, test automation, security, or Jenkins context supports the correction.
+- “I am asking…” is treated as an interviewer correction, so the corrected topic replaces stale context rather than extending the previous answer.
+- Meeting mechanics such as “Am I audible?” and “Can you see my screen?” are dropped before a question card or model request is created when Auto-skip is enabled.
+- Answer contracts now explicitly prohibit invented years, tools, cloud services, project ownership, acronyms, metrics, employers, and locations. Prior turns may be used only for explicit references such as “it” or “the previous code,” never to override a standalone current question.
+- Solo Practice now shows the same prominent Interview Playbook as Live, so shared custom behavior
+  is never active invisibly.
+- Local session History snapshots the active company, role, mode and grounding selections for each
+  attempt, preserves the newest session by pruning oldest entries under quota pressure, and warns
+  when persistence fails.
+- Document retrieval no longer forces below-threshold passages into answers. Long files sample
+  representative sections across the document, show that coverage in the UI, and report failed
+  local saves.
+- Resume Studio now labels scoring as an advisory AI match estimate and creates a visible one-step
+  Undo backup before applying tailored text to the shared resume.
+- Job cards identify their live Remotive/Adzuna source and open the original listing; AI remains a
+  ranker over fetched posts rather than a job generator.
+
+### Validation
+- Added regression coverage using failures observed in the real SysCloud interview transcript. Packaged Windows interview validation remains required before calling these fixes field-proven.
+
 ## v1.4.10 — 2026-08-19
 
 - Migrated the desktop runtime to Electron 43 (Chromium 150, Node 24.17 line) and electron-builder 26; release CI explicitly bootstraps Electron's new lazy-downloaded runtime before packaging, and Windows signing options now follow builder 26's stricter schema.

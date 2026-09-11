@@ -9,6 +9,12 @@
  */
 export const CLASSIFIER_VERSION = 'classify_v2_soft_ctx'
 
+/** Meeting mechanics are not interview questions and should never consume an LLM call. */
+export function isLogisticalCheck(question = '') {
+  const q = String(question || '').trim()
+  return /^(?:(?:hello|hi)[,.!? ]*)?(?:am i audible|can you hear me|is (?:it|this|that|my screen) visible(?: (?:to|for) you)?|can you see (?:it|this|that|my screen)|is (?:the )?(?:audio|screen share) (?:fine|clear|working)|are you (?:able to )?(?:hear|see) me)(?:\s+(?:now|from (?:my|your) side))?[?.! ]*$/i.test(q)
+}
+
 /** @typedef {'software_engineering'|'AI_ML'|'data'|'product'|'business_analysis'|'program_management'|'sales'|'business_development'|'marketing'|'finance'|'operations'|'customer_success'|'customer_support'|'HR'|'design'|'consulting'|'leadership'|'domain_specific'|'unknown'} RoleFamily */
 
 const ROLE_RULES = [

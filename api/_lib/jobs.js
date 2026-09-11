@@ -96,7 +96,8 @@ async function fetchJobs({ category, query }, limit = 100) {
     tags: Array.isArray(j.tags) ? j.tags.slice(0, 8) : [],
     salaryNum: 0,                                                          // Remotive rarely has structured salary
     postedTs: j.publication_date ? (Date.parse(j.publication_date) || 0) : 0,
-    snippet: stripHtml(j.description).slice(0, 600)
+    snippet: stripHtml(j.description).slice(0, 600),
+    sourceName: 'Remotive',
   }))
 }
 
@@ -149,7 +150,8 @@ async function fetchAdzuna({ what, where, country }, limit = 50) {
     salaryNum: Math.round(j.salary_max || j.salary_min || 0),       // for salary sort
     postedTs: j.created ? (Date.parse(j.created) || 0) : 0,         // for recency sort
     snippet: stripHtml(j.description || '').slice(0, 600),
-    source: 'local'
+    source: 'local',
+    sourceName: 'Adzuna',
   }))
 }
 

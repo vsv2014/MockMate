@@ -8,15 +8,20 @@ import { extractPdfText } from './pdf'
 
 /**
  * Documents panel — RAG library.
- * @param {{ hideBioTypes?: boolean }} props — when true (Live setup), hide resume/JD rows
- *   because those are edited in the paste fields above and synced on Start.
+ * @param {{ hideBioTypes?: boolean, onLibraryChange?: (docs: object[]) => void }} props
+ *   When hideBioTypes is true (Live setup), hide resume/JD rows because those are edited in the
+ *   dedicated fields above and synced on Start. onLibraryChange keeps the setup summary current.
  */
-export default function Documents({ hideBioTypes = false } = {}) {
+export default function Documents({ hideBioTypes = false, onLibraryChange } = {}) {
   const [docs, setDocs] = useState(() => listDocs())
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const fileRef = useRef(null)
-  const refresh = () => setDocs(listDocs())
+  const refresh = () => {
+    const next = listDocs()
+    setDocs(next)
+    onLibraryChange?.(next)
+  }
 
   const visible = hideBioTypes ? docs.filter(d => d.type !== 'resume' && d.type !== 'jd') : docs
   const selectedCount = visible.filter(d => d.selected !== false).length
@@ -31,9 +36,10 @@ export default function Documents({ hideBioTypes = false } = {}) {
         let type = inferDocType(file.name)
         // In Live extras mode, don't park a second resume/JD here — user has paste fields.
         if (hideBioTypes && (type === 'resume' || type === 'jd')) type = 'document'
-        addDoc({ name: file.name, type, text, selected: true })
+        const added = addDoc({ name: file.name, type, text, selected: true })
+        if (!added) throw new Error('Could not save the document. Local storage may be full.')
         refresh()
-        setMsg(`✓ Added as ${DOC_TYPE_LABELS[type] || type} — ${text.length.toLocaleString()} chars. Set the category if wrong.`)
+        setMsg(`✓ Added as ${DOC_TYPE_LABELS[type] || type} — ${text.length.toLocaleString()} chars.${added.retrievalCoverage === 'representative' ? ' Long file: representative sections across the document will be indexed.' : ''} Set the category if wrong.`)
       } else setMsg('⚠ Could not read text from that file (scanned PDF?) — paste text instead.')
     } catch (err) { setMsg('⚠ ' + (err.message || 'Failed to read file')) }
     setBusy(false)
@@ -87,6 +93,7 @@ export default function Documents({ hideBioTypes = false } = {}) {
             ))}
           </select>
           <span style={{ fontSize: 10, color: T.text3 }}>{(d.chars / 1000).toFixed(1)}k</span>
+          {d.retrievalCoverage === 'representative' && <span title="Long document: MockMate indexes representative sections across the file" style={{ fontSize: 9.5, color: '#fbbf24' }}>sampled</span>}
           <button type="button" onClick={() => del(d.id)} title="Remove" style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 13, padding: '0 2px' }}>✕</button>
         </div>
       ))}

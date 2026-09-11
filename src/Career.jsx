@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { apiFetch } from './lib/apiClient'
-import { loadProfile, saveProfile, applyTailorToResume } from './lib/profile'
+import { loadProfile, saveProfile, applyTailorToResume, applyTailorWithBackup, restoreResumeBackup } from './lib/profile'
 import { loadCareerDraft, saveCareerDraft } from './lib/careerDraft'
 import { copyText, downloadTextFile } from './lib/clipboard'
 import { downloadTailoredResumePdf } from './lib/resumePdf'
@@ -11,7 +11,7 @@ import { S, tabStyle, NoKeysBanner, ResumeMaterials } from './lib/secondaryUi'
 // Resume Studio — ATS score, tailor, referral DM.
 
 const TABS = [
-  ['ats', 'ATS Score (AI)'],
+  ['ats', 'AI Match Estimate'],
   ['tailor', 'Tailor Resume'],
   ['referral', 'Referral DM'],
 ]
@@ -53,7 +53,7 @@ export default function Career({
   ))
   // Analysis JD is persisted in mm-career-draft — must not clobber profile.jobDescription (Live/Solo).
   const [jd, setJd] = useState(() => initialJd ?? draft0.jd ?? '')
-  const [company, setCompany] = useState(() => initialCompany || profile.targetCompany || '')
+  const [company, setCompany] = useState(() => initialCompany || draft0.company || profile.targetCompany || '')
   const [person, setPerson] = useState(() => draft0.person || '')
   const [seedNote, setSeedNote] = useState(() => !!(limitedJd || draft0.limitedJd))
   const [applyMsg, setApplyMsg] = useState('')
@@ -64,12 +64,13 @@ export default function Career({
     saveCareerDraft({
       jd,
       person,
+      company,
       tab,
       limitedJd: seedNote,
       result,
       resultTab: result ? tab : null,
     })
-  }, [jd, person, tab, result, seedNote])
+  }, [jd, person, company, tab, result, seedNote])
 
   // One-shot seed from Jobs handoff
   useEffect(() => {
@@ -117,10 +118,25 @@ export default function Career({
   }
 
   function applyTailor(r) {
-    if (!window.confirm('Updates the resume shared with Solo, Live, and Jobs. Continue?')) return
-    const nextResume = applyTailorToResume(profile.resume || '', r)
-    patch({ resume: nextResume })
-    setApplyMsg('Resume updated — shared with Solo, Live, and Job Matching.')
+    if (!window.confirm('Updates the resume shared with Solo, Live, and Jobs. MockMate will keep one undo copy. Continue?')) return
+    const next = applyTailorWithBackup(profile, r)
+    if (!saveProfile(next)) {
+      setError('Could not save the tailored resume. Local storage may be full; your current resume was not replaced.')
+      return
+    }
+    setProfile(next)
+    setApplyMsg('Resume updated — shared with Solo, Live, and Job Matching. You can undo this change below.')
+  }
+
+  function undoTailor() {
+    const next = restoreResumeBackup(profile)
+    if (next === profile) return
+    if (!saveProfile(next)) {
+      setError('Could not restore the resume backup. Local storage may be full.')
+      return
+    }
+    setProfile(next)
+    setApplyMsg('Restored the resume used before the last tailoring update.')
   }
 
   function downloadPlainTailored(r) {
@@ -317,6 +333,12 @@ export default function Career({
       {applyMsg && (
         <div role="status" style={{ ...S.note, borderColor: 'rgba(16,185,129,0.35)', background: 'rgba(16,185,129,0.08)', color: T.success }}>
           {applyMsg}
+          {profile.resumeBackup?.text != null && (
+            <button type="button" onClick={undoTailor}
+              style={{ display: 'block', marginTop: 8, padding: 0, background: 'none', border: 'none', color: T.accentFrom, cursor: 'pointer', fontFamily: T.font, fontSize: 12.5, textDecoration: 'underline' }}>
+              Undo last resume update
+            </button>
+          )}
         </div>
       )}
 
@@ -345,9 +367,12 @@ function AtsResult({ r }) {
       <div style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{ textAlign: 'center', flexShrink: 0 }}>
           <div style={{ fontSize: 32, fontWeight: 700, color: scoreColor(pct), lineHeight: 1 }}>{pct}</div>
-          <div style={{ fontSize: 11, color: T.text3, marginTop: 4 }}>ATS score /100</div>
+          <div style={{ fontSize: 11, color: T.text3, marginTop: 4 }}>AI match estimate /100</div>
         </div>
         <div style={{ fontSize: 13, color: T.text2, lineHeight: 1.55 }}>{r.verdict}</div>
+      </div>
+      <div role="note" style={{ ...S.note, marginTop: 8 }}>
+        Advisory estimate from the resume and pasted job description—not a score from an employer's ATS.
       </div>
       {r.dimensions?.length > 0 && (
         <div style={S.card}>
