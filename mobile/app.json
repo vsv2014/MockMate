@@ -20,7 +20,14 @@
       ]
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow MockMate to record your answer or a question only when you tap Record."
+        }
+      ],
+      "expo-document-picker"
     ]
   }
 }

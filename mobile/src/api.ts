@@ -60,22 +60,22 @@ export function apiConfigured() {
   return Boolean(configuredBase)
 }
 
-async function request<T>(path: string, options: RequestInit & { auth?: boolean } = {}): Promise<T> {
+async function request<T>(path: string, options: RequestInit & { auth?: boolean; timeoutMs?: number } = {}): Promise<T> {
   if (!configuredBase) throw new ApiError('Connect a hosted MockMate API before signing in.', 0)
   if (!/^https:\/\//i.test(configuredBase) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configuredBase)) {
     throw new ApiError('MockMate mobile requires an HTTPS API.', 0)
   }
 
-  const { auth, ...fetchOptions } = options
+  const { auth, timeoutMs = 15_000, ...fetchOptions } = options
   const headers = new Headers(fetchOptions.headers)
-  headers.set('Content-Type', 'application/json')
+  if (!(fetchOptions.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   if (auth) {
     const token = await SecureStore.getItemAsync(TOKEN_KEY)
     if (token) headers.set('Authorization', `Bearer ${token}`)
   }
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 15_000)
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
   let response: Response
   try {
     response = await fetch(`${configuredBase}${path}`, { ...fetchOptions, headers, signal: controller.signal })
@@ -121,6 +121,13 @@ export const api = {
   documents: () => request<{ documents: HostedDocument[] }>('/documents', { auth: true }),
   addDocument: (draft: { name: string; type: HostedDocument['type']; text: string }) =>
     request<{ document: HostedDocument }>('/documents', { method: 'POST', auth: true, body: JSON.stringify(draft) }),
+  uploadDocument: (file: { uri: string; name: string; mimeType?: string | null }, type: HostedDocument['type']) => {
+    const body = new FormData()
+    body.append('type', type)
+    body.append('name', file.name)
+    body.append('file', { uri: file.uri, name: file.name, type: file.mimeType || 'application/octet-stream' } as any)
+    return request<{ document: HostedDocument }>('/documents/upload', { method: 'POST', auth: true, body, timeoutMs: 45_000 })
+  },
   deleteDocument: (id: string) => request<{ ok: boolean }>(`/documents/${encodeURIComponent(id)}`, { method: 'DELETE', auth: true }),
   documentContext: (question: string, documentIds: string[]) => request<{ context: string }>('/documents/context', {
     method: 'POST', auth: true, body: JSON.stringify({ question, documentIds }),
@@ -131,6 +138,17 @@ export const api = {
   hint: (body: Record<string, unknown>) => request<{ hint: Hint }>('/api/hint', {
     method: 'POST', auth: true, body: JSON.stringify(body),
   }),
+  transcribe: (file: { uri: string; name?: string; mimeType?: string }) => {
+    const body = new FormData()
+    body.append('language', 'en')
+    body.append('audio', { uri: file.uri, name: file.name || 'question.m4a', type: file.mimeType || 'audio/mp4' } as any)
+    return request<{ transcript: string; duration: number }>('/transcribe', { method: 'POST', auth: true, body, timeoutMs: 45_000 })
+  },
+  deleteAccount: async () => {
+    const result = await request<{ ok: boolean }>('/me', { method: 'DELETE', auth: true })
+    await SecureStore.deleteItemAsync(TOKEN_KEY)
+    return result
+  },
   logout: async () => {
     try { await request('/auth/logout', { method: 'POST', auth: true }) } finally {
       await SecureStore.deleteItemAsync(TOKEN_KEY)

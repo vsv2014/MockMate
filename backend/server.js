@@ -111,8 +111,12 @@ initStore()
     if (process.env.MONGO_URI) {
       const { default: sessionRoutes } = await import('./src/routes/sessions.js')
       const { default: documentRoutes } = await import('./src/routes/documents.js')
+      const { default: uploadRoutes } = await import('./src/routes/uploads.js')
+      const { default: transcribeRoutes } = await import('./src/routes/transcribe.js')
       app.use('/sessions', sessionRoutes)
       app.use('/documents', documentRoutes)
+      app.use('/documents/upload', uploadRoutes)
+      app.use('/transcribe', transcribeRoutes)
     }
     // Default to loopback (safe for the desktop-forked backend); hosting sets HOST=0.0.0.0 so
     // Render/Fly can route to it. Local Electron fork never sets HOST → stays 127.0.0.1.

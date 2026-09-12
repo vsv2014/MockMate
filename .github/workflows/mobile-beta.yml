@@ -1,0 +1,93 @@
+name: Mobile beta builds
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - 'backend/**'
+      - '.github/workflows/mobile-beta.yml'
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Mobile target
+        type: choice
+        options: [android, ios]
+        default: android
+      submit_testflight:
+        description: Submit the iOS build to TestFlight (requires configured Apple credentials)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm --prefix backend ci
+      - run: npm --prefix mobile ci
+      - run: npm run mobile:verify
+      - run: npm test
+      - run: npm run smoke:api
+      - run: npm run build
+
+  build:
+    if: github.event_name == 'workflow_dispatch'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: mobile-beta
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_API_BASE: ${{ vars.EXPO_PUBLIC_API_BASE }}
+      PLATFORM: ${{ inputs.platform }}
+      SUBMIT_TESTFLIGHT: ${{ inputs.submit_testflight }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Validate beta configuration
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const config = JSON.parse(fs.readFileSync('app.json', 'utf8')).expo;
+          if (!process.env.EXPO_TOKEN) throw new Error('Set EXPO_TOKEN in the mobile-beta GitHub environment.');
+          const url = new URL(process.env.EXPO_PUBLIC_API_BASE);
+          if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Set a public HTTPS backend URL without credentials.');
+          if (!config.extra?.eas?.projectId) throw new Error('Link the Expo project with eas init and commit its projectId first.');
+          const response = await fetch(url.href.replace(/\/$/, '') + '/health', {signal: AbortSignal.timeout(15000)});
+          if (!response.ok || (await response.json()).ok !== true) throw new Error('Hosted backend health check failed.');
+          if (process.env.SUBMIT_TESTFLIGHT === 'true' && process.env.PLATFORM !== 'ios') throw new Error('TestFlight submission requires iOS.');
+          NODE
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Embed verified backend URL in EAS build profiles
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const config = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+          for (const name of ['preview', 'production']) {
+            config.build[name].env = {...config.build[name].env, EXPO_PUBLIC_API_BASE: process.env.EXPO_PUBLIC_API_BASE};
+          }
+          fs.writeFileSync('eas.json', JSON.stringify(config, null, 2) + '\n');
+          NODE
+      - name: Build signed beta
+        run: |
+          profile=preview
+          if [ "$PLATFORM" = ios ]; then profile=production; fi
+          args=(build --platform "$PLATFORM" --profile "$profile" --non-interactive --wait)
+          if [ "$SUBMIT_TESTFLIGHT" = true ]; then args+=(--auto-submit-with-profile production); fi
+          eas "${args[@]}"

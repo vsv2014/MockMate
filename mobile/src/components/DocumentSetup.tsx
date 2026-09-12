@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import * as DocumentPicker from 'expo-document-picker'
 import { api, type HostedDocument } from '../api'
 import { theme as T } from '../theme'
 
@@ -51,6 +52,24 @@ export function DocumentSetup({ selectedIds, onSelectedIds, onError }: {
     finally { setSaving(false) }
   }
 
+  const pickFile = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'text/markdown'],
+      copyToCacheDirectory: true,
+    })
+    if (result.canceled) return
+    const asset = result.assets[0]
+    if (!asset) return onError('No document was selected.')
+    setSaving(true)
+    try {
+      const document = (await api.uploadDocument({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType }, type)).document
+      setDocuments(current => [document, ...current])
+      onSelectedIds([...selectedIds, document.id])
+      setAdding(false)
+    } catch (error) { onError(error instanceof Error ? error.message : 'Could not upload the document.') }
+    finally { setSaving(false) }
+  }
+
   const remove = (document: HostedDocument) => Alert.alert(
     'Remove hosted document?',
     `${document.name} will no longer be available on your devices.`,
@@ -82,6 +101,10 @@ export function DocumentSetup({ selectedIds, onSelectedIds, onError }: {
       <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${document.name}`} onPress={() => remove(document)}><Text style={styles.remove}>Remove</Text></Pressable>
     </View>)}
     {adding && <View style={styles.editor}>
+      <Pressable accessibilityRole="button" disabled={saving} onPress={pickFile} style={[styles.pick, saving && styles.disabled]}>
+        <Text style={styles.pickText}>Choose PDF, DOCX or text file</Text>
+      </Pressable>
+      <Text style={styles.or}>OR PASTE TEXT</Text>
       <TextInput value={name} onChangeText={setName} placeholder="Document name" placeholderTextColor={T.subtle} style={styles.input} />
       <View style={styles.types}>{TYPES.map(item => <Pressable key={item.value} onPress={() => setType(item.value)} style={[styles.type, type === item.value && styles.typeSelected]}><Text style={[styles.typeText, type === item.value && styles.typeTextSelected]}>{item.label}</Text></Pressable>)}</View>
       <TextInput value={text} onChangeText={value => setText(value.slice(0, 300_000))} placeholder="Paste document text" placeholderTextColor={T.subtle} multiline textAlignVertical="top" style={[styles.input, styles.textarea]} />
@@ -100,4 +123,5 @@ const styles = StyleSheet.create({
   muted: { color: T.muted, fontSize: 14, lineHeight: 20 }, empty: { color: T.subtle, fontSize: 13, lineHeight: 19, paddingVertical: 8 },
   documentRow: { flexDirection: 'row', alignItems: 'center', borderTopColor: T.border, borderTopWidth: 1, paddingTop: 12 }, documentChoice: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }, checkbox: { width: 23, height: 23, borderRadius: 7, borderColor: T.borderStrong, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }, checkboxSelected: { backgroundColor: T.accent, borderColor: T.accent }, check: { color: '#041311', fontWeight: '900' }, documentText: { flex: 1 }, documentName: { color: T.text, fontWeight: '700' }, meta: { color: T.subtle, fontSize: 11 }, remove: { color: T.danger, fontSize: 12, fontWeight: '700', padding: 8 },
   editor: { gap: 10, borderTopColor: T.border, borderTopWidth: 1, paddingTop: 14 }, input: { color: T.text, backgroundColor: T.elevated, borderColor: T.borderStrong, borderWidth: 1, borderRadius: T.controlRadius, paddingHorizontal: 13, paddingVertical: 12, fontSize: 14 }, textarea: { minHeight: 170, lineHeight: 20 }, types: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, type: { borderColor: T.borderStrong, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 7 }, typeSelected: { borderColor: T.accent, backgroundColor: 'rgba(20,184,166,0.13)' }, typeText: { color: T.muted, fontSize: 11, fontWeight: '700' }, typeTextSelected: { color: T.accent }, save: { minHeight: 46, backgroundColor: T.accent, borderRadius: T.controlRadius, alignItems: 'center', justifyContent: 'center' }, saveText: { color: '#041311', fontWeight: '800' }, disabled: { opacity: 0.42 },
+  pick: { minHeight: 46, borderColor: T.accent, borderWidth: 1, borderRadius: T.controlRadius, alignItems: 'center', justifyContent: 'center' }, pickText: { color: T.accent, fontWeight: '800' }, or: { color: T.subtle, fontSize: 10, fontWeight: '800', letterSpacing: 1.2, textAlign: 'center' },
 })

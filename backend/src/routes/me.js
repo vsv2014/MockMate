@@ -21,4 +21,26 @@ router.patch('/', requireAuth, async (req, res) => {
   res.json({ user: toSafeUser(user) })
 })
 
+// DELETE /me — permanently removes the account and user-owned hosted data.
+router.delete('/', requireAuth, async (req, res) => {
+  try {
+    if (process.env.MONGO_URI) {
+      const [{ Session }, { Document }] = await Promise.all([
+        import('../models/Session.js'),
+        import('../models/Document.js'),
+      ])
+      await Promise.all([
+        Session.deleteMany({ user: req.userId }),
+        Document.deleteMany({ user: req.userId }),
+      ])
+    }
+    const deleted = await store().deleteUser(req.userId)
+    if (!deleted) return res.status(404).json({ error: 'Account not found' })
+    res.json({ ok: true })
+  } catch (error) {
+    console.error('[me/delete] failed:', error.message)
+    res.status(500).json({ error: 'Could not delete the account. Please try again.' })
+  }
+})
+
 export default router
