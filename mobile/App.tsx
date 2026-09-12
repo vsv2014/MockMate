@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -258,6 +259,19 @@ function AccountScreen({ account, onRefresh, onSignedOut }: { account: Account |
     </View>
     <PrimaryButton variant="secondary" label="Refresh account" onPress={async () => { setBusy(true); try { await onRefresh() } finally { setBusy(false) } }} busy={busy} />
     <PrimaryButton variant="danger" label="Sign out" onPress={async () => { setBusy(true); try { await api.logout(); onSignedOut() } finally { setBusy(false) } }} />
+    <Pressable accessibilityRole="button" onPress={() => Alert.alert(
+      'Permanently delete account?',
+      'Your account, hosted documents and session history will be deleted. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete account', style: 'destructive', onPress: async () => {
+          setBusy(true)
+          try { await api.deleteAccount(); onSignedOut() }
+          catch (error) { Alert.alert('Could not delete account', error instanceof Error ? error.message : 'Please try again.') }
+          finally { setBusy(false) }
+        } },
+      ],
+    )}><Text style={styles.deleteAccount}>Delete account and data</Text></Pressable>
   </ScrollView>
 }
 
@@ -288,6 +302,7 @@ const styles = StyleSheet.create({
   authWrap: { flex: 1, justifyContent: 'center', padding: 28, gap: 16 }, logo: { width: 62, height: 62, borderRadius: 20, backgroundColor: T.accent, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' }, logoText: { color: '#041311', fontSize: 32, fontWeight: '900' },
   brand: { color: T.text, fontSize: 32, fontWeight: '800', textAlign: 'center' }, tagline: { color: T.muted, fontSize: 15, textAlign: 'center', marginBottom: 12 }, authSwitch: { color: T.accent, textAlign: 'center', fontWeight: '700', padding: 8 },
   app: { flex: 1 }, page: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 120, gap: 16 }, header: { gap: 5, marginBottom: 4 }, eyebrow: { color: T.accent, fontSize: 12, fontWeight: '800', letterSpacing: 2 }, title: { color: T.text, fontSize: 28, fontWeight: '800' }, subtitle: { color: T.muted, fontSize: 15, lineHeight: 21 },
+  deleteAccount: { color: T.danger, textAlign: 'center', padding: 12, fontWeight: '700' },
   segment: { flexDirection: 'row', padding: 5, backgroundColor: T.surface, borderColor: T.border, borderWidth: 1, borderRadius: 999 }, segmentItem: { flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 999 }, segmentSelected: { backgroundColor: 'rgba(20,184,166,0.16)', borderColor: T.accentDeep, borderWidth: 1 }, segmentText: { color: T.muted, fontWeight: '700' }, segmentTextSelected: { color: T.accent },
   fieldWrap: { gap: 7 }, label: { color: T.muted, fontSize: 13, fontWeight: '700', letterSpacing: 0.5 }, input: { color: T.text, backgroundColor: T.surface, borderColor: T.borderStrong, borderWidth: 1, borderRadius: T.controlRadius, paddingHorizontal: 15, paddingVertical: 14, fontSize: 16 }, multiline: { minHeight: 90, textAlignVertical: 'top' },
   button: { minHeight: 54, borderRadius: T.controlRadius, backgroundColor: T.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, buttonSecondary: { backgroundColor: 'transparent', borderColor: T.accent, borderWidth: 1 }, buttonDanger: { backgroundColor: 'rgba(244,63,94,0.14)', borderColor: 'rgba(244,63,94,0.42)', borderWidth: 1 }, buttonDisabled: { opacity: 0.42 }, buttonText: { color: '#041311', fontSize: 16, fontWeight: '800' }, buttonSecondaryText: { color: T.accent },

@@ -123,6 +123,14 @@ function makeFileBackend() {
       await persist()
       return u
     },
+    async deleteUser(id) {
+      const before = db.users.length
+      db.users = db.users.filter(u => String(u.id) !== String(id))
+      db.usage = db.usage.filter(r => String(r.userId) !== String(id))
+      if (db.users.length === before) return false
+      await persist()
+      return true
+    },
 
     async getUsage(userId, period) {
       return db.usage.find(r => String(r.userId) === String(userId) && r.period === period)
@@ -192,6 +200,13 @@ async function makeMongoBackend() {
     async findUserByStripeCustomerId(cid) { return lean(await User.findOne({ stripeCustomerId: cid })) },
     async createUser(doc) { return lean(await User.create({ ...doc, email: (doc.email || '').toLowerCase() })) },
     async updateUser(id, patch) { return lean(await User.findByIdAndUpdate(id, patch, { new: true })) },
+    async deleteUser(id) {
+      const [result] = await Promise.all([
+        User.deleteOne({ _id: id }),
+        Usage.deleteMany({ userId: id }),
+      ])
+      return result.deletedCount === 1
+    },
     async getUsage(userId, period) {
       return (await Usage.findOne({ userId, period }))
         || { userId: String(userId), period, llmCalls: 0, sttSeconds: 0 }
