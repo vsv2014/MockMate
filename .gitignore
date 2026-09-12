@@ -4,6 +4,8 @@ node_modules/
 # Build output (rebuilt by `vite build` / `electron-builder` — must not be committed)
 dist/
 release/
+mobile/dist-ios/
+mobile/dist-android/
 *.tsbuildinfo
 .vite/
 

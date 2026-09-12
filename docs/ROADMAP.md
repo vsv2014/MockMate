@@ -67,6 +67,23 @@ prerequisites.
 - [ ] Configure a real HTTPS `EXPO_PUBLIC_API_BASE` and validate signup/login against staging
 - [ ] Add EAS development builds and physical-device CI smoke checks for iOS and Android
 
+### Milestone M1a — job context and answer behavior (in progress)
+
+- [x] Make Interview Playbook a prominent part of mobile setup rather than a hidden advanced option
+- [x] Support a reusable account default plus a per-attempt playbook snapshot
+- [x] Add concise, balanced and detailed answer-depth controls to the session snapshot
+- [x] Bound playbooks to 8,000 characters and selected document IDs to 50 unique sources at both
+      the mobile and hosted API boundaries
+- [x] Keep each attempt company-agnostic: company, role, objective and behavior are session fields,
+      not permanent RealPage/Teradata-style workspaces
+- [ ] Add hosted document upload, extraction and encrypted metadata/content storage with explicit
+      résumé/JD/supporting types and per-attempt selection
+- [x] Add authenticated, user-scoped hosted text sources with explicit type, selection, removal and
+      bounded question-relevant context; PDF/DOCX picking, extraction and encryption remain gated
+- [x] Replace the temporary Documents status card with real hosted list/add/select/remove behavior
+- [x] Add text-input Mock and Answer Assist sessions that apply the playbook, answer depth and only
+      explicitly selected document context, then sync a bounded transcript
+
 ### Milestone M1 — mobile practice MVP
 
 - [ ] Record microphone audio with explicit consent and a persistent recording indicator

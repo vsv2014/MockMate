@@ -110,7 +110,9 @@ initStore()
     // mongoose at import time. Only wire it when a real DB is configured.
     if (process.env.MONGO_URI) {
       const { default: sessionRoutes } = await import('./src/routes/sessions.js')
+      const { default: documentRoutes } = await import('./src/routes/documents.js')
       app.use('/sessions', sessionRoutes)
+      app.use('/documents', documentRoutes)
     }
     // Default to loopback (safe for the desktop-forked backend); hosting sets HOST=0.0.0.0 so
     // Render/Fly can route to it. Local Electron fork never sets HOST → stays 127.0.0.1.

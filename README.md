@@ -31,10 +31,11 @@ applies when the hosted managed proxy is configured. Then **Begin interview** (S
 
 ### Mobile foundation (iOS + Android)
 
-The first Expo/React Native foundation lives in [`mobile/`](mobile/): hosted sign-up/sign-in,
-Prepare/History/Duo/Account navigation, validated Live/Mock/Coding goals, secure token storage and
-cross-device session contracts. It is currently a development foundation, not an App Store/Play
-Store release; microphone streaming and real Duo pairing remain explicit next milestones.
+The Expo/React Native v1.5 branch lives in [`mobile/`](mobile/): hosted sign-up/sign-in,
+Prepare/History/Duo/Account navigation, company-agnostic Live/Mock/Coding attempts, prominent
+Interview Playbooks, explicitly selected hosted text documents, text mock interviews, Answer Assist,
+secure token storage and transcript sync. It remains a private-beta foundation—not an App Store/Play
+Store release; microphone transcription, file extraction and real Duo pairing are release milestones.
 
 ```bash
 cd mobile
@@ -45,7 +46,8 @@ npm run android
 ```
 
 See [`docs/MOBILE_APP_PLAN.md`](docs/MOBILE_APP_PLAN.md) for product boundaries and
-[`docs/ROADMAP.md`](docs/ROADMAP.md) for the build sequence.
+[`docs/ROADMAP.md`](docs/ROADMAP.md) for the build sequence. The exact implemented/beta boundary is
+recorded in [`docs/MOBILE_BETA.md`](docs/MOBILE_BETA.md).
 
 **Auto-update (Windows & Linux):** new versions download in the background and MockMate shows
 **Restart & install** when ready. Choosing **Later** never installs unexpectedly; use

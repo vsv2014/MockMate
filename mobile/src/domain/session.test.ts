@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizePairCode, sessionTitle, validateSessionDraft } from './session'
+import { normalizePairCode, normalizeSessionDraft, PLAYBOOK_LIMIT, sessionTitle, validateSessionDraft } from './session'
 
 describe('mobile session setup', () => {
   it('requires company and role for live sessions', () => {
@@ -24,5 +24,19 @@ describe('mobile session setup', () => {
 
   it('normalizes pair codes', () => {
     expect(normalizePairCode('ab-12 cd_345')).toBe('AB12CD34')
+  })
+
+  it('snapshots bounded playbook, response style and unique document choices', () => {
+    const result = normalizeSessionDraft({
+      mode: 'mock', role: 'SWE', customInstructions: `  ${'x'.repeat(PLAYBOOK_LIMIT + 20)}  `,
+      responseStyle: 'detailed', selectedDocumentIds: ['resume', 'resume', ' jd ', ''],
+    })
+    expect(result.customInstructions).toHaveLength(PLAYBOOK_LIMIT)
+    expect(result.responseStyle).toBe('detailed')
+    expect(result.selectedDocumentIds).toEqual(['resume', 'jd'])
+  })
+
+  it('falls back to a safe response style', () => {
+    expect(normalizeSessionDraft({ role: 'SWE', responseStyle: 'essay' as any }).responseStyle).toBe('concise')
   })
 })

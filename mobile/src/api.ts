@@ -10,6 +10,10 @@ export type User = {
   plan?: string
   targetRole?: string
   createdAt?: string
+  preferences?: {
+    mobilePlaybook?: string
+    mobileResponseStyle?: 'concise' | 'balanced' | 'detailed'
+  }
 }
 
 export type Account = {
@@ -26,9 +30,24 @@ export type SyncedSession = {
   company?: string
   role?: string
   objective?: string
+  customInstructions?: string
+  responseStyle?: 'concise' | 'balanced' | 'detailed'
+  selectedDocumentIds?: string[]
   createdAt: string
   score?: Record<string, unknown> | null
 }
+
+export type HostedDocument = {
+  id: string
+  name: string
+  type: 'resume' | 'jd' | 'knowledge' | 'supporting' | 'training' | 'document'
+  chars: number
+  createdAt: string
+}
+
+export type InterviewTurn = { say: string; kind?: 'question' | 'followup'; questionNumber?: number }
+export type Hint = { fullAnswer?: string; sampleAnswer?: string; opener?: string; keyPoints?: string[]; skip?: boolean; confidence?: string }
+export type TranscriptTurn = { role: 'interviewer' | 'candidate' | 'assistant'; text: string; kind?: 'question' | 'followup' | 'answer'; ts?: number }
 
 export class ApiError extends Error {
   constructor(message: string, readonly status = 0) {
@@ -92,8 +111,26 @@ export const api = {
   }).then(saveAuth),
   account: () => request<Account>('/auth/me', { auth: true }),
   sessions: () => request<{ sessions: SyncedSession[] }>('/sessions', { auth: true }),
-  createSession: (draft: { mode: string; company: string; role: string; objective: string; title: string }) =>
+  createSession: (draft: { mode: string; company: string; role: string; objective: string; title: string; customInstructions: string; responseStyle: string; selectedDocumentIds: string[] }) =>
     request<{ session: SyncedSession }>('/sessions', { method: 'POST', auth: true, body: JSON.stringify({ ...draft, source: 'mobile' }) }),
+  updateSession: (id: string, transcript: TranscriptTurn[]) => request<{ session: SyncedSession }>(`/sessions/${encodeURIComponent(id)}`, {
+    method: 'PATCH', auth: true, body: JSON.stringify({ transcript }),
+  }),
+  updatePreferences: (preferences: NonNullable<User['preferences']>) =>
+    request<{ user: User }>('/me', { method: 'PATCH', auth: true, body: JSON.stringify({ preferences }) }),
+  documents: () => request<{ documents: HostedDocument[] }>('/documents', { auth: true }),
+  addDocument: (draft: { name: string; type: HostedDocument['type']; text: string }) =>
+    request<{ document: HostedDocument }>('/documents', { method: 'POST', auth: true, body: JSON.stringify(draft) }),
+  deleteDocument: (id: string) => request<{ ok: boolean }>(`/documents/${encodeURIComponent(id)}`, { method: 'DELETE', auth: true }),
+  documentContext: (question: string, documentIds: string[]) => request<{ context: string }>('/documents/context', {
+    method: 'POST', auth: true, body: JSON.stringify({ question, documentIds }),
+  }),
+  nextInterviewTurn: (body: Record<string, unknown>) => request<{ turn: InterviewTurn }>('/api/interview', {
+    method: 'POST', auth: true, body: JSON.stringify(body),
+  }),
+  hint: (body: Record<string, unknown>) => request<{ hint: Hint }>('/api/hint', {
+    method: 'POST', auth: true, body: JSON.stringify(body),
+  }),
   logout: async () => {
     try { await request('/auth/logout', { method: 'POST', auth: true }) } finally {
       await SecureStore.deleteItemAsync(TOKEN_KEY)

@@ -33,6 +33,7 @@ export function toSafeUser(u) {
     currentRole: u.currentRole || '',
     language: u.language || 'English',
     hasResume: !!u.resume,
+    preferences: u.preferences && typeof u.preferences === 'object' ? u.preferences : {},
     createdAt: u.createdAt,
   }
 }

@@ -1,11 +1,25 @@
 export const SESSION_MODES = ['live', 'mock', 'coding'] as const
 export type SessionMode = typeof SESSION_MODES[number]
 
+export const RESPONSE_STYLES = ['concise', 'balanced', 'detailed'] as const
+export type ResponseStyle = typeof RESPONSE_STYLES[number]
+export const PLAYBOOK_LIMIT = 8000
+
+export const STARTER_PLAYBOOK = `Answer the exact current question first.
+Use natural first-person spoken English.
+Keep factual answers short; explain trade-offs only when useful or requested.
+Use my selected documents as evidence and never invent experience, ownership, metrics or tools.
+If the question is materially unclear, ask one short clarification.
+If the interviewer interrupts or corrects the question, stop and adapt.`
+
 export type SessionDraft = {
   mode: SessionMode
   company: string
   role: string
   objective: string
+  customInstructions: string
+  responseStyle: ResponseStyle
+  selectedDocumentIds: string[]
 }
 
 export function normalizeSessionDraft(input: Partial<SessionDraft> = {}): SessionDraft {
@@ -15,6 +29,14 @@ export function normalizeSessionDraft(input: Partial<SessionDraft> = {}): Sessio
     company: String(input.company || '').trim(),
     role: String(input.role || '').trim(),
     objective: String(input.objective || '').trim(),
+    customInstructions: String(input.customInstructions || '').trim().slice(0, PLAYBOOK_LIMIT),
+    responseStyle: RESPONSE_STYLES.includes(input.responseStyle as ResponseStyle)
+      ? input.responseStyle as ResponseStyle
+      : 'concise',
+    selectedDocumentIds: Array.from(new Set(
+      (Array.isArray(input.selectedDocumentIds) ? input.selectedDocumentIds : [])
+        .map(String).map(id => id.trim()).filter(Boolean).slice(0, 50),
+    )),
   }
 }
 
