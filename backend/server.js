@@ -12,6 +12,7 @@ import { checkCap, recordLlm, releaseLlm, enforceManagedModelPolicy } from './sr
 import { registerApiRoutes } from '../api/_lib/apiRoutes.js'
 import billingRoutes, { stripeWebhook } from './src/routes/billing.js'
 import { assertHostedConfig, isPublicBind, parseCorsOrigins } from './src/hostedConfig.js'
+import { publicCapabilityStatus } from './src/arch.js'
 
 const MM_DATA_DIR = process.env.MOCKMATE_DATA_DIR
   || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support', 'mockmate')
@@ -75,6 +76,7 @@ app.use((req, res, next) => {
 let ready = false
 app.get('/health', (req, res) => res.status(ready ? 200 : 503).json({ ok: ready, service: 'mockmate-backend' }))
 app.get('/ready', (req, res) => res.status(ready ? 200 : 503).json({ ok: ready, store: process.env.MONGO_URI ? 'mongo' : 'file', hosted: Boolean(hostedConfig?.hosted) }))
+app.get('/arch/capabilities', requireAuth, (req, res) => res.json(publicCapabilityStatus({ hosted: Boolean(hostedConfig?.hosted) })))
 app.use('/auth', authRoutes)
 app.use('/me', meRoutes)
 app.use('/billing', billingRoutes)
