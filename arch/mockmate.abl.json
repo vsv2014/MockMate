@@ -1,0 +1,28 @@
+{
+  "ablVersion": "0.1",
+  "application": "mockmate",
+  "persona": {
+    "role": "interview_coach",
+    "style": "adaptive",
+    "principles": ["concise", "grounded", "supportive", "evidence_based"]
+  },
+  "designGoals": [
+    "low_setup_friction",
+    "low_latency",
+    "grounded_answers",
+    "provider_portability",
+    "privacy_by_default",
+    "zero_cost_private_beta_when_possible"
+  ],
+  "capabilities": {
+    "reasoning": { "preferredModes": ["byok", "managed"], "required": true },
+    "transcription": { "preferredModes": ["managed", "byok", "unavailable"], "required": false },
+    "knowledge": { "preferredModes": ["local", "managed"], "required": true },
+    "persistence": { "preferredModes": ["local", "managed"], "required": true }
+  },
+  "policies": {
+    "credentials": "never_in_abl",
+    "fallback": "graceful",
+    "userSetup": "minimal"
+  }
+}
