@@ -1,5 +1,5 @@
 {
-  "ablVersion": "0.1",
+  "ablVersion": "0.2",
   "application": "mockmate",
   "persona": {
     "role": "interview_coach",
@@ -15,14 +15,46 @@
     "zero_cost_private_beta_when_possible"
   ],
   "capabilities": {
-    "reasoning": { "preferredModes": ["byok", "managed"], "required": true },
-    "transcription": { "preferredModes": ["managed", "byok", "unavailable"], "required": false },
+    "reasoning": {
+      "lanes": ["fast", "balanced", "strong", "vision"],
+      "preferredModes": ["byok", "managed"],
+      "required": true
+    },
+    "speech": {
+      "stt": {
+        "live": { "preferredModes": ["managed", "byok", "unavailable"], "fallback": "typed-input" },
+        "batch": { "preferredModes": ["managed", "byok", "unavailable"], "fallback": "typed-input" }
+      },
+      "tts": {
+        "streaming": { "preferredModes": ["local", "browser", "managed", "unavailable"], "required": false }
+      },
+      "turnDetection": { "mode": "vad", "bargeIn": true },
+      "hotPath": "media-adapter-direct"
+    },
     "knowledge": { "preferredModes": ["local", "managed"], "required": true },
-    "persistence": { "preferredModes": ["local", "managed"], "required": true }
+    "persistence": { "preferredModes": ["local", "managed"], "required": true },
+    "telemetry": {
+      "metrics": [
+        "stt_first_partial_ms",
+        "stt_final_ms",
+        "llm_ttft_ms",
+        "tts_ttfa_ms",
+        "turn_latency_ms",
+        "fallback_count",
+        "provider_failure_count"
+      ]
+    }
+  },
+  "performance": {
+    "principle": "measure_hot_path_stages_not_only_total_request_time",
+    "reportPercentiles": [50, 95],
+    "asyncOffHotPath": ["persistence", "analytics", "history_enrichment", "noncritical_rag_updates"]
   },
   "policies": {
     "credentials": "never_in_abl",
     "fallback": "graceful",
-    "userSetup": "minimal"
+    "userSetup": "minimal",
+    "reasoningExecution": "existing-resilient-core-adapter",
+    "noDoubleRetry": true
   }
 }
