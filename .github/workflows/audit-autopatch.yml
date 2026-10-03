@@ -1,0 +1,39 @@
+name: One-shot desktop audit patch
+
+on:
+  push:
+    branches: [codex/desktop-audit-67]
+    paths:
+      - '.github/audit-patch-trigger'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-audit-autopatch
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: codex/desktop-audit-67
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Apply deterministic Duo trust patch
+        run: node scripts/audit-duo-patch.mjs
+      - name: Verify patched source
+        run: npm ci && npm --prefix backend ci && npm test && npm run smoke:api && npm run build
+      - name: Commit verified patch
+        run: |
+          git config user.name 'mockmate-audit-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/Duo.jsx src/Room.jsx api/_lib/core.js api/_lib/apiRoutes.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'Bind Duo identities and roles to server-issued room tokens'
+          git pull --rebase origin codex/desktop-audit-67
+          git push origin HEAD:codex/desktop-audit-67

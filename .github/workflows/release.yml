@@ -7,86 +7,102 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to create (e.g. v1.0.1)'
+        description: 'Release tag to create (e.g. v1.4.12)'
         required: true
-        default: 'v1.0.1'
+        default: 'v1.4.12'
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify release source and version
+        id: meta
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          # Public release source must be committed on main. A manual dispatch is stricter:
+          # it must run at the current main HEAD, not an arbitrary historical/feature ref.
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "$GITHUB_SHA" != "$(git rev-parse origin/main)" ]; then
+            echo "Manual releases must be dispatched from the current main HEAD." >&2
+            exit 1
+          fi
+          node <<'NODE'
+          const pkg = require('./package.json')
+          const tag = String(process.env.RELEASE_TAG || '')
+          if (!/^v\d+\.\d+\.\d+$/.test(tag)) throw new Error(`Invalid release tag: ${tag}`)
+          if (tag.slice(1) !== pkg.version) throw new Error(`Release tag ${tag} does not match package.json ${pkg.version}`)
+          console.log(`Release provenance/version verified: ${tag}`)
+          NODE
+          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: provenance
     strategy:
-      # One platform failure must not cancel the others (Linux already uploaded when Win failed).
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             platform: linux
-            artifact: |
-              release/*.AppImage
-              release/*.yml
           - os: windows-latest
             platform: win
-            artifact: |
-              release/*.exe
-              release/*.yml
-              release/*.blockmap
           - os: macos-latest
             platform: mac
-            artifact: |
-              release/*.dmg
-              release/*.zip
-              release/*.yml
-
     runs-on: ${{ matrix.os }}
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 24 LTS
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+      - run: npm ci
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Require public-release signing credentials (Windows)
+        if: matrix.platform == 'win'
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          test -n "$WIN_CSC_LINK" && test -n "$WIN_CSC_KEY_PASSWORD" || { echo 'Windows signing credentials are required for a public release.' >&2; exit 1; }
 
-      # Electron 42+ fetches the platform binary lazily rather than in postinstall.
+      - name: Require public-release signing/notarization credentials (macOS)
+        if: matrix.platform == 'mac'
+        shell: bash
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          test -n "$MAC_CSC_LINK" && test -n "$MAC_CSC_KEY_PASSWORD" && test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID" \
+            || { echo 'macOS signing + notarization credentials are required for a public release.' >&2; exit 1; }
+
       - name: Bootstrap Electron runtime
         shell: bash
-        env:
-          BUILD_PLATFORM: ${{ matrix.platform }}
         run: |
-          if [ "$BUILD_PLATFORM" = "linux" ]; then
-            # GitHub's Ubuntu runner cannot initialize Chromium's SUID sandbox merely to print
-            # the version. This step only downloads/verifies the build-time Electron runtime.
-            npx electron --no-sandbox --version
-          else
-            npx electron --version
-          fi
+          if [ "${{ matrix.platform }}" = "linux" ]; then npx electron --no-sandbox --version; else npx electron --version; fi
 
-      - name: Verify release tag matches package version
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
-        run: |
-          node <<'NODE'
-          const pkg = require('./package.json')
-          const tag = String(process.env.RELEASE_TAG || '').replace(/^v/, '')
-          if (tag !== pkg.version) {
-            console.error(`Release tag v${tag} does not match package.json ${pkg.version}`)
-            process.exit(1)
-          }
-          console.log(`Release version verified: v${tag}`)
-          NODE
+      - name: Unit, API smoke and production build
+        run: npm test && npm run smoke:api && npm run build
 
-      - name: Unit and API smoke tests
-        run: npm test && npm run smoke:api
-
-      - name: Configure release AI mode
+      - name: Configure final release AI mode
         shell: bash
         env:
           MANAGED_API_BASE: ${{ vars.MOCKMATE_API_BASE }}
@@ -99,13 +115,9 @@ jobs:
             let url
             try { url = new URL(raw) } catch { console.error('When set, MOCKMATE_API_BASE must be a valid hosted URL.'); process.exit(1) }
             if (url.protocol !== 'https:' || /^(localhost|127\.0\.0\.1)$/i.test(url.hostname)) {
-              console.error('MOCKMATE_API_BASE must use HTTPS and must not point to loopback.')
-              process.exit(1)
+              console.error('MOCKMATE_API_BASE must use HTTPS and must not point to loopback.'); process.exit(1)
             }
             managed = true
-            console.log(`Managed AI endpoint configured: ${url.origin}`)
-          } else {
-            console.log('MOCKMATE_API_BASE is unset — building a safe BYOK-only release.')
           }
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
           pkg.managedApiBase = raw
@@ -113,24 +125,14 @@ jobs:
           fs.writeFileSync('.env.production.local', `VITE_MANAGED_AI_AVAILABLE=${managed}\n${managed ? `VITE_API_BASE=${raw}\n` : ''}`)
           NODE
 
-      - name: Build frontend (Vite)
-        run: npm run build
+      # Test the exact frontend/package configuration that is about to be shipped.
+      - name: Verify final configured application
+        run: npm test && npm run build
 
-      # Signing is optional and per-platform:
-      # - Windows: WIN_CSC_LINK + WIN_CSC_KEY_PASSWORD (Authenticode .pfx/.p12, base64)
-      # - macOS:   MAC_CSC_LINK + MAC_CSC_KEY_PASSWORD + APPLE_* (see SIGNING.md)
-      # If secrets are missing, the build still ships — unsigned (SmartScreen / Gatekeeper warnings).
-      # CRITICAL: unset empty CSC_* env vars. Actions expands missing secrets to "" and
-      # electron-builder treats that as a path → "WIN_CSC_LINK is not correct … not a file".
-      - name: Build Electron installer (${{ matrix.platform }})
+      - name: Build Electron installer
         shell: bash
-        run: |
-          if [ -z "${WIN_CSC_LINK:-}" ]; then unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; fi
-          if [ -z "${MAC_CSC_LINK:-}" ]; then unset MAC_CSC_LINK MAC_CSC_KEY_PASSWORD; fi
-          if [ -z "${APPLE_ID:-}" ]; then unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; fi
-          npx electron-builder --${{ matrix.platform }} --publish never
+        run: npx electron-builder --${{ matrix.platform }} --publish never
         env:
-          # Prefer explicit certs from secrets; don't hunt the runner keychain/store.
           CSC_IDENTITY_AUTO_DISCOVERY: false
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
@@ -140,7 +142,25 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: Verify packaged artifacts and update metadata
+      - name: Verify Windows Authenticode signature
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release -Filter *.exe | Select-Object -First 1
+          if (-not $installer) { throw 'Windows installer missing' }
+          $sig = Get-AuthenticodeSignature $installer.FullName
+          if ($sig.Status -ne 'Valid') { throw "Invalid Authenticode signature: $($sig.Status)" }
+
+      - name: Verify macOS code signature
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find release -type d -name '*.app' -print -quit)
+          if [ -z "$APP" ]; then echo 'Packaged .app missing for signature verification.' >&2; exit 1; fi
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Verify required artifacts
         shell: bash
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -153,24 +173,50 @@ jobs:
             ? [[/\.exe$/i, 'Windows installer'], [/^latest\.yml$/i, 'latest.yml'], [/\.blockmap$/i, 'Windows blockmap']]
             : process.env.PLATFORM === 'linux'
               ? [[/\.AppImage$/i, 'Linux AppImage'], [/^latest-linux\.yml$/i, 'latest-linux.yml']]
-              : [[/\.dmg$/i, 'macOS DMG'], [/\.zip$/i, 'macOS updater ZIP']]
+              : [[/\.dmg$/i, 'macOS DMG'], [/\.zip$/i, 'macOS updater ZIP'], [/^latest-mac\.yml$/i, 'latest-mac.yml']]
           const missing = required.filter(([re]) => !has(re)).map(([, label]) => label)
-          if (missing.length) {
-            console.error(`Missing required ${process.env.PLATFORM} artifact(s): ${missing.join(', ')}`)
-            console.error(`Generated files: ${files.join(', ')}`)
-            process.exit(1)
-          }
-          console.log(`Verified ${process.env.PLATFORM} artifacts: ${files.join(', ')}`)
+          if (missing.length) throw new Error(`Missing required artifacts: ${missing.join(', ')}; generated: ${files.join(', ')}`)
           NODE
 
-      - name: Upload installers to GitHub Release
+      # Stage artifacts privately in this workflow. Nothing is publicly released until every
+      # matrix job has succeeded, preventing partial releases.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/*.AppImage
+            release/*.dmg
+            release/*.zip
+            release/*.yml
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    needs: [provenance, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: staged
+          merge-multiple: true
+      - name: Verify all platform artifacts are staged
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$(find staged -maxdepth 1 -name '*.exe' -print -quit)"
+          test -n "$(find staged -maxdepth 1 -name '*.AppImage' -print -quit)"
+          test -n "$(find staged -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$(find staged -maxdepth 1 -name '*.zip' -print -quit)"
+      - name: Publish one atomic GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           draft: false
           prerelease: false
           generate_release_notes: true
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          files: |
-            ${{ matrix.artifact }}
+          tag_name: ${{ needs.provenance.outputs.tag }}
+          files: staged/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

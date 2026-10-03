@@ -2,7 +2,7 @@
   "name": "mockmate",
   "version": "1.4.11",
   "type": "module",
-  "main": "electron/main.cjs",
+  "main": "electron/bootstrap.cjs",
   "description": "Real-Time AI Interview Companion — Solo practice + Live overlay for Zoom/Teams/Meet (content protection on Win/macOS; verify share preview)",
   "author": "MockMate",
   "license": "MIT",
@@ -11,8 +11,8 @@
   "scripts": {
     "dev": "concurrently \"node server.js\" \"vite\"",
     "build": "vite build",
-    "electron:dev": "concurrently -k \"node server.js\" \"vite\" \"wait-on http://localhost:5174 && electron .\"",
-    "electron:dev:nosandbox": "concurrently -k \"node server.js\" \"vite\" \"wait-on http://localhost:5174 && electron . --no-sandbox\"",
+    "electron:dev": "concurrently -k \"vite\" \"wait-on http://localhost:5174 && electron .\"",
+    "electron:dev:nosandbox": "concurrently -k \"vite\" \"wait-on http://localhost:5174 && electron . --no-sandbox\"",
     "electron:win": "vite build && electron-builder --win",
     "electron:build": "vite build && electron-builder",
     "electron:build:win": "vite build && electron-builder --win",
@@ -35,7 +35,7 @@
     "appId": "com.mockmate.app",
     "productName": "MockMate",
     "directories": { "output": "release" },
-    "asar": false,
+    "asar": true,
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -59,7 +59,7 @@
       "artifactName": "MockMate-Setup-${version}.${ext}",
       "signtoolOptions": { "publisherName": "MockMate", "signingHashAlgorithms": ["sha256"] },
       "signAndEditExecutable": true,
-      "verifyUpdateCodeSignature": false
+      "verifyUpdateCodeSignature": true
     },
     "nsis": {
       "oneClick": false,
@@ -69,7 +69,7 @@
       "createStartMenuShortcut": true,
       "shortcutName": "MockMate",
       "uninstallDisplayName": "MockMate ${version}",
-      "deleteAppDataOnUninstall": false,
+      "deleteAppDataOnUninstall": true,
       "runAfterFinish": true,
       "include": "build/installer.nsh"
     },

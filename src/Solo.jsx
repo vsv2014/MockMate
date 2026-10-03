@@ -4,11 +4,10 @@ import { curateModelOptions, configuredProviderNames, curateProviderFallbacks, l
 import { useDeepgram } from './useDeepgram'
 import { analyze, liveNudge } from '../shared/delivery.js'
 import SoloFeedback from './SoloFeedback'
-import { saveSession } from './history'
+import { saveSession, saveSoloDraft, loadSoloDraft, clearSoloDraft } from './history'
 import { loadProfile, saveProfile as persistProfile } from './lib/profile'
 import { fmtClock } from './lib/ui'
 import { LANGUAGES, STT_LANG } from './lib/languages'
-import { isTransient } from '../shared/llm-errors.js'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { createSessionId, createGeneration, hasEnoughAnswerLength } from './lib/sessionGen'
@@ -104,6 +103,7 @@ export default function Solo({ onHome, noProviders }) {
   const modelOptions = curateModelOptions(models)
   const providerNames = configuredProviderNames(models, providers)
   const [setupError, setSetupError] = useState('')
+  const [resumeDraft, setResumeDraft] = useState(() => loadSoloDraft())
   // Voice = Deepgram ONLY. The browser SpeechRecognition API silently fails inside
   // Electron, which is what made the mic "not work". No Deepgram key → type your answers.
 
@@ -171,6 +171,20 @@ export default function Solo({ onHome, noProviders }) {
   useEffect(() => { thinkingRef.current = thinking }, [thinking])
   useEffect(() => { phaseRef.current = phase }, [phase])
   useEffect(() => { ttsEnabledRef.current = tts }, [tts])
+
+  // Checkpoint active practice locally. This is intentionally separate from completed history:
+  // a renderer reload/crash can resume without pretending an interrupted interview was scored.
+  useEffect(() => {
+    if (phase !== 'live' || !sessionActiveRef.current) return
+    const timer = setTimeout(() => saveSoloDraft({
+      sessionId: sessionIdRef.current,
+      transcript, answer, practiceQ, currentQuestion,
+      elapsedMs: Math.max(0, Date.now() - startedAt.current),
+      profile, interviewConfig: interviewConfigRef.current,
+      interviewType, voiceStyle, followupDepth, relentless, tts,
+    }), 250)
+    return () => clearTimeout(timer)
+  }, [phase, transcript, answer, practiceQ, currentQuestion, profile, interviewType, voiceStyle, followupDepth, relentless, tts])
 
   // Unmount: invalidate all in-flight work
   useEffect(() => () => {
@@ -263,6 +277,9 @@ export default function Solo({ onHome, noProviders }) {
     clearTimeout(ttsWatchdogRef.current)
     ttsWatchdogRef.current = setTimeout(() => {
       if (!ttsGen.current.isCurrent(g)) return
+      // A watchdog is a failure boundary, not proof that TTS ended. Cancel the utterance before
+      // reopening candidate capture so MockMate can never transcribe its own stuck voice.
+      try { window.speechSynthesis?.cancel() } catch {}
       ttsBusy.current = false
       setTtsPlaying(false)
       resumeMicFor(g)
@@ -320,12 +337,9 @@ export default function Solo({ onHome, noProviders }) {
 
     const retryTransient = async (msg, status) => {
       if (!isCurrent()) return null
-      const transient = isTransient({ status, message: msg })
-      if (transient && attempt < 2) {
-        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)))
-        if (!isCurrent()) return null
-        return requestTurn(current, attempt + 1, turnG)
-      }
+      // The shared core adapter already performs bounded provider retry/failover. Never repeat the
+      // entire interview request here: doing so multiplies latency/cost and can duplicate turns.
+      // Any final failure rolls the candidate turn back so the user explicitly chooses Retry.
       // Hard failure — orphan rollback if last turn is a committed candidate
       if (isCurrent()) {
         const last = current[current.length - 1]
@@ -394,6 +408,32 @@ export default function Solo({ onHome, noProviders }) {
     }
   }
 
+  function resumeInterrupted() {
+    const draft = resumeDraft
+    if (!draft?.transcript?.length) { clearSoloDraft(); setResumeDraft(null); return }
+    const restoredProfile = { ...profile, ...(draft.profile || {}) }
+    setProfile(restoredProfile); persistProfile(restoredProfile)
+    setInterviewType(draft.interviewType || restoredProfile.interviewType || 'Technical')
+    setVoiceStyle(draft.voiceStyle || restoredProfile.voiceStyle || 'Professional')
+    setFollowupDepth(draft.followupDepth || 'normal')
+    setRelentless(!!draft.relentless); setTts(draft.tts !== false)
+    sessionIdRef.current = draft.sessionId || createSessionId()
+    interviewConfigRef.current = draft.interviewConfig || buildInterviewConfig({ profile: restoredProfile, selectedDocumentIds: getSelectedDocIds(), source: 'solo' })
+    sessionActiveRef.current = true
+    startLockRef.current = false; submitLockRef.current = false
+    const restored = draft.transcript.slice(-300)
+    setTranscript(restored); transcriptRef.current = restored
+    setAnswer(draft.answer || ''); answerRef.current = draft.answer || ''
+    setPracticeQ(draft.practiceQ || '')
+    setCurrentQuestion(Math.max(0, Number(draft.currentQuestion) || 0))
+    startedAt.current = Date.now() - Math.max(0, Number(draft.elapsedMs) || 0)
+    setClock(Math.max(0, Number(draft.elapsedMs) || 0))
+    setError('Recovered your interrupted practice session. Voice is paused until you choose Resume.')
+    voiceRef.current = false
+    setPhase('live'); phaseRef.current = 'live'
+    setResumeDraft(null)
+  }
+
   async function start() {
     if (startLockRef.current) return
     if (!canStartSolo) {
@@ -403,6 +443,7 @@ export default function Solo({ onHome, noProviders }) {
       return
     }
     startLockRef.current = true
+    clearSoloDraft(); setResumeDraft(null)
     sessionIdRef.current = createSessionId()
     sessionActiveRef.current = true
     turnGen.current.bump()
@@ -525,6 +566,7 @@ export default function Solo({ onHome, noProviders }) {
         return
       }
       sessionActiveRef.current = false
+      clearSoloDraft()
       onHome()
       return
     }
@@ -558,6 +600,8 @@ export default function Solo({ onHome, noProviders }) {
       phaseRef.current = 'report'
     }
     sessionActiveRef.current = false
+    clearSoloDraft()
+    setResumeDraft(null)
     setEvaluating(false)
   }
 
@@ -570,6 +614,7 @@ export default function Solo({ onHome, noProviders }) {
     voiceRef.current = false
     try { speech.stop() } catch {}
     sessionActiveRef.current = false
+    clearSoloDraft(); setResumeDraft(null)
     sessionIdRef.current = null
     turnGen.current.bump()
     ttsGen.current.bump()
@@ -609,6 +654,15 @@ export default function Solo({ onHome, noProviders }) {
         </div>
       )}
       {setupError && <div role="alert" style={{ fontSize: 12, color: '#fca5a5' }}>⚠ {setupError}</div>}
+      {resumeDraft?.transcript?.length > 0 && (
+        <div style={{ background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: T.text2 }}>
+          <strong style={{ color: '#5eead4' }}>Interrupted practice found.</strong> {resumeDraft.transcript.length} saved turn{resumeDraft.transcript.length === 1 ? '' : 's'} can be recovered.
+          <span style={{ float: 'right', display: 'inline-flex', gap: 6 }}>
+            <button onClick={resumeInterrupted} style={{ ...textInput, width: 'auto', padding: '5px 10px', cursor: 'pointer' }}>Resume</button>
+            <button onClick={() => { clearSoloDraft(); setResumeDraft(null) }} style={{ ...textInput, width: 'auto', padding: '5px 10px', cursor: 'pointer' }}>Discard</button>
+          </span>
+        </div>
+      )}
       {error && phase === 'setup' && <div role="alert" style={{ fontSize: 12, color: '#fca5a5' }}>⚠ {error}</div>}
 
       <div role="status" style={{

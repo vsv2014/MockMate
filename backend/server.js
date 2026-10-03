@@ -2,8 +2,11 @@ import 'dotenv/config'
 import dotenv from 'dotenv'
 import os from 'os'
 import path from 'path'
+import fs from 'fs'
+import crypto from 'crypto'
 import express from 'express'
 import cors from 'cors'
+import rateLimit from 'express-rate-limit'
 import { initStore, storeMode, storeReady, closeStore } from './src/store.js'
 import authRoutes from './src/routes/auth.js'
 import meRoutes from './src/routes/me.js'
@@ -12,7 +15,7 @@ import { checkCap, recordLlm, releaseLlm, enforceManagedModelPolicy } from './sr
 import { registerApiRoutes } from '../api/_lib/apiRoutes.js'
 import billingRoutes, { stripeWebhook } from './src/routes/billing.js'
 import { assertHostedConfig, envFlag, isPublicBind, parseCorsOrigins } from './src/hostedConfig.js'
-import { publicCapabilityStatus } from './src/arch.js'
+import { publicCapabilityStatus, reasoningPolicy } from './src/arch.js'
 
 const MM_DATA_DIR = process.env.MOCKMATE_DATA_DIR
   || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support', 'mockmate')
@@ -22,21 +25,34 @@ try { dotenv.config({ path: path.join(MM_DATA_DIR, '.env') }) } catch {}
 
 const PUBLIC_BIND = isPublicBind()
 const HOSTED_ENV = envFlag('MOCKMATE_HOSTED')
-if (!process.env.JWT_SECRET) {
-  if (PUBLIC_BIND || HOSTED_ENV) {
-    console.error('[backend] FATAL: JWT_SECRET is required in hosted/public mode.')
-    process.exit(1)
-  }
-  process.env.JWT_SECRET = 'mockmate-dev-insecure-secret-change-me'
-  console.warn('[backend] JWT_SECRET not set — using an insecure dev default (loopback only). Do NOT ship like this.')
+function ensurePersistentLocalJwtSecret() {
+  const secretFile = path.join(MM_DATA_DIR, '.jwt-secret')
+  try {
+    fs.mkdirSync(MM_DATA_DIR, { recursive: true })
+    if (fs.existsSync(secretFile)) {
+      const existing = fs.readFileSync(secretFile, 'utf8').trim()
+      if (existing.length < 32) throw new Error('stored JWT secret is invalid')
+      process.env.JWT_SECRET = existing
+      return
+    }
+    const secret = String(process.env.JWT_SECRET || '').trim() || crypto.randomBytes(48).toString('hex')
+    if (secret.length < 32) throw new Error('JWT secret must be at least 32 characters')
+    const tmp = `${secretFile}.tmp-${process.pid}`
+    fs.writeFileSync(tmp, secret, { mode: 0o600 })
+    fs.renameSync(tmp, secretFile)
+    process.env.JWT_SECRET = secret
+  } catch (error) { throw new Error(`Could not persist the local JWT identity secret: ${error.message}`) }
+}
+if (PUBLIC_BIND || HOSTED_ENV) {
+  if (!process.env.JWT_SECRET) { console.error('[backend] FATAL: JWT_SECRET is required in hosted/public mode.'); process.exit(1) }
+} else {
+  try { ensurePersistentLocalJwtSecret() }
+  catch (error) { console.error(`[backend] FATAL: ${error.message}`); process.exit(1) }
 }
 
 let hostedConfig
 try { hostedConfig = assertHostedConfig() }
 catch (error) { console.error(`[backend] FATAL: ${error.message}`); process.exit(1) }
-
-// Downstream adapters historically checked only literal "1". Normalize once after
-// validation so diagnostics, STT and provider behavior cannot disagree about hosted mode.
 if (hostedConfig?.hosted) process.env.MOCKMATE_HOSTED = '1'
 process.env.MOCKMATE_MANAGED = '1'
 
@@ -51,10 +67,7 @@ function corsOriginAllowed(origin) {
   if (!hostedConfig?.hosted && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true
   return false
 }
-app.use(cors({
-  origin(origin, cb) { corsOriginAllowed(origin) ? cb(null, true) : cb(new Error('CORS origin is not allowed')) },
-  credentials: true,
-}))
+app.use(cors({ origin(origin, cb) { corsOriginAllowed(origin) ? cb(null, true) : cb(new Error('CORS origin is not allowed')) }, credentials: true }))
 
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -71,15 +84,19 @@ app.use((req, res, next) => {
   req.requestId = /^[a-zA-Z0-9_-]{6,96}$/.test(supplied) ? supplied : `srv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
   res.setHeader('X-MockMate-Request-Id', req.requestId)
   const started = Date.now()
-  res.on('finish', () => console.log(JSON.stringify({
-    ts: new Date().toISOString(), component: 'http', event: 'request_completed', requestId: req.requestId,
-    method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - started, authenticated: !!req.userId,
-  })))
+  res.on('finish', () => console.log(JSON.stringify({ ts: new Date().toISOString(), component: 'http', event: 'request_completed', requestId: req.requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - started, authenticated: !!req.userId })))
   next()
 })
 
 app.post('/billing/webhook', express.raw({ type: 'application/json' }), stripeWebhook)
 app.use(express.json({ limit: '2mb' }))
+
+const apiLimiter = rateLimit({ windowMs: 60_000, limit: 90, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many AI requests. Please slow down for a moment.' } })
+const mediaLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many media requests. Please wait a moment.' } })
+const uploadLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many uploads. Please wait a moment.' } })
+app.use('/api', apiLimiter)
+app.use('/transcribe', mediaLimiter)
+app.use('/documents/upload', uploadLimiter)
 
 let processReady = false
 const healthy = () => processReady && storeReady()
@@ -95,19 +112,18 @@ registerApiRoutes(app, {
   authLight: [requireAuth],
   onLlm: recordLlm,
   onLlmFailure: releaseLlm,
+  reasoningPolicy,
 })
 
 const PORT = Number(process.env.PORT) || 4000
 let server = null
 let shuttingDown = false
-
 async function shutdown(signal) {
   if (shuttingDown) return
   shuttingDown = true
   processReady = false
   console.log(`[backend] ${signal}: draining`)
-  const force = setTimeout(() => process.exit(1), 10_000)
-  force.unref?.()
+  const force = setTimeout(() => process.exit(1), 10_000); force.unref?.()
   try {
     if (server) await new Promise(resolve => server.close(() => resolve()))
     await closeStore()
@@ -135,9 +151,7 @@ initStore()
       app.use('/transcribe', transcribeRoutes)
     }
     const HOST = process.env.HOST || '127.0.0.1'
-    if (storeMode() !== 'mongo' && HOST !== '127.0.0.1' && HOST !== 'localhost') {
-      throw new Error(`Refusing to bind ${HOST} without Mongo storage (usage caps would be disabled).`)
-    }
+    if (storeMode() !== 'mongo' && HOST !== '127.0.0.1' && HOST !== 'localhost') throw new Error(`Refusing to bind ${HOST} without Mongo storage (usage caps would be disabled).`)
     server = app.listen(PORT, HOST, () => {
       processReady = true
       console.log(`[backend] auth${storeMode() === 'mongo' ? '+managed AI' : ''} API on http://${HOST}:${PORT} (store: ${storeMode()})`)

@@ -1,20 +1,14 @@
-// Single source of truth for the candidate profile stored in localStorage. Was
-// copy-pasted (and had drifted) across Solo / Jobs / LiveCompanion. Shape (all optional):
-// { name, currentRole, targetRole, targetCompany, yearsExp, resume, jobDescription,
-//   language, codingLanguage, location, customPrompt, interviewType, voiceStyle }
+// Single source of truth for the candidate profile stored locally per account.
+import { getScopedItem, setScopedItem } from './accountScope'
+
 export const PROFILE_KEY = 'peerMockProfile'
 
 export function loadProfile() {
-  try { return JSON.parse(localStorage.getItem(PROFILE_KEY)) || {} } catch { return {} }
+  try { return JSON.parse(getScopedItem(PROFILE_KEY, '{}')) || {} } catch { return {} }
 }
 
 export function saveProfile(p) {
-  try {
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(p))
-    return true
-  } catch {
-    return false
-  }
+  try { return setScopedItem(PROFILE_KEY, JSON.stringify(p || {})) } catch { return false }
 }
 
 // Resume tailoring is intentionally recoverable. The base resume is shared by
@@ -58,8 +52,6 @@ export function applyTailorToResume(resume, tailor) {
   }
 
   if (summary) {
-    // Never guess that the first lines are a summary: they are commonly name/contact headers.
-    // Replace only an explicitly labelled Summary/Profile section; otherwise prepend safely.
     const lines = text.split(/\r?\n/)
     const heading = lines.findIndex(l => /^\s*(professional\s+)?(summary|profile)\s*:?\s*$/i.test(l))
     if (heading >= 0) {

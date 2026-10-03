@@ -933,6 +933,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       questionId,
       reason: topicSwitch ? 'topic_switch' : 'new_question',
     })
+    state.setQuestionGeneration?.(questionId, gen.generationId)
     activeGenerationRef.current = gen
     const isCurrent = () => sessionActiveRef.current && gen.canCommit()
 

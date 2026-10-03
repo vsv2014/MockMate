@@ -401,9 +401,11 @@ function createMainWindow() {
   })
 
   if (isProd) {
-    startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(PROD_URL) })
+    startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(isProd ? PROD_URL : DEV_URL) })
   } else {
-    mainWindow.loadURL(DEV_URL)
+    // Dev still uses Vite for UI, but Electron owns the local AI child exactly as production does.
+    // Provider key changes can therefore restart the real service without killing the dev session.
+    startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(DEV_URL) })
   }
 
   mainWindow.on('closed', () => { mainWindow = null; app.quit() })
@@ -592,6 +594,9 @@ function setupAutoUpdate() {
 // Restart & install the downloaded update now (from the toast's "Restart" button).
 ipcMain.handle('install-update', () => {
   if (!autoUpdaterRef) return { ok: false, error: 'Updater is unavailable.' }
+  if (lastWindowMode === 'overlay' || lastWindowMode === 'pill') {
+    return { ok: false, error: 'End the active interview and return Home before installing the update.' }
+  }
   try { autoUpdaterRef.quitAndInstall(); return { ok: true } }
   catch (e) { console.error('[updater]', e?.message); return { ok: false, error: e?.message || 'Install failed.' } }
 })
@@ -1075,7 +1080,7 @@ ipcMain.handle('apply-keys', () => {
     // Prod: forked server read its env at fork time — restart it to pick up new keys.
     try { apiServer.kill() } catch {}
     apiServer = null
-    startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(PROD_URL) })
+    startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(isProd ? PROD_URL : DEV_URL) })
   } else {
     mainWindow.webContents.reload()   // dev: server is separate; just refresh providers
   }
