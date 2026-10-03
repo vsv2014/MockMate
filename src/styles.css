@@ -20,6 +20,70 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 button { font-family: inherit; cursor: pointer; }
 input, select, textarea { font-family: inherit; }
 
+/*
+ * Frameless Electron window movement
+ * ---------------------------------
+ * Let the OS own full-window dragging instead of replaying mouse dx/dy over IPC.
+ * Native draggable regions are smoother, move freely on both axes, behave correctly
+ * across DPI/multi-monitor boundaries, and retain normal Windows/macOS snapping.
+ *
+ * Auth: WindowControls is the first direct div under #mm-auth.
+ * App: the top bar is the first direct div-of-type under .mm-shell (a <style> precedes it).
+ * Live overlay: panel header is the first direct div inside the panel container.
+ *
+ * The collapsed pill intentionally stays JS-dragged because the same surface is also
+ * a click-to-expand button and needs its drag-distance suppression logic.
+ */
+#mm-auth > div:first-child,
+.mm-shell > div:nth-of-type(1),
+#mockmate-overlay > div > div:first-child {
+  -webkit-app-region: drag;
+  cursor: grab !important;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Keep every actual control interactive inside a draggable title/header region. */
+#mm-auth > div:first-child button,
+#mm-auth > div:first-child input,
+#mm-auth > div:first-child select,
+#mm-auth > div:first-child textarea,
+#mm-auth > div:first-child a,
+#mm-auth > div:first-child label,
+.mm-shell > div:nth-of-type(1) button,
+.mm-shell > div:nth-of-type(1) input,
+.mm-shell > div:nth-of-type(1) select,
+.mm-shell > div:nth-of-type(1) textarea,
+.mm-shell > div:nth-of-type(1) a,
+.mm-shell > div:nth-of-type(1) label,
+#mockmate-overlay > div > div:first-child button,
+#mockmate-overlay > div > div:first-child input,
+#mockmate-overlay > div > div:first-child select,
+#mockmate-overlay > div > div:first-child textarea,
+#mockmate-overlay > div > div:first-child a,
+#mockmate-overlay > div > div:first-child label,
+#mockmate-overlay > div > div:first-child [role='button'] {
+  -webkit-app-region: no-drag;
+}
+
+/* A subtle grip makes the draggable affordance discoverable even before the cursor changes. */
+#mm-auth > div:first-child::after,
+.mm-shell > div:nth-of-type(1)::after,
+#mockmate-overlay > div > div:first-child::before {
+  content: '···';
+  color: rgba(255,255,255,0.26);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  line-height: 1;
+  pointer-events: none;
+  -webkit-app-region: drag;
+}
+
+#mm-auth > div:first-child::after { margin-left: 4px; margin-right: 2px; }
+.mm-shell > div:nth-of-type(1)::after { margin-left: 4px; }
+#mockmate-overlay > div > div:first-child::before { margin-right: 2px; }
+
 /* Keyboard focus visibility (a11y) — visible ring only for keyboard users, not mouse clicks. */
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 2px solid #14b8a6; outline-offset: 2px;
