@@ -220,7 +220,7 @@ export function createInterviewState(opts = {}) {
     if (existingTurn) existingTurn.text = q.text
     else {
       speechTurns.push({ id: nid('t'), role: 'interviewer', text: q.text, ts: q.ts, questionId: q.id })
-      if (speechTurns.length > 1000) speechTurns.splice(0, speechTurns.length - 1000)
+      // Keep the full in-session conversation authoritative; final evaluation must not silently drop opening turns.
     }
 
     liveCapture = { text: '', status: 'committed', reason: null }
@@ -249,7 +249,7 @@ export function createInterviewState(opts = {}) {
     if (!t) return null
     const turn = { id: nid('t'), role: 'candidate', text: t, ts: Date.now(), questionId: currentQuestionId }
     speechTurns.push(turn)
-    if (speechTurns.length > 1000) speechTurns.splice(0, speechTurns.length - 1000)
+    // Keep the full in-session conversation authoritative; final evaluation must not silently drop opening turns.
     emit()
     return turn
   }
@@ -287,15 +287,28 @@ export function createInterviewState(opts = {}) {
     return q
   }
 
+  /** Bind the current generation to a question before provider work starts. */
+  function setQuestionGeneration(questionId, generationId) {
+    const q = getQuestion(questionId)
+    if (!q || !generationId) return false
+    q.expectedGenerationId = String(generationId)
+    emit()
+    return true
+  }
+
   /**
-   * Commit an answer only for the matching question. Does NOT push AI text into speechTurns.
+   * Commit an answer only for the matching question AND authoritative generation.
+   * Does NOT push AI text into speechTurns.
    */
   function commitAnswer({ questionId, generationId, text, hint = null, validation = null, incomplete = false } = {}) {
     const q = getQuestion(questionId)
     if (!q) return null
     if (!['committed', 'pending', 'answered'].includes(q.status)) return null
+    if (q.expectedGenerationId && String(generationId || '') !== q.expectedGenerationId) return null
+    if (q.committedGenerationId && String(generationId || '') !== q.committedGenerationId) return null
     q.status = incomplete ? 'failed' : 'answered'
     q.answeredAt = Date.now()
+    if (generationId) q.committedGenerationId = String(generationId)
     lastAnswer = {
       questionId,
       generationId,
@@ -430,6 +443,7 @@ export function createInterviewState(opts = {}) {
     recordCandidate,
     setContextDecision,
     attachClassification,
+    setQuestionGeneration,
     commitAnswer,
     markQuestionFailed,
     markQuestionCancelled,
