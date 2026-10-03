@@ -1,29 +1,31 @@
 // MockMate design-system tokens — the single source of truth for every surface.
-// Matches the MM_PROMPT visual language. Change colors/radii HERE only.
+// Desktop v1.5 visual pass: keep the dark, focused character without collapsing
+// large empty areas into pure black. Surfaces are intentionally close in value so
+// the UI reads as one calm workspace instead of stacked boxes.
 
 export const T = {
   // Surfaces
-  bg: '#08080C',
-  surface1: '#111217',
-  surface2: '#16171C',
+  bg: '#0B0D12',
+  surface1: '#12151B',
+  surface2: '#181B22',
 
   // Borders
-  border: 'rgba(255,255,255,0.07)',
-  borderStrong: 'rgba(255,255,255,0.12)',
+  border: 'rgba(255,255,255,0.075)',
+  borderStrong: 'rgba(255,255,255,0.13)',
 
   // Text
-  text1: '#E8E8EC',
-  text2: '#8A8A8E',
-  text3: '#71717A',
+  text1: '#EEF0F3',
+  text2: '#9A9FA9',
+  text3: '#737985',
 
   // Accent — teal primary + emerald (MockMate's original feel)
   accent: 'linear-gradient(135deg, #14B8A6, #10B981)',
   accentFrom: '#14B8A6',
   accentTo: '#10B981',
-  accentGlow: 'rgba(20,184,166,0.45)',
+  accentGlow: 'rgba(20,184,166,0.36)',
 
   // Brand wordmark / metallic text
-  chrome: 'linear-gradient(180deg, #e8edf2 0%, #9aa3ad 100%)',
+  chrome: 'linear-gradient(180deg, #F1F4F7 0%, #A7AFB9 100%)',
 
   // Status
   success: '#10B981',
