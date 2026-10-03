@@ -1,0 +1,31 @@
+1
+00:00:00,000 --> 00:00:02,700
+Interview coming up?
+
+2
+00:00:02,700 --> 00:00:04,700
+Don't leave prep to luck.
+
+3
+00:00:04,700 --> 00:00:08,900
+MockMate Solo Practice gives you
+role-focused questions,
+
+4
+00:00:08,900 --> 00:00:12,600
+realistic follow-ups, and feedback
+on how you communicate.
+
+5
+00:00:12,600 --> 00:00:16,700
+Rehearse with your real experience,
+
+6
+00:00:16,700 --> 00:00:20,500
+spot what to improve, and go into
+the conversation with a plan.
+
+7
+00:00:20,500 --> 00:00:23,200
+Get MockMate for desktop from the
+official GitHub releases page.
