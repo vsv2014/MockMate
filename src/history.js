@@ -1,8 +1,10 @@
 // Local session history for Solo/Live Practice — stored only on this machine per account.
-import { getScopedItem, setScopedItem } from './lib/accountScope'
+import { getScopedItem, setScopedItem, removeScopedItem } from './lib/accountScope'
 
 const KEY = 'mm-sessions'
+const SOLO_DRAFT_KEY = 'mm-solo-draft'
 const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000
+const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const MAX_SESSIONS = 60
 
 function writeSessions(items) {
@@ -15,12 +17,51 @@ export function loadSessions() {
     if (!Array.isArray(arr)) return []
     const cutoff = Date.now() - MAX_AGE_MS
     const kept = arr.filter(s => s && s.ts && s.ts >= cutoff).sort((a, b) => b.ts - a.ts).slice(0, MAX_SESSIONS)
-    if (kept.length !== arr.length) {
-      try { writeSessions(kept) } catch {}
-    }
+    if (kept.length !== arr.length) { try { writeSessions(kept) } catch {} }
     return kept
   } catch { return [] }
 }
+
+export function saveSoloDraft(draft = {}) {
+  try {
+    const row = {
+      version: 1,
+      savedAt: Date.now(),
+      sessionId: String(draft.sessionId || ''),
+      transcript: Array.isArray(draft.transcript) ? draft.transcript.slice(-300) : [],
+      answer: String(draft.answer || '').slice(0, 12000),
+      practiceQ: String(draft.practiceQ || '').slice(0, 8000),
+      currentQuestion: Math.max(0, Number(draft.currentQuestion) || 0),
+      elapsedMs: Math.max(0, Number(draft.elapsedMs) || 0),
+      profile: draft.profile && typeof draft.profile === 'object' ? {
+        name: draft.profile.name || '', targetRole: draft.profile.targetRole || '', targetCompany: draft.profile.targetCompany || '',
+        yearsExp: draft.profile.yearsExp || '', language: draft.profile.language || 'English', resume: draft.profile.resume || '',
+        jobDescription: draft.profile.jobDescription || '', customPrompt: draft.profile.customPrompt || '', interviewType: draft.profile.interviewType || '',
+        voiceStyle: draft.profile.voiceStyle || '',
+      } : {},
+      interviewConfig: draft.interviewConfig && typeof draft.interviewConfig === 'object' ? draft.interviewConfig : null,
+      interviewType: draft.interviewType || 'Technical', voiceStyle: draft.voiceStyle || 'Professional',
+      followupDepth: draft.followupDepth || 'normal', relentless: !!draft.relentless, tts: draft.tts !== false,
+    }
+    if (!setScopedItem(SOLO_DRAFT_KEY, JSON.stringify(row))) return false
+    return true
+  } catch { return false }
+}
+
+export function loadSoloDraft() {
+  try {
+    const raw = getScopedItem(SOLO_DRAFT_KEY, '')
+    if (!raw) return null
+    const row = JSON.parse(raw)
+    if (!row || !row.savedAt || Date.now() - row.savedAt > DRAFT_MAX_AGE_MS || !Array.isArray(row.transcript)) {
+      removeScopedItem(SOLO_DRAFT_KEY)
+      return null
+    }
+    return row
+  } catch { return null }
+}
+
+export function clearSoloDraft() { return removeScopedItem(SOLO_DRAFT_KEY) }
 
 function newSessionId(ts) {
   try { if (globalThis.crypto?.randomUUID) return `s_${globalThis.crypto.randomUUID()}` } catch {}
