@@ -5,6 +5,7 @@ import { apiFetch } from './apiClient'
 import { chunkText, topK, groundingBlock } from '../../shared/retrieval.js'
 import { getDocThreshold } from './aiSettings'
 import { diagnostic } from './diagnostics'
+import { getScopedItem, setScopedItem } from './accountScope'
 
 const KEY = 'mm-docs'
 export const MAX_INDEX_CHUNKS_PER_DOC = 40
@@ -17,13 +18,13 @@ export function sampleChunksForIndex(chunks, max = MAX_INDEX_CHUNKS_PER_DOC) {
 }
 
 const save = d => {
-  try { localStorage.setItem(KEY, JSON.stringify(d)); return true }
+  try { return setScopedItem(KEY, JSON.stringify(d)) }
   catch { return false }
 }
 
 const load = () => {
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || '[]')
+    const raw = JSON.parse(getScopedItem(KEY, '[]') || '[]')
     if (!Array.isArray(raw)) return []
     let dirty = false
     const docs = raw.map(d => {
@@ -79,8 +80,6 @@ export function setDocSelected(id, selected) {
 export function setDocType(id, type) {
   const docs = load(); const i = docs.findIndex(d => d.id === id)
   if (i < 0) return null
-  // Reclassification must never silently delete another resume/JD. Multiple versions are allowed;
-  // callers can explicitly remove the old one after reviewing both.
   docs[i] = { ...docs[i], type: normalizeDocType(type) }
   indexCache.delete(id)
   return save(docs) ? toMeta(docs[i]) : null
@@ -91,9 +90,6 @@ function inferredSource(name, source) {
   return /\(pasted\)/i.test(String(name || '')) ? 'profile' : 'upload'
 }
 
-// Resume/JD profile sync is intentionally conservative: it may update a previous profile-derived
-// entry, but it never overwrites a separately uploaded resume/JD. This prevents Start from replacing
-// a newer library file with stale profile text.
 export function addDoc({ name, type = 'document', text, selected = true, source } = {}) {
   if (!text || !String(text).trim()) return null
   const docs = load(); const body = String(text); const t = normalizeDocType(type); const src = inferredSource(name, source)
@@ -123,8 +119,6 @@ export function removeDoc(id) {
   return ok
 }
 
-// Full-content rolling hash. Unlike the previous length + three-sample signature, any edit anywhere
-// in a document invalidates its vector cache.
 export function documentSignature(text = '') {
   const s = String(text)
   let a = 2166136261, b = 2246822519
@@ -136,8 +130,8 @@ export function documentSignature(text = '') {
   return `${s.length}:${a.toString(36)}:${b.toString(36)}`
 }
 
-const indexCache = new Map()   // docId → { sig, dimensions, chunks:[{text,vector}] }
-const indexInFlight = new Map() // docId → Promise, avoids duplicate embedding spend on concurrent warm/retrieve
+const indexCache = new Map()
+const indexInFlight = new Map()
 
 async function embed(texts, signal) {
   const startedAt = performance.now(); const inputCount = Array.isArray(texts) ? texts.length : 0
@@ -202,7 +196,6 @@ export async function retrieveContext(question, { k = 4, minScore, budgetMs = 20
   diagnostic('rag', 'retrieval_started', { documentCount: docs.length, requestedK: k, threshold, budgetMs })
   const timeout = new Promise(resolve => { timeoutId = setTimeout(() => { ac.abort(new DOMException('RAG deadline exceeded', 'AbortError')); diagnostic('rag', 'retrieval_timed_out', { documentCount: docs.length, budgetMs, durationMs: Math.round(performance.now() - startedAt) }, 'warn'); resolve('') }, budgetMs) })
   const work = (async () => {
-    // Embed the query first; if an old cache has another vector dimension, rebuild it once before scoring.
     const [qv] = await embed([question], ac.signal)
     if (!qv?.length) return ''
     let items = await ensureIndexed(docs, { signal: ac.signal })

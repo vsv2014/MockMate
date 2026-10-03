@@ -1,5 +1,4 @@
 // Production-safe local diagnostics. JSONL, buffered, rotated, and aggressively redacted.
-// This module must never throw into an interview/audio path.
 const fs = require('fs')
 const path = require('path')
 
@@ -31,11 +30,12 @@ class DiagnosticStore {
     this.file = path.join(this.dir, 'diagnostics.jsonl')
     this.queue = []
     this.flushing = false
-    this.clearRequested = false
     this.base = { appVersion, platform, arch, pid: process.pid }
     try { fs.mkdirSync(this.dir, { recursive: true }) } catch {}
     this.timer = setInterval(() => this.flush(), 500)
     this.timer.unref?.()
+    this.exitHandler = () => { try { this.flushSync() } catch {} }
+    process.once('exit', this.exitHandler)
   }
 
   event(component, event, fields = {}, level = 'info') {
@@ -57,7 +57,7 @@ class DiagnosticStore {
     }
   }
 
-  async rotate(incomingBytes = 0) {
+  rotateSync(incomingBytes = 0) {
     try {
       const size = fs.existsSync(this.file) ? fs.statSync(this.file).size : 0
       if (size + incomingBytes < MAX_FILE_BYTES) return
@@ -72,8 +72,10 @@ class DiagnosticStore {
     } catch {}
   }
 
+  async rotate(incomingBytes = 0) { this.rotateSync(incomingBytes) }
+
   async flush() {
-    if (this.flushing || !this.queue.length || this.clearRequested) return
+    if (this.flushing || !this.queue.length) return
     this.flushing = true
     const lines = this.queue.splice(0, 300)
     const chunk = lines.join('\n') + '\n'
@@ -86,30 +88,38 @@ class DiagnosticStore {
       if (this.queue.length > MAX_QUEUE) this.queue.length = MAX_QUEUE
     } finally {
       this.flushing = false
-      if (this.queue.length && !this.clearRequested) setImmediate(() => this.flush())
+      if (this.queue.length) setImmediate(() => this.flush())
     }
   }
 
-  async drain() {
-    while (this.queue.length || this.flushing) {
-      if (!this.flushing) await this.flush()
-      if (this.flushing || this.queue.length) await new Promise(resolve => setTimeout(resolve, 10))
+  flushSync() {
+    if (!this.queue.length) return
+    const lines = this.queue.splice(0, this.queue.length)
+    const chunk = lines.join('\n') + '\n'
+    try {
+      fs.mkdirSync(this.dir, { recursive: true })
+      this.rotateSync(Buffer.byteLength(chunk))
+      fs.appendFileSync(this.file, chunk, { mode: 0o600 })
+    } catch {
+      this.queue.unshift(...lines)
+      if (this.queue.length > MAX_QUEUE) this.queue.length = MAX_QUEUE
     }
   }
 
   async clear() {
-    this.clearRequested = true
     while (this.flushing) await new Promise(resolve => setTimeout(resolve, 10))
     this.queue = []
     for (let i = 0; i < MAX_FILES; i++) {
       const f = i === 0 ? this.file : `${this.file}.${i}`
       try { await fs.promises.unlink(f) } catch {}
     }
-    this.clearRequested = false
   }
 
   async exportTo(destination) {
-    await this.drain()
+    while (this.queue.length || this.flushing) {
+      await this.flush()
+      if (this.flushing) await new Promise(resolve => setTimeout(resolve, 10))
+    }
     const files = []
     for (let i = MAX_FILES - 1; i >= 0; i--) {
       const f = i === 0 ? this.file : `${this.file}.${i}`
@@ -127,7 +137,12 @@ class DiagnosticStore {
     return { path: destination, files: files.length }
   }
 
-  async close() { clearInterval(this.timer); await this.drain() }
+  async close() {
+    clearInterval(this.timer)
+    process.removeListener('exit', this.exitHandler)
+    await this.flush()
+    this.flushSync()
+  }
 }
 
 module.exports = { DiagnosticStore, clean }

@@ -1,6 +1,7 @@
 // Single API wrapper for the auth/SaaS backend. Every authenticated call goes
 // through here — token attachment, JSON handling, and 401 handling live in ONE place.
 import { diagnostic, createDiagnosticRequestId } from '../lib/diagnostics'
+import { setActiveAccountScope, clearActiveAccountScope } from '../lib/accountScope'
 
 const electronAuth = typeof window !== 'undefined' ? window.electronAPI?.auth : null
 const API_BASE =
@@ -35,6 +36,7 @@ export function setUnauthorizedHandler(fn) { onUnauthorized = fn || (() => {}) }
 export async function handleUnauthorized(source = 'api') {
   diagnostic('auth', 'session_unauthorized', { source }, 'warn')
   try { await clearToken() } catch {}
+  clearActiveAccountScope()
   try { onUnauthorized() } catch {}
 }
 
@@ -89,22 +91,36 @@ export class ApiError extends Error {
   constructor(message, status) { super(message); this.name = 'ApiError'; this.status = status }
 }
 
+function rememberUser(user) { if (user?.id) setActiveAccountScope(user.id); return user }
+
 export async function forgotPassword(email) { return request('/auth/forgot-password', { method: 'POST', body: { email } }) }
 export async function signup({ name, email, password }) {
   const { token, user } = await request('/auth/signup', { method: 'POST', body: { name, email, password } })
   await setToken(token)
-  return user
+  return rememberUser(user)
 }
 export async function login({ email, password }) {
   const { token, user } = await request('/auth/login', { method: 'POST', body: { email, password } })
   await setToken(token)
-  return user
+  return rememberUser(user)
 }
-export async function fetchMe() { return request('/auth/me', { auth: true }) }
-export async function updateProfile(patch) { const { user } = await request('/me', { method: 'PATCH', body: patch, auth: true }); return user }
+export async function fetchMe() {
+  const payload = await request('/auth/me', { auth: true })
+  rememberUser(payload?.user)
+  return payload
+}
+export async function updateProfile(patch) { const { user } = await request('/me', { method: 'PATCH', body: patch, auth: true }); return rememberUser(user) }
 export async function logout() {
   try { await request('/auth/logout', { method: 'POST', auth: true }) } catch {}
   await clearToken()
+  clearActiveAccountScope()
+}
+export async function deleteAccount() {
+  await request('/me', { method: 'DELETE', auth: true, timeoutMs: 30000 })
+  await clearToken()
+  clearActiveAccountScope()
+  try { onUnauthorized() } catch {}
+  return true
 }
 export async function refreshSession() {
   const { token } = await request('/auth/refresh', { method: 'POST', auth: true })

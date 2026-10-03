@@ -1,4 +1,4 @@
-// Local Live-session metrics. No transcript / resume / answer text — timings,
+// Local Live-session metrics (Phase 6). No transcript / resume / answer text — timings,
 // counters, and opaque error codes only. Persisted via Electron IPC → userData JSONL.
 import { diagnostic, setDiagnosticContext, clearDiagnosticContext } from './diagnostics'
 const SENSITIVE = /resume|transcript|answer|question|prompt|sample|fullAnswer|text|content|say/i
@@ -21,8 +21,9 @@ export function createSessionMetrics(kind = 'live') {
   const startedAt = Date.now()
   const counters = {
     hints: 0, ttftMs: [], sttReconnects: 0,
-    transportFallbacks: 0, providerFailovers: 0, incompleteStreams: 0, skips: 0,
-    userVisibleErrors: 0, providerAttemptFailures: 0, providerTimeouts: 0, providerCancellations: 0,
+    transportFallbacks: 0, providerFallbacks: 0,
+    incompleteStreams: 0, skips: 0, userVisibleErrors: 0,
+    providerAttemptFailures: 0, providerTimeouts: 0, providerCancellations: 0,
   }
   let flushed = false
   setDiagnosticContext({ sessionId, sessionKind: kind })
@@ -33,6 +34,7 @@ export function createSessionMetrics(kind = 'live') {
     diagnostic('session', type, row)
     return row
   }
+
   function startHint() { return { t0: performance.now(), firstTokenAt: null } }
   function markFirstToken(hintState) {
     if (!hintState || hintState.firstTokenAt != null) return
@@ -40,6 +42,7 @@ export function createSessionMetrics(kind = 'live') {
     const ms = Math.round(hintState.firstTokenAt - hintState.t0)
     counters.ttftMs.push(ms); counters.hints += 1; event('ttft', { ms })
   }
+
   function markFallback() { counters.transportFallbacks += 1; event('stream_fallback') }
   function markIncomplete() { counters.incompleteStreams += 1; event('incomplete_stream') }
   function markSkip() { counters.skips += 1; event('skip') }
@@ -47,12 +50,11 @@ export function createSessionMetrics(kind = 'live') {
   function markProviderEvent(payload = {}) {
     const type = String(payload.type || '')
     if (type === 'started' && Number(payload.attemptIndex) > 0) {
-      counters.providerFailovers += 1
+      counters.providerFallbacks += 1
       event('provider_fallback', { attemptIndex: payload.attemptIndex, provider: payload.provider })
     } else if (type === 'failed' || type === 'timed_out') {
       counters.providerAttemptFailures += 1
       if (type === 'timed_out') counters.providerTimeouts += 1
-      // A failed attempt that successfully fails over is provider telemetry, not a user-visible error.
       event(`provider_${type}`, { attemptIndex: payload.attemptIndex, provider: payload.provider, status: payload.status, emitted: payload.emitted })
     } else if (type === 'cancelled') {
       counters.providerCancellations += 1
@@ -67,6 +69,7 @@ export function createSessionMetrics(kind = 'live') {
     if (diarizationLocked) counters.diarizedSttFinals = (counters.diarizedSttFinals || 0) + 1
     event('stt_final', { confidence, degraded, diarizationLocked })
   }
+
   function markQuestionCapture(payload = {}) {
     counters.questionCommits = (counters.questionCommits || 0) + 1
     if (payload.captureLatencyMs != null) { counters.timeToCommitMs = counters.timeToCommitMs || []; counters.timeToCommitMs.push(Number(payload.captureLatencyMs)) }
@@ -76,16 +79,22 @@ export function createSessionMetrics(kind = 'live') {
   function markGenerationCancelled() { counters.cancelledGenerations = (counters.cancelledGenerations || 0) + 1; event('generation_cancelled') }
 
   function summary() {
-    const ttft = counters.ttftMs; const sorted = [...ttft].sort((a, b) => a - b)
-    const p95 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)] : null
-    const ttc = counters.timeToCommitMs || []; const sttConfidence = counters.sttConfidence || []
+    const ttft = counters.ttftMs
+    const sorted = [...ttft].sort((a, b) => a - b)
+    const p95 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] : null
+    const ttc = counters.timeToCommitMs || []
+    const sttConfidence = counters.sttConfidence || []
     return sanitizeMetric({
-      sessionId, kind, durationMs: Date.now() - startedAt, hints: counters.hints,
-      ttftCount: ttft.length, ttftAvgMs: ttft.length ? Math.round(ttft.reduce((a, b) => a + b, 0) / ttft.length) : null, ttftP95Ms: p95,
-      sttReconnects: counters.sttReconnects, transportFallbacks: counters.transportFallbacks, providerFailovers: counters.providerFailovers,
-      incompleteStreams: counters.incompleteStreams, skips: counters.skips, errors: counters.userVisibleErrors,
-      providerAttemptFailures: counters.providerAttemptFailures, providerTimeouts: counters.providerTimeouts, providerCancellations: counters.providerCancellations,
-      questionCommits: counters.questionCommits || 0, questionRejects: counters.questionRejects || 0, cancelledGenerations: counters.cancelledGenerations || 0,
+      sessionId, kind, durationMs: Date.now() - startedAt,
+      hints: counters.hints, ttftCount: ttft.length,
+      ttftAvgMs: ttft.length ? Math.round(ttft.reduce((a, b) => a + b, 0) / ttft.length) : null,
+      ttftP95Ms: p95, sttReconnects: counters.sttReconnects,
+      streamFallbacks: counters.transportFallbacks, providerFallbacks: counters.providerFallbacks,
+      incompleteStreams: counters.incompleteStreams, skips: counters.skips,
+      errors: counters.userVisibleErrors, providerAttemptFailures: counters.providerAttemptFailures,
+      providerTimeouts: counters.providerTimeouts, providerCancellations: counters.providerCancellations,
+      questionCommits: counters.questionCommits || 0, questionRejects: counters.questionRejects || 0,
+      cancelledGenerations: counters.cancelledGenerations || 0,
       avgTimeToCommitMs: ttc.length ? Math.round(ttc.reduce((a, b) => a + b, 0) / ttc.length) : null,
       sttFinals: counters.sttFinals || 0,
       avgSttConfidence: sttConfidence.length ? Number((sttConfidence.reduce((a, b) => a + b, 0) / sttConfidence.length).toFixed(3)) : null,
@@ -99,7 +108,7 @@ export function createSessionMetrics(kind = 'live') {
     const row = { ...summary(), ...sanitizeMetric(extra), type: 'session_end' }
     try { window.electronAPI?.appendSessionMetrics?.(row) } catch {}
     diagnostic('session', 'session_end', row)
-    clearDiagnosticContext(['sessionId', 'sessionKind'])
+    clearDiagnosticContext('sessionId', 'sessionKind')
     return row
   }
 

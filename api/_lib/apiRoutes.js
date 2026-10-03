@@ -18,12 +18,39 @@ export const API_ROUTE_CONTRACT = [
   { method: 'POST', path: '/api/resume-latex' }, { method: 'POST', path: '/api/hint-stream' },
 ]
 
+const OPERATION_BY_PATH = {
+  '/api/interview': 'interview',
+  '/api/hint': 'hint',
+  '/api/hint-stream': 'hint',
+  '/api/evaluate': 'evaluate',
+  '/api/report': 'evaluate',
+  '/api/analyze-screen': 'screen',
+  '/api/jobs': 'career',
+  '/api/ats-score': 'career',
+  '/api/tailor-resume': 'career',
+  '/api/referral': 'career',
+  '/api/resume-latex': 'career',
+}
+const STRATEGY_BY_LANE = { fast: 'fast', balanced: 'balanced', strong: 'quality', vision: 'quality' }
+
 export function registerApiRoutes(app, opts = {}) {
   const guard = opts.auth ? [].concat(opts.auth) : []
   const guardLight = opts.authLight ? [].concat(opts.authLight) : guard
   const report = typeof opts.report === 'function' ? opts.report : () => {}
   const onLlm = typeof opts.onLlm === 'function' ? opts.onLlm : null
   const onLlmFailure = typeof opts.onLlmFailure === 'function' ? opts.onLlmFailure : null
+  const resolveReasoningPolicy = typeof opts.reasoningPolicy === 'function' ? opts.reasoningPolicy : null
+
+  const bodyWithPolicy = (path, raw = {}) => {
+    const body = { ...(raw || {}) }
+    if (!resolveReasoningPolicy) return body
+    const policy = resolveReasoningPolicy(OPERATION_BY_PATH[path] || 'default')
+    if (!policy) return body
+    body.archPolicy = { lane: policy.lane, noDoubleRetry: policy.noDoubleRetry === true }
+    const strategy = STRATEGY_BY_LANE[policy.lane]
+    if (strategy && !body.profile?.modelStrategy) body.profile = { ...(body.profile || {}), modelStrategy: strategy }
+    return body
+  }
 
   app.get('/api/providers', ...guardLight, (req, res) => res.json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured() }))
   app.get('/api/models', ...guardLight, async (req, res) => {
@@ -41,26 +68,37 @@ export function registerApiRoutes(app, opts = {}) {
   })
 
   app.post('/api/token', ...guardLight, async (req, res) => {
-    try { res.json(await mintToken(req.body || {})) }
+    try { res.json(await mintToken({ ...(req.body || {}), requesterId: req.userId || null })) }
     catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
   })
 
-  app.post('/api/embed', ...guardLight, async (req, res) => {
+  // Embeddings consume a provider request too. Managed deployments use the full guard so document
+  // indexing/retrieval cannot become an unlimited paid-provider side channel.
+  app.post('/api/embed', ...guard, async (req, res) => {
     try {
       const raw = (req.body || {}).input
       const input = (Array.isArray(raw) ? raw : [raw]).filter(Boolean)
       if (input.length > 64) return res.status(413).json({ error: 'Too many embedding inputs in one request.' })
-      res.json({ vectors: await embed(input) })
-    } catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
+      const vectors = await embed(input)
+      if (onLlm) { try { await onLlm(req, '/api/embed') } catch {} }
+      res.json({ vectors })
+    } catch (e) {
+      if (onLlmFailure) { try { await onLlmFailure(req, '/api/embed') } catch {} }
+      report(e); res.status(e.status || 500).json({ error: e.message })
+    }
   })
 
   const post = (path, fn, key) => app.post(path, ...guard, async (req, res) => {
+    const ac = new AbortController()
+    let closed = false
+    res.on('close', () => { closed = true; try { ac.abort(new Error('client_disconnected')) } catch {} })
     try {
-      const out = await fn(req.body || {})
+      const out = await fn({ ...bodyWithPolicy(path, req.body || {}), signal: ac.signal })
       if (onLlm) { try { await onLlm(req, path) } catch {} }
-      res.json(key ? { [key]: out } : out)
+      if (!closed) res.json(key ? { [key]: out } : out)
     } catch (e) {
       if (onLlmFailure) { try { await onLlmFailure(req, path) } catch {} }
+      if (closed || ac.signal.aborted || e?.name === 'AbortError') return
       report(e)
       console.error(`[api] POST ${path} → ${e.status || 500}: ${e.message}`)
       res.status(e.status || 500).json({ error: e.message })
@@ -76,7 +114,7 @@ export function registerApiRoutes(app, opts = {}) {
     const ac = new AbortController()
     res.on('close', () => { try { ac.abort() } catch {} })
     try {
-      const out = await analyzeScreen({ ...(req.body || {}), signal: ac.signal })
+      const out = await analyzeScreen({ ...bodyWithPolicy('/api/analyze-screen', req.body || {}), signal: ac.signal })
       if (onLlm) { try { await onLlm(req, '/api/analyze-screen') } catch {} }
       if (!ac.signal.aborted) res.json({ analysis: out })
     } catch (e) {
@@ -118,7 +156,7 @@ export function registerApiRoutes(app, opts = {}) {
     }
 
     try {
-      const out = await streamHint(req.body || {}, {
+      const out = await streamHint(bodyWithPolicy('/api/hint-stream', req.body || {}), {
         onMeta: m => send('meta', m),
         onToken: t => { emittedToken = true; send('token', t) },
         onUsage: u => send('usage', u),
@@ -129,8 +167,6 @@ export function registerApiRoutes(app, opts = {}) {
       else await consumeReservation()
       send(out?.skipped ? 'skip' : 'done', {})
     } catch (e) {
-      // Once upstream inference has started (especially after a token reached the user),
-      // a client disconnect must not refund the quota reservation while provider cost was spent.
       if (emittedToken || providerStarted) await consumeReservation()
       else await releaseReservation()
       if (!closed && !ac.signal.aborted && e?.name !== 'AbortError') {

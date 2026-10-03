@@ -15,7 +15,7 @@ export default class ErrorBoundary extends React.Component {
       <div style={{ padding: 20, color: '#E8E8EC', fontFamily: "'Kanit', system-ui, -apple-system, sans-serif", maxWidth: 420, background: '#08080C' }}>
         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>⚠ Something broke</div>
         <div style={{ fontSize: 12, color: '#8A8A8E', lineHeight: 1.6, marginBottom: 10 }}>
-          The overlay hit an unexpected error. Your API keys and saved sessions are safe — reloading usually fixes it.
+          The overlay hit an unexpected error. Your saved sessions and settings remain on this device. If an interview was still in progress, unsaved turns may be lost when you reload.
         </div>
         {this.state.err && (
           <pre style={{ fontSize: 11, color: '#fca5a5', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 8, padding: '10px 12px', marginBottom: 14, maxWidth: 560, whiteSpace: 'pre-wrap', overflowX: 'auto' }}>

@@ -8,13 +8,11 @@ import * as Sentry from '@sentry/node'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { registerApiRoutes } from './api/_lib/apiRoutes.js'
+import { reasoningPolicy } from './backend/src/arch.js'
 import { CODE_RUNNER_WORKER_CSP } from './shared/codeRunnerPolicy.js'
 
 if (process.env.SENTRY_DSN) {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN, sendDefaultPii: false,
-    beforeSend(event) { if (event.request) delete event.request.data; return event },
-  })
+  Sentry.init({ dsn: process.env.SENTRY_DSN, sendDefaultPii: false, beforeSend(event) { if (event.request) delete event.request.data; return event } })
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -42,7 +40,6 @@ app.use(helmet({
       imgSrc: ["'self'", 'data:', 'blob:'],
       connectSrc: [
         "'self'",
-        // Auth backend fork only — do not trust every service on every localhost port.
         'http://localhost:4000', 'http://127.0.0.1:4000',
         ...(backendOrigin ? [backendOrigin] : []),
         'wss://api.deepgram.com', 'https://*.sentry.io', 'https://*.ingest.sentry.io', 'https://*.ingest.us.sentry.io',
@@ -61,11 +58,7 @@ app.get('/code-runner-worker.js', (_req, res) => {
   res.sendFile(path.join(distDir, 'code-runner-worker.js'))
 })
 
-app.use(cors({
-  origin(origin, cb) { localOriginAllowed(origin) ? cb(null, true) : cb(new Error('Origin not allowed by MockMate local API')) },
-}))
-// CORS alone protects response reading, not side effects. Reject foreign browser
-// origins before /api handlers so another localhost web app cannot spend BYOK keys.
+app.use(cors({ origin(origin, cb) { localOriginAllowed(origin) ? cb(null, true) : cb(new Error('Origin not allowed by MockMate local API')) } }))
 app.use('/api', (req, res, next) => {
   const origin = req.get('Origin')
   if (!localOriginAllowed(origin)) return res.status(403).json({ error: 'This local API is only available to the MockMate renderer.' })
@@ -75,7 +68,7 @@ app.use(express.json({ limit: '2mb' }))
 app.use('/api', rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }))
 
 const report = e => { if (process.env.SENTRY_DSN && (!e?.status || e.status >= 500)) Sentry.captureException(e) }
-registerApiRoutes(app, { report })
+registerApiRoutes(app, { report, reasoningPolicy })
 
 app.use(express.static(distDir))
 app.use((req, res, next) => {

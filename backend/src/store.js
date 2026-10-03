@@ -21,6 +21,12 @@ export function toSafeUser(u) {
   }
 }
 
+function duplicateUserError() {
+  const error = new Error('An account with this email already exists')
+  error.code = 'USER_EXISTS'; error.status = 409
+  return error
+}
+
 function makeFileBackend() {
   const dir = process.env.MOCKMATE_DATA_DIR || path.join(process.cwd(), '.data')
   const file = path.join(dir, 'auth-db.json')
@@ -30,10 +36,8 @@ function makeFileBackend() {
   function load() {
     fs.mkdirSync(dir, { recursive: true })
     if (!fs.existsSync(file)) return
-    try {
-      db = JSON.parse(fs.readFileSync(file, 'utf8'))
-    } catch (error) {
-      // Never overwrite the only copy of a corrupt DB. Preserve it for recovery first.
+    try { db = JSON.parse(fs.readFileSync(file, 'utf8')) }
+    catch (error) {
       const backup = path.join(dir, `auth-db.corrupt.${Date.now()}.json`)
       try { fs.copyFileSync(file, backup) } catch {}
       console.error(`[store] load failed; preserved corrupt DB at ${backup}:`, error.message)
@@ -50,10 +54,7 @@ function makeFileBackend() {
       fs.writeFileSync(tmp, JSON.stringify(db, null, 2))
       fs.renameSync(tmp, file)
     })
-    return writeChain.catch(error => {
-      console.error('[store] persist failed:', error.message)
-      throw error
-    })
+    return writeChain.catch(error => { console.error('[store] persist failed:', error.message); throw error })
   }
 
   load()
@@ -68,44 +69,41 @@ function makeFileBackend() {
     async findUserByResetToken(hash) { return db.users.find(u => u.resetTokenHash && u.resetTokenHash === hash) || null },
     async findUserByStripeCustomerId(cid) { return db.users.find(u => u.stripeCustomerId && u.stripeCustomerId === cid) || null },
     async createUser(doc) {
+      const email = (doc.email || '').toLowerCase()
+      // File mode has no DB unique index, so serialize the uniqueness check with writes.
+      await writeChain.catch(() => {})
+      if (db.users.some(u => u.email === email)) throw duplicateUserError()
       const now = new Date().toISOString()
       const user = {
-        id: crypto.randomUUID(), email: (doc.email || '').toLowerCase(), passwordHash: doc.passwordHash || null,
+        id: crypto.randomUUID(), email, passwordHash: doc.passwordHash || null,
         googleId: doc.googleId || null, name: doc.name || '', plan: 'free', currentRole: doc.currentRole || '',
         targetRole: doc.targetRole || '', yearsExp: doc.yearsExp || '', language: doc.language || 'English',
         resume: doc.resume || '', preferences: doc.preferences || {}, stripeCustomerId: null, planExpiry: null,
         resetTokenHash: null, resetTokenExp: null, tokenVersion: 0, createdAt: now, lastLogin: doc.lastLogin || null,
       }
       db.users.push(user)
-      await persist()
+      try { await persist() } catch (error) { db.users = db.users.filter(u => u.id !== user.id); throw error }
       return user
     },
     async updateUser(id, patch) {
-      const u = db.users.find(x => String(x.id) === String(id))
-      if (!u) return null
-      Object.assign(u, patch)
-      await persist()
-      return u
+      const u = db.users.find(x => String(x.id) === String(id)); if (!u) return null
+      const before = { ...u }; Object.assign(u, patch)
+      try { await persist(); return u } catch (error) { Object.assign(u, before); throw error }
     },
     async deleteUser(id) {
-      const before = db.users.length
-      db.users = db.users.filter(u => String(u.id) !== String(id))
-      db.usage = db.usage.filter(r => String(r.userId) !== String(id))
-      if (db.users.length === before) return false
-      await persist()
-      return true
+      const usersBefore = db.users; const usageBefore = db.usage
+      const nextUsers = db.users.filter(u => String(u.id) !== String(id))
+      if (nextUsers.length === db.users.length) return false
+      db.users = nextUsers; db.usage = db.usage.filter(r => String(r.userId) !== String(id))
+      try { await persist(); return true } catch (error) { db.users = usersBefore; db.usage = usageBefore; throw error }
     },
-    async getUsage(userId, period) {
-      return db.usage.find(r => String(r.userId) === String(userId) && r.period === period)
-        || { userId: String(userId), period, llmCalls: 0, sttSeconds: 0 }
-    },
+    async getUsage(userId, period) { return db.usage.find(r => String(r.userId) === String(userId) && r.period === period) || { userId: String(userId), period, llmCalls: 0, sttSeconds: 0 } },
     async addUsage(userId, period, { llmCalls = 0, sttSeconds = 0 }) {
       let r = db.usage.find(x => String(x.userId) === String(userId) && x.period === period)
       if (!r) { r = { userId: String(userId), period, llmCalls: 0, sttSeconds: 0 }; db.usage.push(r) }
-      r.llmCalls += llmCalls
-      r.sttSeconds += sttSeconds
-      await persist()
-      return r
+      const before = { llmCalls: r.llmCalls, sttSeconds: r.sttSeconds }
+      r.llmCalls += llmCalls; r.sttSeconds += sttSeconds
+      try { await persist(); return r } catch (error) { r.llmCalls = before.llmCalls; r.sttSeconds = before.sttSeconds; throw error }
     },
     async reserveLlmUsage() { return true },
     async releaseLlmUsage() { return true },
@@ -140,9 +138,18 @@ async function makeMongoBackend() {
     async findUserByGoogleId(googleId) { return lean(await User.findOne({ googleId })) },
     async findUserByResetToken(hash) { return lean(await User.findOne({ resetTokenHash: hash })) },
     async findUserByStripeCustomerId(cid) { return lean(await User.findOne({ stripeCustomerId: cid })) },
-    async createUser(doc) { return lean(await User.create({ ...doc, email: (doc.email || '').toLowerCase() })) },
-    async updateUser(id, patch) { return lean(await User.findByIdAndUpdate(id, patch, { new: true })) },
-    async deleteUser(id) { const [result] = await Promise.all([User.deleteOne({ _id: id }), Usage.deleteMany({ userId: id })]); return result.deletedCount === 1 },
+    async createUser(doc) {
+      try { return lean(await User.create({ ...doc, email: (doc.email || '').toLowerCase() })) }
+      catch (error) { if (error?.code === 11000) throw duplicateUserError(); throw error }
+    },
+    async updateUser(id, patch, { session } = {}) { return lean(await User.findByIdAndUpdate(id, patch, { new: true, session })) },
+    async deleteUser(id, { session } = {}) {
+      const [result] = await Promise.all([
+        User.deleteOne({ _id: id }, { session }),
+        Usage.deleteMany({ userId: id }, { session }),
+      ])
+      return result.deletedCount === 1
+    },
     async getUsage(userId, period) { return (await Usage.findOne({ userId, period })) || { userId: String(userId), period, llmCalls: 0, sttSeconds: 0 } },
     async addUsage(userId, period, { llmCalls = 0, sttSeconds = 0 }) { return await Usage.findOneAndUpdate({ userId, period }, { $inc: { llmCalls, sttSeconds } }, { new: true, upsert: true }) },
     async reserveLlmUsage(userId, period, limit) {

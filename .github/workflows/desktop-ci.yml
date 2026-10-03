@@ -16,7 +16,7 @@ concurrency:
 jobs:
   verify-desktop:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
@@ -27,3 +27,16 @@ jobs:
       - run: npm test
       - run: npm run smoke:api
       - run: npm run build
+      - name: Package desktop directory
+        run: npx electron-builder --linux --dir --publish never
+      - name: Verify packaged runtime entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f release/linux-unpacked/resources/app.asar
+          npx asar list release/linux-unpacked/resources/app.asar > /tmp/mockmate-asar.txt
+          grep -Fxq '/electron/bootstrap.cjs' /tmp/mockmate-asar.txt
+          grep -Fxq '/electron/main.cjs' /tmp/mockmate-asar.txt
+          grep -Fxq '/server-entry.cjs' /tmp/mockmate-asar.txt
+          grep -Fxq '/backend/server-entry.cjs' /tmp/mockmate-asar.txt
+          grep -Fxq '/api/_lib/core.js' /tmp/mockmate-asar.txt

@@ -21,6 +21,7 @@ const DEV_URL = 'http://localhost:5174'
 const PROD_URL = 'http://localhost:3002'
 
 let trayRef = null
+let quitDrainStarted = false
 let mainWindow, setupWindow, apiServer, backendServer
 let diagnostics = null
 function diag(component, event, fields = {}, level = 'info') {
@@ -401,9 +402,11 @@ function createMainWindow() {
   })
 
   if (isProd) {
-    startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(PROD_URL) })
+    startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(isProd ? PROD_URL : DEV_URL) })
   } else {
-    mainWindow.loadURL(DEV_URL)
+    // Dev still uses Vite for UI, but Electron owns the local AI child exactly as production does.
+    // Provider key changes can therefore restart the real service without killing the dev session.
+    startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(DEV_URL) })
   }
 
   mainWindow.on('closed', () => { mainWindow = null; app.quit() })
@@ -542,10 +545,10 @@ async function listScreenDisplays() {
   }
 }
 
-// New windows start unprotected. Explicit protected-hints actions opt their
-// window in; normal MockMate windows remain visible in capture when Stealth is off.
+// Privacy-safe default: new Win/macOS windows are protected before their first frame.
+// The renderer may explicitly disable protection later when the user turns Stealth off.
 app.on('browser-window-created', (_, win) => {
-  try { win.setContentProtection(false) } catch {}
+  try { win.setContentProtection(process.platform !== 'linux') } catch {}
 })
 
 // Silent auto-update: download new releases in the background and install on the
@@ -592,6 +595,9 @@ function setupAutoUpdate() {
 // Restart & install the downloaded update now (from the toast's "Restart" button).
 ipcMain.handle('install-update', () => {
   if (!autoUpdaterRef) return { ok: false, error: 'Updater is unavailable.' }
+  if (lastWindowMode === 'overlay' || lastWindowMode === 'pill') {
+    return { ok: false, error: 'End the active interview and return Home before installing the update.' }
+  }
   try { autoUpdaterRef.quitAndInstall(); return { ok: true } }
   catch (e) { console.error('[updater]', e?.message); return { ok: false, error: e?.message || 'Install failed.' } }
 })
@@ -701,6 +707,15 @@ if (!gotTheLock) {
     } catch (e) { console.warn('[MockMate] display events unavailable:', e.message) }
   })
 }
+
+app.on('before-quit', e => {
+  if (quitDrainStarted || !diagnostics) return
+  e.preventDefault()
+  quitDrainStarted = true
+  Promise.resolve(diagnostics.close())
+    .catch(err => console.warn('[diagnostics] final drain failed:', err?.message || err))
+    .finally(() => app.quit())
+})
 
 app.on('will-quit', () => {
   diag('app', 'will_quit')
@@ -1075,7 +1090,7 @@ ipcMain.handle('apply-keys', () => {
     // Prod: forked server read its env at fork time — restart it to pick up new keys.
     try { apiServer.kill() } catch {}
     apiServer = null
-    startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(PROD_URL) })
+    startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(isProd ? PROD_URL : DEV_URL) })
   } else {
     mainWindow.webContents.reload()   // dev: server is separate; just refresh providers
   }

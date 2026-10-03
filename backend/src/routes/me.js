@@ -1,5 +1,6 @@
 import { Router } from 'express'
-import { store, toSafeUser } from '../store.js'
+import mongoose from 'mongoose'
+import { store, toSafeUser, storeMode } from '../store.js'
 import { requireAuth } from '../middleware/auth.js'
 import { cancelUserSubscriptions } from './billing.js'
 
@@ -28,9 +29,7 @@ router.patch('/', requireAuth, async (req, res) => {
       update[key] = text(body[key], max)
     }
     if ('preferences' in body) {
-      if (!body.preferences || typeof body.preferences !== 'object' || Array.isArray(body.preferences)) {
-        return res.status(400).json({ error: 'preferences must be an object.' })
-      }
+      if (!body.preferences || typeof body.preferences !== 'object' || Array.isArray(body.preferences)) return res.status(400).json({ error: 'preferences must be an object.' })
       const encoded = JSON.stringify(body.preferences)
       if (encoded.length > 32_000) return res.status(400).json({ error: 'preferences are too large.' })
       update.preferences = body.preferences
@@ -48,27 +47,29 @@ router.delete('/', requireAuth, async (req, res) => {
   try {
     const user = await store().findUserById(req.userId)
     if (!user) return res.status(404).json({ error: 'Account not found' })
-
-    // Billing must be stopped before identity/data are removed. If Stripe cannot be
-    // reached we fail the deletion rather than orphan a still-billable subscription.
     await cancelUserSubscriptions(user)
 
-    if (process.env.MONGO_URI) {
-      const [{ Session }, { Document }] = await Promise.all([
-        import('../models/Session.js'),
-        import('../models/Document.js'),
-      ])
-      await Promise.all([
-        Session.deleteMany({ user: req.userId }),
-        Document.deleteMany({ user: req.userId }),
-      ])
+    if (storeMode() === 'mongo') {
+      const [{ Session }, { Document }] = await Promise.all([import('../models/Session.js'), import('../models/Document.js')])
+      const session = await mongoose.startSession()
+      try {
+        await session.withTransaction(async () => {
+          await Promise.all([
+            Session.deleteMany({ user: req.userId }).session(session),
+            Document.deleteMany({ user: req.userId }).session(session),
+          ])
+          const deleted = await store().deleteUser(req.userId, { session })
+          if (!deleted) throw Object.assign(new Error('Account not found'), { status: 404 })
+        })
+      } finally { await session.endSession() }
+    } else {
+      const deleted = await store().deleteUser(req.userId)
+      if (!deleted) return res.status(404).json({ error: 'Account not found' })
     }
-    const deleted = await store().deleteUser(req.userId)
-    if (!deleted) return res.status(404).json({ error: 'Account not found' })
     res.json({ ok: true })
   } catch (error) {
     console.error('[me/delete] failed:', error.message)
-    res.status(500).json({ error: 'Could not delete the account safely. Please try again.' })
+    res.status(error?.status || 500).json({ error: error?.status === 404 ? 'Account not found' : 'Could not delete the account safely. Please try again.' })
   }
 })
 
