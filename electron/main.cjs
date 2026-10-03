@@ -875,16 +875,12 @@ ipcMain.handle('set-content-protection', (_e, on) => {
     return { ok: true, enabled: !!on }
   } catch (e) { return { ok: false, error: e.message } }
 })
-ipcMain.handle('exclude-from-capture', e => {
-  if (process.platform === 'linux') return { ok: false, unsupported: true }
-  try {
-    // Document PiP is normally the focused top-level window even though the IPC
-    // bridge belongs to the opener's webContents.
-    const owner = BrowserWindow.getFocusedWindow() || BrowserWindow.fromWebContents(e.sender)
-    owner?.setContentProtection(true)
-    return { ok: true, id: owner?.id || 'window' }
-  } catch (err) { return { ok: false, error: err.message } }
-})
+// NOTE: 'exclude-from-capture' is intentionally NOT registered here. The hardened
+// ipcMain.handle() wrapper in bootstrap.cjs intercepts this channel before any
+// handler registered here could run, so a duplicate registration was dead code
+// that diverged from the real implementation (round-5 review). The live
+// implementation — focused-window-first policy + both window ids in the reply —
+// lives in bootstrap.cjs.
 ipcMain.on('get-userdata-path', e => { e.returnValue = app.getPath('userData') })
 
 // ── Duo co-pilot window (Phase 3) ───────────────────────────────────────────

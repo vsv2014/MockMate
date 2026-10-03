@@ -88,6 +88,82 @@ describe('checkCap fail-closed (hosted)', () => {
   })
 })
 
+describe('checkSttQuota (round-5 P1: managed STT allowance enforcement)', () => {
+  const prev = process.env.MONGO_URI
+  beforeEach(() => {
+    vi.resetModules()
+    // The checkCap tests above register a doMock('../plans.js') that overrides
+    // limitFor; register the pristine module back so these tests see the real
+    // plan limits (last doMock registration for a path wins).
+    vi.doMock('../plans.js', async importOriginal => importOriginal())
+  })
+  afterEach(() => {
+    if (prev === undefined) delete process.env.MONGO_URI
+    else process.env.MONGO_URI = prev
+    vi.restoreAllMocks()
+  })
+
+  it('skips enforcement for local device-local accounts (no MONGO_URI), like checkCap', async () => {
+    delete process.env.MONGO_URI
+    const { checkSttQuota } = await import('./meter.js')
+    const req = { userId: 'u1' }
+    let nextCalled = false
+    await checkSttQuota(req, {}, () => { nextCalled = true })
+    expect(nextCalled).toBe(true)
+    expect(req._sttRemainingSeconds).toBe(Infinity)
+  })
+
+  it('rejects with 402 stt_quota_exhausted when the monthly allowance is used up', async () => {
+    process.env.MONGO_URI = 'mongodb://test'
+    vi.doMock('../store.js', () => ({
+      currentPeriod: () => '2026-10',
+      store: () => ({
+        findUserById: async () => ({ plan: 'free' }),
+        getUsage: async () => ({ sttSeconds: 30 * 60 }), // free allowance fully consumed
+      }),
+    }))
+    const { checkSttQuota } = await import('./meter.js')
+    const res = { statusCode: 0, body: null, status(c) { this.statusCode = c; return this }, json(b) { this.body = b; return this } }
+    let nextCalled = false
+    await checkSttQuota({ userId: 'u1' }, res, () => { nextCalled = true })
+    expect(nextCalled).toBe(false)
+    expect(res.statusCode).toBe(402)
+    expect(res.body?.code).toBe('stt_quota_exhausted')
+  })
+
+  it('passes through with the remaining allowance when under the limit', async () => {
+    process.env.MONGO_URI = 'mongodb://test'
+    vi.doMock('../store.js', () => ({
+      currentPeriod: () => '2026-10',
+      store: () => ({
+        findUserById: async () => ({ plan: 'free' }),
+        getUsage: async () => ({ sttSeconds: 100 }),
+      }),
+    }))
+    const { checkSttQuota } = await import('./meter.js')
+    const req = { userId: 'u1' }
+    let nextCalled = false
+    await checkSttQuota(req, {}, () => { nextCalled = true })
+    expect(nextCalled).toBe(true)
+    expect(req._sttRemainingSeconds).toBe(30 * 60 - 100)
+  })
+
+  it('fails closed with 503 when the store throws (does not allow)', async () => {
+    process.env.MONGO_URI = 'mongodb://test'
+    vi.doMock('../store.js', () => ({
+      currentPeriod: () => '2026-10',
+      store: () => ({ findUserById: async () => { throw new Error('db down') } }),
+    }))
+    const { checkSttQuota } = await import('./meter.js')
+    const res = { statusCode: 0, body: null, status(c) { this.statusCode = c; return this }, json(b) { this.body = b; return this } }
+    let nextCalled = false
+    await checkSttQuota({ userId: 'u1' }, res, () => { nextCalled = true })
+    expect(nextCalled).toBe(false)
+    expect(res.statusCode).toBe(503)
+    expect(res.body?.code).toBe('metering_unavailable')
+  })
+})
+
 describe('estimateLlmUnits multi-call paths (blast-radius BR-1)', () => {
   it('grants the +1 unit bonus on real registered routes, including /api/jobs', () => {
     const big = { q: 'x'.repeat(13_000) } // 2 size units

@@ -7,11 +7,11 @@ import crypto from 'crypto'
 import express from 'express'
 import cors from 'cors'
 import rateLimit from 'express-rate-limit'
-import { initStore, storeMode, storeReady, closeStore } from './src/store.js'
+import { initStore, storeMode, storeReady, closeStore, store, currentPeriod } from './src/store.js'
 import authRoutes from './src/routes/auth.js'
 import meRoutes from './src/routes/me.js'
 import { requireAuth } from './src/middleware/auth.js'
-import { checkCap, recordLlm, releaseLlm, enforceManagedModelPolicy } from './src/middleware/meter.js'
+import { checkCap, checkSttQuota, recordLlm, releaseLlm, enforceManagedModelPolicy } from './src/middleware/meter.js'
 import { registerApiRoutes } from '../api/_lib/apiRoutes.js'
 import billingRoutes, { stripeWebhook } from './src/routes/billing.js'
 import { assertHostedConfig, envFlag, isPublicBind, parseCorsOrigins } from './src/hostedConfig.js'
@@ -110,6 +110,11 @@ app.use('/billing', billingRoutes)
 registerApiRoutes(app, {
   auth: [requireAuth, checkCap, enforceManagedModelPolicy],
   authLight: [requireAuth],
+  // Managed STT quota enforcement (round-5 review P1): streaming grants are denied
+  // once the plan's monthly sttSeconds allowance is exhausted, and each issued
+  // grant reserves its lifetime against that allowance (lease accounting).
+  sttGuard: [checkSttQuota],
+  onSttGrant: (req, seconds) => store().addUsage(req.userId, currentPeriod(), { sttSeconds: seconds }),
   onLlm: recordLlm,
   onLlmFailure: releaseLlm,
   reasoningPolicy,

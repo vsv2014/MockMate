@@ -76,6 +76,24 @@ export function validateHostedConfig() {
     }
   }
 
+  // Email-verification signup returns NO token until verified; the client shows a
+  // "check your email" state. That flow is only launchable when the verification
+  // link base AND real email delivery are both configured — otherwise hosted
+  // signups would create users nobody can ever sign in as (round-5 review P1).
+  if (envFlag('REQUIRE_EMAIL_VERIFICATION')) {
+    if (!String(process.env.RESEND_API_KEY || '').trim()) {
+      errors.push('RESEND_API_KEY is required when REQUIRE_EMAIL_VERIFICATION is enabled in hosted mode (verification emails must actually be delivered).')
+    }
+    const verifyBase = String(process.env.VERIFY_URL_BASE || '').trim()
+    if (!verifyBase) errors.push('VERIFY_URL_BASE is required when REQUIRE_EMAIL_VERIFICATION is enabled in hosted mode.')
+    else {
+      try {
+        const url = new URL(verifyBase)
+        if (url.protocol !== 'https:' && !LOOPBACK_HOSTS.has(url.hostname)) errors.push('VERIFY_URL_BASE must use HTTPS outside loopback.')
+      } catch { errors.push('VERIFY_URL_BASE must be a valid URL.') }
+    }
+  }
+
   return { hosted: true, corsOrigins, errors }
 }
 

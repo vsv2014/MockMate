@@ -847,9 +847,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       if (window.electronAPI?.excludeFromCapture) {
         await new Promise(r => setTimeout(r, 100))  // let the OS register the window
         const result = await window.electronAPI.excludeFromCapture()
-        if (!result?.ok) {
+        // Honest confirmation (round-5 review): the handler returns the id of the
+        // window it actually protected AND the sender's id. If they match, only
+        // the opener was protected — do not claim PiP confirmation (the
+        // browser-window-created listener still auto-protects new windows, but
+        // we surface the warning rather than a false positive).
+        const pipConfirmed = Boolean(result?.ok) && result.senderId != null && result.id !== result.senderId
+        if (!result?.ok || !pipConfirmed) {
           setPipProtected(false)
-          console.warn('[MockMate] Screen protection failed for PiP window:', result?.error)
+          console.warn('[MockMate] Screen protection not confirmed for PiP window:', result?.error || `protected window ${result?.id} is the opener (${result?.senderId})`)
         } else {
           setPipProtected(true)
           console.log('[MockMate] Screen protection confirmed on hints window', result.id)
@@ -1614,9 +1620,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       if (window.electronAPI?.excludeFromCapture) {
         setTimeout(async () => {
           const result = await window.electronAPI.excludeFromCapture()
-          if (!result?.ok) {
+          const pipConfirmed = Boolean(result?.ok) && result.senderId != null && result.id !== result.senderId
+          if (!result?.ok || !pipConfirmed) {
             setPipProtected(false)
-            console.warn('[MockMate] Screen protection failed for pre-opened PiP:', result?.error)
+            console.warn('[MockMate] Screen protection not confirmed for pre-opened PiP:', result?.error || `protected window ${result?.id} is the opener (${result?.senderId})`)
           } else {
             setPipProtected(true)
             console.log('[MockMate] Screen protection confirmed on hints window', result.id)

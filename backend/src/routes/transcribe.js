@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { requireAuth } from '../middleware/auth.js'
+import { checkSttQuota } from '../middleware/meter.js'
 import { store, currentPeriod } from '../store.js'
 import { executeTranscription } from '../arch.js'
 
@@ -32,7 +33,9 @@ async function transcribeWithDeepgram(file, language, signal) {
   }
 }
 
-router.post('/', requireAuth, upload.single('audio'), async (req, res) => {
+// Quota is enforced BEFORE calling Deepgram (round-5 review P1); the actual
+// duration is still accounted after transcription below.
+router.post('/', requireAuth, checkSttQuota, upload.single('audio'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Record some audio first.' })
   const language = String(req.body?.language || 'en').slice(0, 16)
   const requestAbort = new AbortController()

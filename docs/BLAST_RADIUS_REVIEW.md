@@ -4,9 +4,13 @@
 - Audit code snapshots: `17f80bc` (first full pass) and `4d3f0e3` (document audit pass).
 - Reviewer findings BR-3…BR-10 raised against `4d3f0e3`; fixed in `6542071`.
 - Reviewer re-review of `6542071` confirmed those fixes, found the RAG stale-index race
-  (BR-11, below) and the dead cache-warning path; **both fixed in `99fbb34`**, which also
-  hardened BR-1's regression test to derive from production modules.
-- PR snapshot at last revision: 36 commits, 115 files, +7,212/−1,593.
+  (BR-11) and the dead cache-warning path; both fixed in `99fbb34`, which also hardened
+  BR-1's regression test to derive from production modules.
+- Reviewer re-review of `98b14fc` raised BR-12 (email-verification signup contract),
+  BR-13 (managed STT quota enforcement) and BR-14 (PiP capture-protection confirmation);
+  **all three fixed in `06ef1b7`**, together with the missing `verify.html` page and
+  the fail-fast hosted-config guard.
+- PR snapshot at last revision: 38 commits, 115+ files, +7,212/−1,593 and growing.
 
 **Method:** enumerate every changed surface → map dependents (fan-in) → check deleted-file
 references, export-contract stability, storage/env contracts, failure swallowing, and
@@ -21,10 +25,11 @@ test coverage of changed code. Findings are rated by how far a failure would tra
 | `shared/*` logic (22 files) | questionCapture, hintLayers, retrieval, transcriptBuffer, interviewState, generationManager, PI analyzer, +9 new modules | 1–11 importers each; run in browser + Express + Vercel | wrong answers / dead pipelines everywhere at once | **HIGH** | ✅ contracts backward-compatible, tested |
 | `electron/main.cjs` + `bootstrap.cjs` | shortcuts, modes, capture, teleprompter, **global navigation policy** | single desktop shell; navigation policy is cross-subsystem (auth OAuth, Jobs links, billing) | overlay/shortcut/capture misbehavior; blocked OAuth/job URLs | **HIGH** | fixed BR-3; packaged smoke required (BR-8) |
 | `api/_lib/*` (shared Express+Vercel) | apiRoutes registry, core RAG, interview, jobs | BOTH server shapes consume the same files | a bug ships to local AND hosted simultaneously | **HIGH** | ✅ smoke-tested; public-API default-deny intact |
-| Billing/metering (`meter.js`, `plans.js`, `billing.js`, `store.js`) | unit-based metering, 413 input guard, reconcile endpoint | every authenticated paid-path request | over/under-charging quota | **HIGH** (money path) | fixed BR-1 + single source of truth |
+| Billing/metering (`meter.js`, `plans.js`, `billing.js`, `store.js`) | unit-based metering, 413 input guard, reconcile endpoint, **STT lease enforcement** | every authenticated paid-path request incl. streaming STT grants | over/under-charging quota; unbilled provider cost | **HIGH** (money path) | fixed BR-1 + BR-13; single source of truth |
 | STT transport (`deepgramTransport` new, `useSystemAudio`, `useDeepgram` refactored onto it) | reconnect, PCM queue, Turn-1 Finalize | both mic and system Live; **first seconds of every system-audio interview** | transcription loss; false Turn-1 commits | **HIGH** | fixed BR-5 (opener-only boost, negative tests) |
 | RAG/embeddings (`src/lib/docs.js`, `api/embed.js`, retrieval) | fingerprint-bound cache, speculative pre-warm, **persistent chunk-text cache** | Solo + Live grounding; **privacy lifecycle: deleted/replaced/account-purged docs must never be re-persisted** | stale vectors; deleted resume text resurrected in localStorage | **HIGH (privacy lifecycle)** | fixed BR-4 + BR-9 + **BR-11** (stale-index race), all tested |
 | Desktop auth token persistence | `auth-set-token` IPC + renderer `setToken` | signup/login/refresh/OAuth → all authenticated desktop APIs | disk failure misread as successful login | **HIGH** | fixed BR-6 (`{ok:false}` surfaced) |
+| Auth signup contract (desktop + mobile + hosted config) | verification-required response union, Check-your-email state, `verify.html`, boot-time prerequisite guard | every new hosted account | broken signup / locked-out accounts / undefined-token sessions | **HIGH** | fixed BR-12 (union + tests + fail-fast config) |
 | Jobs/Career | new source adapters + ranker | Jobs/Career pages + **crosses into global navigation policy** for listing links | bad rankings; blocked listing URLs (see BR-3) | MEDIUM→HIGH at the navigation boundary | ✅ after BR-3 fix |
 | Custom Prompt Studio + PI panel | templates, presets | additive UI | isolated to feature | LOW | ✅ tested |
 | Mobile (6 files) | session domain + UI | private-beta foundation | isolated from desktop release | LOW code-radius | ⚠ was not PR-gated; now gated (BR-7) |
@@ -72,6 +77,9 @@ test coverage of changed code. Findings are rated by how far a failure would tra
 | BR-9 | RAG cache had doc-count eviction only; localStorage quota is byte-based; write failures silent | P2 perf/cost | ✅ Fixed — ~4 MB serialized budget, oldest-first eviction, visible warning + diagnostic on write failure (checks `setScopedItem`'s boolean; its internal catch means the exception path never fired for quota errors) |
 | BR-10 | `.env.example` instructed maintainers to embed provider secrets into installers (stale, dangerous) | P2 security/docs | ✅ Fixed — guidance deleted, explicit prohibition added |
 | BR-11 | **Stale in-flight indexing race**: `removeDoc`/replace/purge deleted the persisted entry, but an `indexOne()` task already awaiting `/api/embed` later re-persisted the deleted private text | **P1 privacy (merge blocker)** | ✅ Fixed in `99fbb34` — per-doc generation counter + per-task AbortController (cancels the embed request) + post-embed re-validation of generation and document existence/signature before persisting. Regression tests cover delete-before-resolve and replace-before-resolve |
+| BR-12 | **Hosted email-verification signup broken**: with `REQUIRE_EMAIL_VERIFICATION=1` the backend returns `{verificationRequired, user}` with **no token**, but desktop/mobile assumed a token and proceeded into session loading; `verify.html` did not exist; hosted mode never required delivery prerequisites | **P1 auth (merge blocker)** | ✅ Fixed — explicit response union in desktop (`signup()` branches, never stores a token on the verification branch, new Check-your-email view + resend) and mobile (`SignupResult` union, `saveAuth` only with a real token); backend contract tests for both branches; `public/verify.html` added; hosted boot **refuses to start** with verification enabled unless `RESEND_API_KEY` + HTTPS `VERIFY_URL_BASE` are configured |
+| BR-13 | **Managed STT plan limits advertised but not enforced**: `/api/deepgram-token` used auth-only guarding; streaming audio bypasses the backend, so free-tier `sttSeconds` was effectively unlimited (provider-cost/abuse exposure) | **P1 billing (merge blocker)** | ✅ Fixed — `checkSttQuota` middleware (fail-closed, local parity with `checkCap`) now guards `/api/deepgram-token` and `/transcribe` pre-Deepgram; each issued grant **reserves its lifetime (lease, capped 300s)** against the monthly allowance so renewals are denied at the limit; 402 surfaces as a permanent (non-retrying) token failure with a quota message; tests for denial, pass-through, reservation, fallback non-billing |
+| BR-14 | **PiP capture-protection confirmation could target the wrong window**: `bootstrap.cjs`'s hardened `ipcMain.handle` wrapper intercepted `exclude-from-capture` before `main.cjs`'s PiP-aware handler could register, so the confirmation protected the *sender* window while the UI claimed the PiP was protected | **P1/P2 capture protection** | ✅ Fixed — the hardened handler now implements the focused-window-first policy itself and returns both the protected window id and the sender id; the dead `main.cjs` handler is removed; LiveCompanion only confirms PiP protection when the protected window is not the opener, otherwise it shows the honest warning banner |
 
 ## 4. Watchlist (not blockers)
 
@@ -81,20 +89,26 @@ test coverage of changed code. Findings are rated by how far a failure would tra
 | BR-W2 | `src/lib/productIntelligence.js`, `src/lib/windowDrag.js` lack direct tests | logic lives in tested `shared/` modules; collectors are thin glue | before adding non-trivial collector logic |
 | BR-W3 | RAG vectors serialized as JSON in localStorage — workable, not ideal | byte budget + re-embed fallback + stale-index guard keep correctness and privacy | storage pressure → IndexedDB |
 | BR-W4 | Unit-based metering is user-visible behavior change | intended hardening, tested | announce in support copy |
+| BR-W5 | STT lease accounting bills in ≤5-minute grant increments (a user who requests a grant and never streams still spends up to one grant's seconds) | conservative by design; bound is one grant per request; tests pin the cap | per-second client usage reporting if complaints appear |
 
 ## 5. Bottom line
 
 The branch is structurally coherent: deletions are reference-clean, shared export
 contracts are additive-only, the dual-shape API layer is smoke-covered, and every
-finding in the register above — including the stale-index race found in the
-post-`6542071` re-review — has a fix with tests (`99fbb34`; 457 tests green).
+finding in the register above — including the stale-index race (BR-11) and the
+round-5 boundary contracts for auth signup, STT billing, and capture-protection
+confirmation (BR-12…BR-14) — has a fix with tests.
 
 This document does **not** claim there is no remaining code risk. What it certifies is
-narrower: the cross-cutting privacy/lifecycle, navigation, capture, and auth-token risks
-identified by review are resolved in code, and the fixes are regression-tested. Whether
-that resolution holds up is for the reviewer's re-pass to confirm.
+narrower: the cross-cutting privacy/lifecycle, navigation, capture, billing, and
+auth-state risks identified by five review rounds are resolved in code, and the fixes
+are regression-tested. Whether that resolution holds up is for the reviewer's re-pass
+to confirm.
 
 After that confirmation, the remaining risk is **release validation**, not architecture:
 the packaged-Windows smoke (Alt+T → drag → Alt+T, mic/system first question, F7
 monitor repeat), the soak-evidence round, and one verified Vercel deployment (current
 deploy failures are flagged in the PR; logs are only visible to the repo owner).
+Watchlist item BR-W5: STT lease accounting bills in ≤5-minute grant increments —
+deliberately conservative for v1.5.2; per-second client usage reporting is a future
+refinement, not a correctness gap.

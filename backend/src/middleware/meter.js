@@ -6,6 +6,40 @@ import { effectivePlan, limitFor, measureInputChars, estimateLlmUnits } from '..
 // (single source of truth — blast-radius review fix).
 export { measureInputChars, estimateLlmUnits }
 
+/**
+ * STT quota guard (round-5 review P1): managed streaming STT hands the browser a
+ * Deepgram grant and the audio bypasses the backend, so streaming seconds are
+ * accounted via lease reservations at grant time (see onSttGrant wiring in
+ * server.js) plus actual-duration accounting in /transcribe. This middleware
+ * enforces the plan's sttSeconds limit before either path spends provider money.
+ * Fail-closed like checkCap; skipped for local device-local accounts (parity
+ * with checkCap, which does not meter when MONGO_URI is unset).
+ */
+export async function checkSttQuota(req, res, next) {
+  if (!process.env.MONGO_URI) { req._sttRemainingSeconds = Infinity; return next() }
+  try {
+    const user = await store().findUserById(req.userId)
+    if (!user) return res.status(401).json({ error: 'Your session expired. Please sign in again.', code: 'unauthorized' })
+    const plan = effectivePlan(user)
+    const period = currentPeriod()
+    const usage = await store().getUsage(user.id, period)
+    const limit = limitFor(plan).sttSeconds
+    const remaining = limit - (usage.sttSeconds || 0)
+    req._sttRemainingSeconds = remaining
+    if (remaining <= 0) {
+      return res.status(402).json({
+        error: 'You’ve used this month’s voice-transcription allowance. It resets next billing period, or upgrade for more.',
+        code: 'stt_quota_exhausted',
+        period,
+      })
+    }
+    next()
+  } catch (e) {
+    console.error('[meter] checkSttQuota failed (blocking):', e.message)
+    return res.status(503).json({ error: 'Usage metering is temporarily unavailable. Try again in a moment.', code: 'metering_unavailable' })
+  }
+}
+
 export async function checkCap(req, res, next) {
   if (!process.env.MONGO_URI) { req._plan = 'local'; return next() }
   try {

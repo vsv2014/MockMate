@@ -102,15 +102,35 @@ export class ApiError extends Error {
 function rememberUser(user) { if (user?.id) setActiveAccountScope(user.id); return user }
 
 export async function forgotPassword(email) { return request('/auth/forgot-password', { method: 'POST', body: { email } }) }
+/**
+ * Signup response is an EXPLICIT UNION (round-5 review P1):
+ *   { verificationRequired: true, user }              — no token until verified
+ *   { verificationRequired: false, user }             — authenticated (token stored)
+ * Callers must branch on verificationRequired and must NEVER proceed into an
+ * authenticated session on the verification branch.
+ */
 export async function signup({ name, email, password }) {
-  const { token, user } = await request('/auth/signup', { method: 'POST', body: { name, email, password } })
-  await setToken(token)
-  return rememberUser(user)
+  const data = await request('/auth/signup', { method: 'POST', body: { name, email, password } })
+  if (data?.verificationRequired || !data?.token) {
+    if (!data?.verificationRequired) diagnostic('auth', 'signup_no_token_no_verification', {}, 'warn')
+    return { verificationRequired: true, user: data?.user || null }
+  }
+  await setToken(data.token)
+  return { verificationRequired: false, user: rememberUser(data.user) }
+}
+export async function resendVerification(email) {
+  return request('/auth/resend-verification', { method: 'POST', body: { email } })
+}
+export async function completeEmailVerification(token) {
+  const data = await request('/auth/verify-email', { method: 'POST', body: { token } })
+  if (data?.token) await setToken(data.token)
+  return rememberUser(data?.user)
 }
 export async function login({ email, password }) {
-  const { token, user } = await request('/auth/login', { method: 'POST', body: { email, password } })
-  await setToken(token)
-  return rememberUser(user)
+  const data = await request('/auth/login', { method: 'POST', body: { email, password } })
+  if (!data?.token) throw new ApiError('Sign-in did not return a session. Please try again.', 0)
+  await setToken(data.token)
+  return rememberUser(data.user)
 }
 export async function fetchMe() {
   const payload = await request('/auth/me', { auth: true })

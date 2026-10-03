@@ -117,14 +117,31 @@ async function saveAuth(result: { token: string; user: User }) {
   return result.user
 }
 
+/**
+ * Signup response is an EXPLICIT UNION (round-5 review P1): with
+ * REQUIRE_EMAIL_VERIFICATION the backend returns { verificationRequired, user }
+ * and NO token. Callers must branch on verificationRequired and must never store
+ * an undefined token or proceed into an authenticated session on that branch.
+ */
+export type SignupResult =
+  | { verificationRequired: true; user: User | null }
+  | { verificationRequired: false; user: User }
+
 export const api = {
   hasToken: async () => Boolean(await SecureStore.getItemAsync(TOKEN_KEY)),
   login: (email: string, password: string) => request<{ token: string; user: User }>('/auth/login', {
     method: 'POST', body: JSON.stringify({ email, password }),
   }).then(saveAuth),
-  signup: (name: string, email: string, password: string) => request<{ token: string; user: User }>('/auth/signup', {
-    method: 'POST', body: JSON.stringify({ name, email, password }),
-  }).then(saveAuth),
+  signup: async (name: string, email: string, password: string): Promise<SignupResult> => {
+    const result = await request<{ token?: string; user: User; verificationRequired?: boolean }>('/auth/signup', {
+      method: 'POST', body: JSON.stringify({ name, email, password }),
+    })
+    if (result.verificationRequired || !result.token) {
+      return { verificationRequired: true, user: result.user ?? null }
+    }
+    const user = await saveAuth({ token: result.token, user: result.user })
+    return { verificationRequired: false, user }
+  },
   account: () => request<Account>('/auth/me', { auth: true }),
   sessions: () => request<{ sessions: SyncedSession[] }>('/sessions', { auth: true }),
   createSession: (draft: { mode: string; company: string; role: string; objective: string; title: string; customInstructions: string; responseStyle: string; selectedDocumentIds: string[] }) =>

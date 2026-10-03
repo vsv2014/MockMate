@@ -148,13 +148,23 @@ ipcMain.handle = function hardenedHandle(channel, handler) {
     return originalHandle(channel, (event, content) => handler(event, sanitizeEnvText(content)))
   }
   if (channel === 'exclude-from-capture') {
+    // Round-5 review fix: this hardened handler intercepts the channel BEFORE any
+    // later ipcMain.handle() call, so it must itself implement the PiP-aware
+    // policy — a sender-only version here silently replaced the focused-window
+    // logic in main.cjs and confirmed protection on the WRONG window. Document
+    // PiP is normally the focused top-level window even though the IPC bridge
+    // belongs to the opener's webContents, so protect the focused window first.
+    // The response reports BOTH window ids so the renderer can verify the PiP
+    // itself (not just the opener) was protected — no false-positive confirms.
     return originalHandle(channel, event => {
       if (process.platform === 'linux') return { ok: false, unsupported: true }
       try {
-        const owner = BrowserWindow.fromWebContents(event.sender)
+        const sender = BrowserWindow.fromWebContents(event.sender)
+        const focused = BrowserWindow.getFocusedWindow()
+        const owner = (focused && !focused.isDestroyed()) ? focused : sender
         if (!owner || owner.isDestroyed()) return { ok: false, error: 'Window owner unavailable' }
         owner.setContentProtection(true)
-        return { ok: true, id: owner.id }
+        return { ok: true, id: owner.id, senderId: sender && !sender.isDestroyed() ? sender.id : null }
       } catch (error) { return { ok: false, error: error?.message || 'Capture protection failed' } }
     })
   }
