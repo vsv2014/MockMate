@@ -80,13 +80,19 @@ class DiagnosticStore {
       fs.mkdirSync(this.dir, { recursive: true })
       await this.rotate(Buffer.byteLength(chunk))
       await fs.promises.appendFile(this.file, chunk, { mode: 0o600 })
-    } catch {} finally {
+    } catch {
+      // Preserve ordering and retry later; diagnostics must not disappear on transient disk errors.
+      this.queue.unshift(...lines)
+      if (this.queue.length > MAX_QUEUE) this.queue.length = MAX_QUEUE
+    } finally {
       this.flushing = false
       if (this.queue.length) setImmediate(() => this.flush())
     }
   }
 
   async clear() {
+    // Wait for an already-started append before deleting files so a late flush cannot recreate them.
+    while (this.flushing) await new Promise(resolve => setTimeout(resolve, 10))
     this.queue = []
     for (let i = 0; i < MAX_FILES; i++) {
       const f = i === 0 ? this.file : `${this.file}.${i}`
