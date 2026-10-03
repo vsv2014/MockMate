@@ -2,7 +2,7 @@ name: One-shot desktop audit patch
 
 on:
   push:
-    branches: [codex/desktop-audit-67]
+    branches: [codex/desktop-audit-final]
     paths:
       - '.github/audit-patch-trigger'
 
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: desktop-audit-autopatch
+  group: desktop-audit-autopatch-final
   cancel-in-progress: false
 
 jobs:
@@ -19,21 +19,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: codex/desktop-audit-67
+          ref: codex/desktop-audit-final
           fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Apply deterministic Duo trust patch
-        run: node scripts/audit-duo-patch.mjs
+      - name: Apply final Electron lifecycle patch
+        run: node scripts/audit-last-mile.mjs
       - name: Verify patched source
         run: npm ci && npm --prefix backend ci && npm test && npm run smoke:api && npm run build
       - name: Commit verified patch
         run: |
           git config user.name 'mockmate-audit-bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add src/Duo.jsx src/Room.jsx api/_lib/core.js api/_lib/apiRoutes.js
+          git add electron/bootstrap.cjs electron/main.cjs
           git diff --cached --quiet && exit 0
-          git commit -m 'Bind Duo identities and roles to server-issued room tokens'
-          git pull --rebase origin codex/desktop-audit-67
-          git push origin HEAD:codex/desktop-audit-67
+          git commit -m 'Drain diagnostics and protect windows before first frame'
+          git pull --rebase origin codex/desktop-audit-final
+          git push origin HEAD:codex/desktop-audit-final
