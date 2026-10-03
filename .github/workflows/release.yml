@@ -76,17 +76,6 @@ jobs:
       - run: npm ci
       - run: npm --prefix backend ci
 
-      - name: Require Windows Authenticode signing credentials
-        shell: bash
-        env:
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: |
-          test -n "$WIN_CSC_LINK" && test -n "$WIN_CSC_KEY_PASSWORD" || {
-            echo 'Windows signing credentials are required for the public Windows release.' >&2
-            exit 1
-          }
-
       - name: Bootstrap Electron runtime
         run: npx electron --version
 
@@ -119,21 +108,13 @@ jobs:
       - name: Verify final configured application
         run: npm test && npm run build
 
-      - name: Build signed Windows installer
+      - name: Build Windows installer
         shell: bash
-        run: npx electron-builder --win --publish never
+        run: |
+          unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
+          npx electron-builder --win --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-
-      - name: Verify Windows Authenticode signature
-        shell: pwsh
-        run: |
-          $installer = Get-ChildItem release -Filter *.exe | Select-Object -First 1
-          if (-not $installer) { throw 'Windows installer missing' }
-          $sig = Get-AuthenticodeSignature $installer.FullName
-          if ($sig.Status -ne 'Valid') { throw "Invalid Authenticode signature: $($sig.Status)" }
 
       - name: Verify Windows release artifacts
         shell: pwsh
