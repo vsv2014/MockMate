@@ -8,7 +8,7 @@
   BR-1's regression test to derive from production modules.
 - Reviewer re-review of `98b14fc` raised BR-12 (email-verification signup contract),
   BR-13 (managed STT quota enforcement) and BR-14 (PiP capture-protection confirmation);
-  **all three fixed in `06ef1b7`**, together with the missing `verify.html` page and
+  **all three fixed in `def4f02`**, together with the missing `verify.html` page and
   the fail-fast hosted-config guard.
 - PR snapshot at last revision: 38 commits, 115+ files, +7,212/−1,593 and growing.
 
