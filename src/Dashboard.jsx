@@ -125,7 +125,7 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
           onClick={cycleSidebar}
         >{sidebarHidden ? '☰' : '◂'}</TopBtn>
         <img src="/icon.png" alt="" width={26} height={26} style={{ borderRadius: 7, display: 'block' }} />
-        <span style={{ fontWeight: 600, fontSize: 14, letterSpacing: '0.2px' }}>MockMate</span>
+        <span style={{ fontWeight: 600, fontSize: 14.5, letterSpacing: '0.2px', fontFamily: T.fontDisplay }}>MockMate</span>
         <button type="button" onClick={!isLinuxUA ? onStealth : undefined}
           title={isLinuxUA ? 'Overlay stealth is not supported on Linux' : `${stealth ? 'Stealth ON' : 'Stealth OFF'} — capture protection ${stealth ? 'enabled' : 'disabled'}. Always verify in your meeting share preview.`}
           style={{ marginLeft: 14, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: isLinuxUA ? 'default' : 'pointer', color: isLinuxUA ? '#fdba74' : stealth ? '#5eead4' : T.text3, background: isLinuxUA ? 'rgba(249,115,22,0.1)' : stealth ? 'rgba(13,148,136,0.16)' : 'rgba(255,255,255,0.04)', border: `1px solid ${isLinuxUA ? 'rgba(249,115,22,0.3)' : stealth ? 'rgba(45,212,191,0.4)' : T.border}`, padding: '3px 9px', borderRadius: 999 }}>
@@ -320,7 +320,7 @@ export function DashboardHome({ auth, sessions = [], noProviders, onNav }) {
     <div style={{ maxWidth: 1040, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Greeting */}
       <div>
-        <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>{greeting()}{name ? `, ${name}` : ''}! 👋</div>
+        <div style={{ fontSize: 23, fontWeight: 600, color: T.text1, fontFamily: T.fontDisplay, letterSpacing: '-0.01em' }}>{greeting()}{name ? `, ${name}` : ''}! 👋</div>
         <div style={{ fontSize: 13, color: T.text2, marginTop: 3 }}>Practice Solo, or get help in Live — pick one to start.</div>
       </div>
 
@@ -435,12 +435,14 @@ function ActionCard({ icon, title, desc, cta, accent, onClick, primary }) {
       aria-label={`${title}. ${cta}`}
       style={{
         display: 'block', width: '100%', textAlign: 'left', fontFamily: T.font,
-        background: T.surface1, border: `1px solid ${h ? accent : T.border}`, borderRadius: T.rCard,
+        background: h ? 'linear-gradient(180deg, rgba(255,255,255,0.03) 0%, #12151B 100%)' : T.surface1,
+        border: `1px solid ${h ? accent : T.border}`, borderRadius: T.rCard,
+        boxShadow: T.cardShadow,
         padding: primary ? '18px 18px 16px' : '12px 14px', cursor: 'pointer',
-        transition: 'border-color .14s, transform .14s', transform: h ? 'translateY(-2px)' : 'none',
+        transition: 'border-color .14s, transform .14s, background .14s', transform: h ? 'translateY(-2px)' : 'none',
       }}>
       <div style={{ width: primary ? 38 : 30, height: primary ? 38 : 30, borderRadius: 9, display: 'grid', placeItems: 'center', fontSize: primary ? 18 : 15, background: `${accent}22`, border: `1px solid ${accent}44`, marginBottom: primary ? 12 : 8 }}>{icon}</div>
-      <div style={{ fontSize: primary ? 16 : 13.5, fontWeight: 600, color: T.text1 }}>{title}</div>
+      <div style={{ fontSize: primary ? 16 : 13.5, fontWeight: 600, color: T.text1, fontFamily: primary ? T.fontDisplay : T.font }}>{title}</div>
       <div style={{ fontSize: primary ? 12.5 : 11, color: T.text2, marginTop: 3, lineHeight: 1.4, minHeight: primary ? 36 : 28 }}>{desc}</div>
       <div style={{ marginTop: primary ? 12 : 8, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: primary ? 13 : 11.5, fontWeight: 600, color: accent }}>{cta} →</div>
     </button>
@@ -449,7 +451,7 @@ function ActionCard({ icon, title, desc, cta, accent, onClick, primary }) {
 
 function Panel({ title, action, children }) {
   return (
-    <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '14px 16px' }}>
+    <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, boxShadow: T.cardShadow, padding: '14px 16px' }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: T.text1 }}>{title}</span>
         {action && <button onClick={action.onClick} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.accentFrom, fontSize: 11.5, cursor: 'pointer', fontFamily: T.font }}>{action.label}</button>}

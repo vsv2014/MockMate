@@ -273,7 +273,7 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
 
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 4 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>Live Interview</div>
+            <div style={{ fontSize: 22, fontWeight: 600, color: T.text1, fontFamily: T.fontDisplay, letterSpacing: '-0.01em' }}>Live Interview</div>
             <div style={{ fontSize: 13, color: T.text2, marginTop: 3 }}>Verify share preview, then start. The overlay stays glanceable over your call.</div>
           </div>
           <button onClick={onHome} style={{ height: 38, padding: '0 16px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 13, cursor: 'pointer', fontFamily: T.font }}>← Back</button>
@@ -1702,8 +1702,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     }
     setEnding(false)
   }
-  const badge = (bg, color) => ({ fontSize: 9, padding: '1px 7px', background: bg, color, borderRadius: 10, fontWeight: 700, whiteSpace: 'nowrap' })
-  const btn = (bg, color) => ({ fontSize: 10, padding: '2px 9px', background: bg, color, border: 'none', borderRadius: 4, cursor: 'pointer' })
+  const badge = (bg, color) => ({ fontSize: 9.5, padding: '2px 7px', background: bg, color, borderRadius: 10, fontWeight: 600, whiteSpace: 'nowrap', letterSpacing: '0.01em' })
+  const btn = (bg, color) => ({ fontSize: 10.5, padding: '3px 9px', minHeight: 22, background: bg, color, border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: T.font })
 
   // Clean status pill (left of header): one dot + one word + the timer. Nothing else.
   const isLinuxLive = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
@@ -1713,13 +1713,13 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
       <span style={{ width: 7, height: 7, borderRadius: '50%', background: statusColor, boxShadow: `0 0 6px ${statusColor}`, animation: audio.active && !switchingAudio ? 'pulse 1.6s ease-in-out infinite' : 'none' }} />
       <span style={{ fontSize: 11, fontWeight: 600, color: statusColor }}>{statusLabel}</span>
-      <span style={{ fontSize: 11, color: T.text3, fontFamily: 'monospace' }}>{fmtClock(clock)}</span>
+      <span style={{ fontSize: 11, color: T.text3, fontFamily: T.fontMono, fontVariantNumeric: 'tabular-nums' }}>{fmtClock(clock)}</span>
       {/* Hide Sys↔Mic switch on Linux (System Audio unavailable). */}
       {!isLinuxLive && (
         <button type="button" onClick={switchAudioSource} disabled={switchingAudio}
           onMouseDown={e => e.stopPropagation()}
           title="Switch audio source mid-session (System Audio ↔ Microphone)"
-          style={{ fontSize: 10, padding: '2px 7px', background: 'rgba(255,255,255,0.06)', color: T.text2, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, cursor: switchingAudio ? 'default' : 'pointer', opacity: switchingAudio ? 0.6 : 1 }}>
+          style={{ fontSize: 10.5, padding: '3px 8px', minHeight: 22, background: 'rgba(255,255,255,0.06)', color: T.text2, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 5, cursor: switchingAudio ? 'default' : 'pointer', opacity: switchingAudio ? 0.6 : 1, fontFamily: T.font }}>
           {liveSourceId === 'microphone' ? '🎤 Mic' : '🖥️ Sys'}
         </button>
       )}
@@ -1727,7 +1727,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         <button type="button" onClick={toggleTeleprompter}
           onMouseDown={e => e.stopPropagation()}
           title="Dock at top-center under webcam (Alt+T)"
-          style={{ fontSize: 10, padding: '2px 7px', background: teleprompter ? 'rgba(20,184,166,0.22)' : 'rgba(255,255,255,0.06)', color: teleprompter ? '#5eead4' : T.text2, border: `1px solid ${teleprompter ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.12)'}`, borderRadius: 4, cursor: 'pointer' }}>
+          style={{ fontSize: 10.5, padding: '3px 8px', minHeight: 22, background: teleprompter ? 'rgba(20,184,166,0.22)' : 'rgba(255,255,255,0.06)', color: teleprompter ? '#5eead4' : T.text2, border: `1px solid ${teleprompter ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.12)'}`, borderRadius: 5, cursor: 'pointer', fontFamily: T.font }}>
           ⌖ Cam
         </button>
       )}
@@ -1914,7 +1914,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                 ['Type + Enter', 'Submit a question when mic/STT fails'],
               ].map(([key, desc]) => (
                 <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 10, color: '#2dd4bf', background: 'rgba(13,148,136,0.15)', padding: '2px 7px', borderRadius: 5, fontFamily: 'monospace', fontWeight: 600, minWidth: 92, textAlign: 'center' }}>{key}</span>
+                  <span style={{ fontSize: 10, color: '#2dd4bf', background: 'rgba(13,148,136,0.15)', padding: '2px 7px', borderRadius: 5, fontFamily: T.fontMono, fontWeight: 600, minWidth: 92, textAlign: 'center' }}>{key}</span>
                   <span style={{ fontSize: 11, color: T.text3 }}>{desc}</span>
                 </div>
               ))}
@@ -1924,7 +1924,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
         {/* STATE A — live transcript fragments (not yet committed) */}
         {!!liveCaptureText && !hintLoading && (
-          <div style={{ fontSize: 11, color: T.text3, fontStyle: 'italic', marginBottom: 8, paddingLeft: 4, opacity: 0.85 }}>
+          <div style={{ fontSize: 11, color: T.text3, marginBottom: 8, paddingLeft: 4, opacity: 0.88 }}>
             {captureStatus === 'unclear' ? 'Question unclear — listening…' : 'Listening…'} {liveCaptureText}
           </div>
         )}
@@ -1956,7 +1956,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           </div>
         )}
 
-        {audio.interim && !liveCaptureText && <div style={{ fontSize: 11, color: T.text3, fontStyle: 'italic', marginBottom: 8, paddingLeft: 4 }}>… {audio.interim}</div>}
+        {audio.interim && !liveCaptureText && <div style={{ fontSize: 11, color: T.text3, marginBottom: 8, paddingLeft: 4 }}>… {audio.interim}</div>}
 
         {[...transcript].filter(s => s.isQuestion).reverse().map((s, i) => {
           const isLatest = i === 0
@@ -1964,15 +1964,30 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           <div
             key={s.questionId || s.ts || s.text}
             ref={isLatest ? latestQuestionRef : null}
-            style={{ marginBottom: 14, opacity: isLatest ? 1 : 0.72, scrollMarginTop: 10 }}
+            style={{ marginBottom: teleprompter ? 10 : 14, opacity: isLatest ? 1 : (teleprompter ? 0.55 : 0.72), scrollMarginTop: 10 }}
           >
-            {/* Q bubble — never replaced by Thinking… */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: isLatest ? 13 : 12, color: T.text1, background: 'rgba(255,255,255,0.06)', borderRadius: '0 8px 8px 8px', padding: '7px 8px 7px 11px', marginBottom: 6, lineHeight: 1.5, fontWeight: isLatest ? 600 : 400, userSelect: 'text', WebkitUserSelect: 'text' }}>
-              <span style={{ flex: 1, minWidth: 0 }}>❓ {s.text}</span>
+            {/* Q bubble — never replaced by Thinking…; in Teleprompter mode, compress to a single-line context bar so spoken cues dominate */}
+            <div style={{
+              display: 'flex', alignItems: teleprompter ? 'center' : 'flex-start', gap: 6,
+              fontSize: teleprompter ? 11.5 : (isLatest ? 13 : 12),
+              color: teleprompter ? T.text2 : T.text1,
+              background: 'rgba(255,255,255,0.055)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '0 8px 8px 8px',
+              padding: teleprompter ? '4px 8px 4px 10px' : '7px 8px 7px 11px',
+              marginBottom: teleprompter ? 5 : 6,
+              lineHeight: 1.45,
+              fontWeight: isLatest ? 600 : 400,
+              userSelect: 'text', WebkitUserSelect: 'text',
+            }}>
+              <span style={{
+                flex: 1, minWidth: 0,
+                ...(teleprompter ? { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : {}),
+              }}>Q: {s.text}</span>
               <button type="button" onMouseDown={e => e.stopPropagation()}
                 onClick={() => copyFeedText(`q:${s.questionId || s.ts}`, s.text)}
-                style={btn('rgba(255,255,255,0.04)', T.text3)} title="Copy question" aria-label="Copy question">
-                {copiedKey === `q:${s.questionId || s.ts}` ? '✓' : '📋'}
+                style={btn('rgba(255,255,255,0.05)', T.text3)} title="Copy question" aria-label="Copy question">
+                {copiedKey === `q:${s.questionId || s.ts}` ? '✓' : 'Copy'}
               </button>
             </div>
             {!s.answer && !s.hint && ['superseded', 'cancelled', 'failed'].includes(s.status) && (
@@ -1986,7 +2001,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             )}
             {/* A bubble (or incomplete stub with Retry) */}
             {s.hint && (s.answer !== undefined || s.hint.incomplete) && (
-              <div ref={isLatest ? latestAnswerRef : null} style={{ marginLeft: 10, scrollMarginTop: 8 }}>
+              <div ref={isLatest ? latestAnswerRef : null} style={{ marginLeft: teleprompter ? 4 : 10, scrollMarginTop: 8 }}>
                 <div style={{ display: 'flex', gap: 4, marginBottom: 5, flexWrap: 'wrap', alignItems: 'center' }}>
                   {s.hint.incomplete && <span style={badge('rgba(251,191,36,0.2)', '#fbbf24')}>⚠ INCOMPLETE</span>}
                   {s.hint.confidence === 'resume' && (
@@ -2007,7 +2022,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                     <span style={badge('rgba(45,212,191,0.14)', '#5eead4')} title="Grounded in live web search">🌐 WEB</span>
                   )}
                   {s.hint.complexity && (
-                    <span style={badge('rgba(255,255,255,0.06)', T.text2)}>{s.hint.complexity}</span>
+                    <span style={{ ...badge('rgba(255,255,255,0.06)', T.text2), fontFamily: T.fontMono }}>{s.hint.complexity}</span>
                   )}
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
                     {s.hint.incomplete && (
@@ -2015,12 +2030,12 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                     )}
                     <button type="button" onMouseDown={e => e.stopPropagation()}
                       onClick={() => copyFeedText(`a:${s.questionId || s.ts}`, s.hint.fullAnswer || s.hint.sampleAnswer || s.answer || '')}
-                      style={btn('rgba(255,255,255,0.04)', T.text3)} title="Copy answer" aria-label="Copy answer">
-                      {copiedKey === `a:${s.questionId || s.ts}` ? '✓' : '📋'}
+                      style={btn('rgba(255,255,255,0.05)', T.text3)} title="Copy answer" aria-label="Copy answer">
+                      {copiedKey === `a:${s.questionId || s.ts}` ? '✓' : 'Copy'}
                     </button>
                   </div>
                 </div>
-                {s.hint.resumeStory && <div style={{ borderLeft: '2px solid #4ade80', paddingLeft: 7, fontSize: 10, color: '#86efac', marginBottom: 6, fontStyle: 'italic' }}>{s.hint.resumeStory}</div>}
+                {s.hint.resumeStory && <div style={{ borderLeft: '2px solid #4ade80', paddingLeft: 7, fontSize: 10.5, color: '#86efac', marginBottom: 6 }}>{s.hint.resumeStory}</div>}
                 {(() => {
                   const streamingThis = streaming && s.text === lastHintText.current
                   const layers = glanceLayers(s.answer || '', s.hint || {})
@@ -2029,21 +2044,33 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                   const showBullets = !expanded && layers.keyPoints.length > 0
                   const watch = s.hint.watchOut || layers.watchOut
                   const hasMore = !streamingThis && ((layers.fullAnswer || '').length > (layers.opener || '').length + 40)
+                  const isResumeCard = s.hint.confidence === 'resume'
                   return (
-                    <div role="log" aria-live="polite" aria-label="Suggested answer" style={{ fontSize: 13, color: s.hint.confidence === 'resume' ? '#dcfce7' : '#e8eaf0', background: s.hint.confidence === 'resume' ? 'rgba(6,30,18,0.96)' : 'rgba(20,18,32,0.96)', border: `1px solid ${s.hint.confidence === 'resume' ? 'rgba(34,197,94,0.3)' : 'rgba(13,148,136,0.32)'}`, borderRadius: '8px 8px 8px 0', padding: '10px 12px', lineHeight: 1.55, userSelect: 'text', WebkitUserSelect: 'text' }}>
+                    <div role="log" aria-live="polite" aria-label="Suggested answer" style={{
+                      fontSize: teleprompter ? 15.5 : 13.5,
+                      color: isResumeCard ? '#dcfce7' : T.text1,
+                      background: isResumeCard ? T.resumeAnswerBg : T.answerBg,
+                      border: `1px solid ${isResumeCard ? T.resumeAnswerBorder : T.answerBorder}`,
+                      boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.07)',
+                      borderRadius: '8px 8px 8px 0',
+                      padding: teleprompter ? '11px 14px' : '10px 12px',
+                      lineHeight: teleprompter ? 1.5 : 1.55,
+                      letterSpacing: teleprompter ? '-0.008em' : 'normal',
+                      userSelect: 'text', WebkitUserSelect: 'text',
+                    }}>
                       {/* Glance OR full — never both (was repeating the same answer twice). */}
                       {expanded && hasMore ? (
-                        <div style={{ lineHeight: 1.7 }}>{renderMd(layers.fullAnswer || s.answer || '')}</div>
+                        <div style={{ lineHeight: 1.68, fontSize: teleprompter ? 14.5 : 13 }}>{renderMd(layers.fullAnswer || s.answer || '')}</div>
                       ) : (
                         <>
-                          <div style={{ fontWeight: 600, marginBottom: showBullets ? 8 : 0, lineHeight: 1.45 }}>
+                          <div style={{ fontWeight: 600, marginBottom: showBullets ? 8 : 0, lineHeight: teleprompter ? 1.48 : 1.45 }}>
                             {layers.opener || (streamingThis ? '…' : '…')}
                             {streamingThis && <span style={{ display: 'inline-block', width: 2, height: '0.9em', background: T.accentFrom, marginLeft: 2, verticalAlign: 'text-bottom', animation: 'blink 0.7s step-end infinite' }} />}
                           </div>
                           {showBullets && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 4 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: teleprompter ? 6 : 4, marginBottom: 4 }}>
                               {layers.keyPoints.map((pt, bi) => (
-                                <div key={bi} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 12.5, color: s.hint.confidence === 'resume' ? '#bbf7d0' : T.text1 }}>
+                                <div key={bi} style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: teleprompter ? 14 : 12.5, lineHeight: teleprompter ? 1.45 : 1.4, color: isResumeCard ? '#bbf7d0' : '#E2E8F0' }}>
                                   <span style={{ color: T.accentFrom, flexShrink: 0, marginTop: 2, fontSize: 10 }}>▸</span>
                                   <span>{pt}</span>
                                 </div>
@@ -2134,7 +2161,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
               </button>
               {usage.tokens > 0 && (
                 <span title={`This session: ${usage.tokens.toLocaleString()} tokens · est. $${usage.cost.toFixed(3)}`}
-                  style={{ fontSize: 10, color: T.text3, fontFamily: 'monospace', marginLeft: 'auto' }}>
+                  style={{ fontSize: 10, color: T.text3, fontFamily: T.fontMono, fontVariantNumeric: 'tabular-nums', marginLeft: 'auto' }}>
                   {(usage.tokens / 1000).toFixed(1)}k tok · ~${usage.cost.toFixed(2)}
                 </span>
               )}

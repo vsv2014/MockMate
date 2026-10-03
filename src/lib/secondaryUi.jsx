@@ -33,7 +33,7 @@ export const S = {
   },
   card: {
     background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard,
-    padding: '14px 16px', marginBottom: 10, fontFamily: T.font,
+    boxShadow: T.cardShadow, padding: '14px 16px', marginBottom: 10, fontFamily: T.font,
   },
   sectionLbl: {
     fontSize: 11, color: T.text3, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
@@ -45,7 +45,7 @@ export const S = {
   },
   panel: {
     background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard,
-    padding: '14px 16px', marginBottom: 14, fontFamily: T.font,
+    boxShadow: T.cardShadow, padding: '14px 16px', marginBottom: 14, fontFamily: T.font,
   },
 }
 
