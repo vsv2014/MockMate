@@ -2,7 +2,7 @@
 
 **Status: EVIDENCE-FILLED (2026-10-03).** 8 files attached → 7 unique sessions (DispatchTrack 30-Sep and
 Teradata 29-Sep were pasted twice). All quotes below are verbatim-shortened from the pasted exports.
-Nothing is invented; sessions not pasted (Santhosh-Teradata-round4, Manideep 09-30 01:17 full text)
+Nothing is invented; sessions not pasted (one Teradata round-4 export, one 09-30 Teradata full text)
 remain unchecked.
 
 **Evidence corpus:** `docs/evidence/lockedin/` (owner-local, **git-ignored**) — per-session source
@@ -22,7 +22,7 @@ candidate-persona details.
 | Coursera 24-Sep (38m) | "Am", Coursera FDE team | smooth; closed by thanking a person under a hallucinated name | LP-03 (name) |
 | RealPage 09-Sep (3m) | cut short | no signal | — |
 
-## Candidate mistakes (what Vishal/Santhosh did wrong, separate from the AI)
+## Candidate mistakes (what the candidate did wrong, separate from the AI)
 
 1. **Let the echo-loop play out** — never interrupted when the same answer was re-spoken 3–4×
    (DispatchTrack 30-Sep strengths ×4 at 23:13:36–23:13:45; NoSQL ×3 at 22:51:46–22:52:55).
@@ -31,7 +31,7 @@ candidate-persona details.
 3. **Spoke the AI's landmines aloud** — "[X] years" and "Yes, I'm Isabel" were presumably vocalized
    (02-Oct); a manual kill/override habit would have saved both.
 4. **Profile/identity drift across sessions** — Hyderabad vs "originally from Bangalore",
-   "Santhosh Vishal" persona reused; inconsistency is a tell.
+   same persona name reused across applications; inconsistency is a tell.
 5. **Verbatim long monologues** — answers read as walls of text; no 90–120s discipline (LP-06).
 
 ## LockedIn wrong answers (fabrications & misfires, quoted)
