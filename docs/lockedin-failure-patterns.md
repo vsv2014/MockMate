@@ -5,6 +5,11 @@ Teradata 29-Sep were pasted twice). All quotes below are verbatim-shortened from
 Nothing is invented; sessions not pasted (Santhosh-Teradata-round4, Manideep 09-30 01:17 full text)
 remain unchecked.
 
+**Evidence corpus:** `docs/evidence/lockedin/` (owner-local, **git-ignored**) — per-session source
+files with every quoted excerpt and timestamp (excerpt-level preservation; full raw pastes can be
+appended there on re-paste). Excluded from the repository because it contains interviewer names and
+candidate-persona details.
+
 ## Session outcomes (honest read)
 
 | Session | Company / interviewer | Outcome signal | Dominant failures |
