@@ -43,9 +43,12 @@ export function normalizeSessionPayload(input = {}) {
 export function validateSessionPayload(input = {}) {
   const value = normalizeSessionPayload(input)
   if (!value.mode) return { value, error: 'Choose a supported session mode.' }
-  // Validation is based on the product mode, never on the caller-controlled `source` field.
   if (['live', 'mock', 'coding'].includes(value.mode) && !value.role) {
     return { value, error: 'Add the role you are preparing for.' }
+  }
+  // Live validation is owned by the mode, never by the caller-controlled source.
+  if (value.mode === 'live' && !value.company) {
+    return { value, error: 'Add a company for a live session.' }
   }
   if (value.score && JSON.stringify(value.score).length > 32_000) {
     return { value, error: 'Session score data is too large.' }
