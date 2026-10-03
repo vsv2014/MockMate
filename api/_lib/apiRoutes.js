@@ -55,9 +55,13 @@ export function registerApiRoutes(app, opts = {}) {
   const bodyWithPolicy = (path, raw = {}) => {
     const body = { ...(raw || {}) }
     if (!resolveReasoningPolicy) return body
-    const policy = resolveReasoningPolicy(OPERATION_BY_PATH[path] || 'default')
+    const policy = resolveReasoningPolicy(OPERATION_BY_PATH[path] || 'default', { adaptive: true })
     if (!policy) return body
-    body.archPolicy = { lane: policy.lane, noDoubleRetry: policy.noDoubleRetry === true }
+    body.archPolicy = {
+      lane: policy.lane,
+      noDoubleRetry: policy.noDoubleRetry === true,
+      ...(policy.adaptivePromotion ? { adaptivePromotion: policy.adaptivePromotion } : {}),
+    }
     const strategy = STRATEGY_BY_LANE[policy.lane]
     if (strategy && !body.profile?.modelStrategy) body.profile = { ...(body.profile || {}), modelStrategy: strategy }
     return body

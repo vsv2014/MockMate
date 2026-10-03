@@ -85,6 +85,9 @@ describe('ARCH Product Intelligence (privacy-first behavioral telemetry)', () =>
     expect(headlineTexts.some(t => /Users resize the overlay before using Alt\+T teleprompter in 100%/i.test(t))).toBe(true)
     expect(headlineTexts.some(t => /100% of sessions with slow first-token latency/i.test(t))).toBe(true)
     expect(headlineTexts.some(t => /Repeated click friction detected on "start_live_btn"/i.test(t))).toBe(true)
+    expect(report.adaptiveActions.map(a => a.id)).toEqual(
+      expect.arrayContaining(['promote_fast_lane', 'preflight_guided_unblock', 'teleprompter_auto_geometry']),
+    )
     expect(report.privacyContract.excludedData).toContain('resumes')
     expect(report.privacyContract.optInReplay).toBe(false)
   })

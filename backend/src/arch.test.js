@@ -35,6 +35,17 @@ describe('ARCH reasoning policy', () => {
     expect(reasoningPolicy('evaluate').lane).toBe('strong')
     expect(reasoningPolicy('screen').lane).toBe('vision')
   })
+
+  it('closes the loop by promoting balanced operations to the fast lane when ARCH p95 TTFT breaches the ABL threshold', () => {
+    for (const ms of [3400, 3600, 3900]) recordArchMetric('llm_ttft_ms', ms)
+    const adaptive = reasoningPolicy('interview', { adaptive: true })
+    expect(adaptive.baseLane).toBe('balanced')
+    expect(adaptive.lane).toBe('fast')
+    expect(adaptive.adaptivePromotion).toBe('high_latency_guardrail')
+
+    // Strong/vision lanes remain preserved for deep evaluation and screen analysis
+    expect(reasoningPolicy('evaluate', { adaptive: true }).lane).toBe('strong')
+  })
 })
 
 describe('ARCH runtime fallback', () => {

@@ -180,8 +180,22 @@ export function partitionSessions(events = [], gapMs = 30 * 60 * 1000) {
 
 /**
  * Analyzes canonical funnels & behavioral patterns across recorded sessions.
+ * Accepts declarative `funnels` and `adaptivePolicies` compiled from ABL (`arch/mockmate.abl.json`)
+ * plus optional `runtimePerformance` from ARCH (`performanceSnapshot()`) to close the loop
+ * between behavioral telemetry and runtime routing decisions.
  */
 export function summarizeProductIntelligence(events = [], options = {}) {
+  const funnelDefs = options.funnels && Object.keys(options.funnels).length
+    ? options.funnels
+    : FLOW_DEFINITIONS
+  const policies = {
+    ttftFastLaneThresholdMs: 3200,
+    turnLatencyFastLaneThresholdMs: 6000,
+    earlyAbandonWindowMs: 90_000,
+    ...(options.adaptivePolicies || {}),
+  }
+  const runtimePerf = options.runtimePerformance || {}
+
   const redactedEvents = (Array.isArray(events) ? events : [])
     .map(redactInteractionEvent)
     .filter(Boolean)
@@ -189,11 +203,10 @@ export function summarizeProductIntelligence(events = [], options = {}) {
 
   // 1. Funnel step reach & drop-off calculation
   const funnels = {}
-  for (const [flowId, def] of Object.entries(FLOW_DEFINITIONS)) {
+  for (const [flowId, def] of Object.entries(funnelDefs)) {
     const stepCounts = def.steps.map(s => ({ ...s, count: 0, conversionPct: 0, dropOffPct: 0 }))
     for (const session of sessions) {
       const actionsInSession = new Set(session.map(e => e.action))
-      // A step counts as reached in this session if the action occurred (or a downstream step in the same flow occurred for login)
       const reachedIndices = new Set()
       def.steps.forEach((step, idx) => {
         if (actionsInSession.has(step.id)) reachedIndices.add(idx)
@@ -263,11 +276,11 @@ export function summarizeProductIntelligence(events = [], options = {}) {
       }
     }
 
-    const slowHint = session.find(e => e.action === 'first_hint_rendered' && Number(e.ttftMs) >= 3500)
+    const slowHint = session.find(e => e.action === 'first_hint_rendered' && Number(e.ttftMs) >= policies.ttftFastLaneThresholdMs)
     if (slowHint) {
       highTtftSessions += 1
       const endEv = session.find(e => e.action === 'live_ended')
-      const abandonedEarly = !endEv || (Number.isFinite(endEv.durationMs) && endEv.durationMs < 90_000)
+      const abandonedEarly = !endEv || (Number.isFinite(endEv.durationMs) && endEv.durationMs < policies.earlyAbandonWindowMs)
       if (abandonedEarly) highTtftAbandonSessions += 1
     }
   }
@@ -367,10 +380,61 @@ export function summarizeProductIntelligence(events = [], options = {}) {
     })
   }
 
+  // 6. Closed-Loop Adaptive Actions (ARCH runtime + UI self-tuning)
+  const adaptiveActions = []
+  const runtimeTtftP95 = Number(runtimePerf?.llm_ttft_ms?.p95) || 0
+  const runtimeTurnP95 = Number(runtimePerf?.turn_latency_ms?.p95) || 0
+  const slowTtftDetected =
+    runtimeTtftP95 >= policies.ttftFastLaneThresholdMs ||
+    runtimeTurnP95 >= policies.turnLatencyFastLaneThresholdMs ||
+    highTtftAbandonSessions > 0
+
+  if (slowTtftDetected) {
+    adaptiveActions.push({
+      id: 'promote_fast_lane',
+      targetLayer: 'arch_routing',
+      recommendedLane: 'fast',
+      recommendedStyle: 'concise',
+      reason: runtimeTtftP95 >= policies.ttftFastLaneThresholdMs
+        ? `ARCH p95 TTFT (${runtimeTtftP95}ms) exceeds ${policies.ttftFastLaneThresholdMs}ms threshold`
+        : `High first-token latency (>3.2s) correlated with early session abandonment`,
+    })
+  }
+
+  if (liveSetupSessions > 0 && preflightFailSessions / liveSetupSessions >= 0.25) {
+    adaptiveActions.push({
+      id: 'preflight_guided_unblock',
+      targetLayer: 'ui_setup',
+      reason: `${Math.round((preflightFailSessions / liveSetupSessions) * 100)}% preflight stall rate — highlight Step 1 OS test + Step 2 share checkbox`,
+    })
+  }
+
+  if (teleprompterSessions > 0 && resizeBeforeTeleprompterSessions / teleprompterSessions >= 0.5) {
+    adaptiveActions.push({
+      id: 'teleprompter_auto_geometry',
+      targetLayer: 'window_manager',
+      reason: 'Users frequently resize before toggling Alt+T — preserve 760×240 camera-anchored geometry',
+    })
+  }
+
+  const codingTabCounts = redactedEvents
+    .filter(e => e.action === 'coding_tab_used' && e.tab)
+    .reduce((acc, e) => { acc[e.tab] = (acc[e.tab] || 0) + 1; return acc }, {})
+  const dominantCodingTab = Object.entries(codingTabCounts).sort((a, b) => b[1] - a[1])[0]
+  if (dominantCodingTab && dominantCodingTab[1] >= 2) {
+    adaptiveActions.push({
+      id: 'preferred_coding_tab',
+      targetLayer: 'ui_screen_solve',
+      preferredTab: dominantCodingTab[0],
+      reason: `User repeatedly switches F7 Coding view to "${dominantCodingTab[0]}" (${dominantCodingTab[1]}×)`,
+    })
+  }
+
   return {
     totalEvents: redactedEvents.length,
     totalSessions: sessions.length,
     headlineInsights,
+    adaptiveActions,
     funnels,
     featureAdoption,
     friction: {

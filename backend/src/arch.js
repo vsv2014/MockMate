@@ -34,10 +34,14 @@ export function recordArchProductEvent(event) {
 
 export function archProductIntelligenceSnapshot(options = {}) {
   const plan = runtimePlan()
+  const piSpec = plan.productIntelligence || {}
   return {
-    policy: plan.productIntelligence,
+    policy: piSpec,
     ...summarizeProductIntelligence(productEvents, {
-      optInReplay: options.optInReplay ?? plan.productIntelligence?.optInReplayDefault ?? false,
+      optInReplay: options.optInReplay ?? piSpec.optInReplayDefault ?? false,
+      funnels: piSpec.funnels,
+      adaptivePolicies: piSpec.adaptivePolicies,
+      runtimePerformance: performanceSnapshot(),
     }),
   }
 }
@@ -169,9 +173,29 @@ export async function executeWithFallback({
   return { ok: false, degraded: true, provider: null, failures }
 }
 
-export function reasoningPolicy(operation) {
+export function reasoningPolicy(operation, { adaptive = false } = {}) {
   const plan = runtimePlan()
-  return { lane: reasoningLane(operation), executionAdapter: plan.reasoning.executionAdapter, noDoubleRetry: plan.reasoning.noDoubleRetry }
+  const baseLane = reasoningLane(operation)
+  if (!adaptive) {
+    return { lane: baseLane, executionAdapter: plan.reasoning.executionAdapter, noDoubleRetry: plan.reasoning.noDoubleRetry }
+  }
+  const snap = performanceSnapshot()
+  const policies = plan.productIntelligence?.adaptivePolicies || {}
+  const ttftThreshold = Number(policies.ttftFastLaneThresholdMs) || 3200
+  const turnThreshold = Number(policies.turnLatencyFastLaneThresholdMs) || 6000
+  const ttftP95 = Number(snap?.llm_ttft_ms?.p95) || 0
+  const turnP95 = Number(snap?.turn_latency_ms?.p95) || 0
+  const shouldPromoteToFast =
+    baseLane === 'balanced' &&
+    (ttftP95 >= ttftThreshold || turnP95 >= turnThreshold)
+
+  return {
+    lane: shouldPromoteToFast ? 'fast' : baseLane,
+    baseLane,
+    adaptivePromotion: shouldPromoteToFast ? 'high_latency_guardrail' : null,
+    executionAdapter: plan.reasoning.executionAdapter,
+    noDoubleRetry: plan.reasoning.noDoubleRetry,
+  }
 }
 
 function sttRetryable(error) {

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { T } from '../auth/tokens'
+import { apiFetch } from '../lib/apiClient'
+import { getAnswerStyle, setAnswerStyle } from '../lib/aiSettings'
 import {
   getProductIntelligenceReport,
   subscribeProductIntelligence,
@@ -9,17 +11,29 @@ import {
 } from '../lib/productIntelligence'
 
 export default function ProductIntelligencePanel() {
+  const [archRuntime, setArchRuntime] = useState(null)
   const [report, setReport] = useState(() => getProductIntelligenceReport())
   const [optInReplay, setOptInReplayState] = useState(() => getReplayOptIn())
   const [expanded, setExpanded] = useState(false)
+  const [appliedActionMsg, setAppliedActionMsg] = useState('')
+
+  useEffect(() => {
+    apiFetch('/api/arch')
+      .then(r => r.json())
+      .then(d => {
+        setArchRuntime(d)
+        setReport(getProductIntelligenceReport(d?.performance))
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     const refresh = () => {
-      setReport(getProductIntelligenceReport())
+      setReport(getProductIntelligenceReport(archRuntime?.performance))
       setOptInReplayState(getReplayOptIn())
     }
     return subscribeProductIntelligence(refresh)
-  }, [])
+  }, [archRuntime])
 
   const toggleReplayOptIn = () => {
     const next = setReplayOptIn(!optInReplay)
@@ -149,6 +163,71 @@ export default function ProductIntelligencePanel() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Closed-Loop Adaptive Actions (ARCH Runtime Self-Optimization) */}
+      {report.adaptiveActions?.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+          {report.adaptiveActions.slice(0, expanded ? 4 : 2).map(act => (
+            <div
+              key={act.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 9,
+                padding: '7px 10px',
+                borderRadius: 8,
+                background: 'rgba(139,92,246,0.08)',
+                border: '1px solid rgba(167,139,250,0.28)',
+                fontSize: 11.5,
+                color: T.text1,
+              }}
+            >
+              <span style={{
+                fontFamily: T.fontMono,
+                fontSize: 10,
+                fontWeight: 700,
+                color: '#c4b5fd',
+                padding: '2px 6px',
+                borderRadius: 5,
+                background: 'rgba(139,92,246,0.18)',
+                whiteSpace: 'nowrap',
+              }}>
+                ⚡ ARCH LOOP
+              </span>
+              <span style={{ flex: 1, color: T.text2, lineHeight: 1.4 }}>{act.reason}</span>
+              {act.id === 'promote_fast_lane' && getAnswerStyle() !== 'concise' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAnswerStyle('concise')
+                    setAppliedActionMsg('✓ Switched default response style to Concise (Fast lane)')
+                  }}
+                  style={{
+                    height: 26,
+                    padding: '0 9px',
+                    borderRadius: 6,
+                    border: '1px solid rgba(167,139,250,0.45)',
+                    background: 'rgba(139,92,246,0.22)',
+                    color: '#ddd6fe',
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: T.font,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Apply Fast Mode
+                </button>
+              )}
+            </div>
+          ))}
+          {appliedActionMsg && (
+            <div role="status" style={{ fontSize: 11, color: '#5eead4', fontWeight: 600 }}>
+              {appliedActionMsg}
+            </div>
+          )}
         </div>
       )}
 

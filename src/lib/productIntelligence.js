@@ -90,9 +90,12 @@ export function startNewProductSession() {
   return sessionId
 }
 
-export function getProductIntelligenceReport() {
+export function getProductIntelligenceReport(runtimePerformance = null) {
   const events = readProductEvents()
-  return summarizeProductIntelligence(events, { optInReplay: getReplayOptIn() })
+  return summarizeProductIntelligence(events, {
+    optInReplay: getReplayOptIn(),
+    runtimePerformance: runtimePerformance || undefined,
+  })
 }
 
 export function clearProductIntelligenceEvents() {

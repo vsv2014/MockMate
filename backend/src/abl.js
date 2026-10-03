@@ -43,6 +43,11 @@ export function validateAblSpec(spec) {
   }
   assert(spec.capabilities?.speech?.turnDetection, 'speech.turnDetection is required')
   assert(Array.isArray(spec.performance?.reportPercentiles), 'performance.reportPercentiles is required')
+  const pi = spec.capabilities?.telemetry?.productIntelligence
+  if (pi) {
+    assert(pi.mode === 'structured_redacted', 'productIntelligence.mode must be structured_redacted')
+    assert(Array.isArray(pi.excludedData) && pi.excludedData.includes('resumes'), 'productIntelligence.excludedData must exclude resumes')
+  }
   rejectSecrets(spec)
   return spec
 }
