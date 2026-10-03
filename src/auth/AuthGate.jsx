@@ -8,7 +8,8 @@ import Onboarding from './Onboarding'
 import { WindowControls } from './AuthShell'
 import { login, signup, fetchMe, logout as apiLogout, updateProfile, forgotPassword, getToken, setUnauthorizedHandler, refreshSession, usesDeviceLocalAccounts } from './api'
 import { loadProfile, saveProfile } from '../lib/profile'
-import { setAiMode, MANAGED_AVAILABLE } from '../lib/aiMode'
+import { getAiMode, setAiMode, setGuestMode, MANAGED_AVAILABLE } from '../lib/aiMode'
+import { setActiveAccountScope, clearActiveAccountScope } from '../lib/accountScope'
 
 const SEEN_WELCOME = 'mm-seen-welcome'
 const seenWelcome = () => { try { return localStorage.getItem(SEEN_WELCOME) === '1' } catch { return false } }
@@ -24,6 +25,8 @@ export default function AuthGate({ children }) {
 
   const loadSession = useCallback(async () => {
     const me = await fetchMe()
+    setActiveAccountScope(me?.user?.id || me?.user?._id || me?.user?.email || 'guest')
+    setGuestMode(false)
     setSession(me)
     setStatus('ready')
     return me
@@ -31,45 +34,46 @@ export default function AuthGate({ children }) {
 
   // Boot: resume an existing session if the stored token is still valid.
   useEffect(() => {
-    setUnauthorizedHandler(() => { setSession(null); setView('login'); setStatus('auth') })
+    setUnauthorizedHandler(() => {
+      clearActiveAccountScope()
+      setGuestMode(false)
+      setSession(null); setView('login'); setStatus('auth')
+    })
     let alive = true
     ;(async () => {
       const token = await getToken()
-      if (!token) { if (alive) { setView(seenWelcome() ? 'login' : 'welcome'); setStatus('auth') } return }
+      if (!token) { if (alive) { clearActiveAccountScope(); setView(seenWelcome() ? 'login' : 'welcome'); setStatus('auth') } return }
       try {
         try { await refreshSession() } catch { /* expired → loadSession will 401 */ }
         await loadSession()
       }
-      catch { if (alive) { setView('login'); setStatus('auth') } }
+      catch { if (alive) { clearActiveAccountScope(); setView('login'); setStatus('auth') } }
     })()
     return () => { alive = false }
   }, [loadSession])
 
   // Keep access tokens fresh while the app stays open (default JWT is 7d).
   useEffect(() => {
-    if (status !== 'ready') return
+    if (status !== 'ready' || session?.guest) return
     const id = setInterval(() => { refreshSession().catch(() => {}) }, 12 * 60 * 60 * 1000)
     return () => clearInterval(id)
-  }, [status])
+  }, [status, session?.guest])
 
   // ── Handlers passed to the screens ──
   const handleLogin = useCallback(async (creds) => {
-    await login(creds)        // stores JWT (throws on bad creds → Login shows the error)
-    restoreManagedIfGuest()
-    await loadSession()       // → ready
+    await login(creds)
+    await loadSession()
   }, [loadSession])
 
   const handleSignup = useCallback(async (form) => {
-    await signup(form)        // stores JWT (throws → Signup shows the error)
-    restoreManagedIfGuest()
+    await signup(form)
     markSeenWelcome()
-    await loadSession()       // populate session.user for onboarding (stays in 'auth')
+    await loadSession()
     setView('onboarding')
     setStatus('auth')
   }, [loadSession])
 
   const handleOnboarding = useCallback(async ({ currentRole, targetRole, yearsExp, resumeText }) => {
-    // Local-first: profile + resume stay on the device (reused by Solo/Jobs/Career).
     const prof = loadProfile()
     saveProfile({
       ...prof,
@@ -79,32 +83,34 @@ export default function AuthGate({ children }) {
       yearsExp: yearsExp || prof.yearsExp || '',
       resume: resumeText || prof.resume || '',
     })
-    // Backend: role/experience only (never the resume — that's local unless synced).
     await updateProfile({ currentRole, targetRole, yearsExp })
-    await loadSession()       // → ready (enters the app)
-  }, [session])
+    await loadSession()
+  }, [session, loadSession])
 
   const doLogout = useCallback(async () => {
     await apiLogout()
     markSeenWelcome()
+    clearActiveAccountScope()
+    setGuestMode(false)
     setSession(null); setView('login'); setStatus('auth')
   }, [])
 
-  // Try-before-auth: enter the app WITHOUT an account. Managed AI needs auth, so a guest runs in
-  // local BYOK mode (relative /api on :3002, no JWT). They can sign in anytime to sync + go managed.
+  // Try-before-auth: guest state is durable so a process restart cannot leave a stale managed
+  // preference active without a JWT. Preserve the user's pre-guest choice and restore it on login.
   const enterGuest = useCallback(() => {
     markSeenWelcome()
-    // Guest can't use managed AI (needs auth) → force local BYOK, and flag that WE did it so a
-    // later real sign-in can restore managed (without clobbering a user's deliberate BYOK choice).
-    try { setAiMode('byok'); sessionStorage.setItem('mm-guest-byok', '1') } catch {}
+    clearActiveAccountScope()
+    const previous = getAiMode()
+    setGuestMode(true, previous)
+    setAiMode('byok')
     setSession({ user: null, plan: 'guest', guest: true, usage: null, limits: null })
     setStatus('ready')
   }, [])
-  // Undo the guest-forced BYOK on a real sign-in (only if guest set it — not a deliberate choice).
-  const restoreManagedIfGuest = () => {
-    try { if (sessionStorage.getItem('mm-guest-byok') === '1') { if (MANAGED_AVAILABLE) setAiMode('managed'); sessionStorage.removeItem('mm-guest-byok') } } catch {}
-  }
-  const goSignIn = useCallback(() => { setSession(null); setView('login'); setStatus('auth') }, [])
+
+  const goSignIn = useCallback(() => {
+    clearActiveAccountScope()
+    setSession(null); setView('login'); setStatus('auth')
+  }, [])
 
   // ── Render ──
   if (status === 'loading') return <LoadingScreen />
@@ -122,7 +128,6 @@ export default function AuthGate({ children }) {
     })
   }
 
-  // Auth flow
   if (view === 'welcome') {
     return <Welcome
       onGetStarted={() => { markSeenWelcome(); setView('signup') }}
@@ -130,22 +135,15 @@ export default function AuthGate({ children }) {
       onGuest={enterGuest}
     />
   }
-  if (view === 'signup') {
-    return <Signup onSubmit={handleSignup} onSwitchToLogin={() => setView('login')} />
-  }
-  if (view === 'onboarding') {
-    return <Onboarding onComplete={handleOnboarding} />
-  }
+  if (view === 'signup') return <Signup onSubmit={handleSignup} onSwitchToLogin={() => setView('login')} />
+  if (view === 'onboarding') return <Onboarding onComplete={handleOnboarding} />
   return <Login onSubmit={handleLogin} onSwitchToSignup={() => setView('signup')}
     onForgot={usesDeviceLocalAccounts ? undefined : forgotPassword} onGuest={enterGuest} />
 }
 
 function LoadingScreen() {
   return (
-    <div style={{
-      position: 'fixed', inset: 0, display: 'grid', placeItems: 'center',
-      background: T.bg, color: T.text2, fontFamily: T.font,
-    }}>
+    <div style={{ position: 'fixed', inset: 0, display: 'grid', placeItems: 'center', background: T.bg, color: T.text2, fontFamily: T.font }}>
       <WindowControls />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
         <Spinner />
