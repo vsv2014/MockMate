@@ -1,8 +1,16 @@
-// Fetch with a hard timeout — a slow/hung upstream must never hang a request.
-// Was duplicated as `fetchT` in search.js, jobs.js, and inline in core.js (deepgram).
+// Fetch with a hard timeout while preserving caller cancellation.
 export async function fetchWithTimeout(url, opts = {}, ms = 10000) {
+  const { signal: outerSignal, ...rest } = opts
   const ac = new AbortController()
-  const t = setTimeout(() => ac.abort(), ms)
-  try { return await fetch(url, { ...opts, signal: ac.signal }) }
-  finally { clearTimeout(t) }
+  const relay = () => ac.abort(outerSignal?.reason)
+  if (outerSignal?.aborted) relay()
+  else outerSignal?.addEventListener?.('abort', relay, { once: true })
+  const t = setTimeout(() => ac.abort(new Error('Request timed out')), ms)
+  t.unref?.()
+  try {
+    return await fetch(url, { ...rest, signal: ac.signal })
+  } finally {
+    clearTimeout(t)
+    outerSignal?.removeEventListener?.('abort', relay)
+  }
 }
