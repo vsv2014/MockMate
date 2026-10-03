@@ -12,7 +12,7 @@ function randomToken(bytes = 12) {
     return [...a].map(v => v.toString(16).padStart(2, '0')).join('')
   } catch { return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}` }
 }
-function randomRoom() { return `mock-${randomToken(9)}` }
+function randomRoom() { return `mock-${randomToken(16)}` }
 function randomIdentity(name) { return `${String(name || 'peer').replace(/[^a-z0-9_-]/gi, '_').slice(0, 32)}-${randomToken(8)}` }
 function paramRoom() {
   try { return new URLSearchParams(location.search).get('room') || '' } catch { return '' }
@@ -49,7 +49,7 @@ export default function Duo({ onHome }) {
   function start(create) {
     if (!name.trim()) { setErr('Enter your name first.'); return }
     const r = create ? randomRoom() : room.trim()
-    if (!/^mock-[a-z0-9]{12,40}$/i.test(r)) { setErr('Enter a valid MockMate room code, or create a new room.'); return }
+    if (!/^mock-[a-f0-9]{32,64}$/i.test(r)) { setErr('Enter a valid MockMate room code, or create a new room.'); return }
     setErr('')
     try { saveProfile({ ...prof, name: name.trim(), targetRole }) } catch {}
     try { history.replaceState(null, '', `?room=${encodeURIComponent(r)}`) } catch {}

@@ -1048,18 +1048,25 @@ export function isLoopbackAddress(ip) {
 // LAZILY inside the function so the shared engine still loads when Duo isn't installed/configured —
 // Solo & Live must never break because an OPTIONAL feature's package is missing (same lazy pattern
 // as the Mongo store). Configure LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET to enable.
-export async function mintToken({ room, identity, name } = {}) {
+export async function mintToken({ room, identity, name, role = 'candidate', requesterId = null } = {}) {
   const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_URL } = process.env
-  if (!room || !identity) { const e = new Error('room and identity are required'); e.status = 400; throw e }
+  const roomId = String(room || '').trim()
+  const requestedRole = role === 'interviewer' ? 'interviewer' : role === 'candidate' ? 'candidate' : null
+  if (!/^mock-[a-f0-9]{32,64}$/i.test(roomId)) { const e = new Error('A valid high-entropy MockMate room code is required'); e.status = 400; throw e }
+  if (!requestedRole) { const e = new Error('role must be candidate or interviewer'); e.status = 400; throw e }
+  if (!identity && !requesterId) { const e = new Error('identity is required'); e.status = 400; throw e }
   if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !LIVEKIT_URL) {
     const e = new Error('Duo/rooms are not configured — set LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET.'); e.status = 501; throw e
   }
   let AccessToken
   try { ({ AccessToken } = await import('livekit-server-sdk')) }
   catch { const e = new Error('Duo needs the livekit-server-sdk package — run `npm i livekit-server-sdk`.'); e.status = 501; throw e }
-  const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity, name: name || identity, ttl: '2h' })
-  at.addGrant({ roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: true })
-  return { token: await at.toJwt(), url: LIVEKIT_URL }
+  const localIdentity = String(identity || 'peer').replace(/[^a-z0-9:_-]/gi, '_').slice(0, 96)
+  const accountIdentity = requesterId ? ('u_' + String(requesterId).replace(/[^a-z0-9_-]/gi, '').slice(-40) + '_' + requestedRole) : localIdentity
+  const metadata = JSON.stringify({ mockmateRole: requestedRole, accountBound: !!requesterId })
+  const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity: accountIdentity, name: String(name || accountIdentity).slice(0, 120), metadata, ttl: '2h' })
+  at.addGrant({ roomJoin: true, room: roomId, canPublish: true, canSubscribe: true, canPublishData: true })
+  return { token: await at.toJwt(), url: LIVEKIT_URL, identity: accountIdentity, role: requestedRole }
 }
 
 // ── Embeddings — powers document RAG (chunk → embed → retrieve, see shared/retrieval.js) ─────

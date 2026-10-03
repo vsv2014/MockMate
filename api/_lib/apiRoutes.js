@@ -68,7 +68,7 @@ export function registerApiRoutes(app, opts = {}) {
   })
 
   app.post('/api/token', ...guardLight, async (req, res) => {
-    try { res.json(await mintToken(req.body || {})) }
+    try { res.json(await mintToken({ ...(req.body || {}), requesterId: req.userId || null })) }
     catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
   })
 

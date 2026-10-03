@@ -25,16 +25,23 @@ function decodePayload(msg) {
   try { return JSON.parse(new TextDecoder().decode(msg.payload)) } catch { return null }
 }
 function validRole(role) { return role === 'candidate' || role === 'interviewer' }
-function sanitizeSegment(raw, room, senderIdentity = '') {
+function participantRole(participant) {
+  try {
+    const meta = JSON.parse(participant?.metadata || '{}')
+    return validRole(meta.mockmateRole) ? meta.mockmateRole : null
+  } catch { return null }
+}
+function sanitizeSegment(raw, room, senderParticipant = null) {
   if (!raw || typeof raw !== 'object' || raw.kind && raw.kind !== 'segment') return null
   const id = String(raw.id || '').slice(0, 120)
   const text = String(raw.text || '').trim().slice(0, 8000)
   const identity = String(raw.identity || '').slice(0, 160)
-  const role = String(raw.role || '')
-  if (!id || !text || !identity || !validRole(role) || String(raw.room || '') !== String(room)) return null
-  // A sender may label its own turn, but cannot impersonate another LiveKit participant.
-  if (senderIdentity && identity !== senderIdentity) return null
-  return { id, room: String(room), identity, speaker: String(raw.speaker || identity).slice(0, 120), role, text, ts: Number(raw.ts) || Date.now() }
+  const tokenIdentity = String(senderParticipant?.identity || '').slice(0, 160)
+  const tokenRole = participantRole(senderParticipant)
+  if (!id || !text || !identity || !tokenIdentity || !tokenRole || String(raw.room || '') !== String(room)) return null
+  // Identity + role come from the server-issued LiveKit token, never the data payload.
+  if (identity !== tokenIdentity || raw.role !== tokenRole) return null
+  return { id, room: String(room), identity, speaker: String(raw.speaker || identity).slice(0, 120), role: tokenRole, text, ts: Number(raw.ts) || Date.now() }
 }
 
 export default function Room({ session, onEnd, onLeave }) {
@@ -65,7 +72,7 @@ export default function Room({ session, onEnd, onLeave }) {
   return (
     <LiveKitRoom serverUrl={conn.url} token={conn.token} connect audio video={false} onDisconnected={onLeave}>
       <RoomAudioRenderer />
-      <RoomInner session={session} onEnd={onEnd} onLeave={onLeave} />
+      <RoomInner session={{ ...session, identity: conn.identity || session.identity, role: conn.role || session.role }} onEnd={onEnd} onLeave={onLeave} />
     </LiveKitRoom>
   )
 }
@@ -116,7 +123,7 @@ function RoomInner({ session, onEnd }) {
 
   const { send: sendTranscript } = useDataChannel('transcript', msg => {
     const raw = decodePayload(msg)
-    const sender = msg.participant?.identity || msg.from?.identity || ''
+    const sender = msg.participant || msg.from || null
     const row = sanitizeSegment(raw, session.room, sender)
     if (row) appendSegments([row])
   })
@@ -130,8 +137,10 @@ function RoomInner({ session, onEnd }) {
       return
     }
     if (raw.kind === 'snapshot' && Array.isArray(raw.rows)) {
-      const sender = msg.participant?.identity || msg.from?.identity || ''
-      const rows = raw.rows.slice(-250).map(row => sanitizeSegment(row, session.room, row.identity === sender ? sender : '')).filter(Boolean)
+      const rows = raw.rows.slice(-250).map(row => {
+        const participant = participants.find(p => p.identity === row?.identity) || null
+        return sanitizeSegment(row, session.room, participant)
+      }).filter(Boolean)
       appendSegments(rows)
     }
   })
