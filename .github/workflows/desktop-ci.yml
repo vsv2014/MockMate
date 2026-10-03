@@ -1,0 +1,25 @@
+name: Desktop CI
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'mobile/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-desktop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm --prefix backend ci
+      - run: npm test
+      - run: npm run smoke:api
+      - run: npm run build
