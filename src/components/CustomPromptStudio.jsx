@@ -69,6 +69,7 @@ export const PLAYBOOK_TEMPLATES = [
     label: '🛡 Anti-Fail Guardrails',
     roleHint: 'Forensic rules from competitor-autopsy failure patterns (docs/lockedin-failure-patterns.md)',
     prompt: [
+      'VOICE: Conversational and concise; say uncertainty aloud instead of bluffing — a confident wrong answer is worse than a clarified right one.',
       'MISHEARD QUESTIONS: If the question contains a garbled or ambiguous term (e.g. "notes" vs "nodes"), never answer a guessed question — ask one clarifying line, or state the assumption explicitly before answering.',
       'NOT-ASKED QUESTIONS: Never answer a different question. Logistical turns (availability, salary, process) get a one-sentence answer and stop — no technical monologue.',
       'TRUTH: If the question names a tool, metric or employer absent from my resume, do not claim it — bridge honestly ("I have not used X in production; the closest is Y and here is how it transfers").',
