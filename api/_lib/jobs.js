@@ -134,7 +134,7 @@ export function countryFor(loc = '') {
 // to a Hyderabad user. When no city is present, search the whole country.
 export function cityFor(loc = '') {
   const m = String(loc).match(/\b(hyderabad|secunderabad|bengaluru|bangalore|mumbai|new delhi|delhi|chennai|pune|kolkata|noida|gurgaon|gurugram|toronto|vancouver|montreal|london|manchester|berlin|munich|paris|amsterdam|dublin|madrid|barcelona|rome|milan|warsaw|sydney|melbourne|brisbane|auckland|singapore|tokyo|seoul|austin|seattle|new york|boston|chicago|san francisco|denver|atlanta|portland)\b/i)
-  return m ? m[1] : ''
+  return m ? m[1].toLowerCase() : ''
 }
 
 async function fetchAdzuna({ what, where, country }, limit = 50) {

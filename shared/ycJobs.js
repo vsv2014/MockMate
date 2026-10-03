@@ -38,7 +38,8 @@ const LOC_RE = /\b(remote|worldwide|anywhere|on-site|onsite|hybrid|india|usa|u\.
 // Parses one top-level hiring comment; null when it isn't a YC-tagged posting.
 export function parseHiringComment(text = '', comment = {}) {
   const raw = String(text || '')
-  const head = stripHtml(raw.split(/<\/?p[^>]*>/i)[0] || raw)
+  const segs = raw.split(/<\/?p[^>]*>/i).map(stripHtml).filter(Boolean)
+  const head = segs[0] || stripHtml(raw)
   if (!head) return null
   const isYc = /\(?\bYC\s+[A-Z]{1,2}\s?\d{2}\b\)?/i.test(head) || /\by combinator\b|\bwork at a startup\b/i.test(head)
   if (!isYc) return null
