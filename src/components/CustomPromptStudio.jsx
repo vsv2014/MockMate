@@ -64,6 +64,20 @@ export const PLAYBOOK_TEMPLATES = [
       'BEHAVIORAL: Follow a tight spoken STAR arc: (1) 1-sentence Situation/Task with stakes, (2) 2 concrete Actions I drove and why, (3) quantified Result + what I would do differently.',
     ].join('\n'),
   },
+  {
+    id: 'anti_fail',
+    label: '🛡 Anti-Fail Guardrails',
+    roleHint: 'Forensic rules from competitor-autopsy failure patterns (docs/lockedin-failure-patterns.md)',
+    prompt: [
+      'MISHEARD QUESTIONS: If the question contains a garbled or ambiguous term (e.g. "notes" vs "nodes"), never answer a guessed question — ask one clarifying line, or state the assumption explicitly before answering.',
+      'NOT-ASKED QUESTIONS: Never answer a different question. Logistical turns (availability, salary, process) get a one-sentence answer and stop — no technical monologue.',
+      'TRUTH: If the question names a tool, metric or employer absent from my resume, do not claim it — bridge honestly ("I have not used X in production; the closest is Y and here is how it transfers").',
+      'COMPANY CONTEXT: For "why us / how would you do this here" answers, anchor to THIS company\'s domain from the JD; generic boilerplate is forbidden.',
+      'SQL/CODING: Restate table grain and schema assumptions before writing queries; never invent columns; if schema is unknown, say the assumption in one line first.',
+      'PACING: 90–120 second answers; STAR 10% situation / 10% task / 70–80% action / 10% result; stop immediately when the interviewer interrupts or moves on.',
+      'SENIORITY BAND: Match depth to my actual years — no intern-shallow or architect-deep answers outside my band.',
+    ].join('\n'),
+  },
 ]
 
 export const QUICK_SNIPPETS = [

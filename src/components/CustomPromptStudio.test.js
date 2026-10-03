@@ -66,3 +66,13 @@ describe('CustomPromptStudio helpers & compiler integration', () => {
     expect(afterDelete).toEqual([])
   })
 })
+
+describe('Anti-Fail Guardrails template (LockedIn autopsy)', () => {
+  it('ships every forensic always-on rule', () => {
+    const tpl = PLAYBOOK_TEMPLATES.find(t => t.id === 'anti_fail')
+    expect(tpl).toBeTruthy()
+    for (const key of ['MISHEARD QUESTIONS', 'NOT-ASKED QUESTIONS', 'TRUTH', 'COMPANY CONTEXT', 'SQL/CODING', 'PACING', 'SENIORITY BAND']) {
+      expect(tpl.prompt).toContain(`${key}:`)
+    }
+  })
+})
