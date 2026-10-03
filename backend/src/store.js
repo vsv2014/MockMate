@@ -1,14 +1,5 @@
 // Storage layer — one small data API, two interchangeable backends.
-//
-//   • file  (DEFAULT): a JSON file under MOCKMATE_DATA_DIR. Zero infra, offline-safe.
-//             This is what the forked desktop backend uses so MockMate works on
-//             first launch with no MongoDB installed.
-//   • mongo (opt-in):  set MONGO_URI and it switches to Mongoose — same API, no
-//             route changes. Point it at hosted Mongo later with only an env var.
-//
-// mongoose is imported DYNAMICALLY (mongo mode only) so the file-mode boot never
-// requires it — the desktop bundle doesn't ship mongoose at all.
-
+// mongoose is imported dynamically so file-mode boot stays zero-infra.
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
@@ -37,16 +28,22 @@ function makeFileBackend() {
   let writeChain = Promise.resolve()
 
   function load() {
+    fs.mkdirSync(dir, { recursive: true })
+    if (!fs.existsSync(file)) return
     try {
-      fs.mkdirSync(dir, { recursive: true })
-      if (fs.existsSync(file)) db = JSON.parse(fs.readFileSync(file, 'utf8'))
-    } catch (e) { console.error('[store] load failed, starting empty:', e.message) }
+      db = JSON.parse(fs.readFileSync(file, 'utf8'))
+    } catch (error) {
+      // Never overwrite the only copy of a corrupt DB. Preserve it for recovery first.
+      const backup = path.join(dir, `auth-db.corrupt.${Date.now()}.json`)
+      try { fs.copyFileSync(file, backup) } catch {}
+      console.error(`[store] load failed; preserved corrupt DB at ${backup}:`, error.message)
+      db = { users: [], usage: [] }
+    }
     if (!db.users) db.users = []
     if (!db.usage) db.usage = []
   }
 
   function persist() {
-    // A failed disk write must fail the caller, but must not poison the queue forever.
     writeChain = writeChain.catch(() => {}).then(() => {
       const tmp = file + '.tmp'
       fs.mkdirSync(dir, { recursive: true })
@@ -63,6 +60,8 @@ function makeFileBackend() {
 
   return {
     async init() {},
+    isReady() { return true },
+    async close() { try { await writeChain } catch {} },
     async findUserByEmail(email) { const e = (email || '').toLowerCase(); return db.users.find(u => u.email === e) || null },
     async findUserById(id) { return db.users.find(u => String(u.id) === String(id)) || null },
     async findUserByGoogleId(googleId) { return db.users.find(u => u.googleId === googleId) || null },
@@ -134,6 +133,8 @@ async function makeMongoBackend() {
   const lean = u => (u ? { ...u.toObject(), id: String(u._id) } : null)
   return {
     async init() { mongoose.set('strictQuery', true); await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 8000 }); console.log('[store] mongo connected:', mongoose.connection.name) },
+    isReady() { return mongoose.connection.readyState === 1 },
+    async close() { if (mongoose.connection.readyState !== 0) await mongoose.disconnect() },
     async findUserByEmail(email) { return lean(await User.findOne({ email: (email || '').toLowerCase() })) },
     async findUserById(id) { try { return lean(await User.findById(id)) } catch { return null } },
     async findUserByGoogleId(googleId) { return lean(await User.findOne({ googleId })) },
@@ -165,6 +166,8 @@ export async function initStore() {
   return backend
 }
 export function storeMode() { return backendMode }
+export function storeReady() { return Boolean(backend?.isReady?.()) }
+export async function closeStore() { if (backend?.close) await backend.close() }
 export function store() {
   if (!backend) throw new Error('store not initialized — call initStore() first')
   return backend
