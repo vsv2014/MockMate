@@ -229,19 +229,25 @@ export function allProviders() {
 // (best-effort discovery) so one bad key can't break the whole list.
 export async function listModels() {
   const out = []
-  // A key may have been replaced in Settings. Never retain availability learned from the old
-  // credential; a failed refresh simply falls back to conservative catalog defaults.
-  for (const provider of ['openai', 'claude_sonnet', 'gemini', 'groq', 'cerebras']) discoveredModels.delete(provider)
+  const staged = new Map()
   const push = (provider, model, label) => {
     if (!model) return
-    rememberDiscovered(provider, model)
+    if (!staged.has(provider)) staged.set(provider, new Set())
+    staged.get(provider).add(model)
     out.push({ id: `${provider}::${model}`, provider, model, label })
   }
-  const settle = async (fn) => { try { await fn() } catch {} }
+  // Replace a provider's known-good set only after that provider was queried successfully.
+  // A transient discovery outage must not erase models already proven usable mid-interview.
+  const settle = async (provider, fn) => {
+    try {
+      await fn()
+      discoveredModels.set(provider, new Set(staged.get(provider) || []))
+    } catch {}
+  }
 
   await Promise.all([
     // OpenAI — chat models only (skip audio/image/embedding/etc.)
-    process.env.OPENAI_API_KEY && settle(async () => {
+    process.env.OPENAI_API_KEY && settle('openai', async () => {
       const r = await fetchWithTimeout('https://api.openai.com/v1/models', { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } })
       if (!r.ok) return
       ;((await r.json())?.data || []).map(m => m.id)
@@ -250,13 +256,13 @@ export async function listModels() {
         .forEach(id => push('openai', id, `OpenAI · ${id}`))
     }),
     // Anthropic (Claude) — the base id 'claude_sonnet' just carries the shared key/endpoint.
-    process.env.ANTHROPIC_API_KEY && settle(async () => {
+    process.env.ANTHROPIC_API_KEY && settle('claude_sonnet', async () => {
       const r = await fetchWithTimeout('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' } })
       if (!r.ok) return
       ;((await r.json())?.data || []).forEach(m => push('claude_sonnet', m.id, `Claude · ${m.display_name || m.id}`))
     }),
     // Google Gemini — models that support generateContent.
-    process.env.GEMINI_API_KEY && settle(async () => {
+    process.env.GEMINI_API_KEY && settle('gemini', async () => {
       const r = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}&pageSize=100`)
       if (!r.ok) return
       ;((await r.json())?.models || [])
@@ -264,14 +270,14 @@ export async function listModels() {
         .forEach(m => { const id = (m.name || '').replace(/^models\//, ''); push('gemini', id, `Gemini · ${m.displayName || id}`) })
     }),
     // Groq (OpenAI-compatible).
-    process.env.GROQ_API_KEY && settle(async () => {
+    process.env.GROQ_API_KEY && settle('groq', async () => {
       const r = await fetchWithTimeout('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` } })
       if (!r.ok) return
       ;((await r.json())?.data || []).map(m => m.id).filter(id => !/whisper|tts|guard/i.test(id))
         .forEach(id => push('groq', id, `Groq · ${id}`))
     }),
     // Cerebras (OpenAI-compatible).
-    process.env.CEREBRAS_API_KEY && settle(async () => {
+    process.env.CEREBRAS_API_KEY && settle('cerebras', async () => {
       const r = await fetchWithTimeout('https://api.cerebras.ai/v1/models', { headers: { Authorization: `Bearer ${process.env.CEREBRAS_API_KEY}` } })
       if (!r.ok) return
       ;((await r.json())?.data || []).map(m => m.id).filter(Boolean)
@@ -368,14 +374,18 @@ const QUOTA_BAN_MS = 5 * 60 * 1000
 /** Permanent-looking provider failures — fail over (and briefly bench) before first token. */
 export function isProviderHardFail(e) {
   const s = e?.status ?? e?.statusCode
-  return s === 400 || s === 401 || s === 403 || s === 404
+  // 401/403/404 describe credential/model availability and can cool the provider family.
+  // A generic 400 is commonly request/model-parameter specific: fail over THIS request without
+  // poisoning the provider for every other user/turn.
+  return s === 401 || s === 403 || s === 404
 }
 
 /** Shared pre-emit failover rule for completeJSON + streamText. */
 export function shouldFailoverTextError(e, { emitted = false } = {}) {
   if (emitted) return false
   if (!e) return false
-  if (isQuotaExhausted(e) || isRateLimit(e) || isTransient(e) || isProviderHardFail(e)) return true
+  const status = e?.status ?? e?.statusCode
+  if (status === 400 || isQuotaExhausted(e) || isRateLimit(e) || isTransient(e) || isProviderHardFail(e)) return true
   return false
 }
 
@@ -1069,7 +1079,7 @@ export async function embed(input) {
   if (!list.length) return []
   const candidates = []
   if (process.env.OPENAI_API_KEY) candidates.push({ key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: process.env.OPENAI_EMBED_MODEL || process.env.EMBED_MODEL || 'text-embedding-3-small' })
-  if (process.env.GEMINI_API_KEY) candidates.push({ key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: process.env.GEMINI_EMBED_MODEL || 'gemini-embedding-001' })
+  if (process.env.GEMINI_API_KEY) candidates.push({ key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: process.env.GEMINI_EMBED_MODEL || process.env.EMBED_MODEL || 'gemini-embedding-001' })
   if (!candidates.length) return resolveEmbeddingProvider() // throws the existing actionable 501
   let lastError
   for (const prov of candidates) {

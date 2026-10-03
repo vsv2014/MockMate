@@ -54,7 +54,7 @@ function buildDgUrl(keyterms = [], degraded = false, lang = 'en-US') {
   const base = `wss://api.deepgram.com/v1/listen?model=${model}&encoding=linear16&sample_rate=16000&channels=1`
     + '&interim_results=true&smart_format=true&punctuate=true&utterance_end_ms=1200&vad_events=true&endpointing=300'
     + `&language=${encodeURIComponent(lang || 'en-US')}`   // transcribe in the chosen interview language
-  if (degraded) return base   // plain proven baseline — drop diarize + keyterms if the enhanced config won't connect
+  if (degraded) return base + '&diarize=true'   // drop keyterms/model complexity, preserve speaker separation
   return base + '&diarize=true' + keyterms.slice(0, 40).map(t => `&keyterm=${encodeURIComponent(t)}`).join('')
 }
 
@@ -94,7 +94,7 @@ const FATAL_CLOSE = new Set([1008, 4001, 4003, 4008])
 // so a long outage can't grow memory unbounded — and because replaying a huge backlog
 // to Deepgram would only yield stale, already-irrelevant hints.
 const BYTES_PER_SEC = 16000 * 2             // 16 kHz mono PCM16
-const MAX_QUEUE_BYTES = 30 * BYTES_PER_SEC  // ~30 s of audio (~960 KB)
+const MAX_QUEUE_BYTES = 5 * BYTES_PER_SEC   // recent speech only; never replay a stale 30s backlog
 
 // Live transcription via Deepgram with auto-reconnect + KeepAlive (P0-A).
 // The mic stream + AudioContext + audio graph are built ONCE and survive socket
@@ -133,6 +133,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   // Keyterms (resume/role jargon) boosted in Deepgram, + speaker tracking for diarization.
   const keytermsRef = useRef([])
   const langRef = useRef('en-US')   // Deepgram transcription language (from the interview language)
+  const sourceIdRef = useRef('microphone')
+  const startOptsRef = useRef({})
   const speakerStats = useRef(new Map()), interviewerSpeaker = useRef(null), candidateSpeaker = useRef(null)
   // Graceful-degrade: if the ENHANCED socket (diarize+keyterms) never connects, retry plain.
   const everConnected = useRef(false), degradedAudio = useRef(false)
@@ -323,7 +325,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       const text = alt?.transcript?.trim()
       if (!text) return
       const sp = dominantSpeaker(alt?.words)
-      const isCandidate = candidateSpeaker.current != null && sp === candidateSpeaker.current
+      let isCandidate = candidateSpeaker.current != null && sp === candidateSpeaker.current
       if (m.is_final) {
         diagnostic('stt', 'final_received', {
           confidence: Number.isFinite(alt?.confidence) ? alt.confidence : null,
@@ -347,6 +349,9 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
             candidateSpeaker.current = cand
             setDiarizationLocked(true)
           }
+          // Recompute AFTER the lock update. The utterance that establishes the lock must be
+          // classified using the new speaker mapping, not the previous render's mapping.
+          isCandidate = candidateSpeaker.current != null && sp === candidateSpeaker.current
         }
         lastEarlyTrigger.current = ''
         // Never hint on candidate speech — even if question-shaped ("Can you repeat?").
@@ -356,13 +361,19 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
           isQuestion: looksLikeQuestion(text),
           confidence: Number.isFinite(alt?.confidence) ? alt.confidence : null,
           diarizationLocked: !!interviewerSpeaker.current,
+          interviewerSpeaker: interviewerSpeaker.current,
+          speakerRole: interviewerSpeaker.current != null && sp != null
+            ? (sp === interviewerSpeaker.current ? 'interviewer' : (candidateSpeaker.current != null && sp === candidateSpeaker.current ? 'candidate' : 'unknown'))
+            : 'unknown',
           degraded: !!degradedAudio.current,
         })
         setInterim('')
       } else {
         setInterim(text)
         const confidence = alt?.confidence ?? 0
-        if (!isCandidate && confidence > 0.82 && looksLikeQuestion(text) && text !== lastEarlyTrigger.current) {
+        const earlyIsInterviewer = sourceIdRef.current !== 'microphone'
+          || (interviewerSpeaker.current != null && sp === interviewerSpeaker.current)
+        if (earlyIsInterviewer && !isCandidate && confidence > 0.82 && looksLikeQuestion(text) && text !== lastEarlyTrigger.current) {
           lastEarlyTrigger.current = text
           onEarlyRef.current?.(text, { speaker: sp, isCandidate: !!isCandidate, diarizationLocked: !!interviewerSpeaker.current })
         }
@@ -386,11 +397,10 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     }
   }, [fail]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // If the ENHANCED transcription socket fails before EVER connecting, the diarize/
-  // keyterms config is the likely culprit — drop to the plain proven config and retry
-  // once. A drop AFTER a successful connect is just network, so it does NOT degrade.
+  // Drop enhanced model/keyterms once when needed, but preserve diarization so microphone Live
+  // never turns into an unlabeled transcript after a mid-session provider/config failure.
   function failOrDegrade(reason) {
-    if (!degradedAudio.current && !everConnected.current) {
+    if (!degradedAudio.current) {
       degradedAudio.current = true
       setDegraded(true)
       reconnectAttempts.current = 0
@@ -432,6 +442,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     everConnected.current = false; degradedAudio.current = false
     setDegraded(false); setDiarizationLocked(false)
     keytermsRef.current = sanitizeKeyterms(opts.keyterms)
+    sourceIdRef.current = sourceId || 'microphone'
+    startOptsRef.current = { ...opts }
     if (opts.language) langRef.current = opts.language
     speakerStats.current = new Map(); interviewerSpeaker.current = null; candidateSpeaker.current = null
     try {
@@ -502,7 +514,15 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       setActive(false)
       setReconnecting(false)
     }
-    navigator.mediaDevices?.addEventListener?.('devicechange', afterWake)
+    const onDeviceChange = async () => {
+      if (userStop.current) return
+      const liveTrack = stream.current?.getAudioTracks?.().some(t => t.readyState === 'live')
+      if (liveTrack) return afterWake()
+      diagnostic('stt', 'audio_device_reacquire', { source: sourceIdRef.current }, 'warn')
+      try { await restart(sourceIdRef.current, startOptsRef.current) }
+      catch (e) { onFailRef.current?.(e?.message || 'Audio device recovery failed') }
+    }
+    navigator.mediaDevices?.addEventListener?.('devicechange', onDeviceChange)
     const onVis = () => { if (document.visibilityState === 'visible') afterWake() }
     document.addEventListener('visibilitychange', onVis)
     const offPower = window.electronAPI?.onPowerEvent?.(ev => {
@@ -511,12 +531,12 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     })
     const offDisplay = window.electronAPI?.onDisplayChanged?.(() => afterWake())
     return () => {
-      navigator.mediaDevices?.removeEventListener?.('devicechange', afterWake)
+      navigator.mediaDevices?.removeEventListener?.('devicechange', onDeviceChange)
       document.removeEventListener('visibilitychange', onVis)
       try { offPower?.() } catch {}
       try { offDisplay?.() } catch {}
     }
-  }, [connectSocket])
+  }, [connectSocket, restart])
 
   useEffect(() => () => { userStop.current = true; connectGen.current += 1; teardown() }, [teardown])
   return { supported: true, active, reconnecting, interim, diarizationLocked, degraded, start, stop, restart }

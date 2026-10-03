@@ -16,8 +16,10 @@ import {
 import { markVision429Family, isVisionCooling, _resetVisionStateForTests } from './visionPolicy.js'
 
 describe('unified text failover policy', () => {
-  it('hard-fails 400/401/403/404 before emit (same as completeJSON)', () => {
-    for (const status of [400, 401, 403, 404]) {
+  it('fails over a request-specific 400 without globally classifying the provider as hard-failed', () => {
+    expect(isProviderHardFail({ status: 400 })).toBe(false)
+    expect(shouldFailoverTextError({ status: 400 }, { emitted: false })).toBe(true)
+    for (const status of [401, 403, 404]) {
       expect(isProviderHardFail({ status })).toBe(true)
       expect(shouldFailoverTextError({ status }, { emitted: false })).toBe(true)
     }
