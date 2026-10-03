@@ -6,18 +6,23 @@ const clean = value => typeof value === 'string' ? value.trim() : ''
 
 export function normalizeTranscript(input) {
   if (!Array.isArray(input)) return []
-  return input.slice(0, 200).map(turn => ({
-    role: ['interviewer', 'candidate', 'assistant'].includes(turn?.role) ? turn.role : undefined,
-    text: clean(turn?.text).slice(0, 8000),
-    answer: clean(turn?.answer).slice(0, 12000) || undefined,
-    isQuestion: typeof turn?.isQuestion === 'boolean' ? turn.isQuestion : undefined,
-    kind: ['question', 'followup', 'answer'].includes(turn?.kind) ? turn.kind : undefined,
-    ts: Number.isFinite(turn?.ts) ? turn.ts : undefined,
-  })).filter(turn => turn.text || turn.answer)
+  return input.slice(0, 200).flatMap(turn => {
+    if (!['interviewer', 'candidate', 'assistant'].includes(turn?.role)) return []
+    const normalized = {
+      role: turn.role,
+      text: clean(turn?.text).slice(0, 8000),
+      answer: clean(turn?.answer).slice(0, 12000) || undefined,
+      isQuestion: typeof turn?.isQuestion === 'boolean' ? turn.isQuestion : undefined,
+      kind: ['question', 'followup', 'answer'].includes(turn?.kind) ? turn.kind : undefined,
+      ts: Number.isFinite(turn?.ts) ? turn.ts : undefined,
+    }
+    return normalized.text || normalized.answer ? [normalized] : []
+  })
 }
 
 export function normalizeSessionPayload(input = {}) {
   const mode = SESSION_MODES.includes(input.mode) ? input.mode : ''
+  const score = input.score && typeof input.score === 'object' && !Array.isArray(input.score) ? input.score : null
   return {
     mode,
     title: clean(input.title).slice(0, 160),
@@ -30,21 +35,20 @@ export function normalizeSessionPayload(input = {}) {
       .map(clean).filter(Boolean).slice(0, 50))],
     source: SESSION_SOURCES.includes(input.source) ? input.source : 'desktop',
     transcript: normalizeTranscript(input.transcript),
-    notes: clean(input.notes),
-    score: input.score && typeof input.score === 'object' ? input.score : null,
+    notes: clean(input.notes).slice(0, 8000),
+    score,
   }
 }
 
 export function validateSessionPayload(input = {}) {
   const value = normalizeSessionPayload(input)
   if (!value.mode) return { value, error: 'Choose a supported session mode.' }
-  // Keep the pre-mobile desktop sync contract backward compatible: older desktop Live/Solo
-  // sessions may not include job-goal metadata. New mobile and Code/Mock goals require it.
-  if ((value.source === 'mobile' || ['mock', 'coding'].includes(value.mode)) && !value.role) {
+  // Validation is based on the product mode, never on the caller-controlled `source` field.
+  if (['live', 'mock', 'coding'].includes(value.mode) && !value.role) {
     return { value, error: 'Add the role you are preparing for.' }
   }
-  if (value.source === 'mobile' && value.mode === 'live' && !value.company) {
-    return { value, error: 'Add a company for a live session.' }
+  if (value.score && JSON.stringify(value.score).length > 32_000) {
+    return { value, error: 'Session score data is too large.' }
   }
   return { value, error: '' }
 }
