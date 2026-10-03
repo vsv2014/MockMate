@@ -19,15 +19,14 @@ const passwordError = password => {
   return null
 }
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many attempts. Please wait a few minutes and try again.' },
-})
+function limiter(limit, message) {
+  return rateLimit({ windowMs: 15 * 60 * 1000, limit, standardHeaders: true, legacyHeaders: false, message: { error: message } })
+}
+const signupLimiter = limiter(10, 'Too many signup attempts. Please wait a few minutes and try again.')
+const loginLimiter = limiter(30, 'Too many sign-in attempts. Please wait a few minutes and try again.')
+const recoveryLimiter = limiter(8, 'Too many password recovery attempts. Please wait before trying again.')
 
-router.post('/signup', authLimiter, async (req, res) => {
+router.post('/signup', signupLimiter, async (req, res) => {
   try {
     const { email, password, name } = req.body || {}
     if (!EMAIL_RE.test(email || '')) return res.status(400).json({ error: 'Please enter a valid email address' })
@@ -38,10 +37,13 @@ router.post('/signup', authLimiter, async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 12)
     const user = await store().createUser({ email, passwordHash, name: name || '', lastLogin: new Date().toISOString() })
     res.status(201).json({ token: signToken(user.id, user.tokenVersion || 0), user: toSafeUser(user) })
-  } catch { res.status(500).json({ error: 'Could not create your account. Please try again.' }) }
+  } catch (error) {
+    if (error?.status === 409 || error?.code === 11000 || error?.code === 'USER_EXISTS') return res.status(409).json({ error: 'An account with this email already exists' })
+    res.status(500).json({ error: 'Could not create your account. Please try again.' })
+  }
 })
 
-router.post('/login', authLimiter, async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body || {}
     const user = await store().findUserByEmail(email)
@@ -61,21 +63,13 @@ router.get('/me', requireAuth, async (req, res) => {
     const usage = await store().getUsage(user.id, currentPeriod())
     const limit = limitFor(plan)
     const safeUser = { ...toSafeUser(user), plan }
-    res.json({
-      user: safeUser, plan,
-      usage: { period: usage.period, llmCalls: usage.llmCalls || 0, sttSeconds: usage.sttSeconds || 0 },
-      limits: { llmCalls: limit.llmCalls, sttSeconds: limit.sttSeconds },
-    })
+    res.json({ user: safeUser, plan, usage: { period: usage.period, llmCalls: usage.llmCalls || 0, sttSeconds: usage.sttSeconds || 0 }, limits: { llmCalls: limit.llmCalls, sttSeconds: limit.sttSeconds } })
   } catch { res.status(500).json({ error: 'Could not load your account.' }) }
 })
 
-router.post('/logout', requireAuth, async (req, res) => {
-  try {
-    const user = await store().findUserById(req.userId)
-    if (user) await store().updateUser(user.id, { tokenVersion: (user.tokenVersion || 0) + 1 })
-    res.json({ ok: true })
-  } catch { res.json({ ok: true }) }
-})
+// Device sign-out is client-token disposal, not global token revocation. Password reset still
+// increments tokenVersion and therefore intentionally signs out all existing devices.
+router.post('/logout', requireAuth, async (_req, res) => res.json({ ok: true }))
 
 router.post('/refresh', requireAuth, async (req, res) => {
   try {
@@ -85,7 +79,7 @@ router.post('/refresh', requireAuth, async (req, res) => {
   } catch { res.status(500).json({ error: 'Could not refresh session.' }) }
 })
 
-router.post('/forgot-password', authLimiter, async (req, res) => {
+router.post('/forgot-password', recoveryLimiter, async (req, res) => {
   try {
     const { email } = req.body || {}
     const user = email ? await store().findUserByEmail(email) : null
@@ -96,40 +90,29 @@ router.post('/forgot-password', authLimiter, async (req, res) => {
       const base = process.env.RESET_URL_BASE || 'http://localhost:5174/reset.html'
       const link = `${base}?token=${raw}`
       const delivery = await sendResetEmail(user.email, link)
-      if (delivery?.delivered === 'unavailable') {
-        await store().updateUser(user.id, previous)
-      }
+      if (delivery?.delivered === 'unavailable') await store().updateUser(user.id, previous)
     }
     res.json({ ok: true })
-  } catch {
-    res.json({ ok: true })
-  }
+  } catch { res.json({ ok: true }) }
 })
 
-router.post('/reset-password', authLimiter, async (req, res) => {
+router.post('/reset-password', recoveryLimiter, async (req, res) => {
   try {
     const { token, password } = req.body || {}
     if (!token) return res.status(400).json({ error: 'This reset link is invalid or has expired. Request a new one.' })
     const pError = passwordError(password)
     if (pError) return res.status(400).json({ error: pError })
     const user = await store().findUserByResetToken(sha256(token))
-    if (!user || !user.resetTokenExp || user.resetTokenExp < Date.now()) {
-      return res.status(400).json({ error: 'This reset link is invalid or has expired. Request a new one.' })
-    }
+    if (!user || !user.resetTokenExp || user.resetTokenExp < Date.now()) return res.status(400).json({ error: 'This reset link is invalid or has expired. Request a new one.' })
     const passwordHash = await bcrypt.hash(password, 12)
     const tokenVersion = (user.tokenVersion || 0) + 1
-    const updated = await store().updateUser(user.id, {
-      passwordHash, tokenVersion, resetTokenHash: null, resetTokenExp: null, lastLogin: new Date().toISOString(),
-    })
+    const updated = await store().updateUser(user.id, { passwordHash, tokenVersion, resetTokenHash: null, resetTokenExp: null, lastLogin: new Date().toISOString() })
     res.json({ ok: true, token: signToken(user.id, tokenVersion), user: toSafeUser(updated) })
-  } catch {
-    res.status(500).json({ error: 'Could not reset your password. Please try again.' })
-  }
+  } catch { res.status(500).json({ error: 'Could not reset your password. Please try again.' }) }
 })
 
 function googleConfigReady() {
-  return ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'DESKTOP_REDIRECT']
-    .every(key => String(process.env[key] || '').trim())
+  return ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'DESKTOP_REDIRECT'].every(key => String(process.env[key] || '').trim())
 }
 function parseCookie(req, name) {
   const raw = String(req.headers.cookie || '')
@@ -140,22 +123,15 @@ function parseCookie(req, name) {
   return null
 }
 function sameValue(a, b) {
-  const aa = Buffer.from(String(a || ''))
-  const bb = Buffer.from(String(b || ''))
+  const aa = Buffer.from(String(a || '')); const bb = Buffer.from(String(b || ''))
   return aa.length === bb.length && aa.length > 0 && crypto.timingSafeEqual(aa, bb)
 }
 
 router.get('/google', (req, res) => {
   if (!googleConfigReady()) return res.status(503).json({ error: 'Google sign-in is not configured' })
   const state = crypto.randomBytes(24).toString('base64url')
-  res.cookie('mm_google_oauth_state', state, {
-    httpOnly: true, sameSite: 'lax', secure: req.secure || process.env.MOCKMATE_HOSTED === '1' || process.env.MOCKMATE_HOSTED === 'true',
-    maxAge: GOOGLE_STATE_TTL_MS, path: '/auth/google/callback',
-  })
-  const params = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: process.env.GOOGLE_REDIRECT_URI,
-    response_type: 'code', scope: 'openid email profile', access_type: 'offline', prompt: 'select_account', state,
-  })
+  res.cookie('mm_google_oauth_state', state, { httpOnly: true, sameSite: 'lax', secure: req.secure || ['1', 'true'].includes(String(process.env.MOCKMATE_HOSTED || '').toLowerCase()), maxAge: GOOGLE_STATE_TTL_MS, path: '/auth/google/callback' })
+  const params = new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: process.env.GOOGLE_REDIRECT_URI, response_type: 'code', scope: 'openid email profile', access_type: 'offline', prompt: 'select_account', state })
   res.redirect('https://accounts.google.com/o/oauth2/v2/auth?' + params)
 })
 
@@ -169,19 +145,13 @@ router.get('/google/callback', async (req, res) => {
 
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code, client_id: process.env.GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        redirect_uri: process.env.GOOGLE_REDIRECT_URI, grant_type: 'authorization_code',
-      }),
+      body: new URLSearchParams({ code, client_id: process.env.GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET, redirect_uri: process.env.GOOGLE_REDIRECT_URI, grant_type: 'authorization_code' }),
       signal: AbortSignal.timeout(10_000),
     })
     const tokenRes = await tokenResponse.json().catch(() => ({}))
     if (!tokenResponse.ok || !tokenRes.id_token) return res.status(401).send('Google sign-in failed')
 
-    const infoRes = await fetch(
-      'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(tokenRes.id_token),
-      { signal: AbortSignal.timeout(10_000) },
-    )
+    const infoRes = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(tokenRes.id_token), { signal: AbortSignal.timeout(10_000) })
     if (!infoRes.ok) return res.status(401).send('Google token verification failed')
     const profile = await infoRes.json()
     if (profile.aud !== process.env.GOOGLE_CLIENT_ID) return res.status(401).send('Google token audience mismatch')
@@ -191,14 +161,11 @@ router.get('/google/callback', async (req, res) => {
     let user = await store().findUserByGoogleId(profile.sub)
     if (!user) {
       const existing = await store().findUserByEmail(profile.email)
-      if (existing?.passwordHash && !existing.googleId) {
-        return res.status(409).send('An account already exists for this email. Sign in with your password first.')
-      }
+      if (existing?.passwordHash && !existing.googleId) return res.status(409).send('An account already exists for this email. Sign in with your password first.')
       user = existing
     }
     if (!user) user = await store().createUser({ email: profile.email, googleId: profile.sub, name: profile.name || '', lastLogin: new Date().toISOString() })
     else user = await store().updateUser(user.id, { googleId: profile.sub, lastLogin: new Date().toISOString() })
-
     res.redirect(`${process.env.DESKTOP_REDIRECT}?token=${encodeURIComponent(signToken(user.id, user.tokenVersion || 0))}`)
   } catch (e) {
     console.error('[auth/google] callback failed:', e?.message || e)
