@@ -502,3 +502,51 @@ describe('pre-generation sanity', () => {
     expect(ctx.forbidden).toEqual(expect.arrayContaining(['previous_hld']))
   })
 })
+
+describe('Turn-1 system-audio boost (PR #45 review: first interviewer question must commit)', () => {
+  it('boundary: short non-interrogative Turn-1 prompt commits from system source with the +0.25 boost', () => {
+    const a = assessQuestionBoundary({
+      text: 'Introduce yourself.',
+      silenceMs: 1500,
+      isFinal: true,
+      speakerRole: 'interviewer',
+      hadPriorQuestion: false,
+      source: 'system',
+    })
+    expect(a.action).toBe('commit')
+    expect(a.confidence).toBeGreaterThanOrEqual(0.9)
+    expect(a.completeness).not.toBe('incomplete')
+  })
+
+  it('boundary: same prompt from microphone source still waits (no diarization evidence yet)', () => {
+    const a = assessQuestionBoundary({
+      text: 'Introduce yourself.',
+      silenceMs: 1500,
+      isFinal: true,
+      speakerRole: 'interviewer',
+      hadPriorQuestion: false,
+      source: 'microphone',
+    })
+    expect(a.action).not.toBe('commit')
+  })
+
+  it('boundary: boost applies only to Turn 1, not later questions', () => {
+    const a = assessQuestionBoundary({
+      text: 'Introduce yourself.',
+      silenceMs: 1500,
+      isFinal: true,
+      speakerRole: 'interviewer',
+      hadPriorQuestion: true,
+      source: 'system',
+    })
+    expect(a.action).not.toBe('commit')
+  })
+
+  it('controller: first interviewer question from system audio commits end-to-end', () => {
+    const { ctrl, committed, advance } = makeCapture({ getAudioSource: () => 'system' })
+    ctrl.ingest({ text: 'So, introduce yourself.', isFinal: true, ts: 1_000_000, meta: { speakerRole: 'interviewer' } })
+    advance(STABILIZE_MS.likelyComplete + 100)
+    expect(committed.length).toBe(1)
+    expect(committed[0].text.toLowerCase()).toContain('introduce yourself')
+  })
+})

@@ -709,6 +709,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         const hist = snap?.questionHistory || []
         return hist[hist.length - 1]?.text || lastHintText.current || ''
       },
+      // System/loopback capture is meeting audio by construction → Turn-1 commit boost.
+      getAudioSource: () => (liveSourceIdRef.current && liveSourceIdRef.current !== 'microphone' ? 'system' : 'microphone'),
       onLive: ({ text, status, reason }) => {
         liveCaptureTextRef.current = text || ''
         setLiveCaptureText(text || '')

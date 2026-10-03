@@ -47,11 +47,20 @@ export function assessQuestionBoundary({
   speakerRole = 'unknown',
   hadPriorQuestion = false,
   laneAgeMs = 0,
+  source = null,
 } = {}) {
   const q = String(text || '').trim()
   if (!q) {
     return { action: 'reject', reason: 'empty', waitMs: 0, confidence: 0, completeness: 'incomplete' }
   }
+
+  // Turn-1 system-audio boost (v1.5.2, PR #45 review): system/loopback capture is, by
+  // construction, the meeting audio — there is no candidate mic to confuse it with and
+  // no diarization to wait for. The FIRST interviewer prompt is frequently a short
+  // non-interrogative ("Introduce yourself.") that the generic gates would reject or
+  // stall on; on Turn 1 from a system source we relax the word gate, upgrade
+  // completeness, and add a +0.25 confidence boost to the commit.
+  const systemTurn1 = source === 'system' && !hadPriorQuestion
 
   if (isLogisticalCheck(q)) {
     return { action: 'reject', reason: 'logistical_check', waitMs: 0, confidence: 1, completeness: 'complete' }
@@ -71,6 +80,7 @@ export function assessQuestionBoundary({
   if (!incomplete && (hasQ || (interrogative && words >= 6) || shortFollowUp)) completeness = 'complete'
   else if (!incomplete && interrogative && words >= 4) completeness = 'likely'
   else if (!incomplete && words >= 10 && interrogative) completeness = 'likely'
+  else if (systemTurn1 && !incomplete && words >= 2) completeness = 'likely'
 
   if (speakerRole === 'unknown') {
     // Never confidently treat unknown as interviewer on weak evidence.
@@ -112,7 +122,7 @@ export function assessQuestionBoundary({
     }
   }
 
-  if (!interrogative && !shortFollowUp && words < 8) {
+  if (!interrogative && !shortFollowUp && words < 8 && !(systemTurn1 && words >= 2)) {
     return { action: 'reject', reason: 'low_confidence', waitMs: 0, confidence: 0.2, completeness }
   }
 
@@ -138,7 +148,7 @@ export function assessQuestionBoundary({
     action: 'commit',
     reason: hasQ ? 'terminal_question' : (shortFollowUp ? 'short_follow_up' : 'semantic_complete'),
     waitMs: 0,
-    confidence: completeness === 'complete' ? 0.92 : 0.75,
+    confidence: Math.min(0.99, (completeness === 'complete' ? 0.92 : 0.75) + (systemTurn1 ? 0.25 : 0)),
     completeness,
   }
 }
@@ -204,6 +214,7 @@ export function createQuestionCaptureController(opts = {}) {
     onRefinement = () => {},
     getHadPriorQuestion = () => false,
     getLastCommittedText = () => '',
+    getAudioSource = () => null,
   } = opts
 
   let stabilizeTimer = null
@@ -330,6 +341,7 @@ export function createQuestionCaptureController(opts = {}) {
       speakerRole: lane.speaker,
       hadPriorQuestion: getHadPriorQuestion(),
       laneAgeMs: now() - lane.startedAt,
+      source: getAudioSource(),
     })
 
     debug('BOUNDARY', { ...assessment, text: lane.text, speaker: lane.speaker, silenceMs })
@@ -420,6 +432,7 @@ export function createQuestionCaptureController(opts = {}) {
         speakerRole: result.flushed.speaker,
         hadPriorQuestion: getHadPriorQuestion(),
         laneAgeMs: STABILIZE_MS.maxAccumulate,
+        source: getAudioSource(),
       })
       if (flushedAssessment.action === 'commit' || flushedAssessment.completeness !== 'incomplete') {
         // Restore candidate to flushed text and commit

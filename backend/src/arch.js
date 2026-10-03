@@ -7,6 +7,11 @@ const LLM_PROVIDERS = [
 ]
 const circuits = new Map()
 const DEFAULT_COOLDOWN_MS = 30_000
+// NOTE (PR #45 review): `perf` and `productEvents` are deliberately process-local today.
+// Adaptive lane promotion driven by these maps is therefore process-wide, not per-user;
+// acceptable for the current single-digit-user deployment, must be scoped
+// (provider+operation+deployment → account/session) before hosted scale-out. See
+// docs/ARCHITECTURE.md §2.3 (PI-6).
 const perf = new Map()
 const productEvents = []
 const MAX_PRODUCT_EVENTS = 1000

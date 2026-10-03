@@ -35,6 +35,15 @@ function suppressBlurHide(ms = 1200) { suppressBlurUntil = Date.now() + ms }
 let lastWindowMode = null
 // Remember Live HUD size so set-window-mode('overlay') never resets a user resize to 300×360.
 let lastOverlaySize = { w: 300, h: 360 }
+// PR #45 review fix: Alt+T/R/Up/Down are registered ONLY while the window is in
+// overlay/teleprompter mode (syncOverlayShortcuts). A permanently registered
+// globalShortcut makes the OS reserve the accelerator for MockMate even when the
+// callback no-ops — that would hijack those keys from other applications.
+let overlayShortcutsRegistered = false
+let syncOverlayShortcuts = () => {}
+// F7 display memory: last display the user explicitly captured / selected via the
+// display picker, so F7 re-captures the interview screen instead of MockMate's monitor.
+let lastChosenDisplayId = null
 let copilotWindow = null
 
 function isOwnWindowFocused() {
@@ -73,6 +82,7 @@ function applyPillGeometry() {
     try { mainWindow.setAlwaysOnTop(true) } catch {}
   }
   lastWindowMode = 'pill'
+  syncOverlayShortcuts()
 }
 
 function applyTeleprompterGeometry() {
@@ -85,6 +95,7 @@ function applyTeleprompterGeometry() {
   mainWindow.setBounds({ x, y, width: w, height: h })
   try { mainWindow.setAlwaysOnTop(true, 'screen-saver') } catch {}
   lastWindowMode = 'teleprompter'
+  syncOverlayShortcuts()
   try { mainWindow.webContents.send('overlay-command', { type: 'teleprompter', active: true, width: w, height: h }) } catch {}
 }
 
@@ -487,34 +498,45 @@ function launchTrayAndShortcuts() {
   globalShortcut.register('CommandOrControl+Shift+U', captureScreen)
   try { globalShortcut.register('F7', captureScreen) } catch {}
 
-  // Zero-mouse overlay navigation & Top-Center Camera Anchor (Teleprompter) mode:
-  // Only dispatch when the window is actively in 'overlay' or 'teleprompter' mode so
-  // pressing Alt+T/R/Up/Down on the full 'app' dashboard never resizes or hijacks it.
-  const isOverlayActive = () => mainWindow && !mainWindow.isDestroyed() && (lastWindowMode === 'overlay' || lastWindowMode === 'teleprompter')
-  try {
-    globalShortcut.register('Alt+T', () => {
-      if (!isOverlayActive()) return
-      if (lastWindowMode === 'teleprompter') {
-        lastWindowMode = null
-        ipcMain.emit('set-window-mode', null, 'overlay')
-        try { mainWindow.webContents.send('overlay-command', { type: 'teleprompter', active: false, width: lastOverlaySize.w, height: lastOverlaySize.h }) } catch {}
-      } else {
-        applyTeleprompterGeometry()
+  // Zero-mouse overlay navigation & Top-Center Camera Anchor (Teleprompter) mode.
+  // PR #45 review fix: mode-scoped registration. The shortcuts are registered when the
+  // window ENTERS overlay/teleprompter mode and unregistered when it leaves, so the OS
+  // never reserves Alt+T/R/Up/Down for MockMate while the dashboard is open or the user
+  // is in another application. (Returning early from a permanently-registered callback
+  // does NOT give the key back to the foreground app — registration lifetime is what
+  // controls that.)
+  syncOverlayShortcuts = () => {
+    const active = mainWindow && !mainWindow.isDestroyed() && (lastWindowMode === 'overlay' || lastWindowMode === 'teleprompter')
+    if (active && !overlayShortcutsRegistered) {
+      try {
+        globalShortcut.register('Alt+T', () => {
+          if (lastWindowMode === 'teleprompter') {
+            lastWindowMode = null
+            ipcMain.emit('set-window-mode', null, 'overlay')
+            try { mainWindow.webContents.send('overlay-command', { type: 'teleprompter', active: false, width: lastOverlaySize.w, height: lastOverlaySize.h }) } catch {}
+          } else {
+            applyTeleprompterGeometry()
+          }
+        })
+        globalShortcut.register('Alt+Up', () => {
+          try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-up' }) } catch {}
+        })
+        globalShortcut.register('Alt+Down', () => {
+          try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-down' }) } catch {}
+        })
+        globalShortcut.register('Alt+R', () => {
+          try { mainWindow?.webContents?.send('overlay-command', { type: 'answer-now' }) } catch {}
+        })
+        overlayShortcutsRegistered = true
+      } catch {}
+    } else if (!active && overlayShortcutsRegistered) {
+      for (const acc of ['Alt+T', 'Alt+R', 'Alt+Up', 'Alt+Down']) {
+        try { globalShortcut.unregister(acc) } catch {}
       }
-    })
-    globalShortcut.register('Alt+Up', () => {
-      if (!isOverlayActive()) return
-      try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-up' }) } catch {}
-    })
-    globalShortcut.register('Alt+Down', () => {
-      if (!isOverlayActive()) return
-      try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-down' }) } catch {}
-    })
-    globalShortcut.register('Alt+R', () => {
-      if (!isOverlayActive()) return
-      try { mainWindow?.webContents?.send('overlay-command', { type: 'answer-now' }) } catch {}
-    })
-  } catch {}
+      overlayShortcutsRegistered = false
+    }
+  }
+  syncOverlayShortcuts()
 }
 
 // Capture the active/selected screen and hand a crisp compressed JPEG to the renderer for vision analysis.
@@ -546,10 +568,19 @@ async function captureScreen(opts = {}) {
     })()
     const primaryId = String((activeDisplay || screen.getPrimaryDisplay()).id)
     const preferredId = opts.displayId != null ? String(opts.displayId) : null
-    // Prefer explicit display → display containing MockMate/primary → first.
-    const chosen = (preferredId && sources.find(s => String(s.display_id) === preferredId || s.id === preferredId))
+    // Display selection precedence (PR #45 review fix):
+    //   1. explicit displayId from the display picker ("Solve it" UI),
+    //   2. the display last captured/selected on this run (F7 repeatability on the
+    //      interview monitor even though MockMate lives on another monitor),
+    //   3. the display containing the MockMate window, 4. first source.
+    // Note: without 1–2 the default is the monitor containing MockMate — NOT
+    // foreground-window detection (which is not portable across Win/macOS).
+    const findSource = id => id != null && sources.find(s => String(s.display_id) === String(id) || s.id === String(id))
+    const chosen = findSource(preferredId)
+      || findSource(lastChosenDisplayId)
       || sources.find(s => String(s.display_id) === primaryId)
       || sources[0]
+    lastChosenDisplayId = chosen.display_id || chosen.id || lastChosenDisplayId
     let payload
     try {
       let img = chosen.thumbnail.resize({ width: 1440, quality: 'better' })
@@ -984,6 +1015,7 @@ ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (lastWindowMode === 'teleprompter' || lastWindowMode === 'overlay') {
     lastWindowMode = 'overlay'
   }
+  syncOverlayShortcuts()
 })
 ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
@@ -1005,6 +1037,7 @@ ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
       if (lastWindowMode !== 'app') lastWindowMode = 'overlay'
     }
   }
+  syncOverlayShortcuts()
 })
 // Switch between the full windowed dashboard ('app'), compact overlay ('overlay'),
 // top-center camera anchor ('teleprompter'), and minimized badge ('pill').
@@ -1012,6 +1045,7 @@ ipcMain.on('set-window-mode', (_, mode) => {
   if (!mainWindow || mainWindow.isDestroyed() || (mode === lastWindowMode && mode === 'app')) return
   suppressBlurHide(900)
   lastWindowMode = mode
+  syncOverlayShortcuts()
   try {
     const area = activeDisplayWorkArea(mainWindow)
     if (mode === 'pill') {

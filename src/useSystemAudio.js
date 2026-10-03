@@ -14,6 +14,9 @@ import {
   requestDeepgramToken,
 } from './lib/deepgramTransport'
 
+// Silence window after the last STT event before we force-flush the open utterance.
+const FINALIZE_PAUSE_MS = 900
+
 async function getStream(sourceId) {
   if (!sourceId || sourceId === 'microphone') {
     const supported = navigator.mediaDevices?.getSupportedConstraints?.() || {}
@@ -108,6 +111,14 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const speakerStats = useRef(new Map()), interviewerSpeaker = useRef(null), candidateSpeaker = useRef(null)
   const everConnected = useRef(false), degradedAudio = useRef(false)
   const lastEarlyTrigger = useRef('')
+  // Turn-1 Finalize-on-pause (v1.5.2, PR #45 review): Deepgram keeps holding an utterance
+  // open across natural pauses, so the interviewer's first question can sit in interim
+  // land indefinitely. When a pending interim goes quiet for FINALIZE_PAUSE_MS we send a
+  // { type: 'Finalize' } control frame to flush it as a final exactly once per utterance.
+  const finalizeWatcher = useRef(null)
+  const pendingInterim = useRef(false)
+  const lastSttAt = useRef(0)
+  const finalizeSent = useRef(false)
   const onFinalRef = useRef(onFinal), onFailRef = useRef(onFail), onEarlyRef = useRef(onEarlyQuestion), onReconnectRef = useRef(onReconnect)
   useEffect(() => { onFinalRef.current = onFinal }, [onFinal])
   useEffect(() => { onFailRef.current = onFail }, [onFail])
@@ -121,6 +132,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
 
   const teardown = useCallback(() => {
     clearInterval(keepAlive.current); keepAlive.current = null
+    clearInterval(finalizeWatcher.current); finalizeWatcher.current = null
+    pendingInterim.current = false; finalizeSent.current = false
     clearTimeout(reconnectTimer.current); reconnectTimer.current = null
     abandonSocket(activeSocketRef.current || ws.current)
     activeSocketRef.current = null
@@ -238,6 +251,19 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       keepAlive.current = setInterval(() => {
         if (owns() && sock.readyState === 1) { try { sock.send(JSON.stringify({ type: 'KeepAlive' })) } catch {} }
       }, KEEPALIVE_MS)
+      clearInterval(finalizeWatcher.current)
+      finalizeWatcher.current = setInterval(() => {
+        if (!owns()) return
+        if (
+          pendingInterim.current && !finalizeSent.current &&
+          lastSttAt.current > 0 && Date.now() - lastSttAt.current >= FINALIZE_PAUSE_MS &&
+          sock.readyState === 1
+        ) {
+          finalizeSent.current = true
+          try { sock.send(JSON.stringify({ type: 'Finalize' })) } catch {}
+          diagnostic('stt', 'finalize_on_pause', { pauseMs: FINALIZE_PAUSE_MS })
+        }
+      }, 300)
     }
 
     sock.onmessage = ev => {
@@ -250,6 +276,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       const alt = m.channel?.alternatives?.[0]
       const text = alt?.transcript?.trim()
       if (!text) return
+      lastSttAt.current = Date.now()
       const sp = dominantSpeaker(alt?.words)
       let isCandidate = candidateSpeaker.current != null && sp === candidateSpeaker.current
       if (m.is_final) {
@@ -274,9 +301,12 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
           isCandidate = candidateSpeaker.current != null && sp === candidateSpeaker.current
         }
         lastEarlyTrigger.current = ''
+        pendingInterim.current = false
+        finalizeSent.current = false
         const isSystemLoopback = Boolean(sourceIdRef.current && sourceIdRef.current !== 'microphone')
         onFinalRef.current?.(text, {
           speaker: sp,
+          source: isSystemLoopback ? 'system' : 'microphone',
           isCandidate: isSystemLoopback ? false : !!isCandidate,
           isQuestion: looksLikeQuestion(text),
           confidence: Number.isFinite(alt?.confidence) ? alt.confidence : null,
@@ -291,6 +321,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
         })
         setInterim('')
       } else {
+        pendingInterim.current = true
+        finalizeSent.current = false
         setInterim(text)
         const confidence = alt?.confidence ?? 0
         const earlyIsInterviewer = sourceIdRef.current !== 'microphone'
@@ -309,6 +341,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       if (ws.current === sock) ws.current = null
       connecting.current = false
       clearInterval(keepAlive.current); keepAlive.current = null
+      clearInterval(finalizeWatcher.current); finalizeWatcher.current = null
+      pendingInterim.current = false; finalizeSent.current = false
       if (userStop.current || suspendPaused.current) return
       diagnostic('stt', 'socket_closed', { code: ev?.code || 0, clean: !!ev?.wasClean, generation: gen }, FATAL_CLOSE.has(ev?.code) ? 'error' : 'warn')
       if (FATAL_CLOSE.has(ev?.code)) return failOrDegrade(`Deepgram closed the stream (code ${ev.code})`)

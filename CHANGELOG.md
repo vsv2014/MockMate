@@ -22,7 +22,7 @@ Desktop-first Windows & multi-monitor HUD upgrade, `{ Artemis }` hybrid RAG & PD
 - **Mobile Foundation (`mobile/`):** Added the initial Expo/React Native iOS and Android private-beta foundation under `mobile/`.
 
 ### Fixed
-- **Turn-1 System Audio Question Classification (`shared/questionCapture.js`, `src/useSystemAudio.js`):** Added a `+25` confidence boost on Turn 1 when `source === 'system'` and flushed trailing Deepgram audio via `Finalize` on speech pause so opener prompts commit reliably.
+- **Turn-1 System Audio Question Classification (`shared/questionCapture.js`, `src/useSystemAudio.js`):** System/loopback capture now forces `speakerRole: 'interviewer'` (no diarization warm-up), adds a `+25` confidence boost on Turn 1 when `source === 'system'` (relaxing the word/completeness gates for short opener prompts like "Introduce yourself."), and sends a Deepgram `Finalize` control frame after a 900 ms speech pause so held-open utterances flush — opener prompts commit reliably. Covered by Turn-1 tests in `shared/questionCapture.test.js`.
 - **Multi-Monitor Display Preservation (`electron/main.cjs`):** Uses `screen.getDisplayMatching(mainWindow.getBounds())` and preserves user-resized overlay dimensions (`lastOverlaySize`) across `'overlay'`, `'teleprompter'`, `'pill'`, and `'app'` transitions.
 - **Bounded Windows `F7` Screen Capture (`electron/main.cjs`):** Captures at `1440×810 @ JPEG Q76` with an automatic `210 KB` byte-budget step-down (`1280×720 @ Q70`) to keep dense code readable while protecting vision TTFT.
 - **Solo Setup Selected Document Gate (`src/Solo.jsx`):** Checks `getSelectedDocIds().length > 0` (synced via `onLibraryChange`) rather than `hasDocs()` so deselected library documents cannot satisfy the Solo context requirement.

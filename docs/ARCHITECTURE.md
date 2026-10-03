@@ -70,7 +70,11 @@ Declarative contract, validated at load (`backend/src/abl.js#validateAblSpec`):
   capability matrix (`byok` vs `managed` vs `unavailable`) consumed by `/api/arch` and the UI.
 - `reasoningPolicy(operation, { adaptive })` — base lane from ABL routing; **adaptive mode
   promotes `balanced → fast` when p95 TTFT ≥ 3.2 s or turn latency p95 ≥ 6 s**
-  (`high_latency_guardrail`).
+  (`high_latency_guardrail`). ⚠ Scoping note (PR #45 review): the perf state feeding this
+  promotion is **process-global** — a slow provider episode for one user can promote routing
+  for everyone on that backend process. Acceptable for the current 3–4 user deployment;
+  must be scoped to provider + operation + deployment (then account/session) before wider
+  hosting (see PI-6).
 - `executeWithFallback()` — per-provider loop with: circuit breaker (30 s cooldown),
   per-attempt timeout (AbortController race), bounded retries, outer-signal relay,
   provider failover, optional local fallback, and success/failure telemetry. Used today for
@@ -81,6 +85,10 @@ Declarative contract, validated at load (`backend/src/abl.js#validateAblSpec`):
   product-intelligence sections** so remote deployments expose capability status only.
 
 ### 2.3 Product Intelligence subsystem (ARCH · behavioral loop)
+
+Honest classification (PR #45 review): this is currently **local/runtime adaptive
+telemetry**, not yet full closed-loop product intelligence for a hosted multi-tenant
+system — persistence and tenant/account scoping do not exist yet (PI-1, PI-6).
 
 Privacy-first behavioral & funnel engine. **Contract: structured, redacted UI flows only —
 never resumes, transcripts, prompts, answers, API keys, screenshots, or raw audio.**
@@ -128,6 +136,7 @@ Key behaviors:
 | PI-3 | Rage-click target falls back to `title`/`aria-label`, which can carry dynamic values (e.g. company names) — slugified, but meaning survives | accepted risk; prefer `data-pi-target`/`id` for sensitive screens |
 | PI-4 | `highTtft` abandon metric counts no-end sessions as abandons; insight wording now says so explicitly | fixed (wording) |
 | PI-5 | `startNewProductSession` was dead code | removed 2026-10-03 |
+| PI-6 | Adaptive routing promotion + PI event store are **process-global** — one slow episode/user can re-route everyone on that process; events die with the process and aren't shared across instances | open; scope to provider+operation+deployment, then account/session, before hosted scale-out (PR #45 review) |
 
 ---
 
