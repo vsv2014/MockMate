@@ -71,7 +71,7 @@ describe('Anti-Fail Guardrails template (LockedIn autopsy)', () => {
   it('ships every forensic always-on rule', () => {
     const tpl = PLAYBOOK_TEMPLATES.find(t => t.id === 'anti_fail')
     expect(tpl).toBeTruthy()
-    for (const key of ['MISHEARD QUESTIONS', 'NOT-ASKED QUESTIONS', 'TRUTH', 'COMPANY CONTEXT', 'SQL/CODING', 'PACING', 'SENIORITY BAND']) {
+    for (const key of ['MISHEARD QUESTIONS', 'NOT-ASKED QUESTIONS', 'TRUTH', 'COMPANY CONTEXT', 'SQL/CODING', 'PACING', 'SENIORITY BAND', 'IDENTITY LOCK', 'INTERVIEWER STORIES ARE NOT MINE', 'NO UNAUTHORIZED COMMITMENTS', 'CODE FIRST', 'VERIFY BEFORE AGREEING', 'ONE ANSWER PER TURN', 'NO PLACEHOLDERS', 'TOPIC ISOLATION']) {
       expect(tpl.prompt).toContain(`${key}:`)
     }
   })

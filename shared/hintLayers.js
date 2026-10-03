@@ -151,6 +151,12 @@ const SPOKEN_JARGON_REPLACEMENTS = [
   [/\bdelve\b/gi, m => (m[0] === 'D' ? 'Dig' : 'dig')],
 ]
 
+// LP-20 (LockedIn autopsy): template placeholders like "[X] years" were spoken ALOUD in a real
+// transcript, and coach markers ("SAY:", "THINK:", "IF HE GOES DEEPER:") leak into spoken prose.
+// Neither may ever reach the candidate's mouth.
+const PLACEHOLDER_RE = /\[[^\]\n]{0,48}\]/g
+const COACH_PREFIX_RE = /\b(?:SAY|THINK|IF (?:HE|SHE|THEY) GOES DEEPER)\s*:\s*/gi
+
 /**
  * Deterministic output guardrail (inspired by Kore.ai Artemis Streaming Guardrails `Action: Fix`).
  * Strips robotic AI preambles and rewrites high-signal AI-tell words in spoken prose without
@@ -165,6 +171,7 @@ export function sanitizeSpokenProse(text = '') {
     .map((part, idx) => {
       if (part.startsWith('```')) return part
       let out = idx === 0 ? part.replace(AI_PREAMBLE_RE, '') : part
+      out = out.replace(COACH_PREFIX_RE, '').replace(PLACEHOLDER_RE, '').replace(/\s{2,}/g, ' ')
       for (const [re, replacer] of SPOKEN_JARGON_REPLACEMENTS) {
         out = out.replace(re, replacer)
       }

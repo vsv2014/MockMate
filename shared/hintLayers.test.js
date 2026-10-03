@@ -80,4 +80,27 @@ describe('sanitizeSpokenProse (Artemis-style streaming output guardrail)', () =>
     expect(out).toMatch(/^Use a helper\./)
     expect(out).toContain('function utilizeCache()')
   })
+
+  it('LP-20: strips bracketed placeholders like "[X] years" from spoken prose', () => {
+    const raw = "I've had my current vehicle for about [X] years, so roughly [Y] years now."
+    const out = sanitizeSpokenProse(raw)
+    expect(out).not.toContain('[')
+    expect(out).not.toContain(']')
+    expect(out).toBe("I've had my current vehicle for about years, so roughly years now.")
+  })
+
+  it('LP-20: strips coach prefixes (SAY:/THINK:/IF HE GOES DEEPER:) from spoken prose', () => {
+    const raw = 'SAY: Yes, I would bucket by language first.\nTHINK: He may push on sorting.\nIF HE GOES DEEPER: mention bucket counts.'
+    const out = sanitizeSpokenProse(raw)
+    expect(out).not.toMatch(/SAY:/i)
+    expect(out).not.toMatch(/THINK:/i)
+    expect(out).not.toMatch(/IF HE GOES DEEPER:/i)
+    expect(out).toContain('bucket by language first')
+  })
+
+  it('LP-20: preserves brackets inside fenced code blocks', () => {
+    const raw = 'Here is the sort.\n\n```ts\nconst a: string[] = [x];\n```'
+    const out = sanitizeSpokenProse(raw)
+    expect(out).toContain('const a: string[] = [x];')
+  })
 })
