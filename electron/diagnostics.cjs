@@ -31,6 +31,7 @@ class DiagnosticStore {
     this.file = path.join(this.dir, 'diagnostics.jsonl')
     this.queue = []
     this.flushing = false
+    this.clearRequested = false
     this.base = { appVersion, platform, arch, pid: process.pid }
     try { fs.mkdirSync(this.dir, { recursive: true }) } catch {}
     this.timer = setInterval(() => this.flush(), 500)
@@ -72,7 +73,7 @@ class DiagnosticStore {
   }
 
   async flush() {
-    if (this.flushing || !this.queue.length) return
+    if (this.flushing || !this.queue.length || this.clearRequested) return
     this.flushing = true
     const lines = this.queue.splice(0, 300)
     const chunk = lines.join('\n') + '\n'
@@ -81,30 +82,34 @@ class DiagnosticStore {
       await this.rotate(Buffer.byteLength(chunk))
       await fs.promises.appendFile(this.file, chunk, { mode: 0o600 })
     } catch {
-      // Preserve ordering and retry later; diagnostics must not disappear on transient disk errors.
       this.queue.unshift(...lines)
       if (this.queue.length > MAX_QUEUE) this.queue.length = MAX_QUEUE
     } finally {
       this.flushing = false
-      if (this.queue.length) setImmediate(() => this.flush())
+      if (this.queue.length && !this.clearRequested) setImmediate(() => this.flush())
+    }
+  }
+
+  async drain() {
+    while (this.queue.length || this.flushing) {
+      if (!this.flushing) await this.flush()
+      if (this.flushing || this.queue.length) await new Promise(resolve => setTimeout(resolve, 10))
     }
   }
 
   async clear() {
-    // Wait for an already-started append before deleting files so a late flush cannot recreate them.
+    this.clearRequested = true
     while (this.flushing) await new Promise(resolve => setTimeout(resolve, 10))
     this.queue = []
     for (let i = 0; i < MAX_FILES; i++) {
       const f = i === 0 ? this.file : `${this.file}.${i}`
       try { await fs.promises.unlink(f) } catch {}
     }
+    this.clearRequested = false
   }
 
   async exportTo(destination) {
-    while (this.queue.length || this.flushing) {
-      await this.flush()
-      if (this.flushing) await new Promise(resolve => setTimeout(resolve, 10))
-    }
+    await this.drain()
     const files = []
     for (let i = MAX_FILES - 1; i >= 0; i--) {
       const f = i === 0 ? this.file : `${this.file}.${i}`
@@ -122,7 +127,7 @@ class DiagnosticStore {
     return { path: destination, files: files.length }
   }
 
-  async close() { clearInterval(this.timer); await this.flush() }
+  async close() { clearInterval(this.timer); await this.drain() }
 }
 
 module.exports = { DiagnosticStore, clean }
