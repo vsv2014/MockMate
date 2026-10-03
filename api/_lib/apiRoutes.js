@@ -44,6 +44,21 @@ const OPERATION_BY_PATH = {
 }
 const STRATEGY_BY_LANE = { fast: 'fast', balanced: 'balanced', strong: 'quality', vision: 'quality' }
 
+export function applyArchReasoningPolicy(path, raw = {}, resolveReasoningPolicy = defaultReasoningPolicy) {
+  const body = { ...(raw || {}) }
+  if (!resolveReasoningPolicy) return body
+  const policy = resolveReasoningPolicy(OPERATION_BY_PATH[path] || 'default', { adaptive: true })
+  if (!policy) return body
+  body.archPolicy = {
+    lane: policy.lane,
+    noDoubleRetry: policy.noDoubleRetry === true,
+    ...(policy.adaptivePromotion ? { adaptivePromotion: policy.adaptivePromotion } : {}),
+  }
+  const strategy = STRATEGY_BY_LANE[policy.lane]
+  if (strategy && !body.profile?.modelStrategy) body.profile = { ...(body.profile || {}), modelStrategy: strategy }
+  return body
+}
+
 export function registerApiRoutes(app, opts = {}) {
   const guard = opts.auth ? [].concat(opts.auth) : []
   const guardLight = opts.authLight ? [].concat(opts.authLight) : guard
@@ -52,20 +67,7 @@ export function registerApiRoutes(app, opts = {}) {
   const onLlmFailure = typeof opts.onLlmFailure === 'function' ? opts.onLlmFailure : null
   const resolveReasoningPolicy = typeof opts.reasoningPolicy === 'function' ? opts.reasoningPolicy : defaultReasoningPolicy
 
-  const bodyWithPolicy = (path, raw = {}) => {
-    const body = { ...(raw || {}) }
-    if (!resolveReasoningPolicy) return body
-    const policy = resolveReasoningPolicy(OPERATION_BY_PATH[path] || 'default', { adaptive: true })
-    if (!policy) return body
-    body.archPolicy = {
-      lane: policy.lane,
-      noDoubleRetry: policy.noDoubleRetry === true,
-      ...(policy.adaptivePromotion ? { adaptivePromotion: policy.adaptivePromotion } : {}),
-    }
-    const strategy = STRATEGY_BY_LANE[policy.lane]
-    if (strategy && !body.profile?.modelStrategy) body.profile = { ...(body.profile || {}), modelStrategy: strategy }
-    return body
-  }
+  const bodyWithPolicy = (path, raw = {}) => applyArchReasoningPolicy(path, raw, resolveReasoningPolicy)
 
   app.get('/api/providers', ...guardLight, (req, res) => res.json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured() }))
   app.get('/api/models', ...guardLight, async (req, res) => {

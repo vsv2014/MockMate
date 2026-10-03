@@ -26,10 +26,12 @@ export function sanitizeCaptureText(value) {
     .trim()
 }
 
+import { nid as makeId } from './id.js'
+
 /** @typedef {'interviewer'|'candidate'|'unknown'} SpeakerRole */
 
 function nid() {
-  return `frag_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
+  return makeId('frag', 4)
 }
 
 /**

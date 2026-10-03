@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { T } from '../auth/tokens'
 import { extractPdfText } from '../pdf'
+import { copyText } from './clipboard'
 
 // Shared visual language for Jobs + Resume Studio (secondary product surfaces).
 // Matches Solo/Home tokens — no new capabilities, styling + materials only.
@@ -139,3 +140,29 @@ export function ResumeMaterials({ resume, onPatch }) {
     </div>
   )
 }
+
+export function CopyBtn({ text, label = 'Copy', variant = 'chip' }) {
+  const [done, setDone] = useState(false)
+  const [failed, setFailed] = useState(false)
+  if (!text) return null
+  const handleClick = async () => {
+    const ok = await copyText(text)
+    if (ok) { setDone(true); setFailed(false); setTimeout(() => setDone(false), 1500) }
+    else { setFailed(true); setTimeout(() => setFailed(false), 2000) }
+  }
+  if (variant === 'button') {
+    return (
+      <button type="button" onClick={handleClick}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 13px', background: done ? 'rgba(34,197,94,0.16)' : T.surface2, color: failed ? '#fca5a5' : (done ? T.success : T.text2), border: `1px solid ${T.border}`, borderRadius: T.rCtrl, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: T.font }}>
+        {failed ? 'Copy failed' : done ? '✓ Copied' : `📋 ${label}`}
+      </button>
+    )
+  }
+  return (
+    <button type="button" onClick={handleClick}
+      style={{ ...S.chip, cursor: 'pointer', border: 'none', color: failed ? '#fca5a5' : (done ? T.success : T.accentFrom), fontFamily: T.font }}>
+      {failed ? 'Copy failed' : done ? 'Copied' : label}
+    </button>
+  )
+}
+

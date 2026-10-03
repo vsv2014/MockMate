@@ -68,7 +68,6 @@ function toMeta(d) {
 }
 
 export function listDocs() { return load().map(toMeta) }
-export function hasDocs() { return load().length > 0 }
 export function getSelectedDocIds() { return load().filter(d => d.selected !== false).map(d => d.id) }
 
 export function setDocSelected(id, selected) {

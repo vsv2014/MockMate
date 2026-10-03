@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react'
 import { apiFetch } from './lib/apiClient'
-import Solo from './Solo'
 import LiveCompanion from './LiveCompanion'
-import Duo from './Duo'
-import Jobs from './Jobs'
-import Career from './Career'
-import Account from './Account'
 import AuthGate from './auth/AuthGate'
+
+const Solo = lazy(() => import('./Solo'))
+const Duo = lazy(() => import('./Duo'))
+const Jobs = lazy(() => import('./Jobs'))
+const Career = lazy(() => import('./Career'))
+const Account = lazy(() => import('./Account'))
 import { T } from './auth/tokens'
 import { AppShell, DashboardHome, SessionsTable } from './Dashboard'
 import SoloFeedback from './SoloFeedback'
@@ -24,6 +25,7 @@ import {
   interviewSeedConfirmMessage,
 } from './lib/interviewJobSeed'
 import { copyText } from './lib/clipboard'
+import { startWindowDrag } from './lib/windowDrag'
 import { canRunLanguage, runJavaScriptIsolated } from './lib/codeRunner'
 import { diagnostic } from './lib/diagnostics'
 import { trackProductEvent, attachRageClickObserver } from './lib/productIntelligence'
@@ -619,23 +621,7 @@ function ElectronShell({ auth }) {
     setMinimized(true)
   }
 
-  function startDrag(e) {
-    if (e.button !== 0) return
-    if (!inElectron || !window.electronAPI?.windowDrag) return
-    e.preventDefault()
-    let lastX = e.screenX, lastY = e.screenY
-    const onMove = ev => {
-      const dx = ev.screenX - lastX, dy = ev.screenY - lastY
-      lastX = ev.screenX; lastY = ev.screenY
-      window.electronAPI.windowDrag(dx, dy)
-    }
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-  }
+  const startDrag = startWindowDrag
 
   function startResize(e, edge = 'se') {
     resizing.current = true
@@ -851,7 +837,9 @@ function ElectronShell({ auth }) {
             stealth={stealth} onStealth={requestStealthToggle}
             onMinimize={collapseToPill} onClose={() => window.close?.()}>
             <WhatsNew openSignal={whatsNewSignal} />
-            {content}
+            <Suspense fallback={<div style={{ color: T.text3, fontSize: 12.5, padding: '24px 4px', fontFamily: T.font }}>Loading workspace…</div>}>
+              {content}
+            </Suspense>
           </AppShell>
         </div>
       </>

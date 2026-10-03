@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { T } from './auth/tokens'
 import { scoreColor } from './lib/ui'
 import { feedbackToText, transcriptToText } from './history'
+import { CopyBtn as SharedCopyBtn } from './lib/secondaryUi'
 
 // Phase-2b Solo feedback — design-system results screen. Renders only real fields from
 // the evaluator (score, dimensions, strengths, improvements, delivery) + a conversation
@@ -29,14 +30,7 @@ function Ring({ value, size = 128 }) {
 }
 
 function CopyBtn({ text, label }) {
-  const [done, setDone] = useState(false)
-  if (!text) return null
-  return (
-    <button onClick={() => { navigator.clipboard?.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500) }}
-      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 13px', background: done ? 'rgba(34,197,94,0.16)' : T.surface2, color: done ? T.success : T.text2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: T.font }}>
-      {done ? '✓ Copied' : `📋 ${label}`}
-    </button>
-  )
+  return <SharedCopyBtn text={text} label={label} variant="button" />
 }
 
 const panel = { background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '18px 20px' }

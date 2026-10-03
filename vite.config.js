@@ -12,6 +12,24 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url)))
 export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: [react()],
+  build: {
+    chunkSizeWarningLimit: 550,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('@sentry')) return 'vendor-sentry'
+          if (id.includes('@livekit')) return 'vendor-livekit-ui'
+          if (id.includes('livekit-client')) return 'vendor-livekit-client'
+          if (id.includes('html2canvas')) return 'vendor-html2canvas'
+          if (id.includes('jspdf')) return 'vendor-jspdf'
+          if (id.includes('pdfjs-dist')) return 'vendor-pdf-reader'
+          if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) return 'vendor-react'
+          return undefined
+        },
+      },
+    },
+  },
   // The mobile workspace owns its Expo toolchain and runs through
   // `npm run mobile:verify`. A clean desktop `npm ci` intentionally does not
   // install mobile/node_modules, so the desktop release suite must not

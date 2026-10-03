@@ -6,7 +6,7 @@ import { copyText, downloadTextFile } from './lib/clipboard'
 import { downloadTailoredResumePdf } from './lib/resumePdf'
 import { scoreColor } from './lib/ui'
 import { T } from './auth/tokens'
-import { S, tabStyle, NoKeysBanner, ResumeMaterials } from './lib/secondaryUi'
+import { S, tabStyle, NoKeysBanner, ResumeMaterials, CopyBtn } from './lib/secondaryUi'
 
 // Resume Studio — ATS score, tailor, referral DM.
 
@@ -15,23 +15,6 @@ const TABS = [
   ['tailor', 'Tailor Resume'],
   ['referral', 'Referral DM'],
 ]
-
-function CopyBtn({ text, label = 'Copy' }) {
-  const [done, setDone] = useState(false)
-  const [failed, setFailed] = useState(false)
-  if (!text) return null
-  return (
-    <button type="button"
-      onClick={async () => {
-        const ok = await copyText(text)
-        if (ok) { setDone(true); setFailed(false); setTimeout(() => setDone(false), 1500) }
-        else { setFailed(true); setTimeout(() => setFailed(false), 2000) }
-      }}
-      style={{ ...S.chip, cursor: 'pointer', border: 'none', color: failed ? '#fca5a5' : (done ? T.success : T.accentFrom), fontFamily: T.font }}>
-      {failed ? 'Copy failed' : done ? 'Copied' : label}
-    </button>
-  )
-}
 
 export default function Career({
   onHome, noProviders, onSettings, embedded,

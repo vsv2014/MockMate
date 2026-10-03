@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { apiFetch } from './lib/apiClient'
 import { diagnostic } from './lib/diagnostics'
-import { toPCM16 } from './audio-pcm'
-
-const MAX_RECONNECTS = 150
-const KEEPALIVE_MS = 4000
-const FATAL_CLOSE = new Set([1008, 4001, 4003, 4008])
-const BYTES_PER_SEC = 16000 * 2
-const MAX_QUEUE_BYTES = 5 * BYTES_PER_SEC
+import {
+  MAX_RECONNECTS,
+  KEEPALIVE_MS,
+  FATAL_CLOSE,
+  PERMANENT_TOKEN_STATUSES,
+  computeReconnectDelayMs,
+  buildDeepgramListenUrl,
+  abandonDeepgramSocket,
+  enqueueOrSendPcm,
+  flushQueuedPcm,
+  createDeepgramAudioGraph,
+  requestDeepgramToken,
+} from './lib/deepgramTransport'
 
 /** Solo / Duo mic transcription via Deepgram. */
 export function useDeepgram(onFinal, onFail, lang = 'en-US') {
@@ -30,16 +35,10 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
   useEffect(() => { onFailRef.current = onFail }, [onFail])
   useEffect(() => { langRef.current = lang || 'en-US' }, [lang])
 
-  function abandonSocket(sock) {
-    if (!sock) return
-    try {
-      sock.onclose = null; sock.onerror = null; sock.onmessage = null; sock.onopen = null
-      if (sock.readyState === 1) sock.send(JSON.stringify({ type: 'CloseStream' }))
-    } catch {}
-    try { sock.close() } catch {}
-    if (activeSocketRef.current === sock) activeSocketRef.current = null
-    if (ws.current === sock) ws.current = null
-  }
+  const abandonSocket = useCallback(
+    sock => abandonDeepgramSocket(sock, activeSocketRef, ws),
+    [],
+  )
 
   const teardown = useCallback(() => {
     clearInterval(keepAlive.current); keepAlive.current = null
@@ -54,7 +53,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
     pcmQueue.current = []; pcmQueueBytes.current = 0; pcmDroppedBytes.current = 0
     connecting.current = false
     setActive(false); setReconnecting(false); setInterim('')
-  }, [])
+  }, [abandonSocket])
 
   const stop = useCallback(() => {
     userStop.current = true
@@ -71,50 +70,32 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
   }, [teardown])
 
   const buildAudioGraph = useCallback(async (audioStream) => {
-    const AC = window.AudioContext || window.webkitAudioContext
-    let ac
-    try { ac = new AC({ sampleRate: 16000 }) } catch { ac = new AC() }
-    ctx.current = ac
-    try { await ac.resume() } catch {}
-    const source = ac.createMediaStreamSource(audioStream)
-    srcNode.current = source
-    const mute = ac.createGain(); mute.gain.value = 0
-    const sendPCM = buf => {
-      // Never send MockMate's own synthesized interviewer audio to paid STT. Keeping the socket
-      // alive avoids the old stop/reconnect race, while dropping frames prevents self-transcription
-      // and unnecessary Deepgram audio usage during TTS.
-      if (window.speechSynthesis?.speaking || window.speechSynthesis?.pending) return
-      const sock = ws.current
-      if (sock && sock.readyState === 1) { sock.send(buf); return }
-      pcmQueue.current.push(buf)
-      pcmQueueBytes.current += buf.byteLength
-      while (pcmQueueBytes.current > MAX_QUEUE_BYTES && pcmQueue.current.length) {
-        const old = pcmQueue.current.shift()
-        pcmQueueBytes.current -= old.byteLength
-        pcmDroppedBytes.current += old.byteLength
-      }
-    }
-    try {
-      await ac.audioWorklet.addModule('/dg-worklet.js')
-      const node = new AudioWorkletNode(ac, 'pcm-worklet')
-      node.port.onmessage = e => sendPCM(e.data)
-      source.connect(node); node.connect(mute); mute.connect(ac.destination)
-      proc.current = node
-    } catch (err) {
-      console.warn('[solo-audio] AudioWorklet unavailable, ScriptProcessor fallback:', err?.message)
-      const p = ac.createScriptProcessor(4096, 1, 1)
-      p.onaudioprocess = e => sendPCM(toPCM16(e.inputBuffer.getChannelData(0), ac.sampleRate))
-      source.connect(p); p.connect(mute); mute.connect(ac.destination)
-      proc.current = p
-    }
+    const sendPCM = buf => enqueueOrSendPcm(buf, {
+      wsRef: ws,
+      pcmQueueRef: pcmQueue,
+      pcmQueueBytesRef: pcmQueueBytes,
+      pcmDroppedBytesRef: pcmDroppedBytes,
+      // Never send MockMate's own synthesized interviewer audio to paid STT.
+      shouldDropFrame: () => Boolean(window.speechSynthesis?.speaking || window.speechSynthesis?.pending),
+    })
+    await createDeepgramAudioGraph(audioStream, {
+      ctxRef: ctx,
+      srcNodeRef: srcNode,
+      procRef: proc,
+      sendPCM,
+      logPrefix: 'solo-audio',
+      resumeImmediately: true,
+    })
   }, [])
 
   function scheduleReconnect(reason) {
     if (userStop.current || suspendPaused.current) return
     reconnectAttempts.current += 1
-    if (reconnectAttempts.current > MAX_RECONNECTS) return failOrDegrade(`${reason} — gave up after ${MAX_RECONNECTS} consecutive reconnect attempts`)
+    if (reconnectAttempts.current > MAX_RECONNECTS) {
+      return failOrDegrade(`${reason} — gave up after ${MAX_RECONNECTS} consecutive reconnect attempts`)
+    }
     setActive(false); setReconnecting(true)
-    const delay = Math.min(8000, 500 * 2 ** Math.min(reconnectAttempts.current - 1, 4))
+    const delay = computeReconnectDelayMs(reconnectAttempts.current)
     clearTimeout(reconnectTimer.current)
     reconnectTimer.current = setTimeout(() => { connectSocket() }, delay)
   }
@@ -127,27 +108,26 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
     activeSocketRef.current = null
     ws.current = null
 
-    let tokenRes, tokenStatus
-    diagnostic('stt', 'token_requested', { mode: 'microphone', generation: gen, reconnectAttempt: reconnectAttempts.current })
-    try {
-      const r = await apiFetch('/api/deepgram-token', { method: 'POST' })
-      tokenStatus = r.status
-      tokenRes = await r.json().catch(() => null)
-    } catch {
+    const { ok, tokenStatus, tokenRes, networkError } = await requestDeepgramToken({
+      mode: 'microphone',
+      generation: gen,
+      reconnectAttempt: reconnectAttempts.current,
+    })
+    if (networkError) {
       connecting.current = false
       if (gen !== connectGen.current) return
       return scheduleReconnect('token fetch failed')
     }
     if (gen !== connectGen.current || userStop.current || suspendPaused.current) { connecting.current = false; return }
-    if (!tokenRes?.access_token) {
+    if (!ok) {
       connecting.current = false
       diagnostic('stt', 'token_failed', { mode: 'microphone', status: tokenStatus || 0, reconnectAttempt: reconnectAttempts.current }, 'error')
-      if ([401, 402, 403, 429].includes(tokenStatus)) return fail(tokenRes?.error || 'Deepgram auth failed — check your API key')
+      if (PERMANENT_TOKEN_STATUSES.has(tokenStatus)) return fail(tokenRes?.error || 'Deepgram auth failed — check your API key')
       return scheduleReconnect(`token grant ${tokenStatus || 'error'}`)
     }
 
     const model = degradedAudio.current ? 'nova-2' : 'nova-3'
-    const url = `wss://api.deepgram.com/v1/listen?model=${model}&encoding=linear16&sample_rate=16000&channels=1&interim_results=true&smart_format=true&punctuate=true&utterance_end_ms=1200&vad_events=true&endpointing=300&language=${encodeURIComponent(langRef.current)}`
+    const url = buildDeepgramListenUrl({ degraded: degradedAudio.current, language: langRef.current, diarize: false })
     const sock = new WebSocket(url, ['token', tokenRes.access_token])
     diagnostic('stt', 'socket_connecting', { mode: 'microphone', generation: gen, model, language: langRef.current, degraded: degradedAudio.current })
     if (gen !== connectGen.current || suspendPaused.current) { abandonSocket(sock); connecting.current = false; return }
@@ -163,14 +143,18 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       setActive(true); setReconnecting(false)
       diagnostic('stt', 'socket_open', { mode: 'microphone', generation: gen, model, degraded: degradedAudio.current })
       try { ctx.current?.resume?.() } catch {}
-      if (pcmQueue.current.length) {
-        diagnostic('stt', 'audio_buffer_flushed', { mode: 'microphone', bufferedBytes: pcmQueueBytes.current, droppedBytes: pcmDroppedBytes.current, model }, pcmDroppedBytes.current > 0 ? 'warn' : 'info')
-        const queued = pcmQueue.current
-        pcmQueue.current = []; pcmQueueBytes.current = 0; pcmDroppedBytes.current = 0
-        for (const buf of queued) { try { sock.send(buf) } catch {} }
-      }
+      flushQueuedPcm({
+        sock,
+        pcmQueueRef: pcmQueue,
+        pcmQueueBytesRef: pcmQueueBytes,
+        pcmDroppedBytesRef: pcmDroppedBytes,
+        mode: 'microphone',
+        model,
+      })
       clearInterval(keepAlive.current)
-      keepAlive.current = setInterval(() => { if (owns() && sock.readyState === 1) { try { sock.send(JSON.stringify({ type: 'KeepAlive' })) } catch {} } }, KEEPALIVE_MS)
+      keepAlive.current = setInterval(() => {
+        if (owns() && sock.readyState === 1) { try { sock.send(JSON.stringify({ type: 'KeepAlive' })) } catch {} }
+      }, KEEPALIVE_MS)
     }
 
     sock.onmessage = ev => {
@@ -201,7 +185,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       if (FATAL_CLOSE.has(ev?.code)) return failOrDegrade(`Deepgram closed the stream (code ${ev.code})`)
       scheduleReconnect('connection dropped')
     }
-  }, [fail]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [abandonSocket, fail]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function failOrDegrade(reason) {
     if (!degradedAudio.current) {
@@ -287,7 +271,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       document.removeEventListener('visibilitychange', onVis)
       try { offPower?.() } catch {}
     }
-  }, [connectSocket, start, teardown])
+  }, [abandonSocket, connectSocket, start, teardown])
 
   useEffect(() => () => { userStop.current = true; connectGen.current += 1; teardown() }, [teardown])
   return { supported: true, active, reconnecting, interim, start, stop }

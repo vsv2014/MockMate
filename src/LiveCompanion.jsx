@@ -30,14 +30,15 @@ import { createGenerationManager } from '../shared/generationManager.js'
 import { resolveContextSources, formatInterviewDevTrace } from '../shared/contextSelection.js'
 import { createTranscriptBuffer } from '../shared/transcriptBuffer.js'
 import { createQuestionCaptureController, formatCaptureDebugLine } from '../shared/questionCapture.js'
-import { streamLiveHint, fetchLiveHintFallback } from './live/hintTransport.js'
+import { createLiveSessionController } from './live/LiveSessionController.js'
 import { computeLiveCanStart, resolveAnswerNowCandidate } from './live/liveGate.js'
 import { copyText } from './lib/clipboard'
 import { trackProductEvent } from './lib/productIntelligence'
+import { nid } from '../shared/id.js'
 import { curateModelOptions, configuredProviderNames, curateProviderFallbacks, loadModelSelection, persistModelSelection } from './lib/modelPicker'
 
 function newQuestionId() {
-  return `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+  return nid('q', 6)
 }
 
 /** RAG options for this turn — session document selection is the only hard gate. */
@@ -1205,119 +1206,107 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       recentScreen: attachScreen ? selectedScreen : null,
     })
 
-    // SAFETY NET — proven non-streaming endpoint (must pass mode + style).
-    const runFallback = async () => {
-      if (!isCurrent()) return
-      const d = await fetchLiveHintFallback({
-        body: hintBody(),
-        signal: gen.signal,
-        isCurrent,
-      })
-      if (!d || !isCurrent()) return
-      const h = d.hint
-      if (!h || h.skip) { metricsRef.current?.markSkip?.(); resetSkip(); return }
-      metricsRef.current?.markFirstToken?.(hintTimingRef.current)
-      gotToken = true
-      finalize(h.fullAnswer || h.sampleAnswer || '', h)
-    }
-
     hintTimingRef.current = metricsRef.current?.startHint?.() || null
-    try {
-      let rawAnswer = '', answer = '', hintObj = null
-      const mode = await streamLiveHint({
-        body: hintBody(),
-        signal: gen.signal,
-        isCurrent,
-        onFallback: async () => {
-          metricsRef.current?.markFallback?.()
-          await runFallback()
-        },
-        onEvent: async ({ event: ev, data }) => {
-          if (ev === 'meta') {
+    let rawAnswer = '', answer = '', hintObj = null
+    const controller = createLiveSessionController({
+      isCurrent,
+      getSignal: () => gen.signal,
+      getHintBody: hintBody,
+      onMarkFallback: () => { metricsRef.current?.markFallback?.() },
+      onSkip: () => { metricsRef.current?.markSkip?.(); resetSkip() },
+      onFallbackHint: h => {
+        metricsRef.current?.markFirstToken?.(hintTimingRef.current)
+        gotToken = true
+        finalize(h.fullAnswer || h.sampleAnswer || '', h)
+      },
+      onStreamEvent: async ({ event: ev, data }) => {
+        if (ev === 'meta') {
+          hintObj = {
+            confidence: data?.confidence === 'resume' ? 'resume' : 'general',
+            questionType: data?.type, pattern: data?.pattern || null,
+            complexity: data?.complexity || null, watchOut: data?.watch || null,
+            _searchSources: data?.searchSources,
+            _routing: data?._routing || null,
+            fullAnswer: '', sampleAnswer: ''
+          }
+          lastHintObj = hintObj
+          if (data?._routing) {
+            lastClassificationRef.current = {
+              ...classification,
+              playbookKey: data._routing.playbook || classification.playbookKey,
+              parentTopic: classification.parentTopic || qText,
+              question: qText,
+            }
+          }
+          if (isCurrent()) {
+            setHint(hintObj); setHintLoading(false); setStreaming(true)
+            upsert({ isQuestion: true, answer: '', hint: hintObj })
+            armPostMetaWatchdog()
+          }
+        } else if (ev === 'token') {
+          if (!rawAnswer) metricsRef.current?.markFirstToken?.(hintTimingRef.current)
+          gotToken = true
+          clearTimeout(postMetaTimerRef.current)
+          rawAnswer += typeof data === 'string' ? data : ''
+          const cleaned = stripHintMeta(rawAnswer)
+          if (Object.keys(cleaned.meta).length) {
             hintObj = {
-              confidence: data?.confidence === 'resume' ? 'resume' : 'general',
-              questionType: data?.type, pattern: data?.pattern || null,
-              complexity: data?.complexity || null, watchOut: data?.watch || null,
-              _searchSources: data?.searchSources,
-              _routing: data?._routing || null,
-              fullAnswer: '', sampleAnswer: ''
+              ...(hintObj || { confidence: 'general' }),
+              confidence: cleaned.meta.confidence === 'resume' ? 'resume' : (hintObj?.confidence || 'general'),
+              questionType: cleaned.meta.type || hintObj?.questionType,
+              pattern: cleaned.meta.pattern ?? hintObj?.pattern ?? null,
+              complexity: cleaned.meta.complexity ?? hintObj?.complexity ?? null,
+              watchOut: cleaned.meta.watch || cleaned.meta.watchOut || hintObj?.watchOut || null,
             }
             lastHintObj = hintObj
-            if (data?._routing) {
-              lastClassificationRef.current = {
-                ...classification,
-                playbookKey: data._routing.playbook || classification.playbookKey,
-                parentTopic: classification.parentTopic || qText,
-                question: qText,
-              }
-            }
-            if (isCurrent()) {
-              setHint(hintObj); setHintLoading(false); setStreaming(true)
-              upsert({ isQuestion: true, answer: '', hint: hintObj })
-              armPostMetaWatchdog()
-            }
-          } else if (ev === 'token') {
-            if (!rawAnswer) metricsRef.current?.markFirstToken?.(hintTimingRef.current)
-            gotToken = true
-            clearTimeout(postMetaTimerRef.current)
-            rawAnswer += typeof data === 'string' ? data : ''
-            const cleaned = stripHintMeta(rawAnswer)
-            if (Object.keys(cleaned.meta).length) {
-              hintObj = {
-                ...(hintObj || { confidence: 'general' }),
-                confidence: cleaned.meta.confidence === 'resume' ? 'resume' : (hintObj?.confidence || 'general'),
-                questionType: cleaned.meta.type || hintObj?.questionType,
-                pattern: cleaned.meta.pattern ?? hintObj?.pattern ?? null,
-                complexity: cleaned.meta.complexity ?? hintObj?.complexity ?? null,
-                watchOut: cleaned.meta.watch || cleaned.meta.watchOut || hintObj?.watchOut || null,
-              }
-              lastHintObj = hintObj
-            }
-            answer = cleaned.pending ? '' : cleaned.prose
-            const formattedAnswer = ensureCodingCodeBlock(answer, hintObj?.questionType || classification.questionType)
-            if (formattedAnswer.includes('```') && !autoExpandedCodeRef.current.has(questionId)) {
-              autoExpandedCodeRef.current.add(questionId)
-              setExpandedAnswers(prev => new Set(prev).add(qText))
-            }
-            lastAnswer = formattedAnswer
-            const layers = glanceLayers(formattedAnswer, hintObj || {})
-            const liveHint = {
-              ...(hintObj || { confidence: 'general' }),
-              opener: layers.opener,
-              keyPoints: layers.keyPoints,
-              fullAnswer: layers.fullAnswer || formattedAnswer,
-              watchOut: layers.watchOut || hintObj?.watchOut || null,
-            }
-            upsert({ answer: layers.fullAnswer || formattedAnswer, hint: liveHint })
-            setHint(liveHint)
-          } else if (ev === 'usage') {
-            const u = data || {}
-            setUsage(s => ({ tokens: s.tokens + (u.input || 0) + (u.output || 0), cost: s.cost + estimateCost(u.model, u.input || 0, u.output || 0) }))
-          } else if (ev === 'provider') {
-            metricsRef.current?.markProviderEvent?.(data || {})
-          } else if (ev === 'skip') {
-            metricsRef.current?.markSkip?.()
-            resetSkip()
-            return 'stop'
-          } else if (ev === 'error') {
-            if (answer.trim()) {
-              incomplete = true
-              hintIncompleteRef.current = true
-              metricsRef.current?.markIncomplete?.()
-              if (isCurrent()) {
-                const layers = glanceLayers(answer, hintObj || {})
-                upsert({
-                  answer: answer.trimEnd() + '\n\n[incomplete — connection/provider error]',
-                  hint: { ...(hintObj || { confidence: 'general' }), opener: layers.opener, keyPoints: layers.keyPoints, fullAnswer: answer, incomplete: true },
-                })
-                setHint(h => h ? { ...h, incomplete: true } : { confidence: 'general', incomplete: true })
-                gen.fail('sse_error')
-              }
-            }
-            return 'stop'
           }
-        },
-      })
+          answer = cleaned.pending ? '' : cleaned.prose
+          const formattedAnswer = ensureCodingCodeBlock(answer, hintObj?.questionType || classification.questionType)
+          if (formattedAnswer.includes('```') && !autoExpandedCodeRef.current.has(questionId)) {
+            autoExpandedCodeRef.current.add(questionId)
+            setExpandedAnswers(prev => new Set(prev).add(qText))
+          }
+          lastAnswer = formattedAnswer
+          const layers = glanceLayers(formattedAnswer, hintObj || {})
+          const liveHint = {
+            ...(hintObj || { confidence: 'general' }),
+            opener: layers.opener,
+            keyPoints: layers.keyPoints,
+            fullAnswer: layers.fullAnswer || formattedAnswer,
+            watchOut: layers.watchOut || hintObj?.watchOut || null,
+          }
+          upsert({ answer: layers.fullAnswer || formattedAnswer, hint: liveHint })
+          setHint(liveHint)
+        } else if (ev === 'usage') {
+          const u = data || {}
+          setUsage(s => ({ tokens: s.tokens + (u.input || 0) + (u.output || 0), cost: s.cost + estimateCost(u.model, u.input || 0, u.output || 0) }))
+        } else if (ev === 'provider') {
+          metricsRef.current?.markProviderEvent?.(data || {})
+        } else if (ev === 'skip') {
+          metricsRef.current?.markSkip?.()
+          resetSkip()
+          return 'stop'
+        } else if (ev === 'error') {
+          if (answer.trim()) {
+            incomplete = true
+            hintIncompleteRef.current = true
+            metricsRef.current?.markIncomplete?.()
+            if (isCurrent()) {
+              const layers = glanceLayers(answer, hintObj || {})
+              upsert({
+                answer: answer.trimEnd() + '\n\n[incomplete — connection/provider error]',
+                hint: { ...(hintObj || { confidence: 'general' }), opener: layers.opener, keyPoints: layers.keyPoints, fullAnswer: answer, incomplete: true },
+              })
+              setHint(h => h ? { ...h, incomplete: true } : { confidence: 'general', incomplete: true })
+              gen.fail('sse_error')
+            }
+          }
+          return 'stop'
+        }
+      },
+    })
+    try {
+      const mode = await controller.generateViaTransport()
 
       if (!isCurrent()) return
       if (mode === 'aborted' || mode === 'fallback' || mode === 'stopped') return
@@ -1329,7 +1318,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         clearTimers()
         return
       }
-      if (!answer.trim()) { metricsRef.current?.markFallback?.(); await runFallback(); return }
+      if (!answer.trim()) { metricsRef.current?.markFallback?.(); await controller.runFallback(); return }
       finalize(answer, hintObj)
     } catch (e) {
       if (e.name === 'AbortError') {
@@ -1340,7 +1329,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         }
         return
       }
-      try { await runFallback() }
+      try { await controller.runFallback() }
       catch (e2) {
         if (e2.name === 'AbortError') return
         if (!isCurrent()) return

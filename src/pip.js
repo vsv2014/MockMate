@@ -4,6 +4,8 @@
 // <script> ELEMENT — a <script> inserted via innerHTML never executes (that left the PiP
 // permanently blank: no questions/answers ever rendered). Use mountPip(pipDocument).
 
+import { glanceLayers } from '../shared/hintLayers.js'
+
 const PIP_HTML = `
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -50,21 +52,9 @@ function inlineMd(text){
   return text.replace(/\\*\\*([^*]+)\\*\\*/g,'<strong style="color:#E8E8EC;font-weight:700">$1</strong>')
 }
 
-// Mirror shared/hintLayers.js — opener → bullets → full (PiP cannot import modules).
-function glanceLayers(prose, meta){
-  const full=String(prose||'').trim()
-  const sentences=full.split(/(?<=[.!?])\\s+/).map(s=>s.trim()).filter(Boolean)
-  const opener=(meta&&meta.opener&&String(meta.opener).trim())||sentences[0]||full.slice(0,140)
-  let keyPoints=Array.isArray(meta&&meta.keyPoints)?meta.keyPoints.map(String).filter(Boolean).slice(0,4):[]
-  if(!keyPoints.length&&sentences.length>1){
-    keyPoints=sentences.slice(1,4).map(s=>s.replace(/^[-•*]\\s*/,'').slice(0,110))
-  }
-  return {opener,keyPoints,fullAnswer:full}
-}
-
 function renderAnswer(s, streamingThis){
   const h=s.hint||{}
-  const layers=glanceLayers(s.answer||'', h)
+  const layers=(window.__mmGlanceLayers?window.__mmGlanceLayers(s.answer||'', h):{opener:String(s.answer||'').slice(0,140),keyPoints:[],fullAnswer:String(s.answer||'')})
   const pts=layers.keyPoints||[]
   let html=''
   html+='<div style="margin-left:10px">'
@@ -142,6 +132,7 @@ window.addEventListener('pagehide',()=>bc.close())`
 // Mount the PiP UI into a freshly-opened PiP document. Injects the script as a real element
 // so its BroadcastChannel listener actually runs (innerHTML <script> would never execute).
 export function mountPip(doc) {
+  if (doc?.defaultView) doc.defaultView.__mmGlanceLayers = glanceLayers
   doc.body.innerHTML = PIP_HTML
   const s = doc.createElement('script')
   s.textContent = PIP_SCRIPT

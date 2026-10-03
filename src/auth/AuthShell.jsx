@@ -1,5 +1,6 @@
 import React from 'react'
 import { T } from './tokens'
+import { startWindowDrag } from '../lib/windowDrag'
 
 // ── WindowControls ──────────────────────────────────────────────────────────────
 // Shared frameless-window chrome for every pre-auth state. The signed-in app uses
@@ -9,15 +10,7 @@ export function WindowControls() {
   const api = typeof window !== 'undefined' ? window.electronAPI : null
   if (!api?.isElectron) return null
 
-  const startDrag = e => {
-    if (e.button !== 0) return
-    let lastX = e.screenX, lastY = e.screenY
-    const onMove = ev => { api.windowDrag?.(ev.screenX - lastX, ev.screenY - lastY); lastX = ev.screenX; lastY = ev.screenY }
-    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-    e.preventDefault()
-  }
+  const startDrag = startWindowDrag
   const btn = {
     width: 30, height: 30, display: 'grid', placeItems: 'center', borderRadius: 9,
     border: `1px solid ${T.border}`, background: 'rgba(255,255,255,0.035)', color: T.text2,
