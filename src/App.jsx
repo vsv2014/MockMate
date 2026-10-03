@@ -26,6 +26,8 @@ import {
 import { copyText } from './lib/clipboard'
 import { canRunLanguage, runJavaScriptIsolated } from './lib/codeRunner'
 import { diagnostic } from './lib/diagnostics'
+import { trackProductEvent, attachRageClickObserver } from './lib/productIntelligence'
+import ProductIntelligencePanel from './components/ProductIntelligencePanel'
 import {
   createScreenContextRecord,
   previousScreenForContinuation,
@@ -258,6 +260,11 @@ function ElectronShell({ auth }) {
   })
 
   useEffect(() => {
+    trackProductEvent('login')
+    return attachRageClickObserver()
+  }, [])
+
+  useEffect(() => {
     const refreshDisplays = () => window.electronAPI?.listScreenDisplays?.().then(r => {
       if (r?.displays?.length) {
         setCaptureDisplays(r.displays)
@@ -402,6 +409,10 @@ function ElectronShell({ auth }) {
             requestId, continuation: !!analysis.isContinuation,
             captureCount: analysis._captureCount || 1, language: language || analysis.language || 'auto',
           })
+          trackProductEvent('screen_analyzed', {
+            continuation: !!analysis.isContinuation,
+            captureCount: analysis._captureCount || 1,
+          })
           setScreenFlowStatus(analysis.isContinuation
             ? `Combined ${analysis._captureCount} screenshots — one answer updated`
             : 'Captured as a new question')
@@ -510,6 +521,7 @@ function ElectronShell({ auth }) {
         }
         shot.previousShot = lastShotRef.current
         lastShotRef.current = shot
+        trackProductEvent('f7_captured', { mode: shot.continuationMode || 'auto' })
         await runAnalysis(shot)
       }).finally(() => {
         queuedCaptureCountRef.current = Math.max(0, queuedCaptureCountRef.current - 1)
@@ -627,6 +639,7 @@ function ElectronShell({ auth }) {
 
   function startResize(e, edge = 'se') {
     resizing.current = true
+    trackProductEvent('overlay_resize', { edge })
     resizeStart.current = {
       x: e.screenX, y: e.screenY,
       w: panelSize.w, h: panelSize.h,
@@ -793,6 +806,7 @@ function ElectronShell({ auth }) {
           <button onClick={() => window.electronAPI?.checkForUpdates?.()}
             style={{ height: 36, padding: '0 16px', background: 'transparent', color: T.text1, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Check for updates</button>
         </div>
+        <ProductIntelligencePanel />
         <div style={{ marginTop: 12, padding: '14px 16px', background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ flex: 1 }}>
@@ -1029,7 +1043,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
                   {record.code && Array.isArray(record.approach) && record.approach.length > 0 && (
                     <div style={{ marginLeft: 'auto', display: 'inline-flex', background: 'rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 7, padding: 2, gap: 2 }}>
                       {[['all', 'All'], ['code', 'Code'], ['approach', 'Steps']].map(([id, lbl]) => (
-                        <button key={id} type="button" onClick={() => setCodingTab(id)}
+                        <button key={id} type="button" onClick={() => { setCodingTab(id); if (id !== 'all') trackProductEvent('coding_tab_used', { tab: id }) }}
                           style={{ fontSize: 9.5, fontWeight: 600, padding: '2px 7px', borderRadius: 5, border: 'none', cursor: 'pointer',
                             background: codingTab === id ? 'rgba(20,184,166,0.28)' : 'transparent',
                             color: codingTab === id ? '#5eead4' : T.text3 }}>{lbl}</button>

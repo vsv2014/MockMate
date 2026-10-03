@@ -3,6 +3,7 @@ import { T } from '../auth/tokens'
 import { parseCustomInstructionSections } from '../../shared/customInstructions.js'
 import { CUSTOM_INSTRUCTIONS_PACK_MAX, CUSTOM_INSTRUCTIONS_STORE_MAX } from '../lib/interviewConfig'
 import { getScopedItem, setScopedItem } from '../lib/accountScope'
+import { trackProductEvent } from '../lib/productIntelligence'
 
 const SAVED_PLAYBOOKS_KEY = 'mm-saved-playbooks-v1'
 const CORE_TITLE_RE = /^(VOICE|TRUTH|ASR|UNKNOWN|FINAL(?: SILENT)? RULE|CORE(?: BEHAVIOU?R)?|BEHAVIOU?R RULES?|GLOBAL|ALWAYS|PREAMBLE)$/i
@@ -179,6 +180,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
       if (!ok) return
     }
     onChange?.(tpl.prompt)
+    trackProductEvent('playbook_template_applied', { templateId: tpl.id })
     flash(`✓ Loaded ${tpl.label} playbook`)
   }
 
@@ -199,6 +201,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
     setSavedList(next)
     setSavingName('')
     setShowSaveBox(false)
+    trackProductEvent('playbook_saved')
     flash('✓ Saved playbook preset')
   }
 

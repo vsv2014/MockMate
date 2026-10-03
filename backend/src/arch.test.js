@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { archRuntimeSummary, executeWithFallback, performanceSnapshot, reasoningPolicy, recordArchMetric, resetArchCircuits, resetArchPerformance, resolveCapabilities } from './arch.js'
+import { archProductIntelligenceSnapshot, archRuntimeSummary, executeWithFallback, performanceSnapshot, reasoningPolicy, recordArchMetric, recordArchProductEvent, resetArchCircuits, resetArchPerformance, resetArchProductIntelligence, resolveCapabilities } from './arch.js'
 
 const KEYS = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'CEREBRAS_API_KEY', 'LLM_API_KEY', 'DEEPGRAM_API_KEY', 'MONGO_URI']
 const original = Object.fromEntries(KEYS.map(key => [key, process.env[key]]))
-afterEach(() => { resetArchCircuits(); resetArchPerformance(); vi.restoreAllMocks(); for (const key of KEYS) { if (original[key] == null) delete process.env[key]; else process.env[key] = original[key] } })
+afterEach(() => { resetArchCircuits(); resetArchPerformance(); resetArchProductIntelligence(); vi.restoreAllMocks(); for (const key of KEYS) { if (original[key] == null) delete process.env[key]; else process.env[key] = original[key] } })
 
 describe('ARCH capability resolver', () => {
   it('declares typed-input/client-local fallbacks without inventing client capabilities', () => {
@@ -89,5 +89,21 @@ describe('ARCH performance telemetry', () => {
 
     const hostedSummary = archRuntimeSummary({ hosted: true })
     expect(hostedSummary.performance).toBeUndefined()
+  })
+
+  it('tracks redacted Product Intelligence events inside ARCH without leaking PII or secrets', () => {
+    recordArchProductEvent({
+      sessionId: 's1',
+      ts: 1000,
+      action: 'live_setup',
+      resume: 'Staff Engineer at SecretCorp',
+      apiKey: 'sk-secret-key-9999999999',
+    })
+    recordArchProductEvent({ sessionId: 's1', ts: 2000, action: 'preflight_failed', reason: 'share_unverified' })
+    const snap = archProductIntelligenceSnapshot()
+    expect(snap.totalEvents).toBe(2)
+    expect(snap.policy.mode).toBe('structured_redacted')
+    expect(snap.headlineInsights[0].text).toMatch(/100% of Live setup attempts stall or fail at Live preflight/i)
+    expect(JSON.stringify(snap)).not.toMatch(/SecretCorp|sk-secret/i)
   })
 })

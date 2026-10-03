@@ -1,4 +1,5 @@
 import { compileAblRuntime } from './abl.js'
+import { redactInteractionEvent, summarizeProductIntelligence } from '../../shared/productIntelligence.js'
 
 const LLM_PROVIDERS = [
   ['openai', 'OPENAI_API_KEY'], ['anthropic', 'ANTHROPIC_API_KEY'], ['gemini', 'GEMINI_API_KEY'],
@@ -7,6 +8,8 @@ const LLM_PROVIDERS = [
 const circuits = new Map()
 const DEFAULT_COOLDOWN_MS = 30_000
 const perf = new Map()
+const productEvents = []
+const MAX_PRODUCT_EVENTS = 1000
 
 function runtimePlan() { return compileAblRuntime() }
 function configured(name) { return Boolean(String(process.env[name] || '').trim()) }
@@ -17,6 +20,27 @@ function circuitOpen(key, now = Date.now()) { const until = circuits.get(key) ||
 function openCircuit(key, cooldownMs = DEFAULT_COOLDOWN_MS) { circuits.set(key, Date.now() + cooldownMs) }
 export function resetArchCircuits() { circuits.clear() }
 export function resetArchPerformance() { perf.clear() }
+export function resetArchProductIntelligence() { productEvents.length = 0 }
+
+export function recordArchProductEvent(event) {
+  const clean = redactInteractionEvent(event)
+  if (!clean) return null
+  productEvents.push(clean)
+  if (productEvents.length > MAX_PRODUCT_EVENTS) {
+    productEvents.splice(0, productEvents.length - MAX_PRODUCT_EVENTS)
+  }
+  return clean
+}
+
+export function archProductIntelligenceSnapshot(options = {}) {
+  const plan = runtimePlan()
+  return {
+    policy: plan.productIntelligence,
+    ...summarizeProductIntelligence(productEvents, {
+      optInReplay: options.optInReplay ?? plan.productIntelligence?.optInReplayDefault ?? false,
+    }),
+  }
+}
 
 export function reasoningLane(operation = 'interview') {
   const plan = runtimePlan()
@@ -179,11 +203,13 @@ export function archRuntimeSummary(options = {}) {
   const plan = runtimePlan()
   const hosted = options?.hosted ?? hostedMode()
   const includePerformance = options?.includePerformance ?? !hosted
+  const includeProductIntelligence = options?.includeProductIntelligence ?? !hosted
   return {
     ...resolveCapabilities({ ...options, hosted }),
     persona: plan.persona,
     designGoals: plan.designGoals,
     routing: plan.reasoning.routing,
     ...(includePerformance ? { performance: performanceSnapshot() } : {}),
+    ...(includeProductIntelligence ? { productIntelligence: archProductIntelligenceSnapshot() } : {}),
   }
 }

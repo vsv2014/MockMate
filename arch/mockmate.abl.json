@@ -42,7 +42,21 @@
         "turn_latency_ms",
         "fallback_count",
         "provider_failure_count"
-      ]
+      ],
+      "productIntelligence": {
+        "mode": "structured_redacted",
+        "optInReplayDefault": false,
+        "flows": ["live_interview", "solo_practice", "screen_solve"],
+        "excludedData": [
+          "resumes",
+          "interview_transcripts",
+          "prompts",
+          "api_keys",
+          "passwords",
+          "screenshots",
+          "raw_meeting_audio"
+        ]
+      }
     }
   },
   "routing": {

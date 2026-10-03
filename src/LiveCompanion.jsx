@@ -33,6 +33,7 @@ import { createQuestionCaptureController, formatCaptureDebugLine } from '../shar
 import { streamLiveHint, fetchLiveHintFallback } from './live/hintTransport.js'
 import { computeLiveCanStart, resolveAnswerNowCandidate } from './live/liveGate.js'
 import { copyText } from './lib/clipboard'
+import { trackProductEvent } from './lib/productIntelligence'
 import { curateModelOptions, configuredProviderNames, curateProviderFallbacks, loadModelSelection, persistModelSelection } from './lib/modelPicker'
 
 function newQuestionId() {
@@ -251,9 +252,14 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
         message: 'OS protection applied. This does not prove your meeting share mode—verify the preview below.',
       })
     } catch {
+      trackProductEvent('preflight_failed', { reason: 'protection_test_failed' })
       setProtectionTest({ status: 'failed', message: 'OS capture-protection test failed.' })
     }
   }
+
+  useEffect(() => {
+    trackProductEvent('live_setup')
+  }, [])
 
   return (
     <OverlayPanel
@@ -335,7 +341,7 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
             </div>
             <div style={{ marginBottom: 8, lineHeight: 1.45 }}>Before a real interview: open your meeting share preview and confirm the MockMate overlay does <strong style={{ color: T.text1 }}>not</strong> appear in what others see.</div>
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
-              <input type="checkbox" checked={shareVerified} disabled={protectionTest.status !== 'passed'} onChange={e => setShareVerified(e.target.checked)} style={{ marginTop: 2 }} />
+              <input type="checkbox" checked={shareVerified} disabled={protectionTest.status !== 'passed'} onChange={e => { setShareVerified(e.target.checked); if (e.target.checked) trackProductEvent('preflight_verified') }} style={{ marginTop: 2 }} />
               <span>I verified the <strong>{shareMode.replace('-', ' ')}</strong> preview{meetingContext.label ? ` in ${meetingContext.label}` : ''} — MockMate did not appear.</span>
             </label>
           </div>
@@ -590,6 +596,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   function toggleTeleprompter() {
     const next = !teleprompter
     setTeleprompter(next)
+    trackProductEvent('teleprompter_toggle', { teleprompter: next, source: 'toolbar' })
     window.electronAPI?.setWindowMode?.(next ? 'teleprompter' : 'overlay')
   }
 
@@ -1612,12 +1619,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       if (!cmd || typeof cmd !== 'object') return
       if (cmd.type === 'teleprompter') {
         setTeleprompter(!!cmd.active)
+        trackProductEvent('teleprompter_toggle', { teleprompter: !!cmd.active, source: 'hotkey' })
       } else if (cmd.type === 'scroll-up') {
         followLatestRef.current = false
         feedRef.current?.scrollBy?.({ top: -140, behavior: 'smooth' })
       } else if (cmd.type === 'scroll-down') {
         feedRef.current?.scrollBy?.({ top: 140, behavior: 'smooth' })
       } else if (cmd.type === 'answer-now') {
+        trackProductEvent('alt_r_answer_now')
         const candidateNow = resolveAnswerNowCandidate({
           liveCaptureText: liveCaptureTextRef.current,
           manualQ: manualQRef.current,

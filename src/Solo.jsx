@@ -16,6 +16,7 @@ import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTION
 import Documents from './Documents'
 import CustomPromptStudio from './components/CustomPromptStudio'
 import { extractPdfText } from './pdf'
+import { trackProductEvent } from './lib/productIntelligence'
 
 function speak(text, on, onDone, lang = 'en-US') {
   // onDone fires when speech finishes (or immediately if TTS is off/unsupported) so the
@@ -126,6 +127,7 @@ export default function Solo({ onHome, noProviders }) {
     }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { persistModelSelection(provider) }, [provider])
+  useEffect(() => { trackProductEvent('solo_setup') }, [])
 
   const [transcript, setTranscript] = useState([])
   const [answer, setAnswer] = useState('')
@@ -480,6 +482,7 @@ export default function Solo({ onHome, noProviders }) {
     setPhase('live')
     phaseRef.current = 'live'
     startedAt.current = Date.now()
+    trackProductEvent('solo_started', { mode: 'solo' })
     const result = await requestTurn([])
     if (!result) startLockRef.current = false
   }
@@ -608,6 +611,7 @@ export default function Solo({ onHome, noProviders }) {
     clearSoloDraft()
     setResumeDraft(null)
     setEvaluating(false)
+    trackProductEvent('solo_evaluated', { ok: true })
   }
 
   function practiceAgain() {

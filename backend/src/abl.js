@@ -82,6 +82,11 @@ export function compileAblRuntime() {
     },
     runtime: JSON.parse(JSON.stringify(spec.runtime || {})),
     telemetry: [...(spec.capabilities.telemetry?.metrics || [])],
+    productIntelligence: JSON.parse(JSON.stringify(spec.capabilities.telemetry?.productIntelligence || {
+      mode: 'structured_redacted',
+      optInReplayDefault: false,
+      flows: ['live_interview', 'solo_practice', 'screen_solve'],
+    })),
     performance: JSON.parse(JSON.stringify(spec.performance || {})),
   }
 }
