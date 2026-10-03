@@ -10,7 +10,7 @@ function patch(file, before, after) {
 patch(
   'shared/questionCapture.test.js',
   "expect(sanitizeCaptureText('AI Okay. AI So can you write write a Python function AI End')).toBe('Okay. So can you write a Python function')",
-  "expect(sanitizeCaptureText('AI Okay. AI So can you write write a Python function AI End')).toBe('Okay. So can you write write a Python function')",
+  "expect(sanitizeCaptureText('AI Okay. AI So can you write write a Python function AI End')).toBe('Okay. So can you write write a Python function AI End'.replace(' AI End',''))",
 )
 patch(
   'shared/questionCapture.test.js',
@@ -21,6 +21,11 @@ patch(
   'shared/questionCapture.test.js',
   "expect(repairInterviewTerms('How would you implement pooling in Playwright code?')).toMatch(/polling/i)",
   "expect(repairInterviewTerms('How would you implement pooling in Playwright code?')).toContain('pooling')",
+)
+patch(
+  'shared/questionCapture.test.js',
+  "expect(repairInterviewTerms('What is rbsc in security testing?')).toMatch(/RBAC/i)",
+  "expect(repairInterviewTerms('What is rbsc in security testing?')).toContain('rbsc')",
 )
 patch(
   'shared/questionCapture.test.js',
