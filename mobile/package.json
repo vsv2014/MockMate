@@ -9,7 +9,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run src/domain"
+    "test": "vitest run src/domain",
+    "eas-build-pre-install": "node scripts/validate-build-env.mjs"
   },
   "dependencies": {
     "expo": "^57.0.0",
