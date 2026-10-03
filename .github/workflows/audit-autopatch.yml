@@ -24,16 +24,16 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Apply deterministic Live state patch
-        run: node scripts/audit-state-patch.mjs
+      - name: Apply deterministic final runtime patch
+        run: node scripts/audit-final-runtime-patch.mjs
       - name: Verify patched source
         run: npm ci && npm --prefix backend ci && npm test && npm run smoke:api && npm run build
       - name: Commit verified patch
         run: |
           git config user.name 'mockmate-audit-bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add shared/interviewState.js src/LiveCompanion.jsx shared/interviewState.authority.test.js
+          git add src/Solo.jsx electron/main.cjs package.json
           git diff --cached --quiet && exit 0
-          git commit -m 'Enforce Live generation authority and retain full session context'
+          git commit -m 'Close Solo retry ownership and desktop update lifecycle gaps'
           git pull --rebase origin codex/desktop-audit-67
           git push origin HEAD:codex/desktop-audit-67
