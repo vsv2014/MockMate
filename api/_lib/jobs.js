@@ -1,5 +1,6 @@
 import { completeJSON, availableProviders } from './core.js'
 import { fetchWithTimeout as fetchT } from './http.js'
+import { fetchCompanyBoard } from '../../shared/companyBoards.js'
 
 // ── Agentic job matching ─────────────────────────────────────────────────────
 // Upload a resume → we fetch live job postings and rank them for relevance to
@@ -174,8 +175,11 @@ function rankHeuristic(jobs, resume, targetRole, max, tokens) {
     const snipHits = profileKw.filter(k => !title.includes(k) && !tagStr.includes(k) && snip.includes(k))
     const titleMatch = roleWord && roleWord.length > 2 && title.includes(roleWord)
     let score = Math.min(96, titleTagHits.length * 14 + snipHits.length * 3 + (titleMatch ? 18 : 0))
+    // Company-board postings are the candidate's explicitly tracked targets — boost them.
+    if (j.source === 'company') score = Math.min(97, score + 10)
     // Push region-locked-elsewhere postings down so local/worldwide rises to the top.
-    const locOk = locationOk(j.location, tokens)
+    // Company-board roles are exempt: the user tracks that employer on purpose.
+    const locOk = j.source === 'company' ? true : locationOk(j.location, tokens)
     if (!locOk) score = Math.max(5, score - 30)
     const allHits = [...new Set([...titleTagHits, ...snipHits])]
     return { ...j, score, reason: allHits.length ? `Overlaps on: ${allHits.slice(0, 6).join(', ')}` : 'Same field as your resume', gaps: locOk ? '' : 'May be region-locked outside your location' }
@@ -218,7 +222,7 @@ async function rankWithLLM(jobs, resume, targetRole, location, provider, max, ye
     .slice(0, max)
 }
 
-export async function findJobs({ resume = '', targetRole = '', query = '', location = '', yearsExp = '', max = 40 } = {}) {
+export async function findJobs({ resume = '', targetRole = '', query = '', location = '', yearsExp = '', max = 40, companyUrl = '' } = {}) {
   if (!resume.trim() && !targetRole.trim() && !query.trim()) {
     const e = new Error('Add your resume (or a target role) first — Solo Practice → setup is where you paste it.')
     e.status = 400; throw e
@@ -233,10 +237,14 @@ export async function findJobs({ resume = '', targetRole = '', query = '', locat
   const localEnabled = adzunaConfigured()
   const search = `${category} · ${queryText}${loc ? ` · ${loc}` : ''}`
 
-  // Fetch LOCAL on-site jobs (Adzuna, city-targeted) and REMOTE jobs (Remotive) IN PARALLEL —
-  // they're independent network calls; running them concurrently roughly halves search latency.
+  // Fetch COMPANY-BOARD jobs (public Greenhouse/Lever APIs), LOCAL on-site jobs
+  // (Adzuna, city-targeted) and REMOTE jobs (Remotive) IN PARALLEL — independent
+  // network calls; concurrency roughly halves search latency.
   let remoteErr = null
-  let [local, remote] = await Promise.all([
+  let [company, local, remote] = await Promise.all([
+    companyUrl
+      ? fetchCompanyBoard(companyUrl, (u, o) => fetchT(u, o)).catch(() => [])       // non-fatal
+      : Promise.resolve([]),
     (localEnabled && country)
       ? fetchAdzuna({ what: queryText, where: loc, country }, 50).catch(() => [])   // non-fatal
       : Promise.resolve([]),
@@ -244,7 +252,7 @@ export async function findJobs({ resume = '', targetRole = '', query = '', locat
       .then(js => js.map(j => ({ ...j, source: 'remote' })))
       .catch(e => { remoteErr = e; return [] })
   ])
-  if (!remote.length && !local.length && remoteErr) throw remoteErr   // only hard-fail if we have nothing at all
+  if (!remote.length && !local.length && !company.length && remoteErr) throw remoteErr   // only hard-fail if we have nothing at all
 
   let tokens = null, note = ''
   if (loc) {
@@ -260,21 +268,24 @@ export async function findJobs({ resume = '', targetRole = '', query = '', locat
     }
   }
 
-  // Merge local-first + remote, de-duplicate by title+company.
+  // Merge company-board first (most intentional source), then local, then remote;
+  // de-duplicate by title+company.
   const seen = new Set()
-  let jobs = [...local, ...remote].filter(j => {
+  let jobs = [...company, ...local, ...remote].filter(j => {
     const k = `${(j.title || '').toLowerCase()}|${(j.company || '').toLowerCase()}`
     if (seen.has(k)) return false; seen.add(k); return true
   })
   if (!jobs.length) return { search, jobs: [], note: note || 'No live postings available right now. Try again shortly.', localEnabled }
 
   const pool = jobs.slice(0, 50)   // cap the pool sent to the ranker (cost/latency)
+  const companyCount = pool.filter(j => j.source === 'company').length
+  const companyNote = companyCount ? ` • ${companyCount} role${companyCount === 1 ? '' : 's'} pulled live from the tracked company career page.` : ''
   const providers = availableProviders()
   if (providers.length) {
     try {
       const ranked = await rankWithLLM(pool, resume, targetRole, location, providers[0].id, max, yearsExp)
-      if (ranked.length) return { search, jobs: ranked, ranker: 'ai', note, localEnabled }
+      if (ranked.length) return { search, jobs: ranked, ranker: 'ai', note: (note || '') + companyNote, localEnabled, companyCount }
     } catch { /* fall through to heuristic so the feature never hard-fails */ }
   }
-  return { search, jobs: rankHeuristic(pool, resume, targetRole, max, tokens), ranker: 'keyword', note, localEnabled }
+  return { search, jobs: rankHeuristic(pool, resume, targetRole, max, tokens), ranker: 'keyword', note: (note || '') + companyNote, localEnabled, companyCount }
 }

@@ -3,6 +3,7 @@ import { apiFetch } from './lib/apiClient'
 import { loadProfile, saveProfile } from './lib/profile'
 import { scoreColor } from './lib/ui'
 import { analyzeSkillsGap } from '../shared/skillsMatrix.js'
+import { resolveJobLocation, locationSourceLabel, JOB_LOC_KEY, JOB_COMPANY_KEY } from '../shared/jobLocation.js'
 import { T } from './auth/tokens'
 import { loadSavedJobs, saveJob, removeSavedJob, updateSavedJob, savedKeySet, savedKeyOf, SAVED_MAX, SAVED_STATUSES } from './savedJobs'
 import { S, tabStyle, NoKeysBanner, YearsChips, ResumeMaterials } from './lib/secondaryUi'
@@ -175,7 +176,12 @@ export { NoKeysBanner }
 
 export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, onUseForInterview, embedded }) {
   const [profile, setProfile] = useState(() => loadProfile())
-  const inputsKey = `${profile.resume || ''}|${profile.targetRole || ''}|${profile.location || ''}|${profile.yearsExp || ''}`
+  const [locOverride, setLocOverride] = useState(() => { try { return localStorage.getItem(JOB_LOC_KEY) || '' } catch { return '' } })
+  const [editingLoc, setEditingLoc] = useState(false)
+  const [companyUrl, setCompanyUrl] = useState(() => { try { return localStorage.getItem(JOB_COMPANY_KEY) || '' } catch { return '' } })
+  const timezone = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : ''
+  const effLoc = resolveJobLocation({ override: locOverride, profileLocation: profile.location, timezone })
+  const inputsKey = `${profile.resume || ''}|${profile.targetRole || ''}|${effLoc.location}|${profile.yearsExp || ''}|${companyUrl}`
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(() => (jobsCache && jobsCache.key === inputsKey) ? jobsCache.result : null)
@@ -250,8 +256,9 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
         body: JSON.stringify({
           resume: profile.resume || '',
           targetRole: profile.targetRole || '',
-          location: profile.location || '',
+          location: effLoc.location,
           yearsExp: profile.yearsExp || '',
+          companyUrl,
         }),
       })
       const text = await res.text()
@@ -261,7 +268,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
       else { setResult(d); setVisible(8); jobsCache = { key: inputsKey, result: d } }
     } catch (e) { setError(e.message || 'Could not reach the job service.') }
     finally { setLoading(false) }
-  }, [inputsKey, profile.resume, profile.targetRole, profile.location, profile.yearsExp])
+  }, [inputsKey, profile.resume, profile.targetRole, effLoc.location, profile.yearsExp, companyUrl])
 
   useEffect(() => { if (hasResume && !result) find() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -375,6 +382,41 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
               onChange={e => patch({ location: e.target.value })}
               style={S.input}
             />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '6px 0 2px' }}>
+              <span style={{
+                fontSize: 11.5, fontWeight: 600, padding: '4px 10px', borderRadius: 999,
+                border: '1px solid rgba(20,184,166,0.4)', background: 'rgba(20,184,166,0.12)', color: T.accentFrom,
+              }}>
+                📍 {effLoc.location || 'Not set'} · {locationSourceLabel(effLoc.source)}
+              </span>
+              {effLoc.source === 'auto' && !editingLoc && (
+                <button type="button" onClick={() => setEditingLoc(true)} style={S.btnGhost}>Override</button>
+              )}
+              {locOverride && (
+                <button type="button" onClick={() => { setLocOverride(''); setEditingLoc(false); try { localStorage.removeItem(JOB_LOC_KEY) } catch {} }} style={S.btnGhost}>
+                  Clear override
+                </button>
+              )}
+            </div>
+            {(editingLoc || !!locOverride) && (
+              <>
+                <label style={S.lbl}>Location override</label>
+                <input
+                  type="text" value={locOverride} placeholder="e.g. Hyderabad, India"
+                  onChange={e => { setLocOverride(e.target.value); try { localStorage.setItem(JOB_LOC_KEY, e.target.value) } catch {} }}
+                  style={S.input}
+                />
+              </>
+            )}
+            <label style={S.lbl}>Target company career page (optional)</label>
+            <input
+              type="text" value={companyUrl} placeholder="e.g. https://boards.greenhouse.io/zoom"
+              onChange={e => { setCompanyUrl(e.target.value); try { localStorage.setItem(JOB_COMPANY_KEY, e.target.value) } catch {} }}
+              style={S.input}
+            />
+            <div style={{ fontSize: 11, color: T.text3, marginTop: 4, lineHeight: 1.4 }}>
+              Greenhouse &amp; Lever public boards are read directly — no scraping — and merged on top of your matches.
+            </div>
             <label style={S.lbl}>Experience</label>
             <YearsChips value={profile.yearsExp || ''} onChange={v => patch({ yearsExp: v })} />
           </div>
