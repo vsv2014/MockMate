@@ -1,7 +1,7 @@
 // Single API wrapper for the auth/SaaS backend. Every authenticated call goes
 // through here — token attachment, JSON handling, and 401 handling live in ONE place.
 import { diagnostic, createDiagnosticRequestId } from '../lib/diagnostics'
-import { setActiveAccountScope, clearActiveAccountScope } from '../lib/accountScope'
+import { setActiveAccountScope, clearActiveAccountScope, purgeScopedStorage } from '../lib/accountScope'
 
 const electronAuth = typeof window !== 'undefined' ? window.electronAPI?.auth : null
 const API_BASE =
@@ -18,11 +18,19 @@ export async function getToken() {
 }
 export async function setToken(token) {
   if (electronAuth) {
-    try { await electronAuth.setToken(token); return }
+    let result
+    try { result = await electronAuth.setToken(token) }
     catch (error) {
       diagnostic('auth', 'token_store_failed', { errorName: error?.name || 'Error' }, 'error')
       throw new ApiError('MockMate could not securely save your session. Restart the app and try again.', 0)
     }
+    // Blast-radius review fix: the IPC handler RESOLVES with {ok:false} on disk/keychain
+    // failure — a rejected promise is not the only failure shape. Never treat it as success.
+    if (result && result.ok === false) {
+      diagnostic('auth', 'token_store_failed', { reason: result.error || 'unknown' }, 'error')
+      throw new ApiError('MockMate could not securely save your session. Restart the app and try again.', 0)
+    }
+    return
   }
   memToken = token
 }
@@ -117,6 +125,10 @@ export async function logout() {
 }
 export async function deleteAccount() {
   await request('/me', { method: 'DELETE', auth: true, timeoutMs: 30000 })
+  // Blast-radius review fix: purge ALL account-scoped local data (documents,
+  // persisted vector cache with original text, PI events, playbooks, …) BEFORE
+  // dropping the scope identity.
+  try { purgeScopedStorage() } catch {}
   await clearToken()
   clearActiveAccountScope()
   try { onUnauthorized() } catch {}

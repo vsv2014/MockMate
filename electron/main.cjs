@@ -1220,7 +1220,13 @@ ipcMain.handle('relaunch-app', () => { app.relaunch(); app.exit(0) })
 // Open a billing URL in the user's default browser. Scoped to HTTPS Stripe hosts only — the URL
 // comes from the backend, so an allowlist prevents a spoofed/compromised backend from launching an
 // arbitrary link. Allowlisted destinations: Stripe (billing) + GitHub (manual update download).
-const ALLOWED_EXTERNAL = /^https:\/\/([a-z0-9-]+\.)*(stripe\.com|github\.com)\//i
-ipcMain.handle('open-external', (_e, url) => { if (typeof url === 'string' && ALLOWED_EXTERNAL.test(url)) shell.openExternal(url); return { ok: true } })
+// Strict URL validation lives in bootstrap.cjs (the process-wide navigation policy);
+// same rule as the shell.openExternal guard so IPC and navigation can never diverge.
+const { externalNavigationAllowed } = require('./bootstrap.cjs')
+ipcMain.handle('open-external', (_e, url) => {
+  if (typeof url !== 'string' || !externalNavigationAllowed(url)) return { ok: false }
+  shell.openExternal(url)
+  return { ok: true }
+})
 // Open the API-key setup window on demand (e.g. "Add API keys" from the overlay).
 ipcMain.handle('open-key-setup', () => { if (!setupWindow) createSetupWindow(); else setupWindow.focus(); return { ok: true } })

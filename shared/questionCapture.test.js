@@ -550,3 +550,41 @@ describe('Turn-1 system-audio boost (PR #45 review: first interviewer question m
     expect(committed[0].text.toLowerCase()).toContain('introduce yourself')
   })
 })
+
+describe('Turn-1 negatives (blast-radius review: greetings must never become questions)', () => {
+  const NEGATIVES = [
+    'Good morning.',
+    'Thanks for joining.',
+    'Okay great.',
+    'Nice to meet you.',
+    "Hi, I'm Rahul, I lead the compute platform team.",
+    "So today we'll cover three areas.",
+  ]
+  for (const text of NEGATIVES) {
+    it(`does NOT commit "${text}" from system audio on Turn 1`, () => {
+      const a = assessQuestionBoundary({
+        text,
+        silenceMs: 2000,
+        isFinal: true,
+        speakerRole: 'interviewer',
+        hadPriorQuestion: false,
+        source: 'system',
+      })
+      expect(a.action).not.toBe('commit')
+    })
+  }
+
+  it('still commits imperative openers (positive controls)', () => {
+    for (const text of ['Introduce yourself.', 'So, tell me about yourself.', 'Please describe yourself.']) {
+      const a = assessQuestionBoundary({
+        text,
+        silenceMs: 2000,
+        isFinal: true,
+        speakerRole: 'interviewer',
+        hadPriorQuestion: false,
+        source: 'system',
+      })
+      expect(a.action).toBe('commit')
+    }
+  })
+})

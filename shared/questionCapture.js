@@ -17,6 +17,11 @@ const REFINEMENT_SIGNAL = /^(?:so\s+)?(?:(?:can|could|would) you\s+)?(?:please\s
 
 const INTERROGATIVE = /\b(tell me|describe|explain|how would|how do|how does|what is|what are|what was|what were|what about|how about|walk me|can you|could you|would you|why did|why do|why is|why are|why use|have you|give me|when did|where did|design (?:a|an|the)|given an?)\b/i
 
+// Turn-1 system-audio openers (blast-radius review fix): relax the gates ONLY for
+// imperative interview openers. Greetings ("Good morning."), interviewer
+// self-introductions, agenda-setting, and pleasantries must NEVER commit as questions.
+const SYSTEM_TURN1_OPENERS = /^(?:[\s,.!]*(?:so|okay|ok|alright|right|great|sure|now|first|then|please)[\s,.!]+)*(?:introduce yourself|tell (?:me|us) about|walk (?:me|us) through|describe yourself|give (?:me|us) (?:a |your |an )?(?:brief |quick )?(?:introduction|overview|background|summary)|start (?:by|with)|i(?:'d| would) love to hear about|share (?:a bit|some|a little) about|can i (?:get|have) (?:you to introduce yourself|an introduction|a brief introduction))\b/i
+
 /**
  * Measured stabilization windows (ms) — not a blind 2–3s everywhere.
  * Tuned for: fast commit on complete ? ; accumulate on incomplete openers.
@@ -54,13 +59,13 @@ export function assessQuestionBoundary({
     return { action: 'reject', reason: 'empty', waitMs: 0, confidence: 0, completeness: 'incomplete' }
   }
 
-  // Turn-1 system-audio boost (v1.5.2, PR #45 review): system/loopback capture is, by
-  // construction, the meeting audio — there is no candidate mic to confuse it with and
-  // no diarization to wait for. The FIRST interviewer prompt is frequently a short
-  // non-interrogative ("Introduce yourself.") that the generic gates would reject or
-  // stall on; on Turn 1 from a system source we relax the word gate, upgrade
-  // completeness, and add a +0.25 confidence boost to the commit.
-  const systemTurn1 = source === 'system' && !hadPriorQuestion
+  // Turn-1 system-audio boost (blast-radius review hardened): system/loopback capture
+  // is, by construction, the meeting audio — no candidate mic, no diarization wait.
+  // The FIRST interviewer prompt is frequently a short imperative ("Introduce
+  // yourself.") that generic gates would reject or stall on. Relaxation applies ONLY
+  // to known imperative openers (SYSTEM_TURN1_OPENERS) — greetings, interviewer
+  // self-introductions, agenda-setting and pleasantries keep the strict gates.
+  const systemTurn1 = source === 'system' && !hadPriorQuestion && SYSTEM_TURN1_OPENERS.test(q)
 
   if (isLogisticalCheck(q)) {
     return { action: 'reject', reason: 'logistical_check', waitMs: 0, confidence: 1, completeness: 'complete' }

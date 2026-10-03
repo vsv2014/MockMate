@@ -103,6 +103,8 @@ export function addDoc({ name, type = 'document', text, selected = true, source 
       const prev = docs[i]
       if (src === 'profile' && (prev.source || inferredSource(prev.name)) !== 'profile') return toMeta(prev)
       indexCache.delete(prev.id)
+      // Replacing a resume/JD invalidates the OLD persisted vectors too (privacy).
+      removePersistedIndexEntry(prev.id)
       const doc = { ...prev, name: name || prev.name || 'Untitled', text: body, type: t, source: src, selected: selected !== false, addedAt: new Date().toISOString() }
       docs[i] = doc
       return save(docs) ? toMeta(doc) : null
@@ -115,7 +117,14 @@ export function addDoc({ name, type = 'document', text, selected = true, source 
 
 export function removeDoc(id) {
   const ok = save(load().filter(d => d.id !== id))
-  if (ok) { indexCache.delete(id); indexInFlight.delete(id) }
+  if (ok) {
+    indexCache.delete(id)
+    indexInFlight.delete(id)
+    // Privacy (blast-radius review fix): the persisted vector cache stores the
+    // ORIGINAL chunk text; deleting the visible document must also delete its
+    // persisted index entry, otherwise removed resume/JD text lingers in storage.
+    removePersistedIndexEntry(id)
+  }
   return ok
 }
 
@@ -158,13 +167,40 @@ function loadPersistedIndexEntry(docId, sig, expectedEmbeddingModel = null) {
   return null
 }
 
+function removePersistedIndexEntry(docId) {
+  try {
+    const raw = JSON.parse(getScopedItem(INDEX_STORAGE_KEY, '{}') || '{}')
+    if (!(docId in raw)) return
+    delete raw[docId]
+    setScopedItem(INDEX_STORAGE_KEY, JSON.stringify(raw))
+  } catch {}
+}
+
+// localStorage quotas are byte-based, not document-count-based; entries embed full
+// chunk text + dense float vectors, so enforce an approximate serialized budget.
+const PERSISTED_INDEX_BYTE_BUDGET = 4_000_000
+
 function persistIndexEntry(docId, entry) {
   try {
     const raw = JSON.parse(getScopedItem(INDEX_STORAGE_KEY, '{}') || '{}')
     const keys = Object.keys(raw)
     if (keys.length > 24) delete raw[keys[0]]
     raw[docId] = entry
-    setScopedItem(INDEX_STORAGE_KEY, JSON.stringify(raw))
+    let serialized = JSON.stringify(raw)
+    const orderedKeys = Object.keys(raw)
+    // Evict oldest entries until under budget (never evict the one just written).
+    let i = 0
+    while (serialized.length > PERSISTED_INDEX_BYTE_BUDGET && i < orderedKeys.length - 1) {
+      if (orderedKeys[i] !== docId) delete raw[orderedKeys[i]]
+      i += 1
+      serialized = JSON.stringify(raw)
+    }
+    try {
+      setScopedItem(INDEX_STORAGE_KEY, serialized)
+    } catch (storageError) {
+      // Quota/serialization failure: keep working in-memory, but never silently.
+      console.warn('[docs] persisted vector cache write failed:', storageError?.message || storageError)
+    }
   } catch {}
 }
 
