@@ -14,6 +14,7 @@ import { createSessionId, createGeneration, hasEnoughAnswerLength } from './lib/
 import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, hasDocs } from './lib/docs'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import Documents from './Documents'
+import CustomPromptStudio from './components/CustomPromptStudio'
 import { extractPdfText } from './pdf'
 
 function speak(text, on, onDone, lang = 'en-US') {
@@ -722,26 +723,14 @@ export default function Solo({ onHome, noProviders }) {
         </div>
       </Section>
 
-      <Section title="Interview Playbook" hint="Recommended — controls how the interviewer and feedback behave for this practice session.">
+      <Section title="Interview Playbook" hint="Recommended — 1-click role templates, saved presets & auto-routed rules for Solo and Live.">
         <div style={{ fontSize: 11.5, color: T.text2, lineHeight: 1.5 }}>
-          Add interview-specific rules for tone, truth boundaries, answer depth, SQL/coding style and project context. The same playbook is visible in Live—never applied as a hidden setting.
+          Pick a role playbook or insert modular rule blocks (`VOICE:`, `TRUTH:`, `CODING/DSA:`, `SYSTEM DESIGN:`, `SQL/DATABASE:`). The same playbook carries into Live Interview.
         </div>
-        <textarea
-          aria-label="Interview Playbook"
-          rows={7}
-          maxLength={CUSTOM_INSTRUCTIONS_STORE_MAX}
-          style={{ ...textInput, resize: 'vertical', minHeight: 130, borderColor: profile.customPrompt?.trim() ? 'rgba(34,211,238,0.7)' : T.border }}
+        <CustomPromptStudio
           value={profile.customPrompt || ''}
-          placeholder={'Example:\nVOICE: Keep answers confident and concise.\nTRUTH: Never invent experience or ownership.\nSQL SUPPORT: Give simple correct SQL first.\nCODING/DSA: Approach → code → complexity → edge cases.'}
-          onChange={e => patchProfile({ customPrompt: e.target.value.slice(0, CUSTOM_INSTRUCTIONS_STORE_MAX) })}
+          onChange={nextPrompt => patchProfile({ customPrompt: String(nextPrompt || '').slice(0, CUSTOM_INSTRUCTIONS_STORE_MAX) })}
         />
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 10.5, color: T.text3 }}>
-          <span>{profile.customPrompt?.trim() ? '✓ Active for this practice interview' : 'Optional, but recommended for role-specific behavior'}</span>
-          <span>{(profile.customPrompt || '').length.toLocaleString()} / {CUSTOM_INSTRUCTIONS_STORE_MAX.toLocaleString()}</span>
-        </div>
-        <div style={{ fontSize: 10.5, color: '#67e8f9', lineHeight: 1.4 }}>
-          Routes core + question-relevant sections up to {CUSTOM_INSTRUCTIONS_PACK_MAX.toLocaleString()} characters. Truthfulness protections cannot be overridden.
-        </div>
       </Section>
 
       <Section title="Interview">

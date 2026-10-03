@@ -7,6 +7,7 @@ import { isManaged } from './lib/aiMode'
 import { getAutoSkip, getAnswerStyle, setAnswerStyle as persistAnswerStyle } from './lib/aiSettings'
 import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, listDocs, canReuseSpeculativeRag } from './lib/docs'
 import Documents from './Documents'
+import CustomPromptStudio from './components/CustomPromptStudio'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import { OverlayPanel, ScreenAnalysisPanel, IconBtn, CodeBlock } from './App'
 import ApiKeysPanel from './ApiKeys'
@@ -390,29 +391,17 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
         <Section
           n={2}
           title="Interview Playbook"
-          subtitle="Recommended · controls how every answer behaves"
+          subtitle="Recommended · 1-click role templates, saved presets & auto-routed rules"
           defaultOpen
           highlight
         >
           <div style={{ fontSize: 11.5, color: T.text2, lineHeight: 1.5 }}>
-            Paste your interview-specific rules here: tone, truth boundaries, answer depth, SQL/coding approach and project instructions. MockMate keeps core rules and automatically routes the relevant section for each question.
+            Pick a role playbook below or write your own rules (`VOICE:`, `TRUTH:`, `CODING/DSA:`, `SYSTEM DESIGN:`, `SQL/DATABASE:`). MockMate always retains your core rules and dynamically routes matching sections for each question.
           </div>
-          <textarea
-            aria-label="Interview Playbook"
-            rows={6}
-            maxLength={CUSTOM_INSTRUCTIONS_STORE_MAX}
-            style={{ ...inp, resize: 'vertical', minHeight: 118, borderColor: profile.customPrompt?.trim() ? 'rgba(34,211,238,0.7)' : T.border }}
+          <CustomPromptStudio
             value={profile.customPrompt || ''}
-            placeholder={'Example:\nVOICE: Keep answers confident and concise.\nTRUTH: Never invent experience or ownership.\nSQL SUPPORT: Give simple correct SQL first.\nCODING/DSA: Approach → code → complexity → edge cases.'}
-            onChange={e => patch({ customPrompt: e.target.value.slice(0, CUSTOM_INSTRUCTIONS_STORE_MAX) })}
+            onChange={nextPrompt => patch({ customPrompt: String(nextPrompt || '').slice(0, CUSTOM_INSTRUCTIONS_STORE_MAX) })}
           />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 10, color: T.text3 }}>
-            <span>{profile.customPrompt?.trim() ? '✓ Active for this interview' : 'Optional, but recommended for role-specific behavior'}</span>
-            <span>{(profile.customPrompt || '').length.toLocaleString()} / {CUSTOM_INSTRUCTIONS_STORE_MAX.toLocaleString()}</span>
-          </div>
-          <div style={{ fontSize: 10.5, color: '#67e8f9', lineHeight: 1.4 }}>
-            Routes core + question-relevant sections up to {CUSTOM_INSTRUCTIONS_PACK_MAX.toLocaleString()} characters. Truthfulness protections cannot be overridden.
-          </div>
         </Section>
 
         <Section n={3} title="Interview Documents" subtitle={`${contextSourceCount} source${contextSourceCount === 1 ? '' : 's'} ready · choose exactly what AI may use`} defaultOpen={false}>
