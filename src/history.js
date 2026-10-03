@@ -1,20 +1,20 @@
-// Local session history for Solo/Live Practice — stored only on this machine (localStorage).
+// Local session history for Solo/Live Practice — stored only on this machine per account.
+import { getScopedItem, setScopedItem } from './lib/accountScope'
+
 const KEY = 'mm-sessions'
 const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000
 const MAX_SESSIONS = 60
 
 function writeSessions(items) {
-  localStorage.setItem(KEY, JSON.stringify(items.slice(0, MAX_SESSIONS)))
+  if (!setScopedItem(KEY, JSON.stringify(items.slice(0, MAX_SESSIONS)))) throw new Error('local storage write failed')
 }
 
 export function loadSessions() {
   try {
-    const arr = JSON.parse(localStorage.getItem(KEY) || '[]')
+    const arr = JSON.parse(getScopedItem(KEY, '[]') || '[]')
     if (!Array.isArray(arr)) return []
     const cutoff = Date.now() - MAX_AGE_MS
     const kept = arr.filter(s => s && s.ts && s.ts >= cutoff).sort((a, b) => b.ts - a.ts).slice(0, MAX_SESSIONS)
-    // Retention is deletion, not merely a view filter. Persist the compacted set so expired
-    // transcripts do not remain on disk indefinitely.
     if (kept.length !== arr.length) {
       try { writeSessions(kept) } catch {}
     }
