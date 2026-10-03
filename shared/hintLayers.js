@@ -139,13 +139,50 @@ export function stripHintMeta(raw = '') {
   return { meta, prose: t, pending }
 }
 
+const AI_PREAMBLE_RE = /^(?:(?:sure|certainly|absolutely|of course|great question|good question|happy to help)[,!.]?\s*(?:here(?:'s| is) (?:how i(?:'d| would) answer(?: that)?|my answer|a concise answer|the explanation)[:,-]?\s*)?|here(?:'s| is) (?:how i(?:'d| would) answer(?: that)?|a spoken answer|the answer)[:,-]\s*|as an ai(?: language model| copilot| assistant)?[,!.]?\s*)/i
+
+const SPOKEN_JARGON_REPLACEMENTS = [
+  [/\butilizing\b/gi, m => (m[0] === 'U' ? 'Using' : 'using')],
+  [/\butilizes\b/gi, m => (m[0] === 'U' ? 'Uses' : 'uses')],
+  [/\butilized\b/gi, m => (m[0] === 'U' ? 'Used' : 'used')],
+  [/\butilize\b/gi, m => (m[0] === 'U' ? 'Use' : 'use')],
+  [/\bdelve into\b/gi, m => (m[0] === 'D' ? 'Dig into' : 'dig into')],
+  [/\bdelving into\b/gi, m => (m[0] === 'D' ? 'Digging into' : 'digging into')],
+  [/\bdelve\b/gi, m => (m[0] === 'D' ? 'Dig' : 'dig')],
+]
+
+/**
+ * Deterministic output guardrail (inspired by Kore.ai Artemis Streaming Guardrails `Action: Fix`).
+ * Strips robotic AI preambles and rewrites high-signal AI-tell words in spoken prose without
+ * touching fenced code blocks.
+ */
+export function sanitizeSpokenProse(text = '') {
+  const raw = String(text || '')
+  if (!raw.trim()) return ''
+  // Split by fenced code blocks so code is never modified
+  const parts = raw.split(/(```[\s\S]*?```)/g)
+  return parts
+    .map((part, idx) => {
+      if (part.startsWith('```')) return part
+      let out = idx === 0 ? part.replace(AI_PREAMBLE_RE, '') : part
+      for (const [re, replacer] of SPOKEN_JARGON_REPLACEMENTS) {
+        out = out.replace(re, replacer)
+      }
+      if (idx === 0 && out.length > 0 && part !== out) {
+        out = out[0].toUpperCase() + out.slice(1)
+      }
+      return out
+    })
+    .join('')
+}
+
 /** Split spoken answer prose into glance layers: opener → bullets → full. */
 export function glanceLayers(prose = '', meta = {}) {
   const cleaned = stripHintMeta(prose)
   const mergedMeta = { ...cleaned.meta, ...meta }
-  const full = String(cleaned.prose || '').trim()
+  const full = sanitizeSpokenProse(String(cleaned.prose || '').trim())
   // Never use a JSON leftover as the opener.
-  const safeFull = full.startsWith('{') ? stripHintMeta(full).prose.trim() : full
+  const safeFull = full.startsWith('{') ? sanitizeSpokenProse(stripHintMeta(full).prose.trim()) : full
   const sentences = safeFull.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean)
     .filter(s => !(s.startsWith('{') && s.includes('"type"')))
   const openerRaw = (mergedMeta.opener && String(mergedMeta.opener).trim()) || sentences[0] || safeFull.slice(0, 140)

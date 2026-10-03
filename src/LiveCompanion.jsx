@@ -1932,6 +1932,26 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
               <div ref={isLatest ? latestAnswerRef : null} style={{ marginLeft: 10, scrollMarginTop: 8 }}>
                 <div style={{ display: 'flex', gap: 4, marginBottom: 5, flexWrap: 'wrap', alignItems: 'center' }}>
                   {s.hint.incomplete && <span style={badge('rgba(251,191,36,0.2)', '#fbbf24')}>⚠ INCOMPLETE</span>}
+                  {s.hint.confidence === 'resume' && (
+                    <span style={badge('rgba(34,197,94,0.16)', '#86efac')} title="Grounded in your verified resume experience">✓ RESUME</span>
+                  )}
+                  {Array.isArray(s.hint._routing?.ragSources) && s.hint._routing.ragSources.slice(0, 2).map((src, si) => {
+                    const label = [src.doc?.replace(/\.(pdf|docx|txt|md)$/i, ''), src.section ? `§${src.section.slice(0, 22)}` : null].filter(Boolean).join(' · ')
+                    return (
+                      <span key={si} style={badge('rgba(56,189,248,0.14)', '#7dd3fc')} title={`Retrieved from ${src.doc}${src.section ? ` (${src.section})` : ''}`}>
+                        📄 {label}
+                      </span>
+                    )
+                  })}
+                  {s.hint._routing?.screenAttached && (
+                    <span style={badge('rgba(168,85,247,0.16)', '#d8b4fe')} title="Grounded in active screen capture">🖥 SCREEN</span>
+                  )}
+                  {Array.isArray(s.hint._searchSources) && s.hint._searchSources.length > 0 && (
+                    <span style={badge('rgba(45,212,191,0.14)', '#5eead4')} title="Grounded in live web search">🌐 WEB</span>
+                  )}
+                  {s.hint.complexity && (
+                    <span style={badge('rgba(255,255,255,0.06)', T.text2)}>{s.hint.complexity}</span>
+                  )}
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
                     {s.hint.incomplete && (
                       <button type="button" onClick={() => generateHint(s.text, { force: true, questionId: s.questionId })} style={btn('rgba(251,191,36,0.15)', '#fbbf24')}>Retry</button>
