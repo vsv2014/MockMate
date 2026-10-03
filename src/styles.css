@@ -66,9 +66,9 @@ input, select, textarea { font-family: inherit; }
   -webkit-app-region: no-drag;
 }
 
-/* A subtle grip makes the draggable affordance discoverable even before the cursor changes. */
-#mm-auth > div:first-child::after,
-.mm-shell > div:nth-of-type(1)::after,
+/* A subtle grip makes the draggable affordance discoverable even before the grab cursor appears. */
+#mm-auth > div:first-child::before,
+.mm-shell > div:nth-of-type(1)::before,
 #mockmate-overlay > div > div:first-child::before {
   content: '···';
   color: rgba(255,255,255,0.26);
@@ -76,13 +76,10 @@ input, select, textarea { font-family: inherit; }
   font-weight: 700;
   letter-spacing: 2px;
   line-height: 1;
+  margin-right: 2px;
   pointer-events: none;
   -webkit-app-region: drag;
 }
-
-#mm-auth > div:first-child::after { margin-left: 4px; margin-right: 2px; }
-.mm-shell > div:nth-of-type(1)::after { margin-left: 4px; }
-#mockmate-overlay > div > div:first-child::before { margin-right: 2px; }
 
 /* Keyboard focus visibility (a11y) — visible ring only for keyboard users, not mouse clicks. */
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
