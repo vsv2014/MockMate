@@ -6,7 +6,20 @@ let common = {}
 
 const BLOCKED = /api.?key|authorization|password|secret|token|cookie|resume|transcript|prompt|full.?answer|screenshot|image.?base64|audio.?data/i
 
-export function setDiagnosticContext(fields = {}) { common = { ...common, ...fields } }
+export function setDiagnosticContext(fields = {}) {
+  const next = { ...common }
+  for (const [key, value] of Object.entries(fields || {})) {
+    if (value == null || value === '') delete next[key]
+    else next[key] = value
+  }
+  common = next
+}
+export function clearDiagnosticContext(...keys) {
+  if (!keys.length) { common = {}; return }
+  const next = { ...common }
+  for (const key of keys) delete next[key]
+  common = next
+}
 
 export function diagnostic(component, event, fields = {}, level = 'info') {
   try {
