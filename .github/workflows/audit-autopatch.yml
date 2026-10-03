@@ -24,16 +24,16 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Apply deterministic final runtime patch
-        run: node scripts/audit-final-runtime-patch.mjs
+      - name: Apply deterministic Duo trust patch
+        run: node scripts/audit-duo-patch.mjs
       - name: Verify patched source
         run: npm ci && npm --prefix backend ci && npm test && npm run smoke:api && npm run build
       - name: Commit verified patch
         run: |
           git config user.name 'mockmate-audit-bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add src/Solo.jsx electron/main.cjs package.json
+          git add src/Duo.jsx src/Room.jsx api/_lib/core.js api/_lib/apiRoutes.js
           git diff --cached --quiet && exit 0
-          git commit -m 'Close Solo retry ownership and desktop update lifecycle gaps'
+          git commit -m 'Bind Duo identities and roles to server-issued room tokens'
           git pull --rebase origin codex/desktop-audit-67
           git push origin HEAD:codex/desktop-audit-67
