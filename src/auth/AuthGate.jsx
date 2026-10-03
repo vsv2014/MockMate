@@ -19,9 +19,9 @@ const markSeenWelcome = () => { try { localStorage.setItem(SEEN_WELCOME, '1') } 
 // Gates the app behind authentication. `children` is a render prop that receives
 // the live session: { user, plan, usage, logout, refresh }.
 export default function AuthGate({ children }) {
-  const [status, setStatus] = useState('loading')   // 'loading' | 'auth' | 'ready'
-  const [view, setView] = useState('welcome')      // 'welcome' | 'login' | 'signup' | 'onboarding'
-  const [session, setSession] = useState(null)     // { user, plan, usage }
+  const [status, setStatus] = useState('loading')
+  const [view, setView] = useState('welcome')
+  const [session, setSession] = useState(null)
 
   const loadSession = useCallback(async () => {
     const me = await fetchMe()
@@ -131,6 +131,21 @@ export default function AuthGate({ children }) {
               radial-gradient(circle at 75% -10%, rgba(20,184,166,.055), transparent 28%),
               linear-gradient(180deg, rgba(255,255,255,.008), transparent 24%) !important;
           }
+          .mm-ready-stage .mm-shell > div:first-of-type {
+            background: rgba(18,21,27,.92) !important;
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            box-shadow: 0 8px 30px rgba(0,0,0,.12);
+          }
+          .mm-ready-stage .mm-shell > div:nth-of-type(2) > div:not([style*="overflow-y"]) {
+            background: linear-gradient(180deg, rgba(18,21,27,.98), rgba(15,18,24,.98)) !important;
+          }
+          .mm-ready-stage .mm-shell > div:nth-of-type(2) > div[style*="overflow-y"] {
+            padding: 28px clamp(24px, 3vw, 38px) 38px !important;
+            scroll-behavior: smooth;
+          }
+          .mm-ready-stage .mm-shell > div:nth-of-type(2) > div[style*="overflow-y"] > * {
+            width: min(1180px, 100%); margin-left: auto; margin-right: auto;
+          }
           .mm-ready-stage .mm-shell button,
           .mm-ready-stage .mm-shell input,
           .mm-ready-stage .mm-shell textarea,
@@ -139,11 +154,14 @@ export default function AuthGate({ children }) {
               box-shadow 170ms ease, opacity 170ms ease, transform 170ms ease;
           }
           .mm-ready-stage .mm-shell button:active:not(:disabled) { transform: scale(.988); }
-          .mm-ready-stage .mm-shell [style*="overflow-y: auto"],
-          .mm-ready-stage .mm-shell [style*="overflowY"] { scroll-behavior: smooth; }
           @keyframes mm-workspace-enter {
             from { opacity: 0; transform: translateY(5px) scale(.998); }
             to { opacity: 1; transform: translateY(0) scale(1); }
+          }
+          @media (max-width: 900px) {
+            .mm-ready-stage .mm-shell > div:nth-of-type(2) > div[style*="overflow-y"] {
+              padding: 22px 20px 30px !important;
+            }
           }
           @media (prefers-reduced-motion: reduce) {
             .mm-ready-stage .mm-shell,
