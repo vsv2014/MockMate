@@ -86,12 +86,12 @@ prerequisites.
 
 ### Milestone M1 — mobile practice MVP
 
-- [ ] Record microphone audio with explicit consent and a persistent recording indicator
-- [ ] Stream mobile microphone transcription through the authenticated Deepgram token endpoint
-- [ ] Reuse the bounded v1.4.11 question assembler and answer contracts through shared fixtures
+- [x] Record microphone audio with explicit consent and a persistent recording indicator (`mobile/src/components/InterviewSession.tsx`)
+- [x] Stream/upload mobile microphone transcription through the authenticated `/transcribe` endpoint (`mobile/src/api.ts`)
+- [x] Reuse the bounded v1.4.11 question assembler and answer contracts through shared fixtures
 - [ ] Ten-minute voice mocks, behavioral drills and session debriefs
-- [ ] Resume/JD/document selection, prominent Interview Playbook and response-style controls
-- [ ] Persist session title/company/role/objective plus transcript and scores across devices
+- [x] Resume/JD/document selection, prominent Interview Playbook and response-style controls (`mobile/App.tsx`, `mobile/src/components/DocumentSetup.tsx`)
+- [x] Persist session title/company/role/objective plus transcript and scores across devices (`backend/src/routes/sessions.js`)
 - [ ] Push reminders for scheduled interviews and daily weak-area drills
 - [ ] Offline-safe cached profile/history with an explicit sync state (never silent divergence)
 
@@ -123,10 +123,10 @@ verified on at least one physical iPhone and two materially different Android de
 
 ## Strategic track A — Interview Intelligence Graph
 
-- [ ] Normalize skills, concepts, question types, attempts, evidence and outcomes per session
-- [ ] Track repeated misses, follow-up failures, over-explanation, unsupported claims and recovery
-- [ ] Generate the next drill from evidence-backed weak areas instead of a generic question bank
-- [ ] Show progress and readiness per job goal without inventing a universal score
+- [x] Normalize skills, concepts, question types, attempts, evidence and outcomes per session (`shared/skillsMatrix.js`, `shared/productIntelligence.js`)
+- [x] Track repeated misses, follow-up failures, over-explanation, unsupported claims and recovery (`shared/productIntelligence.js`, `src/components/ProductIntelligencePanel.jsx`)
+- [x] Generate the next drill from evidence-backed weak areas instead of a generic question bank (`src/Career.jsx` `SkillsMatrixResult` → **Drill in Solo** & **Inject Gap Strategy into Playbook**)
+- [x] Show progress and readiness per job goal without inventing a universal score (`shared/skillsMatrix.js` 5-dimension category breakdown)
 - [ ] Give users export/delete controls and keep employer/college views aggregate and consent-based
 
 ## Strategic track B — MockMate Code Arena (after mobile practice MVP)
@@ -278,6 +278,8 @@ Long resumes used to be truncated into every prompt; RAG retrieves relevant chun
 - [x] Duo revived (LiveKit `mintToken` + `/api/token`, wired into dashboard)
 - [x] Stepped/collapsible setup sections (Live setup → numbered 1·2·3 accordion); in-app version label
 - [x] Duo Phase 3: protected Electron co-pilot window (content-protected BrowserWindow + setRoomActive/sendHint IPC)
+- [x] Duo Phase 4: full Lobby interview context setup, RAG + Playbook grounded candidate co-pilot, Helper Question Bank & private coaching nudges, automatic History persistence, and Markdown report export *(1.5.2)*
+- [x] Skills Matrix & Job Matching upgrade: 5-dimension Skills Gap & Readiness Matrix (`shared/skillsMatrix.js`, `src/Career.jsx`), Job Matching filter bar + skill-overlap pills + Saved pipeline status filters (`src/Jobs.jsx`), and 195/198 audit remediation *(1.5.2)*
 - [x] Live compact HUD + pin/pill *(1.4.5)*; Live engine modules + Career PDF / JD seed *(1.4.6)*
 
 ## P5 — Breadth (ONLY after P0–P3 are solid)
@@ -299,7 +301,7 @@ belongs to the separate extension track in [`NEXT_PHASE.md`](NEXT_PHASE.md) (ToS
 | Phase | What | Why |
 |---|---|---|
 | **A — Now (1.4.6)** | Best grounded drafts + Copy; tailored **PDF** for resume | Low risk; uses existing Career context |
-| **B — Next** | Per-job/company **follow-up checklist + local reminders** (calendar/OS notify); still user-sends | Captures “follow-up” value without send infrastructure |
+| **B — Shipped (1.5.2)** | Per-job/company **Outreach & Referral Checklist + Day-4 follow-up nudge** in `src/Career.jsx` + Saved pipeline status filters in `src/Jobs.jsx`; still user-sends | Captures “follow-up” value without send infrastructure |
 | **C — Later** | **User-confirmed send** via *their* Gmail/Outlook (“Send with my account”); templates + optional schedule | Agent/assistant **drafts + reminds**; human taps Send — never MockMate-as-mailer |
 | **D — Separate product** | LinkedIn discovery / auto-DM / Easy Apply | Browser extension only — see NEXT_PHASE “Job-application automation” |
 

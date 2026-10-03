@@ -10,6 +10,7 @@ import { apiFetch } from './lib/apiClient'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { loadModelSelection } from './lib/modelPicker'
+import { retrieveContext } from './lib/docs'
 
 const btnGhost = { background: 'transparent', border: `1px solid ${T.borderStrong}`, color: T.text1, padding: '8px 14px', borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }
 const btnPrimary = { ...btnGhost, background: T.accent, border: 'none', color: '#fff' }
@@ -91,6 +92,11 @@ function RoomInner({ session, onEnd }) {
   const [hint, setHint] = useState(null)
   const [hintLoading, setHintLoading] = useState(false)
   const [hintOpen, setHintOpen] = useState(true)
+  const [showFullHint, setShowFullHint] = useState(false)
+  const [manualPrompt, setManualPrompt] = useState('')
+  const [helperQuestion, setHelperQuestion] = useState('')
+  const [helperNote, setHelperNote] = useState('')
+  const [receivedNote, setReceivedNote] = useState(null)
   const lastHintQuestion = useRef('')
   const hintRequest = useRef(null)
   const [provider] = useState(() => isManaged() ? '' : loadModelSelection())
@@ -126,6 +132,15 @@ function RoomInner({ session, onEnd }) {
     const sender = msg.participant || msg.from || null
     const row = sanitizeSegment(raw, session.room, sender)
     if (row) appendSegments([row])
+  })
+
+  const { send: sendHelperNote } = useDataChannel('helper-note', msg => {
+    const raw = decodePayload(msg)
+    const sender = msg.participant || msg.from || null
+    if (!raw || raw.room !== session.room || participantRole(sender) !== 'interviewer') return
+    const text = String(raw.text || '').trim().slice(0, 1000)
+    if (!text) return
+    setReceivedNote({ text, from: String(raw.speaker || sender?.name || 'Helper').slice(0, 80), ts: Date.now() })
   })
 
   const { send: sendSync } = useDataChannel('transcript-sync', msg => {
@@ -192,18 +207,36 @@ function RoomInner({ session, onEnd }) {
     return () => window.electronAPI.setRoomActive?.(false)
   }, [session.role, electronProtection])
 
-  useEffect(() => {
-    if (session.role !== 'candidate') return
-    const last = [...transcript].reverse().find(s => s.role === 'interviewer')
-    if (!last || last.id === lastHintQuestion.current) return
-    lastHintQuestion.current = last.id
-    setHintLoading(true); setHint(null); setHintOpen(true)
-    if (electronProtection) window.electronAPI.sendHint?.({ hint: null, hintLoading: true, question: last.text })
+  async function requestHintForQuestion(questionText, questionId = randomId('q')) {
+    const question = String(questionText || '').trim()
+    if (!question) return
+    lastHintQuestion.current = questionId
+    setHintLoading(true); setHint(null); setHintOpen(true); setShowFullHint(false)
+    if (electronProtection) window.electronAPI.sendHint?.({ hint: null, hintLoading: true, question })
     hintRequest.current?.abort?.()
     const controller = new AbortController(); hintRequest.current = controller
-    const questionId = last.id; const question = last.text
-    const profile = { name: session.name, targetRole: session.targetRole, resume: session.resume }
-    apiFetch('/api/hint', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, profile, provider }), signal: controller.signal })
+    const profile = {
+      name: session.name,
+      targetRole: session.targetRole,
+      targetCompany: session.targetCompany || '',
+      jobDescription: session.jobDescription || '',
+      customPrompt: session.customInstructions || '',
+      resume: session.resume,
+    }
+    let extraContext = ''
+    try { extraContext = await retrieveContext(question) } catch {}
+    apiFetch('/api/hint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        profile,
+        provider,
+        conversationHistory: transcriptRef.current.slice(-8).map(t => ({ role: t.role, text: t.text })),
+        ...(extraContext ? { extraContext } : {}),
+      }),
+      signal: controller.signal,
+    })
       .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d?.error || `Hint failed (${r.status})`); return d })
       .then(d => {
         if (controller.signal.aborted || lastHintQuestion.current !== questionId) return
@@ -214,7 +247,36 @@ function RoomInner({ session, onEnd }) {
         if (e?.name === 'AbortError') return
         if (lastHintQuestion.current === questionId) { setHintLoading(false); setSttError(e?.message || 'Could not generate hint') }
       })
+  }
+
+  useEffect(() => {
+    if (session.role !== 'candidate') return
+    const last = [...transcript].reverse().find(s => s.role === 'interviewer')
+    if (!last || last.id === lastHintQuestion.current) return
+    requestHintForQuestion(last.text, last.id)
   }, [transcript]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function sendInterviewerQuestion(text) {
+    const clean = String(text || '').trim()
+    if (!clean) return
+    const seg = { id: randomId(), kind: 'segment', room: session.room, identity: session.identity, speaker: session.name, role: session.role, text: clean, ts: Date.now() }
+    appendSegments([seg])
+    try { sendTranscript(new TextEncoder().encode(JSON.stringify(seg)), { reliable: true }) } catch {}
+    setHelperQuestion('')
+  }
+
+  function broadcastHelperNote() {
+    const clean = String(helperNote || '').trim()
+    if (!clean) return
+    try {
+      sendHelperNote(new TextEncoder().encode(JSON.stringify({
+        room: session.room,
+        speaker: session.name,
+        text: clean,
+      })), { reliable: true })
+      setHelperNote('')
+    } catch {}
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -262,19 +324,87 @@ function RoomInner({ session, onEnd }) {
         </div>
 
         <div>
+          {session.role === 'candidate' && receivedNote && (
+            <div style={{ background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 12.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+              <span>💡 <strong>Coaching note from {receivedNote.from}:</strong> {receivedNote.text}</span>
+              <button type="button" style={smallGhost} onClick={() => setReceivedNote(null)}>Dismiss</button>
+            </div>
+          )}
+
+          {session.role === 'candidate' && (
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+              <input
+                value={manualPrompt}
+                onChange={e => setManualPrompt(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && manualPrompt.trim()) { requestHintForQuestion(manualPrompt); setManualPrompt('') } }}
+                placeholder="Ask private AI co-pilot a question or coding prompt…"
+                style={{ flex: 1, height: 36, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: 12.5, padding: '0 10px', fontFamily: T.font }}
+              />
+              <button
+                type="button"
+                disabled={!manualPrompt.trim() || hintLoading}
+                onClick={() => { requestHintForQuestion(manualPrompt); setManualPrompt('') }}
+                style={{ ...btnPrimary, padding: '0 12px', height: 36, fontSize: 12, opacity: manualPrompt.trim() && !hintLoading ? 1 : 0.5 }}>
+                ⚡ Ask AI
+              </button>
+            </div>
+          )}
+
+          {session.role === 'interviewer' && (
+            <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>🧑‍🏫 Helper Question Bank &amp; Coaching</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {[
+                  `Walk me through the most complex system you architected for ${session.targetRole || 'this role'} and its key trade-offs.`,
+                  `Tell me about a time a production incident or tight deadline forced you to make a difficult engineering trade-off.`,
+                  `How would you design a scalable, fault-tolerant service for ${session.targetCompany || 'high-throughput traffic'}?`,
+                  `What metrics did you use to validate the impact of your most recent project?`,
+                ].map((q, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => sendInterviewerQuestion(q)}
+                    style={{ ...smallGhost, textAlign: 'left', padding: '4px 8px', fontSize: 11 }}>
+                    + Ask Q{idx + 1}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                <input
+                  value={helperQuestion}
+                  onChange={e => setHelperQuestion(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && helperQuestion.trim()) sendInterviewerQuestion(helperQuestion) }}
+                  placeholder="Type an interview question to send to the room…"
+                  style={{ flex: 1, height: 34, background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: 12, padding: '0 10px', fontFamily: T.font }}
+                />
+                <button type="button" onClick={() => sendInterviewerQuestion(helperQuestion)} disabled={!helperQuestion.trim()} style={{ ...btnPrimary, padding: '0 12px', height: 34, fontSize: 12, opacity: helperQuestion.trim() ? 1 : 0.5 }}>Ask</button>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  value={helperNote}
+                  onChange={e => setHelperNote(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && helperNote.trim()) broadcastHelperNote() }}
+                  placeholder="Send a private coaching nudge to the candidate…"
+                  style={{ flex: 1, height: 34, background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: 12, padding: '0 10px', fontFamily: T.font }}
+                />
+                <button type="button" onClick={broadcastHelperNote} disabled={!helperNote.trim()} style={{ ...btnGhost, padding: '0 12px', height: 34, fontSize: 12, opacity: helperNote.trim() ? 1 : 0.5 }}>💡 Nudge</button>
+              </div>
+            </div>
+          )}
+
           {session.role === 'candidate' && !inElectron && pipSupported && !pipPrompted && (hintLoading || hint) && !pipWindow && <div style={{ background: '#1e1b4b', border: '1px solid #4338ca', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 12, display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ color: '#a5b4fc' }}>🛡️ <strong>Sharing your screen?</strong> Move hints to a floating window and verify your preview.</span><button style={{ ...smallGhost, marginLeft: 'auto', whiteSpace: 'nowrap' }} onClick={openPip}>🪟 Pop out</button><button style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 16 }} onClick={() => setPipPrompted(true)}>×</button></div>}
 
           {session.role === 'candidate' && (hintLoading || hint) && (
             electronProtection ? <div style={{ background: '#0d1117', border: '1px solid #4338ca', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#a5b4fc' }}>🛡️ Hints are in the OS-protected Electron window — still verify the meeting share preview.</div>
               : pipWindow ? <div style={{ background: T.surface1, border: `1px solid ${T.borderStrong}`, borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: T.text3 }}>AI hints are in the floating window — verify your share preview. <button style={smallGhost} onClick={() => { pipWindow.close(); setPipWindow(null) }}>Close</button></div>
                 : sharing ? <div style={{ background: '#1c1917', border: '1px solid #57534e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#a8a29e' }}>🔒 AI hints hidden while screen sharing.{pipSupported ? ' Pop them out only after checking your share preview.' : ''}{pipSupported && <button style={{ ...smallGhost, marginLeft: 8 }} onClick={openPip}>🪟 Pop out</button>}</div>
-                  : <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}><span style={{ fontWeight: 600, fontSize: 13 }}>🤖 AI Co-pilot <span style={{ color: T.text3, fontWeight: 400, fontSize: 12 }}>· private UI; verify share preview</span></span><div style={{ display: 'flex', gap: 6 }}>{pipSupported && <button style={smallGhost} onClick={openPip}>🪟 Pop out</button>}<button style={smallGhost} onClick={() => setHintOpen(v => !v)}>{hintOpen ? 'Hide' : 'Show'}</button></div></div>{hintOpen && (hintLoading ? <p style={{ color: T.text3, fontSize: 13, margin: 0 }}>Generating hints…</p> : hint && <div style={{ fontSize: 13 }}>{hint.resumeRelevant && <span style={{ display: 'inline-block', background: '#22c55e22', color: '#4ade80', borderRadius: 6, padding: '1px 8px', fontSize: 11, marginBottom: 8 }}>✓ Resume-relevant</span>}<div style={{ fontWeight: 600, marginBottom: 4 }}>Key points to hit:</div><ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>{(hint.keyPoints || []).map((pt, i) => <li key={i}>{pt}</li>)}</ul>{hint.watchOut && <div style={{ color: '#f59e0b', fontSize: 12 }}>⚠ {hint.watchOut}</div>}</div>)}</div>
+                  : <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}><span style={{ fontWeight: 600, fontSize: 13 }}>🤖 AI Co-pilot <span style={{ color: T.text3, fontWeight: 400, fontSize: 12 }}>· private UI; verify share preview</span></span><div style={{ display: 'flex', gap: 6 }}>{pipSupported && <button style={smallGhost} onClick={openPip}>🪟 Pop out</button>}<button style={smallGhost} onClick={() => setHintOpen(v => !v)}>{hintOpen ? 'Hide' : 'Show'}</button></div></div>{hintOpen && (hintLoading ? <p style={{ color: T.text3, fontSize: 13, margin: 0 }}>Generating hints…</p> : hint && <div style={{ fontSize: 13 }}>{hint.resumeRelevant && <span style={{ display: 'inline-block', background: '#22c55e22', color: '#4ade80', borderRadius: 6, padding: '1px 8px', fontSize: 11, marginBottom: 8 }}>✓ Resume-relevant</span>}{hint.opener && <div style={{ fontWeight: 600, color: '#e2e8f0', marginBottom: 8, padding: '6px 9px', borderRadius: 6, background: 'rgba(20,184,166,0.10)', borderLeft: `3px solid ${T.accent}` }}>{hint.opener}</div>}<div style={{ fontWeight: 600, marginBottom: 4 }}>Key points to hit:</div><ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>{(hint.keyPoints || []).map((pt, i) => <li key={i}>{pt}</li>)}</ul>{(hint.fullAnswer || hint.sampleAnswer) && <div style={{ marginTop: 6 }}><button type="button" style={smallGhost} onClick={() => setShowFullHint(v => !v)}>{showFullHint ? 'Hide full answer' : 'Show full answer / code'}</button>{showFullHint && <div style={{ marginTop: 6, padding: 10, borderRadius: 8, background: T.surface2, fontSize: 12.5, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{hint.fullAnswer || hint.sampleAnswer}</div>}</div>}{hint.watchOut && <div style={{ color: '#f59e0b', fontSize: 12, marginTop: 6 }}>⚠ {hint.watchOut}</div>}</div>)}</div>
           )}
 
           <div style={labelStyle}>Live transcript</div>
           <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, background: T.surface1, padding: 14, height: 420, overflowY: 'auto' }}>
             {transcript.length === 0 && !speech.interim && <p style={metaStyle}>Start talking — finalized turns are synchronized with your partner.</p>}
-            {transcript.map(s => <div key={s.id} style={{ marginBottom: 12 }}><div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px', color: s.role === 'candidate' ? '#7fb0ff' : '#f5c66b' }}>{s.speaker} · {s.role}</div><div>{s.text}</div></div>)}
+            {transcript.map(s => <div key={s.id} style={{ marginBottom: 12 }}><div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}><span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px', color: s.role === 'candidate' ? '#7fb0ff' : '#f5c66b' }}>{s.speaker} · {s.role}</span>{session.role === 'candidate' && s.role === 'interviewer' && <button type="button" style={smallGhost} onClick={() => requestHintForQuestion(s.text, s.id)}>⚡ Hint</button>}</div><div>{s.text}</div></div>)}
             {speech.interim && <div style={{ marginBottom: 12 }}><div style={{ color: T.text3, fontStyle: 'italic' }}>{speech.interim}…</div></div>}<div ref={bottomRef} />
           </div>
         </div>

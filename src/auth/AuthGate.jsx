@@ -6,7 +6,7 @@ import Login from './Login'
 import Signup from './Signup'
 import Onboarding from './Onboarding'
 import { WindowControls } from './AuthShell'
-import { login, signup, fetchMe, logout as apiLogout, updateProfile, forgotPassword, getToken, setUnauthorizedHandler, refreshSession, usesDeviceLocalAccounts } from './api'
+import { login, signup, fetchMe, logout as apiLogout, updateProfile, forgotPassword, getToken, setUnauthorizedHandler, refreshSession, usesDeviceLocalAccounts, consumeOAuthRedirectToken } from './api'
 import { loadProfile, saveProfile } from '../lib/profile'
 import { getAiMode, setAiMode, setGuestMode } from '../lib/aiMode'
 import { setActiveAccountScope, clearActiveAccountScope } from '../lib/accountScope'
@@ -40,6 +40,7 @@ export default function AuthGate({ children }) {
     })
     let alive = true
     ;(async () => {
+      await consumeOAuthRedirectToken()
       const token = await getToken()
       if (!token) { if (alive) { clearActiveAccountScope(); setView(seenWelcome() ? 'login' : 'welcome'); setStatus('auth') } return }
       try {

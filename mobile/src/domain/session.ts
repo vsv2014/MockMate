@@ -58,5 +58,36 @@ export function sessionTitle(input: { mode?: string; company?: string; role?: st
 }
 
 export function normalizePairCode(value = '') {
-  return String(value).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
+  const trimmed = String(value || '').trim()
+  const mockMatch = trimmed.match(/mock-[a-f0-9]{8,64}/i)
+  if (mockMatch) return mockMatch[0].toLowerCase().slice(0, 69)
+  return trimmed.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
+}
+
+export function isValidPairCode(value = '') {
+  const code = normalizePairCode(value)
+  if (/^mock-[a-f0-9]{32,64}$/i.test(code)) return true
+  return code.length >= 6 && code.length <= 8
+}
+
+export function duoInviteUrl(code = '', baseUrl = 'https://app.mockmate.ai') {
+  const cleanBase = String(baseUrl || 'https://app.mockmate.ai').trim().replace(/\/$/, '')
+  const cleanCode = normalizePairCode(code)
+  if (!cleanCode) return `${cleanBase}/duo`
+  const param = /^mock-/i.test(cleanCode) ? 'room' : 'duo'
+  return `${cleanBase}/?${param}=${encodeURIComponent(cleanCode)}`
+}
+
+export function sttLanguage(value?: string) {
+  const raw = String(value || 'English').trim()
+  if (/^[a-z]{2}(?:-[A-Z]{2})?$/.test(raw)) return raw
+  const map: Record<string, string> = {
+    english: 'en', hindi: 'hi', telugu: 'te', tamil: 'ta', kannada: 'kn',
+    malayalam: 'ml', marathi: 'mr', bengali: 'bn', spanish: 'es', french: 'fr', german: 'de',
+  }
+  return map[raw.toLowerCase()] || 'en'
+}
+
+export function mergePreferences<T extends Record<string, unknown>>(existing: T | undefined | null, patch: Partial<T>): T {
+  return { ...(existing && typeof existing === 'object' ? existing : {} as T), ...patch }
 }

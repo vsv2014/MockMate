@@ -2,18 +2,8 @@ import React, { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio'
 import { api, type SyncedSession, type TranscriptTurn, type User } from '../api'
-import type { SessionDraft } from '../domain/session'
+import { sttLanguage, type SessionDraft } from '../domain/session'
 import { theme as T } from '../theme'
-
-function sttLanguage(value?: string) {
-  const raw = String(value || 'English').trim()
-  if (/^[a-z]{2}(?:-[A-Z]{2})?$/.test(raw)) return raw
-  const map: Record<string, string> = {
-    english: 'en', hindi: 'hi', telugu: 'te', tamil: 'ta', kannada: 'kn',
-    malayalam: 'ml', marathi: 'mr', bengali: 'bn', spanish: 'es', french: 'fr', german: 'de',
-  }
-  return map[raw.toLowerCase()] || 'en'
-}
 
 export function InterviewSession({ session, draft, user, onEnd }: {
   session: SyncedSession
@@ -83,10 +73,15 @@ export function InterviewSession({ session, draft, user, onEnd }: {
   const submitMockAnswer = async () => {
     const text = input.trim()
     if (!text || busy || transcribing || recorderState.isRecording) return
+    const previous = turnsRef.current
     setInput('')
-    const next = [...turnsRef.current, { role: 'candidate' as const, text, kind: 'answer' as const, ts: Date.now() }]
+    const next = [...previous, { role: 'candidate' as const, text, kind: 'answer' as const, ts: Date.now() }]
     setTranscript(next)
-    await nextQuestion(next)
+    const ok = await nextQuestion(next)
+    if (!ok) {
+      setTranscript(previous)
+      setInput(text)
+    }
   }
 
   const generateAnswer = async () => {

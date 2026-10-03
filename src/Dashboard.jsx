@@ -186,7 +186,7 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
                 {!sidebarIcons && (
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: T.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{auth?.user?.name || auth?.user?.email || 'Account'}</span>
-                    <span style={{ display: 'block', fontSize: 10, color: T.text3 }}>{auth?.guest ? 'Guest' : auth?.plan === 'pro' ? 'Pro plan' : 'Free plan'}</span>
+                    <span style={{ display: 'block', fontSize: 10, color: T.text3 }}>{auth?.guest ? 'Guest' : auth?.plan === 'max' ? 'Max plan' : auth?.plan === 'pro' ? 'Pro plan' : 'Free plan'}</span>
                   </span>
                 )}
               </button>

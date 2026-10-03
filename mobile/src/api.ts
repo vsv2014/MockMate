@@ -60,6 +60,11 @@ export class ApiError extends Error {
 
 export function apiConfigured() { return Boolean(configuredBase) }
 
+let onUnauthorized: (() => void) | null = null
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler
+}
+
 async function request<T>(path: string, options: RequestInit & { auth?: boolean; timeoutMs?: number } = {}): Promise<T> {
   if (!configuredBase) throw new ApiError('Connect a hosted MockMate API before signing in.', 0)
   if (!/^https:\/\//i.test(configuredBase) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configuredBase)) {
@@ -96,6 +101,7 @@ async function request<T>(path: string, options: RequestInit & { auth?: boolean;
   if (!response.ok) {
     if (response.status === 401 && auth) {
       try { await SecureStore.deleteItemAsync(TOKEN_KEY) } catch {}
+      try { onUnauthorized?.() } catch {}
     }
     throw new ApiError(data?.error || 'Something went wrong. Try again.', response.status)
   }

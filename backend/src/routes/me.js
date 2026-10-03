@@ -30,9 +30,15 @@ router.patch('/', requireAuth, async (req, res) => {
     }
     if ('preferences' in body) {
       if (!body.preferences || typeof body.preferences !== 'object' || Array.isArray(body.preferences)) return res.status(400).json({ error: 'preferences must be an object.' })
-      const encoded = JSON.stringify(body.preferences)
+      const existing = await store().findUserById(req.userId)
+      if (!existing) return res.status(404).json({ error: 'Account not found' })
+      const mergedPreferences = {
+        ...(existing.preferences && typeof existing.preferences === 'object' ? existing.preferences : {}),
+        ...body.preferences,
+      }
+      const encoded = JSON.stringify(mergedPreferences)
       if (encoded.length > 32_000) return res.status(400).json({ error: 'preferences are too large.' })
-      update.preferences = body.preferences
+      update.preferences = mergedPreferences
     }
     const user = await store().updateUser(req.userId, update)
     if (!user) return res.status(404).json({ error: 'Account not found' })

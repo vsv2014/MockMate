@@ -134,3 +134,20 @@ function openUrl(url) {
 }
 export async function startCheckout() { const { url } = await request('/billing/checkout', { method: 'POST', auth: true }); if (url) openUrl(url); return url }
 export async function openBillingPortal() { const { url } = await request('/billing/portal', { method: 'POST', auth: true }); if (url) openUrl(url); return url }
+export async function reconcileBilling() { return request('/billing/reconcile', { method: 'POST', auth: true }) }
+export function startGoogleAuth() { openUrl(`${API_BASE}/auth/google`) }
+export async function consumeOAuthRedirectToken() {
+  if (typeof window === 'undefined' || !window.location?.search) return null
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const token = params.get('token') || params.get('oauth_token')
+    if (!token) return null
+    await setToken(token)
+    params.delete('token')
+    params.delete('oauth_token')
+    const query = params.toString()
+    const cleanUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash || ''}`
+    window.history?.replaceState?.({}, '', cleanUrl)
+    return token
+  } catch { return null }
+}

@@ -67,7 +67,22 @@ describe('checkCap fail-closed (hosted)', () => {
     const req = { _plan: 'free', body: { provider: 'gpt_56_sol', profile: { modelStrategy: 'quality', targetRole: 'QA' } } }
     enforceManagedModelPolicy(req, {}, () => {})
     expect(req.body.provider).toBe('')
+    expect(req.body.maxProviderAttempts).toBe(2)
     expect(req.body.profile.modelStrategy).toBe('fast')
     expect(req.body.profile.targetRole).toBe('QA')
+  })
+
+  it('rejects oversized inputs exceeding plan maxInputChars with 413', async () => {
+    vi.doMock('../store.js', () => ({
+      currentPeriod: () => '2026-08',
+      store: () => ({ findUserById: async () => ({ plan: 'free' }), reserveLlmUsage: async () => true }),
+    }))
+    const { checkCap } = await import('./meter.js')
+    const res = { statusCode: 0, body: null, status(c) { this.statusCode = c; return this }, json(b) { this.body = b; return this } }
+    let nextCalled = false
+    await checkCap({ userId: 'u1', body: { text: 'x'.repeat(90_000) } }, res, () => { nextCalled = true })
+    expect(nextCalled).toBe(false)
+    expect(res.statusCode).toBe(413)
+    expect(res.body?.code).toBe('input_too_large')
   })
 })

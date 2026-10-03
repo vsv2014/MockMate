@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { normalizePairCode, normalizeSessionDraft, PLAYBOOK_LIMIT, sessionTitle, validateSessionDraft } from './session'
+import {
+  duoInviteUrl,
+  isValidPairCode,
+  mergePreferences,
+  normalizePairCode,
+  normalizeSessionDraft,
+  PLAYBOOK_LIMIT,
+  sessionTitle,
+  sttLanguage,
+  validateSessionDraft,
+} from './session'
 
 describe('mobile session setup', () => {
   it('requires company and role for live sessions', () => {
@@ -22,8 +32,34 @@ describe('mobile session setup', () => {
     expect(sessionTitle({ mode: 'solo' })).toBe('Solo practice')
   })
 
-  it('normalizes pair codes', () => {
+  it('normalizes and validates pair codes across desktop mock-hex and short mobile formats', () => {
     expect(normalizePairCode('ab-12 cd_345')).toBe('AB12CD34')
+    const desktopCode = 'mock-7f3a9c1d8b22e4aa107f3a9c1d8b22e4'
+    expect(normalizePairCode(`  ${desktopCode.toUpperCase()} `)).toBe(desktopCode)
+    expect(isValidPairCode(desktopCode)).toBe(true)
+    expect(isValidPairCode('ab12cd')).toBe(true)
+    expect(isValidPairCode('ab12cd34')).toBe(true)
+    expect(isValidPairCode('ab12')).toBe(false)
+    expect(duoInviteUrl(desktopCode, 'https://app.mockmate.ai/')).toBe(`https://app.mockmate.ai/?room=${desktopCode}`)
+    expect(duoInviteUrl('ab-12cd', 'https://app.mockmate.ai/')).toBe('https://app.mockmate.ai/?duo=AB12CD')
+  })
+
+  it('maps account languages to Deepgram STT codes safely', () => {
+    expect(sttLanguage('English')).toBe('en')
+    expect(sttLanguage('Telugu')).toBe('te')
+    expect(sttLanguage('Hindi')).toBe('hi')
+    expect(sttLanguage('en-IN')).toBe('en-IN')
+    expect(sttLanguage('UnknownLang')).toBe('en')
+  })
+
+  it('merges mobile preferences without dropping existing cross-device keys', () => {
+    const existing = { desktopTheme: 'dark', mobilePlaybook: 'old', mobileResponseStyle: 'concise' as const }
+    const merged = mergePreferences(existing, { mobilePlaybook: 'new rules' })
+    expect(merged).toEqual({
+      desktopTheme: 'dark',
+      mobilePlaybook: 'new rules',
+      mobileResponseStyle: 'concise',
+    })
   })
 
   it('snapshots bounded playbook, response style and unique document choices', () => {

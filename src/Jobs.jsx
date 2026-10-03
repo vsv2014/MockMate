@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { loadProfile, saveProfile } from './lib/profile'
 import { scoreColor } from './lib/ui'
+import { analyzeSkillsGap } from '../shared/skillsMatrix.js'
 import { T } from './auth/tokens'
 import { loadSavedJobs, saveJob, removeSavedJob, updateSavedJob, savedKeySet, savedKeyOf, SAVED_MAX, SAVED_STATUSES } from './savedJobs'
 import { S, tabStyle, NoKeysBanner, YearsChips, ResumeMaterials } from './lib/secondaryUi'
@@ -38,7 +39,17 @@ const STATUS_LABEL = {
   passed: 'Passed',
 }
 
-function JobCard({ j, saved, onToggleSave, onOpenCareer, onUseForInterview, showTracking, onUpdateSaved }) {
+function JobCard({ j, saved, resumeText, onToggleSave, onOpenCareer, onUseForInterview, showTracking, onUpdateSaved }) {
+  const skillOverlap = useMemo(() => {
+    if (!resumeText) return { matched: [], missing: [] }
+    const jobText = `${j.title || ''}\n${j.snippet || j.description || ''}\n${(j.tags || []).join(' ')}`
+    const report = analyzeSkillsGap(resumeText, jobText, j.title || '')
+    return {
+      matched: report.matched.slice(0, 4),
+      missing: report.missing.slice(0, 3),
+    }
+  }, [resumeText, j.title, j.snippet, j.description, j.tags])
+
   return (
     <div style={S.card}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -65,6 +76,20 @@ function JobCard({ j, saved, onToggleSave, onOpenCareer, onUseForInterview, show
       </div>
       {j.reason && <div style={{ fontSize: 12.5, color: T.text2, marginTop: 8, lineHeight: 1.5 }}>✓ {j.reason}</div>}
       {j.gaps && <div style={{ fontSize: 12, color: T.warning, marginTop: 4, lineHeight: 1.5 }}>Gap: {j.gaps}</div>}
+      {(skillOverlap.matched.length > 0 || skillOverlap.missing.length > 0) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 7 }}>
+          {skillOverlap.matched.map(s => (
+            <span key={`m-${s}`} style={{ ...S.chip, background: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.32)', color: '#6ee7b7' }}>
+              ✓ {s}
+            </span>
+          ))}
+          {skillOverlap.missing.map(s => (
+            <span key={`g-${s}`} style={{ ...S.chip, background: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.32)', color: '#fcd34d' }}>
+              ⚠ {s}
+            </span>
+          ))}
+        </div>
+      )}
       {j.tags?.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
           {j.tags.slice(0, 5).map(t => <span key={t} style={S.chip}>{t}</span>)}
@@ -102,6 +127,10 @@ function JobCard({ j, saved, onToggleSave, onOpenCareer, onUseForInterview, show
           : <span style={{ fontSize: 12.5, color: T.text3 }}>No link</span>}
         {onOpenCareer && (
           <>
+            <button type="button" onClick={() => onOpenCareer(j, 'skills')}
+              style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
+              Skills Matrix
+            </button>
             <button type="button" onClick={() => onOpenCareer(j, 'ats')}
               style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
               Score in Resume Studio
@@ -109,6 +138,10 @@ function JobCard({ j, saved, onToggleSave, onOpenCareer, onUseForInterview, show
             <button type="button" onClick={() => onOpenCareer(j, 'tailor')}
               style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
               Tailor for this role
+            </button>
+            <button type="button" onClick={() => onOpenCareer(j, 'referral')}
+              style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
+              Draft referral DM
             </button>
           </>
         )}
@@ -148,6 +181,9 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
   const [result, setResult] = useState(() => (jobsCache && jobsCache.key === inputsKey) ? jobsCache.result : null)
   const [visible, setVisible] = useState(8)
   const [sort, setSort] = useState('fit')
+  const [matchFilter, setMatchFilter] = useState('all') // 'all' | 'strong' | 'remote' | 'local'
+  const [searchQuery, setSearchQuery] = useState('')
+  const [savedStatusFilter, setSavedStatusFilter] = useState('all')
   const [tab, setTab] = useState('matches')
   const [savedJobs, setSavedJobs] = useState(loadSavedJobs)
   const [savedSet, setSavedSet] = useState(savedKeySet)
@@ -155,6 +191,26 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
   const hasResume = !!(profile.resume && profile.resume.trim())
   const canSearch = hasResume || !!(profile.targetRole && profile.targetRole.trim())
   const hasSalaryData = !!(result?.jobs?.some(j => (j.salaryNum || 0) > 0))
+
+  const filteredMatches = useMemo(() => {
+    const baseJobs = sortJobs(result?.jobs || [], sort)
+    const q = searchQuery.trim().toLowerCase()
+    return baseJobs.filter(j => {
+      if (matchFilter === 'strong' && (Number(j.score) || 0) < 75) return false
+      if (matchFilter === 'remote' && j.source === 'local') return false
+      if (matchFilter === 'local' && j.source !== 'local') return false
+      if (q) {
+        const hay = `${j.title || ''} ${j.company || ''} ${j.location || ''} ${(j.tags || []).join(' ')} ${j.reason || ''}`.toLowerCase()
+        if (!hay.includes(q)) return false
+      }
+      return true
+    })
+  }, [result, sort, matchFilter, searchQuery])
+
+  const filteredSavedJobs = useMemo(() => {
+    if (savedStatusFilter === 'all') return savedJobs
+    return savedJobs.filter(j => (j.status || 'interested') === savedStatusFilter)
+  }, [savedJobs, savedStatusFilter])
 
   const patch = p => { const next = { ...profile, ...p }; setProfile(next); saveProfile(next) }
 
@@ -248,13 +304,43 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
             <div style={{ fontSize: 12, color: T.text3, marginBottom: 10, lineHeight: 1.45 }}>
               Status and notes stay on this device. Open Resume Studio from a card to score or tailor against the listing.
             </div>
-            {savedJobs.map(j => (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+              <button
+                type="button"
+                onClick={() => setSavedStatusFilter('all')}
+                style={{
+                  fontSize: 11.5, fontWeight: 600, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
+                  border: `1px solid ${savedStatusFilter === 'all' ? 'rgba(20,184,166,0.45)' : T.border}`,
+                  background: savedStatusFilter === 'all' ? 'rgba(20,184,166,0.16)' : 'transparent',
+                  color: savedStatusFilter === 'all' ? T.accentFrom : T.text3,
+                }}>
+                All ({savedJobs.length})
+              </button>
+              {SAVED_STATUSES.map(st => {
+                const count = savedJobs.filter(j => (j.status || 'interested') === st).length
+                return (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setSavedStatusFilter(st)}
+                    style={{
+                      fontSize: 11.5, fontWeight: 600, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
+                      border: `1px solid ${savedStatusFilter === st ? 'rgba(20,184,166,0.45)' : T.border}`,
+                      background: savedStatusFilter === st ? 'rgba(20,184,166,0.16)' : 'transparent',
+                      color: savedStatusFilter === st ? T.accentFrom : T.text3,
+                    }}>
+                    {STATUS_LABEL[st]} ({count})
+                  </button>
+                )
+              })}
+            </div>
+            {filteredSavedJobs.map(j => (
               <div key={savedKeyOf(j)}>
                 <div style={{ fontSize: 11, color: T.text3, marginBottom: 4 }}>
                   Saved {ago(j.savedTs) || 'today'}
                   {j.status ? ` · ${STATUS_LABEL[j.status] || j.status}` : ''}
                 </div>
-                <JobCard j={j} saved showTracking onToggleSave={toggleSave} onUpdateSaved={patchSaved}
+                <JobCard j={j} saved showTracking resumeText={profile.resume || ''} onToggleSave={toggleSave} onUpdateSaved={patchSaved}
                   onOpenCareer={onOpenCareer ? openCareer : undefined}
                   onUseForInterview={onUseForInterview ? useForInterview : undefined} />
               </div>
@@ -370,19 +456,45 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
                 </div>
               )}
 
-              {sortJobs(result.jobs, sort).slice(0, visible).map(j => (
-                <JobCard key={savedKeyOf(j) || j.id} j={j} saved={savedSet.has(savedKeyOf(j))} onToggleSave={toggleSave}
+              {result.jobs.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+                  {[
+                    ['all', `All (${result.jobs.length})`],
+                    ['strong', `Strong Fit 75%+ (${result.jobs.filter(j => (Number(j.score) || 0) >= 75).length})`],
+                    ['remote', `Remote (${result.jobs.filter(j => j.source !== 'local').length})`],
+                    ['local', `On-site (${result.jobs.filter(j => j.source === 'local').length})`],
+                  ].map(([id, label]) => (
+                    <button key={id} type="button" onClick={() => setMatchFilter(id)}
+                      style={{
+                        fontSize: 11.5, fontWeight: 600, padding: '5px 10px', borderRadius: 999, cursor: 'pointer',
+                        border: `1px solid ${matchFilter === id ? 'rgba(20,184,166,0.45)' : T.border}`,
+                        background: matchFilter === id ? 'rgba(20,184,166,0.16)' : 'transparent',
+                        color: matchFilter === id ? T.accentFrom : T.text3, fontFamily: T.font,
+                      }}>{label}</button>
+                  ))}
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Filter by skill or company…"
+                    style={{ ...S.input, width: 180, marginBottom: 0, padding: '5px 10px', fontSize: 12, marginLeft: 'auto' }}
+                  />
+                </div>
+              )}
+
+              {filteredMatches.slice(0, visible).map(j => (
+                <JobCard key={savedKeyOf(j) || j.id} j={j} saved={savedSet.has(savedKeyOf(j))} resumeText={profile.resume || ''} onToggleSave={toggleSave}
                   onOpenCareer={onOpenCareer ? openCareer : undefined}
                   onUseForInterview={onUseForInterview ? useForInterview : undefined} />
               ))}
 
-              {visible < result.jobs.length && (
+              {visible < filteredMatches.length && (
                 <button type="button" onClick={() => setVisible(v => v + 8)} style={{ ...S.btnSecondary, width: '100%', marginTop: 4 }}>
-                  Load more ({result.jobs.length - visible} more)
+                  Load more ({filteredMatches.length - visible} more)
                 </button>
               )}
-              {result.jobs.length > 0 && visible >= result.jobs.length && result.jobs.length > 8 && (
-                <div style={{ fontSize: 11.5, color: T.text3, textAlign: 'center', marginTop: 8 }}>That’s all {result.jobs.length} matches.</div>
+              {filteredMatches.length > 0 && visible >= filteredMatches.length && filteredMatches.length > 8 && (
+                <div style={{ fontSize: 11.5, color: T.text3, textAlign: 'center', marginTop: 8 }}>That’s all {filteredMatches.length} matches.</div>
               )}
 
               {result.jobs.length === 0 && !result.note && (
