@@ -9,10 +9,7 @@ const FATAL_CLOSE = new Set([1008, 4001, 4003, 4008])
 const BYTES_PER_SEC = 16000 * 2
 const MAX_QUEUE_BYTES = 5 * BYTES_PER_SEC
 
-/**
- * Solo / Duo mic transcription via Deepgram — KeepAlive + reconnect + worklet
- * parity with Live's useSystemAudio (mic-only, no diarization).
- */
+/** Solo / Duo mic transcription via Deepgram. */
 export function useDeepgram(onFinal, onFail, lang = 'en-US') {
   const [active, setActive] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
@@ -83,6 +80,10 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
     srcNode.current = source
     const mute = ac.createGain(); mute.gain.value = 0
     const sendPCM = buf => {
+      // Never send MockMate's own synthesized interviewer audio to paid STT. Keeping the socket
+      // alive avoids the old stop/reconnect race, while dropping frames prevents self-transcription
+      // and unnecessary Deepgram audio usage during TTS.
+      if (window.speechSynthesis?.speaking || window.speechSynthesis?.pending) return
       const sock = ws.current
       if (sock && sock.readyState === 1) { sock.send(buf); return }
       pcmQueue.current.push(buf)
@@ -111,9 +112,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
   function scheduleReconnect(reason) {
     if (userStop.current || suspendPaused.current) return
     reconnectAttempts.current += 1
-    if (reconnectAttempts.current > MAX_RECONNECTS) {
-      return failOrDegrade(`${reason} — gave up after ${MAX_RECONNECTS} consecutive reconnect attempts`)
-    }
+    if (reconnectAttempts.current > MAX_RECONNECTS) return failOrDegrade(`${reason} — gave up after ${MAX_RECONNECTS} consecutive reconnect attempts`)
     setActive(false); setReconnecting(true)
     const delay = Math.min(8000, 500 * 2 ** Math.min(reconnectAttempts.current - 1, 4))
     clearTimeout(reconnectTimer.current)
@@ -121,8 +120,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
   }
 
   const connectSocket = useCallback(async () => {
-    if (userStop.current || suspendPaused.current) return
-    if (connecting.current) return
+    if (userStop.current || suspendPaused.current || connecting.current) return
     connecting.current = true
     const gen = ++connectGen.current
     abandonSocket(activeSocketRef.current || ws.current)
@@ -166,18 +164,13 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       diagnostic('stt', 'socket_open', { mode: 'microphone', generation: gen, model, degraded: degradedAudio.current })
       try { ctx.current?.resume?.() } catch {}
       if (pcmQueue.current.length) {
-        diagnostic('stt', 'audio_buffer_flushed', {
-          mode: 'microphone', bufferedBytes: pcmQueueBytes.current,
-          droppedBytes: pcmDroppedBytes.current, model,
-        }, pcmDroppedBytes.current > 0 ? 'warn' : 'info')
+        diagnostic('stt', 'audio_buffer_flushed', { mode: 'microphone', bufferedBytes: pcmQueueBytes.current, droppedBytes: pcmDroppedBytes.current, model }, pcmDroppedBytes.current > 0 ? 'warn' : 'info')
         const queued = pcmQueue.current
         pcmQueue.current = []; pcmQueueBytes.current = 0; pcmDroppedBytes.current = 0
         for (const buf of queued) { try { sock.send(buf) } catch {} }
       }
       clearInterval(keepAlive.current)
-      keepAlive.current = setInterval(() => {
-        if (owns() && sock.readyState === 1) { try { sock.send(JSON.stringify({ type: 'KeepAlive' })) } catch {} }
-      }, KEEPALIVE_MS)
+      keepAlive.current = setInterval(() => { if (owns() && sock.readyState === 1) { try { sock.send(JSON.stringify({ type: 'KeepAlive' })) } catch {} } }, KEEPALIVE_MS)
     }
 
     sock.onmessage = ev => {
@@ -191,17 +184,13 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       const text = alt?.transcript?.trim()
       if (!text) return
       if (m.is_final) {
-        diagnostic('stt', 'final_received', {
-          mode: 'microphone', model, confidence: Number.isFinite(alt?.confidence) ? alt.confidence : null,
-          wordCount: text.split(/\s+/).filter(Boolean).length, degraded: degradedAudio.current,
-        })
+        diagnostic('stt', 'final_received', { mode: 'microphone', model, confidence: Number.isFinite(alt?.confidence) ? alt.confidence : null, wordCount: text.split(/\s+/).filter(Boolean).length, degraded: degradedAudio.current })
         onFinalRef.current?.(text); setInterim('')
-      }
-      else setInterim(text)
+      } else setInterim(text)
     }
 
     sock.onerror = () => {}
-    sock.onclose = (ev) => {
+    sock.onclose = ev => {
       if (gen !== connectGen.current) return
       if (activeSocketRef.current === sock) activeSocketRef.current = null
       if (ws.current === sock) ws.current = null
@@ -226,12 +215,8 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
   }
 
   const start = useCallback(async () => {
-    // Resume only when the captured device is still live. Device removal can leave a MediaStream
-    // object behind with ended tracks; in that case rebuild from getUserMedia instead of reconnecting
-    // Deepgram to a dead source.
     const liveTrack = stream.current?.getAudioTracks?.().some(t => t.readyState === 'live')
     if (stream.current && !liveTrack) teardown()
-    // Resume existing graph if mic is still live (after TTS) — don't rebuild / re-prompt getUserMedia.
     if (stream.current && ctx.current) {
       userStop.current = false
       suspendPaused.current = false
@@ -253,9 +238,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       stream.current = mic
       await buildAudioGraph(mic)
       await connectSocket()
-    } catch (e) {
-      fail(e.message)
-    }
+    } catch (e) { fail(e.message) }
   }, [buildAudioGraph, connectSocket, fail, teardown])
 
   useEffect(() => {
@@ -269,12 +252,9 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       const sock = activeSocketRef.current || ws.current
       if (sock && sock.readyState === 1 && !wasSuspended) return
       if (connecting.current && sock && sock.readyState === 0) return
-      setActive(false)
-      setReconnecting(true)
+      setActive(false); setReconnecting(true)
       clearTimeout(reconnectTimer.current)
-      reconnectTimer.current = setTimeout(() => {
-        if (!userStop.current && !suspendPaused.current) connectSocket().catch(() => {})
-      }, 400)
+      reconnectTimer.current = setTimeout(() => { if (!userStop.current && !suspendPaused.current) connectSocket().catch(() => {}) }, 400)
     }
     const onSuspend = () => {
       suspendPaused.current = true
@@ -284,8 +264,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       abandonSocket(activeSocketRef.current || ws.current)
       activeSocketRef.current = null
       clearInterval(keepAlive.current); keepAlive.current = null
-      setActive(false)
-      setReconnecting(false)
+      setActive(false); setReconnecting(false)
     }
     const onDeviceChange = async () => {
       if (userStop.current) return
