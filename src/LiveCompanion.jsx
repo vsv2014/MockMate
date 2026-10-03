@@ -5,7 +5,7 @@ import SoloFeedback from './SoloFeedback'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { getAutoSkip, getAnswerStyle, setAnswerStyle as persistAnswerStyle } from './lib/aiSettings'
-import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, listDocs } from './lib/docs'
+import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, listDocs, canReuseSpeculativeRag } from './lib/docs'
 import Documents from './Documents'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import { OverlayPanel, ScreenAnalysisPanel, IconBtn, CodeBlock } from './App'
@@ -188,17 +188,28 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
   function patch(p) { const next = { ...profile, ...p }; setProfile(next); saveProfile(next) }
   const managed = isManaged()   // managed → hide model picker, let the server auto-route
   const [pdfMsg, setPdfMsg] = useState('')
-  const [linuxAck, setLinuxAck] = useState(true)
-  const [shareVerified, setShareVerified] = useState(true)
-  const [protectionTest, setProtectionTest] = useState({ status: 'passed', message: 'OS capture protection active by default.' })
-  const [meetingContext, setMeetingContext] = useState({ active: false, app: null, label: null })
-  const [shareMode, setShareMode] = useState('entire-screen')
   const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
   const inElectron = typeof window !== 'undefined' && !!window.electronAPI
-  // Never block single-user/dev testing on manual preflight checkboxes or browser preview:
-  // only require a working voice + LLM provider so hints can actually run.
+  const isDevLocal = Boolean(import.meta.env?.DEV)
+    && typeof window !== 'undefined'
+    && /^(localhost|127\.0\.0\.1)$/i.test(window.location?.hostname || '')
+  const [linuxAck, setLinuxAck] = useState(isDevLocal)
+  const [shareVerified, setShareVerified] = useState(isDevLocal)
+  const [protectionTest, setProtectionTest] = useState(
+    isDevLocal
+      ? { status: 'passed', message: 'Dev mode: local preflight unlocked for testing.' }
+      : { status: 'idle', message: '' },
+  )
+  const [meetingContext, setMeetingContext] = useState({ active: false, app: null, label: null })
+  const [shareMode, setShareMode] = useState('entire-screen')
+  // BYOK with no LLM configured → hints would error on every question mid-call. Block Start and say why.
+  // Public builds enforce the full Electron + OS protection + share-preview safety gate;
+  // frictionless bypass is strictly restricted to local dev mode.
   const noLLM = providers.length === 0 && models.length === 0
-  const canStart = dgAvailable && !noLLM
+  const canStart = dgAvailable && !noLLM && (
+    isDevLocal
+    || (!!inElectron && (isLinux ? linuxAck : (protectionTest.status === 'passed' && shareVerified)))
+  )
   // Mic preflight is amber (may hear you); SysAudio on Win/mac is green.
   const micMode = sourceId === 'microphone'
   const audioPreflightColor = micMode ? '#fbbf24' : (isLinux ? '#fbbf24' : '#4ade80')
@@ -212,10 +223,8 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
     window.electronAPI?.getMeetingContext?.().then(ctx => setMeetingContext(ctx || { active: false })).catch(() => {})
     const off = window.electronAPI?.onMeetingDetected?.(ctx => {
       setMeetingContext(typeof ctx === 'object' ? ctx : { active: !!ctx, app: null, label: null })
+      if (!isDevLocal) setShareVerified(false) // a meeting/config change invalidates the prior preview assertion
     })
-    if (inElectron && !isLinux) {
-      testCaptureProtection()
-    }
     return () => { try { off?.() } catch {} }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -281,12 +290,14 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
                 ? '⚠ Overlay stealth NOT supported on Linux — visible in screen share'
                 : inElectron
                   ? '✓ Content protection available (Win/macOS) — still verify share preview'
-                  : '⚠ Browser/dev mode — Live Start blocked (no screen-capture protection)'}
+                  : isDevLocal
+                    ? '⚠ Local dev browser mode — preflight unlocked for local testing (no screen-capture protection)'
+                    : '⚠ Browser/dev mode — Live Start blocked (no screen-capture protection)'}
             </div>
           </div>
         </div>
 
-        {!inElectron && (
+        {!inElectron && !isDevLocal && (
           <div role="alert" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fca5a5' }}>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>Live Start blocked</div>
             <div>Live Interview needs the desktop app (Electron) for system audio + content protection. Open MockMate from the installed app, not a browser tab.</div>
@@ -623,13 +634,62 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const programmaticScrollRef = useRef(false)
   const programmaticScrollTimerRef = useRef(null)
   const [showJumpLatest, setShowJumpLatest] = useState(false)
-  const ragSpec = useRef({ q: '', p: null })
+  const ragSpec = useRef({ q: '', p: null, ac: null, timer: null })
+  const liveCaptureTextRef = useRef('')
+  const manualQRef = useRef('')
+  const generateHintRef = useRef(null)
   const metricsRef = useRef(null)
   const hintTimingRef = useRef(null)
   const captureRef = useRef(null)
   const handleCommittedRef = useRef(null)
   const handleRevisionRef = useRef(null)
   const handleRefinementRef = useRef(null)
+
+  const cancelSpeculativeRag = useCallback(({ keepComplete = false } = {}) => {
+    clearTimeout(ragSpec.current?.timer)
+    if (ragSpec.current) ragSpec.current.timer = null
+    if (!keepComplete) {
+      try { ragSpec.current?.ac?.abort() } catch {}
+      ragSpec.current = { q: '', p: null, ac: null, timer: null }
+    }
+  }, [])
+
+  const startSpeculativeRag = useCallback((rawText, { immediate = false } = {}) => {
+    const text = String(rawText || '').trim()
+    clearTimeout(ragSpec.current?.timer)
+    if (ragSpec.current) ragSpec.current.timer = null
+    if (!text) return
+    // Reuse existing speculative request if it already covers the same question/prefix
+    if (ragSpec.current?.p && canReuseSpeculativeRag(ragSpec.current.q, text)) return
+
+    const launch = () => {
+      if (!sessionActiveRef.current) return
+      if (ragSpec.current?.p && canReuseSpeculativeRag(ragSpec.current.q, text)) return
+      const peek = classifyTurn({
+        question: text,
+        profile: profileRef.current,
+        conversationHistory: interviewStateRef.current?.getLlmHistory?.({ includeLastAnswer: false }) || [],
+        lastClassification: lastClassificationRef.current,
+        recentScreen: recentScreenRef.current,
+      })
+      if (!shouldRetrieveDocs(peek)) return
+      try { ragSpec.current?.ac?.abort() } catch {}
+      const ac = new AbortController()
+      const opts = { ...liveRagOpts(peek, interviewConfigRef.current, 600), signal: ac.signal }
+      ragSpec.current = {
+        q: text,
+        ac,
+        timer: null,
+        p: retrieveContext(text, opts).catch(() => ''),
+      }
+    }
+
+    if (immediate) {
+      launch()
+    } else {
+      ragSpec.current.timer = setTimeout(launch, 320)
+    }
+  }, [])
 
   // M2 question capture pipeline — commit BEFORE generate.
   if (!captureRef.current) {
@@ -646,6 +706,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         return hist[hist.length - 1]?.text || lastHintText.current || ''
       },
       onLive: ({ text, status, reason }) => {
+        liveCaptureTextRef.current = text || ''
         setLiveCaptureText(text || '')
         setCaptureStatus(status || 'listening')
         interviewStateRef.current?.setLiveCapture?.({ text, status, reason })
@@ -660,23 +721,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           revisionCount: c.revisionCount,
           source: 'stt',
         })
-        // Speculative RAG pre-warm DURING the 700–1500ms stabilization window so document
-        // vectors/chunks are already resolved when onCommitted fires.
+        // Debounced, single-flight speculative RAG pre-warm DURING the stabilization window.
         const candText = String(c?.text || '').trim()
-        if (candText && candText.split(/\s+/).length >= 4 && ragSpec.current?.q !== candText) {
-          const peek = classifyTurn({
-            question: candText,
-            profile: profileRef.current,
-            conversationHistory: interviewStateRef.current?.getLlmHistory?.({ includeLastAnswer: false }) || [],
-            lastClassification: lastClassificationRef.current,
-            recentScreen: recentScreenRef.current,
-          })
-          if (shouldRetrieveDocs(peek)) {
-            ragSpec.current = {
-              q: candText,
-              p: retrieveContext(candText, liveRagOpts(peek, interviewConfigRef.current, 600)).catch(() => ''),
-            }
-          }
+        if (candText && candText.split(/\s+/).length >= 5) {
+          startSpeculativeRag(candText, { immediate: false })
         }
       },
       onCommitted: (c) => { handleCommittedRef.current?.(c) },
@@ -694,6 +742,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   useEffect(() => { extraContextRef.current = extraContext }, [extraContext])
   useEffect(() => { coachModeRef.current = coachMode }, [coachMode])   // so generateHint (a [] useCallback closure) reads the live value
+  useEffect(() => { liveCaptureTextRef.current = liveCaptureText }, [liveCaptureText])
+  useEffect(() => { manualQRef.current = manualQ }, [manualQ])
   useEffect(() => {
     interviewStateRef.current?.setProfile?.(profile)
     profileRef.current = profile
@@ -760,6 +810,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     sessionActiveRef.current = true
     return () => {
       sessionActiveRef.current = false
+      cancelSpeculativeRag()
       try { genManagerRef.current?.cancelCurrent?.('unmount') } catch {}
       try { captureRef.current?.reset?.() } catch {}
       bcRef.current?.close()
@@ -1126,14 +1177,18 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     logTrace('generating')
 
     let ragContext = ''
+    cancelSpeculativeRag({ keepComplete: true })
     if (shouldRetrieveDocs(classification)) {
       const spec = ragSpec.current
       const opts = liveRagOpts(classification, interviewConfigRef.current, 600)
-      ragContext = (spec.q === question && spec.p)
-        ? await spec.p.catch(() => '')
-        : await retrieveContext(question, opts).catch(() => '')
+      if (spec?.p && canReuseSpeculativeRag(spec.q, question)) {
+        ragContext = await spec.p.catch(() => '')
+      } else {
+        try { spec?.ac?.abort() } catch {}
+        ragContext = await retrieveContext(question, opts).catch(() => '')
+      }
     }
-    if (ragSpec.current?.q === question) ragSpec.current = { q: '', p: null }
+    ragSpec.current = { q: '', p: null, ac: null, timer: null }
     if (!isCurrent()) return
     const mergedContext = () => [extraContextRef.current, ragContext].filter(Boolean).join('\n\n') || undefined
 
@@ -1333,33 +1388,23 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         status: 'committed',
       }]
     })
+    liveCaptureTextRef.current = ''
     setLiveCaptureText('')
     setCaptureStatus('committed')
     lastHintText.current = q.text
 
-    // Speculative RAG after commit — same classify inputs as generateHint (incl. screen).
-    const peek = classifyTurn({
-      question: q.text,
-      profile: profileRef.current,
-      conversationHistory: state.getLlmHistory({ includeLastAnswer: false }),
-      lastClassification: lastClassificationRef.current,
-      recentScreen: recentScreenRef.current,
-    })
-    if (shouldRetrieveDocs(peek)) {
-      ragSpec.current = {
-        q: q.text,
-        p: retrieveContext(q.text, liveRagOpts(peek, interviewConfigRef.current, 600)).catch(() => ''),
-      }
-    }
-
     const isMic = liveSourceIdRef.current === 'microphone'
     if (isMic && !(diarizationLockedRef.current && !degradedRef.current)) {
+      // Pre-warm RAG once while waiting for manual confirmation / speaker lock
+      startSpeculativeRag(q.text, { immediate: true })
       pendingManualQ.current = { text: q.text, questionId: q.id }
+      manualQRef.current = q.text
       setManualQ(q.text)
       return
     }
     generateHint(q.text, { force: true, questionId: q.id })
   }
+  generateHintRef.current = generateHint
 
   // A clear interviewer correction invalidates the answer currently being generated.
   // Keep the old card as an explicit superseded record instead of a mysterious blank.
@@ -1577,8 +1622,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       } else if (cmd.type === 'scroll-down') {
         feedRef.current?.scrollBy?.({ top: 140, behavior: 'smooth' })
       } else if (cmd.type === 'answer-now') {
-        const candidateNow = (liveCaptureText || manualQ || lastHintText.current || '').trim()
-        if (candidateNow) generateHint(candidateNow, { force: true })
+        const candidateNow = (
+          liveCaptureTextRef.current
+          || manualQRef.current
+          || pendingManualQ.current?.text
+          || lastHintText.current
+          || ''
+        ).trim()
+        if (candidateNow) generateHintRef.current?.(candidateNow, { force: true })
       }
     })
     return () => { try { offCmd?.() } catch {} }

@@ -4,7 +4,7 @@ vi.mock('./apiClient', () => ({ apiFetch: (...args) => apiFetchMock(...args) }))
 import {
   addDoc, listDocs, removeDoc, inferDocType, getSelectedDocIds, setDocSelected,
   setDocType, filterDocsForRetrieve, DOC_TYPES,
-  sampleChunksForIndex, retrieveContext,
+  sampleChunksForIndex, retrieveContext, canReuseSpeculativeRag,
 } from './docs.js'
 
 const store = new Map()
@@ -131,5 +131,24 @@ describe('long document indexing', () => {
     })
     const result = await retrieveContext('unrelated question', { docIds: [d.id], minScore: 0.2, budgetMs: 500 })
     expect(result).toBe('')
+  })
+
+  it('reuses speculative RAG when committed question shares significant terms and cancels aborted speculative requests', async () => {
+    expect(canReuseSpeculativeRag(
+      'How did you implement Redis streams',
+      'How did you implement Redis streams in production?',
+    )).toBe(true)
+    expect(canReuseSpeculativeRag(
+      'How did you implement Redis streams',
+      'Design a URL shortener with Postgres',
+    )).toBe(false)
+
+    const d = addDoc({ name: 'Resume', type: 'resume', text: 'Implemented Redis streams and consumer groups for high throughput.' })
+    const ac = new AbortController()
+    ac.abort()
+    apiFetchMock.mockClear()
+    const cancelled = await retrieveContext('How did you implement Redis streams?', { docIds: [d.id], signal: ac.signal })
+    expect(cancelled).toBe('')
+    expect(apiFetchMock).not.toHaveBeenCalled()
   })
 })

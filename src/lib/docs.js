@@ -228,17 +228,55 @@ async function ensureIndexed(docs, { signal, force = false } = {}) {
   return all
 }
 
-export async function retrieveContext(question, { k = 4, minScore, budgetMs = 2000, docIds, types } = {}) {
+const SPEC_STOP_WORDS = new Set([
+  'the', 'and', 'for', 'with', 'that', 'this', 'from', 'your', 'you', 'are', 'was', 'were',
+  'what', 'how', 'why', 'when', 'where', 'who', 'which', 'can', 'could', 'would', 'should',
+  'tell', 'about', 'explain', 'describe', 'walk', 'through', 'have', 'has', 'had', 'into', 'please',
+  'did', 'does', 'in', 'on', 'at', 'to', 'of', 'by', 'as', 'is', 'it', 'or', 'be', 'do', 'an', 'so',
+])
+
+function significantWords(text = '') {
+  return String(text || '')
+    .toLowerCase()
+    .match(/[a-z0-9+#._-]{2,}/g)
+    ?.filter(w => !SPEC_STOP_WORDS.has(w)) || []
+}
+
+/**
+ * Determine whether a speculative RAG result pre-warmed for `specQuery` can be reused
+ * for `committedQuery` without issuing a second `/api/embed` request.
+ */
+export function canReuseSpeculativeRag(specQuery = '', committedQuery = '') {
+  const a = String(specQuery || '').trim().toLowerCase().replace(/[?.!,;:]+$/g, '')
+  const b = String(committedQuery || '').trim().toLowerCase().replace(/[?.!,;:]+$/g, '')
+  if (!a || !b) return false
+  if (a === b) return true
+  const wordsA = significantWords(a)
+  const wordsB = significantWords(b)
+  if (wordsA.length < 2 || wordsB.length < 2) return false
+  const setA = new Set(wordsA)
+  const overlap = wordsB.filter(w => setA.has(w)).length
+  if (b.startsWith(a) && wordsB.length - wordsA.length <= 3) return true
+  return overlap / wordsB.length >= 0.7
+}
+
+export async function retrieveContext(question, { k = 4, minScore, budgetMs = 2000, docIds, types, signal: externalSignal } = {}) {
   if (!question || !String(question).trim()) return ''
+  if (externalSignal?.aborted) return ''
   if (Array.isArray(docIds) && docIds.length === 0) return ''
   const docs = filterDocs(load(), { docIds, types }); if (!docs.length) return ''
   const threshold = typeof minScore === 'number' ? minScore : getDocThreshold()
   const startedAt = performance.now(); const ac = new AbortController(); let timeoutId
+  const onExternalAbort = () => {
+    clearTimeout(timeoutId)
+    ac.abort(externalSignal?.reason || new DOMException('Speculative RAG cancelled', 'AbortError'))
+  }
+  if (externalSignal) externalSignal.addEventListener('abort', onExternalAbort, { once: true })
   diagnostic('rag', 'retrieval_started', { documentCount: docs.length, requestedK: k, threshold, budgetMs })
   const timeout = new Promise(resolve => { timeoutId = setTimeout(() => { ac.abort(new DOMException('RAG deadline exceeded', 'AbortError')); diagnostic('rag', 'retrieval_timed_out', { documentCount: docs.length, budgetMs, durationMs: Math.round(performance.now() - startedAt) }, 'warn'); resolve('') }, budgetMs) })
   const work = (async () => {
     const [qv] = await embed([question], ac.signal)
-    if (!qv?.length) return ''
+    if (!qv?.length || externalSignal?.aborted) return ''
     let items = await ensureIndexed(docs, { signal: ac.signal })
     if (items.some(item => item.vector?.length && item.vector.length !== qv.length)) {
       for (const doc of docs) indexCache.delete(doc.id)
@@ -252,12 +290,15 @@ export async function retrieveContext(question, { k = 4, minScore, budgetMs = 20
     diagnostic('rag', 'retrieval_completed', { documentCount: docs.length, indexedChunkCount: items.length, hitCount: chunks.length, maxScore: chunks.length ? Number(Math.max(...chunks.map(c => c.score)).toFixed(3)) : 0, minScore: chunks.length ? Number(Math.min(...chunks.map(c => c.score)).toFixed(3)) : 0, durationMs: Math.round(performance.now() - startedAt) })
     return groundingBlock(chunks)
   })().catch(e => {
+    if (externalSignal?.aborted) return ''
     if (e?.name !== 'AbortError') diagnostic('rag', 'retrieval_failed', { reason: e?.name || 'error', durationMs: Math.round(performance.now() - startedAt) }, 'warn')
     const lexicalHits = lexicalTopK(question, buildLexicalItems(docs), { k, minScore: Math.max(0.28, threshold) })
     return groundingBlock(lexicalHits)
   })
   const result = await Promise.race([work, timeout])
   clearTimeout(timeoutId)
+  if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
+  if (externalSignal?.aborted) return ''
   if (result) return result
   // If embedding timed out, fall back to instant lexical retrieval so live answers still stay grounded.
   if (ac.signal.aborted) {

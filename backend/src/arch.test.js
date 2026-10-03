@@ -80,11 +80,14 @@ describe('ARCH runtime fallback', () => {
 })
 
 describe('ARCH performance telemetry', () => {
-  it('reports bounded p50/p95 stage metrics and runtime summary', () => {
+  it('reports bounded p50/p95 stage metrics Locally and omits process-global performance on hosted mode', () => {
     for (const value of [100, 120, 140, 500]) recordArchMetric('stt_final_ms', value)
     expect(performanceSnapshot().stt_final_ms).toEqual({ count: 4, p50: 120, p95: 500 })
     const summary = archRuntimeSummary({ hosted: false })
     expect(summary.routing.hint).toBe('fast')
     expect(summary.performance.stt_final_ms).toEqual({ count: 4, p50: 120, p95: 500 })
+
+    const hostedSummary = archRuntimeSummary({ hosted: true })
+    expect(hostedSummary.performance).toBeUndefined()
   })
 })

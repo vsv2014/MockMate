@@ -33,10 +33,12 @@ import {
   screenFingerprint,
 } from '../shared/screenContext.js'
 
+const isLocalDevApp = Boolean(import.meta.env?.DEV)
+  && typeof window !== 'undefined'
+  && /^(localhost|127\.0\.0\.1)$/i.test(window.location?.hostname || '')
 const inElectron = typeof window !== 'undefined' && (
   !!window.electronAPI?.isElectron
-  || /^(localhost|127\.0\.0\.1)$/i.test(window.location?.hostname || '')
-  || /[?&]app=1\b/.test(window.location?.search || '')
+  || isLocalDevApp
 )
 const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
 

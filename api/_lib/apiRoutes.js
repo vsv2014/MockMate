@@ -7,6 +7,15 @@ import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen, streamHint 
 import { findJobs } from './jobs.js'
 import { atsScore, tailorResume, referralMessage, resumeLatex } from './career.js'
 import { archRuntimeSummary, recordArchMetric, reasoningPolicy as defaultReasoningPolicy } from '../../backend/src/arch.js'
+import { isQuotaExhausted, isRateLimit, isTransient } from '../../shared/llm-errors.js'
+
+export function isProviderFailureError(e, { closed = false, signal = null } = {}) {
+  if (closed || signal?.aborted || e?.name === 'AbortError' || e?.message === 'client_disconnected') return false
+  if (e?.code === 'SCREEN_EMPTY' || e?.status === 400 || e?.statusCode === 400) return false
+  const status = Number(e?.status ?? e?.statusCode ?? 0)
+  if (status === 401 || status === 402 || status === 403 || status === 408 || status === 429 || status >= 500) return true
+  return isQuotaExhausted(e) || isRateLimit(e) || isTransient(e)
+}
 
 export const API_ROUTE_CONTRACT = [
   { method: 'GET', path: '/api/providers' }, { method: 'GET', path: '/api/models' },
@@ -59,8 +68,13 @@ export function registerApiRoutes(app, opts = {}) {
     try { res.json({ models: await listModels() }) }
     catch (e) { console.error('[api] GET /api/models:', e.message); res.json({ models: [] }) }
   })
-  app.get('/api/arch', ...guardLight, (_req, res) => {
-    try { res.json(archRuntimeSummary()) }
+  app.get('/api/arch', ...guardLight, (req, res) => {
+    try {
+      const ip = req.ip || req.socket?.remoteAddress || ''
+      const remoteHosted = ['1', 'true'].includes(String(process.env.MOCKMATE_HOSTED || '').toLowerCase())
+        || (!isLoopbackAddress(ip) && Boolean(ip))
+      res.json(archRuntimeSummary({ hosted: remoteHosted }))
+    }
     catch (e) { res.status(500).json({ error: e.message }) }
   })
 
@@ -105,9 +119,11 @@ export function registerApiRoutes(app, opts = {}) {
       if (onLlm) { try { await onLlm(req, path) } catch {} }
       if (!closed) res.json(key ? { [key]: out } : out)
     } catch (e) {
-      recordArchMetric('provider_failure_count', 1)
       if (onLlmFailure) { try { await onLlmFailure(req, path) } catch {} }
       if (closed || ac.signal.aborted || e?.name === 'AbortError') return
+      if (isProviderFailureError(e, { closed, signal: ac.signal })) {
+        recordArchMetric('provider_failure_count', 1)
+      }
       report(e)
       console.error(`[api] POST ${path} → ${e.status || 500}: ${e.message}`)
       res.status(e.status || 500).json({ error: e.message })
@@ -122,16 +138,19 @@ export function registerApiRoutes(app, opts = {}) {
   app.post('/api/analyze-screen', ...guard, async (req, res) => {
     const startedAt = Date.now()
     const ac = new AbortController()
-    res.on('close', () => { try { ac.abort() } catch {} })
+    let closed = false
+    res.on('close', () => { closed = true; try { ac.abort() } catch {} })
     try {
       const out = await analyzeScreen({ ...bodyWithPolicy('/api/analyze-screen', req.body || {}), signal: ac.signal })
       recordArchMetric('turn_latency_ms', Date.now() - startedAt)
       if (onLlm) { try { await onLlm(req, '/api/analyze-screen') } catch {} }
       if (!ac.signal.aborted) res.json({ analysis: out })
     } catch (e) {
-      recordArchMetric('provider_failure_count', 1)
       if (onLlmFailure) { try { await onLlmFailure(req, '/api/analyze-screen') } catch {} }
-      if (ac.signal.aborted || e?.name === 'AbortError') return
+      if (closed || ac.signal.aborted || e?.name === 'AbortError') return
+      if (isProviderFailureError(e, { closed, signal: ac.signal })) {
+        recordArchMetric('provider_failure_count', 1)
+      }
       report(e)
       console.error(`[api] POST /api/analyze-screen → ${e.status || 500}: ${e.message}`)
       res.status(e.status || 500).json({ error: e.message, code: e.code || undefined })
@@ -179,7 +198,9 @@ export function registerApiRoutes(app, opts = {}) {
         onUsage: u => send('usage', u),
         onProviderEvent: e => {
           providerStarted = true
-          if (e?.event === 'fallback') recordArchMetric('fallback_count', 1)
+          if (e?.event === 'fallback' || (e?.type === 'started' && Number(e?.attemptIndex) > 0)) {
+            recordArchMetric('fallback_count', 1)
+          }
           send('provider', e)
         },
         signal: ac.signal,
@@ -189,10 +210,12 @@ export function registerApiRoutes(app, opts = {}) {
       else await consumeReservation()
       send(out?.skipped ? 'skip' : 'done', {})
     } catch (e) {
-      recordArchMetric('provider_failure_count', 1)
       if (emittedToken || providerStarted) await consumeReservation()
       else await releaseReservation()
       if (!closed && !ac.signal.aborted && e?.name !== 'AbortError') {
+        if (isProviderFailureError(e, { closed, signal: ac.signal })) {
+          recordArchMetric('provider_failure_count', 1)
+        }
         report(e)
         send('error', { error: e.message })
       }
