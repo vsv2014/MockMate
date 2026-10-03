@@ -1,0 +1,37 @@
+name: One-shot desktop audit patch
+
+on:
+  push:
+    branches: [codex/desktop-audit-67]
+    paths:
+      - '.github/audit-patch-trigger'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-audit-autopatch
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: codex/desktop-audit-67
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: node scripts/audit-autopatch.mjs
+      - name: Verify patched source
+        run: npm ci && npm --prefix backend ci && npm test && npm run smoke:api && npm run build
+      - name: Commit verified patch
+        run: |
+          git config user.name 'mockmate-audit-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add api/_lib/core.js src/useSystemAudio.js src/Solo.jsx
+          git diff --cached --quiet && exit 0
+          git commit -m 'Close provider, diarization and Solo recovery audit gaps'
+          git push origin HEAD:codex/desktop-audit-67
