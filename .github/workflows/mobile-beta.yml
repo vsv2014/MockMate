@@ -1,11 +1,6 @@
 name: Mobile beta builds
 
 on:
-  pull_request:
-    paths:
-      - 'mobile/**'
-      - 'backend/**'
-      - '.github/workflows/mobile-beta.yml'
   workflow_dispatch:
     inputs:
       platform:
@@ -20,6 +15,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: mobile-beta-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -38,7 +37,6 @@ jobs:
       - run: npm run build
 
   build:
-    if: github.event_name == 'workflow_dispatch'
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 90
