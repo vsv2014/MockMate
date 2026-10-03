@@ -8,7 +8,6 @@ import { saveSession, saveSoloDraft, loadSoloDraft, clearSoloDraft } from './his
 import { loadProfile, saveProfile as persistProfile } from './lib/profile'
 import { fmtClock } from './lib/ui'
 import { LANGUAGES, STT_LANG } from './lib/languages'
-import { isTransient } from '../shared/llm-errors.js'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { createSessionId, createGeneration, hasEnoughAnswerLength } from './lib/sessionGen'
@@ -338,12 +337,9 @@ export default function Solo({ onHome, noProviders }) {
 
     const retryTransient = async (msg, status) => {
       if (!isCurrent()) return null
-      const transient = isTransient({ status, message: msg })
-      if (transient && attempt < 2) {
-        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)))
-        if (!isCurrent()) return null
-        return requestTurn(current, attempt + 1, turnG)
-      }
+      // The shared core adapter already performs bounded provider retry/failover. Never repeat the
+      // entire interview request here: doing so multiplies latency/cost and can duplicate turns.
+      // Any final failure rolls the candidate turn back so the user explicitly chooses Retry.
       // Hard failure — orphan rollback if last turn is a committed candidate
       if (isCurrent()) {
         const last = current[current.length - 1]

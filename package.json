@@ -11,8 +11,8 @@
   "scripts": {
     "dev": "concurrently \"node server.js\" \"vite\"",
     "build": "vite build",
-    "electron:dev": "concurrently -k \"node server.js\" \"vite\" \"wait-on http://localhost:5174 && electron .\"",
-    "electron:dev:nosandbox": "concurrently -k \"node server.js\" \"vite\" \"wait-on http://localhost:5174 && electron . --no-sandbox\"",
+    "electron:dev": "concurrently -k \"vite\" \"wait-on http://localhost:5174 && electron .\"",
+    "electron:dev:nosandbox": "concurrently -k \"vite\" \"wait-on http://localhost:5174 && electron . --no-sandbox\"",
     "electron:win": "vite build && electron-builder --win",
     "electron:build": "vite build && electron-builder",
     "electron:build:win": "vite build && electron-builder --win",
