@@ -39,7 +39,7 @@ patch('api/_lib/core.js',
   at.addGrant({ roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: true })
   return { token: await at.toJwt(), url: LIVEKIT_URL }`,
 `  const localIdentity = String(identity || 'peer').replace(/[^a-z0-9:_-]/gi, '_').slice(0, 96)
-  const accountIdentity = requesterId ? `u_${String(requesterId).replace(/[^a-z0-9_-]/gi, '').slice(-40)}_${requestedRole}` : localIdentity
+  const accountIdentity = requesterId ? ('u_' + String(requesterId).replace(/[^a-z0-9_-]/gi, '').slice(-40) + '_' + requestedRole) : localIdentity
   const metadata = JSON.stringify({ mockmateRole: requestedRole, accountBound: !!requesterId })
   const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity: accountIdentity, name: String(name || accountIdentity).slice(0, 120), metadata, ttl: '2h' })
   at.addGrant({ roomJoin: true, room: roomId, canPublish: true, canSubscribe: true, canPublishData: true })
