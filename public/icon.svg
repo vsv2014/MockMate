@@ -1,51 +1,45 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
   <defs>
-    <linearGradient id="bgGrad" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#0F292E"/>
-      <stop offset="48%" stop-color="#0B161E"/>
-      <stop offset="100%" stop-color="#070A0F"/>
+    <linearGradient id="bg" x1="70" y1="38" x2="438" y2="474" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#12343A"/>
+      <stop offset="0.46" stop-color="#071C25"/>
+      <stop offset="1" stop-color="#03080E"/>
     </linearGradient>
-    <radialGradient id="coreGlow" cx="256" cy="230" r="210" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#14B8A6" stop-opacity="0.34"/>
-      <stop offset="60%" stop-color="#0D9488" stop-opacity="0.10"/>
-      <stop offset="100%" stop-color="#070A0F" stop-opacity="0"/>
+    <linearGradient id="rim" x1="70" y1="32" x2="444" y2="484" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5EEAD4"/>
+      <stop offset="0.44" stop-color="#14B8A6"/>
+      <stop offset="1" stop-color="#10B981"/>
+    </linearGradient>
+    <linearGradient id="pillar" x1="0" y1="126" x2="0" y2="390" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.58" stop-color="#F0FFFC"/>
+      <stop offset="1" stop-color="#20E0CF"/>
+    </linearGradient>
+    <linearGradient id="shoulder" x1="0" y1="154" x2="0" y2="278" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A7FFF1"/>
+      <stop offset="1" stop-color="#18CBB8"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="175" cy="120" r="270" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3FFFE1" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#3FFFE1" stop-opacity="0"/>
     </radialGradient>
-    <linearGradient id="rimGrad" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#5EEAD4" stop-opacity="0.72"/>
-      <stop offset="50%" stop-color="#14B8A6" stop-opacity="0.28"/>
-      <stop offset="100%" stop-color="#10B981" stop-opacity="0.55"/>
-    </linearGradient>
-    <linearGradient id="barOuter" x1="256" y1="124" x2="256" y2="388" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFFFFF"/>
-      <stop offset="65%" stop-color="#E6FFFA"/>
-      <stop offset="100%" stop-color="#5EEAD4"/>
-    </linearGradient>
-    <linearGradient id="barInner" x1="256" y1="124" x2="256" y2="332" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#99F6E4"/>
-      <stop offset="100%" stop-color="#14B8A6"/>
-    </linearGradient>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#000000" flood-opacity="0.42"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#20E0CF" flood-opacity="0.14"/>
+    </filter>
   </defs>
 
-  <!-- Squircle obsidian-teal glass base -->
-  <rect x="20" y="20" width="472" height="472" rx="112" fill="url(#bgGrad)"/>
-  <rect x="20" y="20" width="472" height="472" rx="112" fill="url(#coreGlow)"/>
-  <rect x="23" y="23" width="466" height="466" rx="109" stroke="url(#rimGrad)" stroke-width="6"/>
+  <rect x="19" y="19" width="474" height="474" rx="112" fill="url(#bg)"/>
+  <rect x="19" y="19" width="474" height="474" rx="112" fill="url(#glow)"/>
+  <rect x="22" y="22" width="468" height="468" rx="109" stroke="url(#rim)" stroke-width="4"/>
+  <path d="M74 59C146 30 367 30 438 64" stroke="#D5FFF8" stroke-opacity="0.26" stroke-width="3" stroke-linecap="round"/>
 
-  <!-- Subtle inner sonic ring -->
-  <circle cx="256" cy="256" r="184" stroke="#2DD4BF" stroke-opacity="0.14" stroke-width="3"/>
-
-  <!-- 5-Bar Acoustic-Wave "M" Monogram -->
-  <!-- Left Outer Pillar -->
-  <rect x="114" y="128" width="42" height="256" rx="21" fill="url(#barOuter)"/>
-  <!-- Left Inner Shoulder Bar -->
-  <rect x="175" y="128" width="42" height="148" rx="21" fill="url(#barInner)"/>
-  <!-- Center Dip Bar -->
-  <rect x="235" y="128" width="42" height="196" rx="21" fill="url(#barOuter)"/>
-  <!-- Right Inner Shoulder Bar -->
-  <rect x="295" y="128" width="42" height="148" rx="21" fill="url(#barInner)"/>
-  <!-- Right Outer Pillar -->
-  <rect x="356" y="128" width="42" height="256" rx="21" fill="url(#barOuter)"/>
-
-  <!-- Live Listening Pulse Dot under Center Bar -->
-  <circle cx="256" cy="364" r="15" fill="#2DD4BF"/>
+  <g filter="url(#softShadow)">
+    <rect x="116" y="126" width="44" height="258" rx="22" fill="url(#pillar)"/>
+    <rect x="177" y="153" width="42" height="126" rx="21" fill="url(#shoulder)"/>
+    <rect x="234" y="178" width="44" height="150" rx="22" fill="url(#pillar)"/>
+    <rect x="293" y="153" width="42" height="126" rx="21" fill="url(#shoulder)"/>
+    <rect x="352" y="126" width="44" height="258" rx="22" fill="url(#pillar)"/>
+    <circle cx="256" cy="365" r="15" fill="#35E3D1"/>
+  </g>
 </svg>
