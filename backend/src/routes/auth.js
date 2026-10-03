@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import rateLimit from 'express-rate-limit'
 import { store, toSafeUser, currentPeriod } from '../store.js'
-import { limitFor } from '../plans.js'
+import { effectivePlan, limitFor } from '../plans.js'
 import { signToken, requireAuth } from '../middleware/auth.js'
 import { sendResetEmail } from '../mailer.js'
 
@@ -57,11 +57,12 @@ router.get('/me', requireAuth, async (req, res) => {
   try {
     const user = await store().findUserById(req.userId)
     if (!user) return res.status(404).json({ error: 'Account not found' })
-    const plan = user.plan || 'free'
+    const plan = effectivePlan(user)
     const usage = await store().getUsage(user.id, currentPeriod())
     const limit = limitFor(plan)
+    const safeUser = { ...toSafeUser(user), plan }
     res.json({
-      user: toSafeUser(user), plan,
+      user: safeUser, plan,
       usage: { period: usage.period, llmCalls: usage.llmCalls || 0, sttSeconds: usage.sttSeconds || 0 },
       limits: { llmCalls: limit.llmCalls, sttSeconds: limit.sttSeconds },
     })
@@ -96,7 +97,6 @@ router.post('/forgot-password', authLimiter, async (req, res) => {
       const link = `${base}?token=${raw}`
       const delivery = await sendResetEmail(user.email, link)
       if (delivery?.delivered === 'unavailable') {
-        // Do not destroy a still-valid previous link merely because outbound email is down.
         await store().updateUser(user.id, previous)
       }
     }
@@ -191,7 +191,6 @@ router.get('/google/callback', async (req, res) => {
     let user = await store().findUserByGoogleId(profile.sub)
     if (!user) {
       const existing = await store().findUserByEmail(profile.email)
-      // Never silently attach a social identity to an unverified password account.
       if (existing?.passwordHash && !existing.googleId) {
         return res.status(409).send('An account already exists for this email. Sign in with your password first.')
       }
