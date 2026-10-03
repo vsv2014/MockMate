@@ -323,8 +323,11 @@ export default function Solo({ onHome, noProviders }) {
   function saveProfile(p) { setProfile(p); persistProfile(p) }
   function patchProfile(patch) { saveProfile({ ...profile, ...patch }) }
 
-  const hasContext = !!(String(profile.resume || '').trim().length > 40 || String(profile.jobDescription || '').trim().length > 40 || String(profile.targetRole || '').trim() || String(profile.customPrompt || '').trim() || hasDocs())
-  const canStartSolo = !noProviders
+  const isDevLocal = Boolean(import.meta.env?.DEV)
+    && typeof window !== 'undefined'
+    && /^(localhost|127\.0\.0\.1)$/i.test(window.location?.hostname || '')
+  const hasContext = !!(String(profile.resume || '').trim().length > 40 || String(profile.jobDescription || '').trim().length > 40 || hasDocs())
+  const canStartSolo = !noProviders && (hasContext || isDevLocal)
 
   async function requestTurn(current, attempt = 0, gen = null) {
     const turnG = attempt === 0 ? turnGen.current.bump() : gen

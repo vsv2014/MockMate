@@ -488,9 +488,12 @@ function launchTrayAndShortcuts() {
   try { globalShortcut.register('F7', captureScreen) } catch {}
 
   // Zero-mouse overlay navigation & Top-Center Camera Anchor (Teleprompter) mode:
+  // Only dispatch when the window is actively in 'overlay' or 'teleprompter' mode so
+  // pressing Alt+T/R/Up/Down on the full 'app' dashboard never resizes or hijacks it.
+  const isOverlayActive = () => mainWindow && !mainWindow.isDestroyed() && (lastWindowMode === 'overlay' || lastWindowMode === 'teleprompter')
   try {
     globalShortcut.register('Alt+T', () => {
-      if (!mainWindow || mainWindow.isDestroyed()) return
+      if (!isOverlayActive()) return
       if (lastWindowMode === 'teleprompter') {
         lastWindowMode = null
         ipcMain.emit('set-window-mode', null, 'overlay')
@@ -500,12 +503,15 @@ function launchTrayAndShortcuts() {
       }
     })
     globalShortcut.register('Alt+Up', () => {
+      if (!isOverlayActive()) return
       try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-up' }) } catch {}
     })
     globalShortcut.register('Alt+Down', () => {
+      if (!isOverlayActive()) return
       try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-down' }) } catch {}
     })
     globalShortcut.register('Alt+R', () => {
+      if (!isOverlayActive()) return
       try { mainWindow?.webContents?.send('overlay-command', { type: 'answer-now' }) } catch {}
     })
   } catch {}

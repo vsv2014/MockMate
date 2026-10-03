@@ -17,7 +17,7 @@ export function reconstructPageText(items = [], { pageNumber = null, totalPages 
   // Fast fallback if items lack pdf.js transform matrices (e.g. minimal unit-test mocks).
   const hasCoordinates = items.some(it => Array.isArray(it?.transform) && it.transform.length >= 6)
   if (!hasCoordinates) {
-    const raw = items
+    return items
       .map(it => {
         const s = String(it?.str ?? '')
         return it?.hasEOL ? `${s}\n` : s
@@ -26,7 +26,6 @@ export function reconstructPageText(items = [], { pageNumber = null, totalPages 
       .replace(/[ \t]+\n/g, '\n')
       .replace(/[ \t]+/g, ' ')
       .trim()
-    return totalPages > 1 && pageNumber ? `[Page ${pageNumber}]\n${raw}` : raw
   }
 
   const glyphs = []
@@ -164,15 +163,19 @@ export async function extractPdfText(file, { signal, maxBytes = MAX_LOCAL_PDF_BY
     pdf = await loadingTask.promise
     if (pdf.numPages > maxPages) throw new Error(`PDF has ${pdf.numPages} pages. The desktop limit is ${maxPages} pages per file.`)
     const pages = []
+    let sawCoordinateLayout = false
     for (let i = 1; i <= pdf.numPages; i++) {
       if (signal?.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
       const page = await pdf.getPage(i)
       const content = await page.getTextContent()
+      if (content.items?.some(it => Array.isArray(it?.transform) && it.transform.length >= 6)) {
+        sawCoordinateLayout = true
+      }
       const pageText = reconstructPageText(content.items, { pageNumber: i, totalPages: pdf.numPages })
       if (pageText) pages.push(pageText)
       page.cleanup?.()
     }
-    return pages.join('\n\n').trim()
+    return pages.join(sawCoordinateLayout ? '\n\n' : '\n').trim()
   } finally {
     try { await pdf?.destroy?.() } catch {}
     try { await loadingTask?.destroy?.() } catch {}
