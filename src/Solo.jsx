@@ -11,7 +11,7 @@ import { LANGUAGES, STT_LANG } from './lib/languages'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { createSessionId, createGeneration, hasEnoughAnswerLength } from './lib/sessionGen'
-import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, hasDocs } from './lib/docs'
+import { retrieveContext, warmDocs, addDoc, getSelectedDocIds } from './lib/docs'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import Documents from './Documents'
 import CustomPromptStudio from './components/CustomPromptStudio'
@@ -59,7 +59,7 @@ function Chips({ options, value, onChange }) {
     </div>
   )
 }
-const textInput = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: 13, outline: 'none', fontFamily: T.font }
+const textInput = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: 13, fontFamily: T.font }
 
 // Honest listening indicator — soft pulse when active, static dim when not. No fake dancing bars.
 function Waveform({ active }) {
@@ -324,10 +324,11 @@ export default function Solo({ onHome, noProviders }) {
   function saveProfile(p) { setProfile(p); persistProfile(p) }
   function patchProfile(patch) { saveProfile({ ...profile, ...patch }) }
 
+  const [selectedDocIds, setSelectedDocIds] = useState(() => getSelectedDocIds())
   const isDevLocal = Boolean(import.meta.env?.DEV)
     && typeof window !== 'undefined'
     && /^(localhost|127\.0\.0\.1)$/i.test(window.location?.hostname || '')
-  const hasContext = !!(String(profile.resume || '').trim().length > 40 || String(profile.jobDescription || '').trim().length > 40 || hasDocs())
+  const hasContext = !!(String(profile.resume || '').trim().length > 40 || String(profile.jobDescription || '').trim().length > 40 || selectedDocIds.length > 0)
   const canStartSolo = !noProviders && (hasContext || isDevLocal)
 
   async function requestTurn(current, attempt = 0, gen = null) {
@@ -719,7 +720,7 @@ export default function Solo({ onHome, noProviders }) {
         )}
         <div>
           <Label>Knowledge & notes (optional)</Label>
-          <Documents hideBioTypes />
+          <Documents hideBioTypes onLibraryChange={() => setSelectedDocIds(getSelectedDocIds())} />
         </div>
       </Section>
 

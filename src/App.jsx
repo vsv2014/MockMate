@@ -961,12 +961,15 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
   const [requestedLanguage, setRequestedLanguage] = useState('')
   const [codingTab, setCodingTab] = useState('all') // 'all' | 'code' | 'approach'
   useEffect(() => { if (!analyzing) setRequestedLanguage('') }, [analyzing, analysis])
+  useEffect(() => { setCodingTab('all') }, [analysis])
   if (!analyzing && !analysis) return null
   // Supports wrapped screen-context records { analysis, status, error } and legacy flat analysis.
   const record = analysis?.analysis || analysis
   const status = analysis?.status
   const err = analysis?.error || record?.error
   const isCoding = (record?.contentType === 'coding') || (record?.screenFamily === 'screen_code')
+  const hasCodingTabs = Boolean(record?.code && Array.isArray(record?.approach) && record.approach.length > 0)
+  const activeCodingTab = hasCodingTabs ? codingTab : 'all'
   const accent = isCoding ? 'rgba(34,197,94,0.28)' : 'rgba(234,179,8,0.28)'
   const accentBg = isCoding ? 'rgba(12, 28, 22, 0.88)' : 'rgba(28, 23, 12, 0.88)'
   const statusLabel = analyzing ? 'Analyzing…'
@@ -1047,7 +1050,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
                     })}
                   </div>
                 )}
-                {codingTab !== 'code' && Array.isArray(record.approach) && record.approach.length > 0 && (
+                {activeCodingTab !== 'code' && Array.isArray(record.approach) && record.approach.length > 0 && (
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>APPROACH</div>
                     {record.approach.map((step, i) => (
@@ -1057,8 +1060,8 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
                     ))}
                   </div>
                 )}
-                {codingTab !== 'approach' && record.code && <CodeBlock code={record.code} runnableCode={record.runnableCode} language={record.language} />}
-                {codingTab !== 'code' && Array.isArray(record.testCases) && record.testCases.length > 0 && (
+                {activeCodingTab !== 'approach' && record.code && <CodeBlock code={record.code} runnableCode={record.runnableCode} language={record.language} />}
+                {activeCodingTab !== 'code' && Array.isArray(record.testCases) && record.testCases.length > 0 && (
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>SAMPLE TESTS</div>
                     {record.testCases.slice(0, 4).map((test, i) => (
@@ -1072,7 +1075,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
                     ))}
                   </div>
                 )}
-                {codingTab !== 'code' && Array.isArray(record.edgeCases) && record.edgeCases.length > 0 && (
+                {activeCodingTab !== 'code' && Array.isArray(record.edgeCases) && record.edgeCases.length > 0 && (
                   <div style={{ marginBottom: 6 }}>
                     <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>EDGE CASES</div>
                     {record.edgeCases.map((ec, i) => (

@@ -224,7 +224,7 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
   const selectedExtraCount = documentMeta.filter(d => d.type !== 'resume' && d.type !== 'jd' && d.selected !== false).length
   const contextSourceCount = Number(!!profile.resume?.trim()) + Number(!!profile.jobDescription?.trim()) + selectedExtraCount
 
-  const inp = { width: '100%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text1, padding: '10px 12px', borderRadius: T.rCtrl, fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: T.font }
+  const inp = { width: '100%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text1, padding: '10px 12px', borderRadius: T.rCtrl, fontSize: 13, boxSizing: 'border-box', fontFamily: T.font }
   const preflightOk = (ok) => ok ? '#4ade80' : '#f87171'
 
   useEffect(() => {
@@ -2111,7 +2111,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             aria-label="Type interview question"
             style={{
               flex: 1, height: 34, padding: '0 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)',
-              background: 'rgba(0,0,0,0.35)', color: T.text1, fontSize: 12, fontFamily: T.font, outline: 'none',
+              background: 'rgba(0,0,0,0.35)', color: T.text1, fontSize: 12, fontFamily: T.font,
             }}
           />
           <button
@@ -2157,7 +2157,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             </div>
             <textarea value={extraContext} onChange={e => setExtraContext(e.target.value)}
               placeholder="Extra context — e.g. 'Focus on Python' · 'System design round'"
-              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(20,184,166,0.25)', borderRadius: 5, color: T.text1, fontSize: 10, padding: '5px 7px', resize: 'vertical', minHeight: 44, outline: 'none', fontFamily: T.font, lineHeight: 1.5, boxSizing: 'border-box' }} rows={2} />
+              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(20,184,166,0.25)', borderRadius: 5, color: T.text1, fontSize: 10, padding: '5px 7px', resize: 'vertical', minHeight: 44, fontFamily: T.font, lineHeight: 1.5, boxSizing: 'border-box' }} rows={2} />
           </div>
         </details>
       </div>

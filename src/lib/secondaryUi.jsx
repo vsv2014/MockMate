@@ -13,7 +13,7 @@ export const S = {
   input: {
     width: '100%', background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl,
     padding: '10px 12px', color: T.text1, fontSize: 13, marginBottom: 12, boxSizing: 'border-box',
-    outline: 'none', fontFamily: T.font,
+    fontFamily: T.font,
   },
   btnPrimary: {
     width: '100%', height: 44, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl,

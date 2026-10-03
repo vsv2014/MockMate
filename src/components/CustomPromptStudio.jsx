@@ -342,7 +342,6 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
           fontSize: compact ? 11.5 : 12.5,
           lineHeight: 1.55,
           fontFamily: T.font,
-          outline: 'none',
           resize: 'vertical',
           minHeight: compact ? 84 : 122,
           border: `1px solid ${value?.trim() ? 'rgba(34,211,238,0.6)' : T.border}`,
@@ -432,7 +431,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
             maxLength={48}
             style={{
               flex: 1, height: 30, padding: '0 9px', borderRadius: 7,
-              background: T.surface2, border: `1px solid ${T.accentBorder}`, color: T.text1, fontSize: 11.5, fontFamily: T.font, outline: 'none',
+              background: T.surface2, border: `1px solid ${T.accentBorder}`, color: T.text1, fontSize: 11.5, fontFamily: T.font,
             }}
           />
           <button

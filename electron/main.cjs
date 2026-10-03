@@ -78,7 +78,7 @@ function applyPillGeometry() {
 function applyTeleprompterGeometry() {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const area = activeDisplayWorkArea(mainWindow)
-  const w = Math.min(480, Math.max(320, area.width - 40))
+  const w = Math.min(760, Math.max(360, area.width - 40))
   const h = Math.min(240, Math.max(180, area.height - 40))
   const x = area.x + Math.max(0, Math.round((area.width - w) / 2))
   const y = area.y + 8
@@ -979,7 +979,11 @@ ipcMain.on('set-ignore-mouse-events', (_, { ignore, forward } = {}) => {
 ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const [x, y] = mainWindow.getPosition(); mainWindow.setPosition(x + dx, y + dy)
-  lastWindowMode = null   // geometry changed manually — let the next set-window-mode re-apply
+  // Preserve overlay shortcut eligibility ('overlay' / 'teleprompter') when dragging the HUD;
+  // dragging out of the top-center teleprompter dock transitions to free-floating 'overlay'.
+  if (lastWindowMode === 'teleprompter' || lastWindowMode === 'overlay') {
+    lastWindowMode = 'overlay'
+  }
 })
 ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
@@ -993,16 +997,19 @@ ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
       mainWindow.setSize(nw, nh)
     }
   } catch {}
-  // Persist HUD size whenever the user resizes (overlay or restoring from pill).
-  if (lastWindowMode === 'overlay' || lastWindowMode === 'pill' || lastWindowMode == null) {
-    if (nw < 900 && nh < 900) lastOverlaySize = { w: nw, h: nh }
+  // Persist HUD size whenever the user resizes (overlay or restoring from pill) and keep
+  // lastWindowMode = 'overlay' so Alt+T / Alt+R / Alt+Up / Alt+Down continue working after resize.
+  if (lastWindowMode === 'overlay' || lastWindowMode === 'teleprompter' || lastWindowMode === 'pill' || lastWindowMode == null) {
+    if (nw < 900 && nh < 900) {
+      lastOverlaySize = { w: nw, h: nh }
+      if (lastWindowMode !== 'app') lastWindowMode = 'overlay'
+    }
   }
-  lastWindowMode = null
 })
 // Switch between the full windowed dashboard ('app'), compact overlay ('overlay'),
 // top-center camera anchor ('teleprompter'), and minimized badge ('pill').
 ipcMain.on('set-window-mode', (_, mode) => {
-  if (!mainWindow || mainWindow.isDestroyed() || mode === lastWindowMode) return
+  if (!mainWindow || mainWindow.isDestroyed() || (mode === lastWindowMode && mode === 'app')) return
   suppressBlurHide(900)
   lastWindowMode = mode
   try {

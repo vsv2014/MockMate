@@ -12,7 +12,7 @@ const inputStyle = {
   width: '100%', height: 42, padding: '0 12px', boxSizing: 'border-box',
   background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCtrl,
   color: T.text1, fontFamily: T.font, fontSize: 14, fontWeight: 400,
-  outline: 'none', transition: 'border-color 0.15s',
+  transition: 'border-color 0.15s',
 }
 export const linkStyle = {
   background: 'transparent', border: 'none', padding: 0,
