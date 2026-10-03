@@ -26,6 +26,7 @@ describe('session history persistence', () => {
     expect(entry.setup).toEqual({
       selectedDocumentIds: ['d1'], playbookActive: true,
       resumeIncluded: true, jobDescriptionIncluded: true,
+      language: 'English', responseStyle: 'balanced', modelStrategy: null,
     })
     expect(loadSessions()[0].company).toBe('Acme')
   })

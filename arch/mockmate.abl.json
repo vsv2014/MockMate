@@ -45,6 +45,27 @@
       ]
     }
   },
+  "routing": {
+    "reasoning": {
+      "hint": "fast",
+      "live_hint": "fast",
+      "autocomplete": "fast",
+      "interview": "balanced",
+      "evaluate": "strong",
+      "report": "strong",
+      "resume": "strong",
+      "career": "strong",
+      "screen": "vision",
+      "vision": "vision",
+      "coding_screen": "vision",
+      "default": "balanced"
+    }
+  },
+  "runtime": {
+    "transcription": {
+      "batch": { "retries": 1, "timeoutMs": 30000, "cooldownMs": 30000 }
+    }
+  },
   "performance": {
     "principle": "measure_hot_path_stages_not_only_total_request_time",
     "reportPercentiles": [50, 95],

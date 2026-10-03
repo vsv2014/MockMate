@@ -66,6 +66,7 @@ function RoomInner({ session, onEnd, onLeave }) {
   const [hintLoading, setHintLoading] = useState(false)
   const [hintOpen, setHintOpen] = useState(true)
   const lastHintQuestion = useRef('')
+  const hintRequest = useRef(null)
   const [provider] = useState(() => isManaged() ? '' : loadModelSelection())
 
   // Content protection: Document Picture-in-Picture (excluded from getDisplayMedia capture,
@@ -124,7 +125,7 @@ function RoomInner({ session, onEnd, onLeave }) {
   }, [hint, hintLoading, pipWindow]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close PiP on unmount.
-  useEffect(() => () => { try { pipWindow?.close() } catch {} }, [pipWindow])
+  useEffect(() => () => { try { pipWindow?.close() } catch {}; hintRequest.current?.abort?.() }, [pipWindow])
 
   // Any screen share in the room (yours or your partner's), e.g. for live coding.
   const screenTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false })
@@ -175,19 +176,35 @@ function RoomInner({ session, onEnd, onLeave }) {
     setHintOpen(true)
     // In Electron, notify the protected co-pilot window that we're loading.
     if (inElectron) window.electronAPI.sendHint?.({ hint: null, hintLoading: true, question: last.text })
+    hintRequest.current?.abort?.()
+    const controller = new AbortController()
+    hintRequest.current = controller
+    const question = last.text
     const profile = { name: session.name, targetRole: session.targetRole, resume: session.resume }
     apiFetch('/api/hint', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: last.text, profile, provider })
+      body: JSON.stringify({ question, profile, provider }),
+      signal: controller.signal,
     })
-      .then(r => r.json())
+      .then(async r => {
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok) throw new Error(d?.error || `Hint failed (${r.status})`)
+        return d
+      })
       .then(d => {
+        if (controller.signal.aborted || lastHintQuestion.current !== question) return
         setHint(d.hint || null)
         setHintLoading(false)
-        if (inElectron) window.electronAPI.sendHint?.({ hint: d.hint || null, hintLoading: false, question: last.text })
+        if (inElectron) window.electronAPI.sendHint?.({ hint: d.hint || null, hintLoading: false, question })
       })
-      .catch(() => setHintLoading(false))
+      .catch(e => {
+        if (e?.name === 'AbortError') return
+        if (lastHintQuestion.current === question) {
+          setHintLoading(false)
+          setSttError(e?.message || 'Could not generate hint')
+        }
+      })
   }, [transcript]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Start Deepgram mic transcription on join (same path as Solo — Web Speech is unreliable in Electron).

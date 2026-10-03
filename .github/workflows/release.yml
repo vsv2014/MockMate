@@ -36,6 +36,7 @@ jobs:
             platform: mac
             artifact: |
               release/*.dmg
+              release/*.zip
               release/*.yml
 
     runs-on: ${{ matrix.os }}
@@ -152,7 +153,7 @@ jobs:
             ? [[/\.exe$/i, 'Windows installer'], [/^latest\.yml$/i, 'latest.yml'], [/\.blockmap$/i, 'Windows blockmap']]
             : process.env.PLATFORM === 'linux'
               ? [[/\.AppImage$/i, 'Linux AppImage'], [/^latest-linux\.yml$/i, 'latest-linux.yml']]
-              : [[/\.dmg$/i, 'macOS DMG']]
+              : [[/\.dmg$/i, 'macOS DMG'], [/\.zip$/i, 'macOS updater ZIP']]
           const missing = required.filter(([re]) => !has(re)).map(([, label]) => label)
           if (missing.length) {
             console.error(`Missing required ${process.env.PLATFORM} artifact(s): ${missing.join(', ')}`)

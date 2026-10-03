@@ -26,7 +26,7 @@ describe('diagnostic redaction', () => {
 
   it('bounds large strings and collections', () => {
     const out = clean({ message: 'x'.repeat(900), values: Array.from({ length: 50 }, (_, i) => i) })
-    expect(out.message).toHaveLength(500)
+    expect(out.message).toBe('[redacted]')
     expect(out.values).toHaveLength(30)
   })
 

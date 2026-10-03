@@ -7,7 +7,7 @@ const MAX_RECONNECTS = 150
 const KEEPALIVE_MS = 4000
 const FATAL_CLOSE = new Set([1008, 4001, 4003, 4008])
 const BYTES_PER_SEC = 16000 * 2
-const MAX_QUEUE_BYTES = 30 * BYTES_PER_SEC
+const MAX_QUEUE_BYTES = 5 * BYTES_PER_SEC
 
 /**
  * Solo / Duo mic transcription via Deepgram — KeepAlive + reconnect + worklet
@@ -215,7 +215,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
   }, [fail]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function failOrDegrade(reason) {
-    if (!degradedAudio.current && !everConnected.current) {
+    if (!degradedAudio.current) {
       degradedAudio.current = true
       reconnectAttempts.current = 0
       diagnostic('stt', 'degraded_fallback', { mode: 'microphone', fromModel: 'nova-3', toModel: 'nova-2', reason }, 'warn')
@@ -226,7 +226,12 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
   }
 
   const start = useCallback(async () => {
-    // Resume existing graph if mic already live (after TTS) — don't rebuild / re-prompt getUserMedia.
+    // Resume only when the captured device is still live. Device removal can leave a MediaStream
+    // object behind with ended tracks; in that case rebuild from getUserMedia instead of reconnecting
+    // Deepgram to a dead source.
+    const liveTrack = stream.current?.getAudioTracks?.().some(t => t.readyState === 'live')
+    if (stream.current && !liveTrack) teardown()
+    // Resume existing graph if mic is still live (after TTS) — don't rebuild / re-prompt getUserMedia.
     if (stream.current && ctx.current) {
       userStop.current = false
       suspendPaused.current = false
@@ -251,7 +256,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
     } catch (e) {
       fail(e.message)
     }
-  }, [buildAudioGraph, connectSocket, fail])
+  }, [buildAudioGraph, connectSocket, fail, teardown])
 
   useEffect(() => {
     const resumeAudio = () => { try { if (ctx.current?.state === 'suspended') ctx.current.resume() } catch {} }
@@ -282,7 +287,16 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       setActive(false)
       setReconnecting(false)
     }
-    navigator.mediaDevices?.addEventListener?.('devicechange', afterWake)
+    const onDeviceChange = async () => {
+      if (userStop.current) return
+      const liveTrack = stream.current?.getAudioTracks?.().some(t => t.readyState === 'live')
+      if (liveTrack) return afterWake()
+      diagnostic('stt', 'audio_device_reacquire', { mode: 'microphone' }, 'warn')
+      teardown()
+      userStop.current = false
+      try { await start() } catch (e) { onFailRef.current?.(e?.message || 'Microphone recovery failed') }
+    }
+    navigator.mediaDevices?.addEventListener?.('devicechange', onDeviceChange)
     const onVis = () => { if (document.visibilityState === 'visible') afterWake() }
     document.addEventListener('visibilitychange', onVis)
     const offPower = window.electronAPI?.onPowerEvent?.(ev => {
@@ -290,11 +304,11 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       else if (ev === 'resume' || ev === 'unlock') afterWake()
     })
     return () => {
-      navigator.mediaDevices?.removeEventListener?.('devicechange', afterWake)
+      navigator.mediaDevices?.removeEventListener?.('devicechange', onDeviceChange)
       document.removeEventListener('visibilitychange', onVis)
       try { offPower?.() } catch {}
     }
-  }, [connectSocket])
+  }, [connectSocket, start, teardown])
 
   useEffect(() => () => { userStop.current = true; connectGen.current += 1; teardown() }, [teardown])
   return { supported: true, active, reconnecting, interim, start, stop }

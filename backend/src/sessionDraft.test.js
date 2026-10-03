@@ -7,10 +7,11 @@ describe('synced session payloads', () => {
     expect(normalizeSessionPayload({ mode: 'mock', role: 'QA', source: 'unknown' }).source).toBe('desktop')
   })
 
-  it('requires role and company where appropriate', () => {
+  it('requires role and live company regardless of caller source', () => {
     expect(validateSessionPayload({ mode: 'mock' }).error).toBe('Add the role you are preparing for.')
     expect(validateSessionPayload({ mode: 'live', role: 'SWE', source: 'mobile' }).error).toBe('Add a company for a live session.')
-    expect(validateSessionPayload({ mode: 'live' }).error).toBe('')
+    expect(validateSessionPayload({ mode: 'live', role: 'SWE', source: 'desktop' }).error).toBe('Add a company for a live session.')
+    expect(validateSessionPayload({ mode: 'live', role: 'SWE', company: 'Acme', source: 'desktop' }).error).toBe('')
   })
 
   it('bounds user-authored fields', () => {
@@ -34,7 +35,7 @@ describe('synced session payloads', () => {
     const transcript = normalizeTranscript([
       { role: 'interviewer', text: ' Question ', secret: 'drop me' },
       { role: 'candidate', text: 'x'.repeat(9000) },
-      { role: 'system', text: '' },
+      { role: 'system', text: 'must not persist' },
     ])
     expect(transcript).toHaveLength(2)
     expect(transcript[0]).toEqual({ role: 'interviewer', text: 'Question', answer: undefined, isQuestion: undefined, kind: undefined, ts: undefined })

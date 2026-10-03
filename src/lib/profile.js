@@ -25,7 +25,7 @@ export function applyTailorWithBackup(profile = {}, tailor = {}) {
   return {
     ...profile,
     resume: applyTailorToResume(current, tailor),
-    resumeBackup: {
+    resumeBackup: profile.resumeBackup?.text ? profile.resumeBackup : {
       text: current,
       createdAt: new Date().toISOString(),
       reason: 'before_tailor',
@@ -58,28 +58,27 @@ export function applyTailorToResume(resume, tailor) {
   }
 
   if (summary) {
+    // Never guess that the first lines are a summary: they are commonly name/contact headers.
+    // Replace only an explicitly labelled Summary/Profile section; otherwise prepend safely.
     const lines = text.split(/\r?\n/)
-    const firstNonEmpty = lines.findIndex(l => l.trim())
-    // Heuristic: first 1–4 non-empty lines without bullet markers ≈ existing summary
-    if (firstNonEmpty >= 0) {
-      let end = firstNonEmpty
-      let count = 0
-      for (let i = firstNonEmpty; i < lines.length && count < 4; i++) {
-        const t = lines[i].trim()
-        if (!t) { if (count > 0) break; continue }
-        if (/^[-•*]|\d+\./.test(t) || t.length > 280) break
-        end = i
-        count++
-      }
-      if (count >= 1 && count <= 4) {
-        const next = [...lines]
-        next.splice(firstNonEmpty, end - firstNonEmpty + 1, summary)
-        text = next.join('\n')
+    const heading = lines.findIndex(l => /^\s*(professional\s+)?(summary|profile)\s*:?\s*$/i.test(l))
+    if (heading >= 0) {
+      let end = heading + 1
+      while (end < lines.length && lines[end].trim() && !/^\s*[A-Z][A-Z &/+-]{2,}\s*:?\s*$/.test(lines[end])) end++
+      lines.splice(heading + 1, Math.max(0, end - heading - 1), summary)
+      text = lines.join('\n')
+    } else {
+      const first = lines.findIndex(l => l.trim())
+      const next = first >= 0 ? lines.findIndex((l, i) => i > first && l.trim()) : -1
+      const firstText = first >= 0 ? lines[first].trim() : ''
+      const looksContact = /@|https?:|linkedin|github|\+?\d[\d ()-]{7,}/i.test(firstText)
+      const nextLooksBullet = next >= 0 && /^[-•*]|\d+\./.test(lines[next].trim())
+      if (first >= 0 && !looksContact && !/^[-•*]|\d+\./.test(firstText) && nextLooksBullet && firstText.length <= 280) {
+        lines.splice(first, 1, summary)
+        text = lines.join('\n')
       } else {
         text = `${summary}\n\n${text.trimStart()}`
       }
-    } else {
-      text = summary
     }
   }
 

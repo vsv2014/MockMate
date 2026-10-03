@@ -1,12 +1,15 @@
-// Managed-AI plan caps (Phase 2b). Metered per calendar month (see store.currentPeriod()).
-//   llmCalls   — AI responses (interview turns, hints, evaluations, jobs, resume tools)
-//   sttSeconds — live voice transcription seconds
-// Free is deliberately tight (MockMate pays for managed usage). Pro is effectively unlimited
-// under a fair-use ceiling. BYOK users bypass all of this (their own key, their own bill).
+// Managed-AI plan caps. BYOK bypasses these because the user pays the provider directly.
 export const PLAN_LIMITS = {
   free: { llmCalls: 40, sttSeconds: 30 * 60 },
-  pro:  { llmCalls: 100000, sttSeconds: 500 * 60 * 60 },   // fair-use ceiling, not a hard product limit
-  max:  { llmCalls: 100000, sttSeconds: 500 * 60 * 60 },
+  pro: { llmCalls: 100000, sttSeconds: 500 * 60 * 60 },
+  max: { llmCalls: 100000, sttSeconds: 500 * 60 * 60 },
+}
+
+export function effectivePlan(user, now = Date.now()) {
+  if (!user) return 'free'
+  const expiry = user.planExpiry ? new Date(user.planExpiry).getTime() : null
+  if (Number.isFinite(expiry) && expiry <= now) return 'free'
+  return PLAN_LIMITS[user.plan] ? user.plan : 'free'
 }
 
 export function limitFor(plan) {

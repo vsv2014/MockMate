@@ -33,6 +33,7 @@ export function createInterviewState(opts = {}) {
   let currentQuestionId = null
   let screenContext = null
   let lastAnswer = null
+  const answersByQuestion = new Map()
   let liveCapture = { text: '', status: 'listening', reason: null }
   let roleFamily = inferRoleFamily(opts.profile || {}) || 'unknown'
   let listeners = new Set()
@@ -126,7 +127,8 @@ export function createInterviewState(opts = {}) {
         // Never delete committed+ — drop oldest candidates only
         const dropIdx = questions.findIndex(x => x.status === 'candidate' || x.status === 'stabilizing')
         if (dropIdx >= 0 && questions[dropIdx].id !== id) questions.splice(dropIdx, 1)
-        else if (questions.length > 120) questions.shift()
+        // Durable committed/terminal questions are never evicted. Long sessions may exceed 120
+        // records; correctness is more important than an arbitrary in-memory cap.
       }
     } else {
       // Controlled revision — never wipe the record
@@ -218,7 +220,7 @@ export function createInterviewState(opts = {}) {
     if (existingTurn) existingTurn.text = q.text
     else {
       speechTurns.push({ id: nid('t'), role: 'interviewer', text: q.text, ts: q.ts, questionId: q.id })
-      if (speechTurns.length > 120) speechTurns.splice(0, speechTurns.length - 120)
+      if (speechTurns.length > 1000) speechTurns.splice(0, speechTurns.length - 1000)
     }
 
     liveCapture = { text: '', status: 'committed', reason: null }
@@ -230,7 +232,7 @@ export function createInterviewState(opts = {}) {
     for (let i = questions.length - 1; i >= 0; i--) {
       const q = questions[i]
       if (q.id === currentQuestionId) continue
-      if (['committed', 'answered', 'pending'].includes(q.status) || q.committedAt) return q.id
+      if (['committed', 'answered', 'pending'].includes(q.status)) return q.id
     }
     return null
   }
@@ -247,7 +249,7 @@ export function createInterviewState(opts = {}) {
     if (!t) return null
     const turn = { id: nid('t'), role: 'candidate', text: t, ts: Date.now(), questionId: currentQuestionId }
     speechTurns.push(turn)
-    if (speechTurns.length > 120) speechTurns.splice(0, speechTurns.length - 120)
+    if (speechTurns.length > 1000) speechTurns.splice(0, speechTurns.length - 1000)
     emit()
     return turn
   }
@@ -291,6 +293,7 @@ export function createInterviewState(opts = {}) {
   function commitAnswer({ questionId, generationId, text, hint = null, validation = null, incomplete = false } = {}) {
     const q = getQuestion(questionId)
     if (!q) return null
+    if (!['committed', 'pending', 'answered'].includes(q.status)) return null
     q.status = incomplete ? 'failed' : 'answered'
     q.answeredAt = Date.now()
     lastAnswer = {
@@ -302,6 +305,7 @@ export function createInterviewState(opts = {}) {
       incomplete: !!incomplete,
       ts: Date.now(),
     }
+    answersByQuestion.set(questionId, { ...lastAnswer })
     emit()
     return lastAnswer
   }
@@ -351,15 +355,9 @@ export function createInterviewState(opts = {}) {
     }
   }
 
-  /** History for LLM: interviewer + candidate only (+ optional compact lastAnswer for follow-ups). */
-  function getLlmHistory({ limit = 12, includeLastAnswer = true } = {}) {
-    const turns = speechTurns.slice(-limit).map(t => ({ role: t.role, text: t.text }))
-    if (includeLastAnswer && lastAnswer?.text && !lastAnswer.incomplete) {
-      // Coding / F7 seeds need more than a 400-char snip or rewrite follow-ups lose the solution.
-      const cap = /class |def |function |```|Approach:|Code:/i.test(lastAnswer.text) ? 1200 : 400
-      turns.push({ role: 'assistant', text: String(lastAnswer.text).slice(0, cap) })
-    }
-    return turns
+  /** History for LLM: only speech that actually occurred. AI suggestions are not candidate speech. */
+  function getLlmHistory({ limit = 12 } = {}) {
+    return speechTurns.slice(-limit).map(t => ({ role: t.role, text: t.text }))
   }
 
   /** UI projection — committed+ terminal questions never omitted because of loading. */
@@ -372,8 +370,8 @@ export function createInterviewState(opts = {}) {
         ts: q.committedAt || q.ts || q.createdAt,
         isQuestion: true,
         status: q.status,
-        answer: lastAnswer?.questionId === q.id ? lastAnswer.text : undefined,
-        hint: lastAnswer?.questionId === q.id ? lastAnswer.hint : undefined,
+        answer: answersByQuestion.get(q.id)?.text,
+        hint: answersByQuestion.get(q.id)?.hint,
         parentQuestionId: q.parentQuestionId,
         questionType: q.questionType,
       }))

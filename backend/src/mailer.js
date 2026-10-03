@@ -1,8 +1,5 @@
 // Minimal email delivery — no SDK, just fetch.
-//   • If RESEND_API_KEY is set → send via Resend's HTTP API.
-//   • Otherwise → log the link to the server console (dev fallback) so the flow is
-//     fully testable without an email provider wired.
-// Returns { delivered: 'email' | 'console' } so callers can log how it went (never to the client).
+// Returns { delivered: 'email' | 'console' | 'unavailable' }.
 export async function sendResetEmail(to, link) {
   if (process.env.RESEND_API_KEY) {
     try {
@@ -17,18 +14,20 @@ export async function sendResetEmail(to, link) {
                  <p><a href="${link}">Reset your password</a> — this link expires in 30 minutes.</p>
                  <p>If you didn't request this, you can ignore this email.</p>`,
         }),
+        signal: AbortSignal.timeout(10_000),
       })
       if (res.ok) return { delivered: 'email' }
       console.error('[reset] Resend responded', res.status)
     } catch (e) { console.error('[reset] email send failed:', e.message) }
   }
-  // Dev fallback — never log the full reset URL outside local development (secret in logs).
+
   const isDev = process.env.NODE_ENV !== 'production' && !process.env.HOST
   if (isDev) {
     console.log(`[reset] password-reset link for ${to}: ${link}`)
-  } else {
-    const domain = String(to || '').split('@')[1] || '?'
-    console.log(`[reset] password-reset issued (email domain=${domain}; link redacted)`)
+    return { delivered: 'console' }
   }
-  return { delivered: 'console' }
+
+  const domain = String(to || '').split('@')[1] || '?'
+  console.error(`[reset] password-reset delivery unavailable (email domain=${domain}; link redacted)`)
+  return { delivered: 'unavailable' }
 }

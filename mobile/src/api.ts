@@ -9,6 +9,7 @@ export type User = {
   email: string
   plan?: string
   targetRole?: string
+  language?: string
   createdAt?: string
   preferences?: {
     mobilePlaybook?: string
@@ -48,6 +49,7 @@ export type HostedDocument = {
 export type InterviewTurn = { say: string; kind?: 'question' | 'followup'; questionNumber?: number }
 export type Hint = { fullAnswer?: string; sampleAnswer?: string; opener?: string; keyPoints?: string[]; skip?: boolean; confidence?: string }
 export type TranscriptTurn = { role: 'interviewer' | 'candidate' | 'assistant'; text: string; kind?: 'question' | 'followup' | 'answer'; ts?: number }
+export type TranscriptionResult = { transcript: string; duration: number; degraded?: boolean; fallback?: 'typed-input'; provider?: string }
 
 export class ApiError extends Error {
   constructor(message: string, readonly status = 0) {
@@ -56,9 +58,7 @@ export class ApiError extends Error {
   }
 }
 
-export function apiConfigured() {
-  return Boolean(configuredBase)
-}
+export function apiConfigured() { return Boolean(configuredBase) }
 
 async function request<T>(path: string, options: RequestInit & { auth?: boolean; timeoutMs?: number } = {}): Promise<T> {
   if (!configuredBase) throw new ApiError('Connect a hosted MockMate API before signing in.', 0)
@@ -66,7 +66,7 @@ async function request<T>(path: string, options: RequestInit & { auth?: boolean;
     throw new ApiError('MockMate mobile requires an HTTPS API.', 0)
   }
 
-  const { auth, timeoutMs = 15_000, ...fetchOptions } = options
+  const { auth, timeoutMs = 15_000, signal: outerSignal, ...fetchOptions } = options
   const headers = new Headers(fetchOptions.headers)
   if (!(fetchOptions.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   if (auth) {
@@ -75,29 +75,39 @@ async function request<T>(path: string, options: RequestInit & { auth?: boolean;
   }
 
   const controller = new AbortController()
+  const relayAbort = () => controller.abort(outerSignal?.reason)
+  if (outerSignal?.aborted) relayAbort()
+  else outerSignal?.addEventListener?.('abort', relayAbort, { once: true })
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   let response: Response
   try {
     response = await fetch(`${configuredBase}${path}`, { ...fetchOptions, headers, signal: controller.signal })
   } catch (error) {
     throw new ApiError(error instanceof Error && error.name === 'AbortError'
-      ? 'MockMate took too long to respond. Try again.'
+      ? (outerSignal?.aborted ? 'Request cancelled.' : 'MockMate took too long to respond. Try again.')
       : 'Can’t reach MockMate. Check your connection and try again.')
   } finally {
     clearTimeout(timeout)
+    outerSignal?.removeEventListener?.('abort', relayAbort)
   }
 
   let data: any = null
   try { data = await response.json() } catch { /* empty response */ }
   if (!response.ok) {
-    if (response.status === 401 && auth) await SecureStore.deleteItemAsync(TOKEN_KEY)
+    if (response.status === 401 && auth) {
+      try { await SecureStore.deleteItemAsync(TOKEN_KEY) } catch {}
+    }
     throw new ApiError(data?.error || 'Something went wrong. Try again.', response.status)
   }
   return data as T
 }
 
 async function saveAuth(result: { token: string; user: User }) {
-  await SecureStore.setItemAsync(TOKEN_KEY, result.token)
+  try {
+    await SecureStore.setItemAsync(TOKEN_KEY, result.token)
+  } catch {
+    throw new ApiError('Your account was accepted, but this device could not securely save the session. Sign in again after checking device storage/security settings.', 0)
+  }
   return result.user
 }
 
@@ -138,20 +148,22 @@ export const api = {
   hint: (body: Record<string, unknown>) => request<{ hint: Hint }>('/api/hint', {
     method: 'POST', auth: true, body: JSON.stringify(body),
   }),
-  transcribe: (file: { uri: string; name?: string; mimeType?: string }) => {
+  transcribe: (file: { uri: string; name?: string; mimeType?: string }, language = 'en') => {
     const body = new FormData()
-    body.append('language', 'en')
+    body.append('language', language)
     body.append('audio', { uri: file.uri, name: file.name || 'question.m4a', type: file.mimeType || 'audio/mp4' } as any)
-    return request<{ transcript: string; duration: number }>('/transcribe', { method: 'POST', auth: true, body, timeoutMs: 45_000 })
+    return request<TranscriptionResult>('/transcribe', { method: 'POST', auth: true, body, timeoutMs: 45_000 })
   },
   deleteAccount: async () => {
     const result = await request<{ ok: boolean }>('/me', { method: 'DELETE', auth: true })
-    await SecureStore.deleteItemAsync(TOKEN_KEY)
+    // The server-side deletion is authoritative. A SecureStore cleanup failure must not
+    // turn a successful irreversible deletion into a misleading UI error.
+    try { await SecureStore.deleteItemAsync(TOKEN_KEY) } catch {}
     return result
   },
   logout: async () => {
     try { await request('/auth/logout', { method: 'POST', auth: true }) } finally {
-      await SecureStore.deleteItemAsync(TOKEN_KEY)
+      try { await SecureStore.deleteItemAsync(TOKEN_KEY) } catch {}
     }
   },
 }

@@ -1,0 +1,206 @@
+# MockMate Audit Remediation Ledger
+
+Baseline: **198 evidence-backed findings**. Goal: **0 OPEN**.
+
+Status convention: `[ ]` OPEN, `[x]` FIXED + verified. Do not tick an item only because code was changed; tick after tests/CI or direct verification.
+
+## Findings
+
+- [ ] **AUD-001** — Desktop local user data is not account-scoped
+- [ ] **AUD-002** — Local 90-day session retention is read-only filtering
+- [ ] **AUD-003** — Uninstall preserves application data
+- [ ] **AUD-004** — Desktop lacks account deletion action
+- [ ] **AUD-005** — File-store persistence failures can report success
+- [ ] **AUD-006** — Corrupt local auth DB can collapse to empty state
+- [ ] **AUD-007** — JWT secret persistence failure invalidates sessions after restart
+- [ ] **AUD-008** — Express 4 naked async handlers can escape error handling
+- [ ] **AUD-009** — Upload DB await sits outside intended try/catch
+- [ ] **AUD-010** — Readiness does not track live Mongo connectivity
+- [ ] **AUD-011** — Hosted backend lacks graceful shutdown/drain
+- [ ] **AUD-012** — MOCKMATE_HOSTED parsing is inconsistent
+- [ ] **AUD-013** — Trust-proxy default can undermine IP limiting if topology differs
+- [ ] **AUD-014** — Expensive non-LLM endpoints lack dedicated throttling
+- [ ] **AUD-015** — Embedding endpoint consumes provider resources outside response metering
+- [ ] **AUD-016** — Deepgram grant token can be used outside MockMate runtime
+- [ ] **AUD-017** — One metered AI response can perform multiple upstream LLM calls
+- [ ] **AUD-018** — LLM quota is call-count based rather than token/input based
+- [ ] **AUD-019** — Mobile can timeout before backend STT retry chain finishes
+- [ ] **AUD-020** — One bad STT request can open a process-global Deepgram circuit
+- [ ] **AUD-021** — Permanent STT errors are retried identically
+- [ ] **AUD-022** — ARCH timeout does not cancel timed-out work
+- [ ] **AUD-023** — Hosted backend depends on two package dependency trees
+- [ ] **AUD-024** — Backend package has no Node engine contract
+- [ ] **AUD-025** — Vercel /api/token is publicly callable
+- [ ] **AUD-026** — Serverless /api/providers bypasses public-API guard
+- [ ] **AUD-027** — Serverless route surface drifts from shared API contract
+- [ ] **AUD-028** — Hosted password reset can be healthy while unusable
+- [ ] **AUD-029** — Google login can be partially configured into a broken state
+- [ ] **AUD-030** — Signup email uniqueness has a TOCTOU race
+- [ ] **AUD-031** — Password accounts do not require email verification
+- [ ] **AUD-032** — Sign out invalidates all devices
+- [ ] **AUD-033** — Hosted account deletion is non-transactional
+- [ ] **AUD-034** — Profile patch accepts largely unbounded/untyped data
+- [ ] **AUD-035** — Session create/update validation limits diverge
+- [ ] **AUD-036** — Document-count cap is not concurrency-safe
+- [ ] **AUD-037** — Session list over-fetches full recent session bodies
+- [ ] **AUD-038** — Hosted RAG rescans raw documents per question
+- [ ] **AUD-039** — Session document IDs are not ownership/existence validated
+- [ ] **AUD-040** — Desktop RAG timeout does not cancel embedding work
+- [ ] **AUD-041** — Desktop RAG cache signature can reuse stale embeddings
+- [ ] **AUD-042** — Desktop RAG indexing lacks in-flight deduplication
+- [ ] **AUD-043** — Web-search snippets are prompt-injection input
+- [ ] **AUD-044** — Shared fetchWithTimeout discards caller abort signal
+- [ ] **AUD-045** — Diarization-lock establishing utterance can be misclassified
+- [ ] **AUD-046** — Diarization lock reaches caller one React effect late
+- [ ] **AUD-047** — Early question-shaped candidate speech can bias diarization role mapping
+- [ ] **AUD-048** — STT reconnect can replay ~30s stale audio
+- [ ] **AUD-049** — Nova-2 degraded STT removes diarization-dependent Live behavior
+- [ ] **AUD-050** — Mobile reports provider STT fallback as 'No speech detected'
+- [ ] **AUD-051** — Mobile ignores account/interview language
+- [ ] **AUD-052** — Mobile Duo UI advertises pairing functionality not implemented
+- [ ] **AUD-053** — Mobile and desktop pairing-code formats drift
+- [ ] **AUD-054** — Duo room IDs/access control are weak
+- [ ] **AUD-055** — Duo participant can forge interviewer transcript events
+- [ ] **AUD-056** — Duo transcript transport lacks IDs/dedupe/replay
+- [ ] **AUD-057** — Linux UI claims capture invisibility without protection
+- [ ] **AUD-058** — Secondary windows have a capture-protection race
+- [ ] **AUD-059** — Capture-protection IPC can target the wrong window
+- [ ] **AUD-060** — Electron Tray object is not retained
+- [ ] **AUD-061** — Packaged API is considered ready after timeout without explicit readiness
+- [ ] **AUD-062** — Renderer failed-load retry loop has no terminal state
+- [ ] **AUD-063** — Global shortcut registration failures are ignored
+- [ ] **AUD-064** — Meeting/coding desktop source polling can overlap
+- [ ] **AUD-065** — Diagnostics privacy redaction is inconsistent across telemetry paths
+- [ ] **AUD-066** — Stripe env template names do not match billing implementation
+- [ ] **AUD-067** — Checkout completion grants Pro without authoritative payment/subscription check
+- [ ] **AUD-068** — Billing entitlement updates are not event-order safe
+- [ ] **AUD-069** — Deleting one Stripe subscription always downgrades to Free
+- [ ] **AUD-070** — No authoritative Stripe reconciliation path for stored plan
+- [ ] **AUD-071** — Broken Stripe config does not fail hosted readiness
+- [ ] **AUD-072** — ARCH can report knowledge available when embeddings cannot work
+- [ ] **AUD-073** — Backend claims browser TTS availability it cannot verify
+- [ ] **AUD-074** — Root env docs can reintroduce bundled provider secrets
+- [ ] **AUD-075** — Release CI can publish unsigned installers
+- [ ] **AUD-076** — Manual release does not enforce source provenance
+- [ ] **AUD-077** — Mobile build uses unpinned latest EAS CLI
+- [ ] **AUD-078** — Desktop production package uses asar:false
+- [ ] **AUD-079** — Auth-store outage can falsely log out valid users
+- [ ] **AUD-080** — Google/password account pre-hijacking path
+- [ ] **AUD-081** — Google OAuth upstream calls have no timeout
+- [ ] **AUD-082** — All credential-sensitive endpoints share one IP limiter bucket
+- [ ] **AUD-083** — Desktop token-storage failure is silently swallowed
+- [ ] **AUD-084** — Mobile can stay in authenticated UI after token deletion
+- [ ] **AUD-085** — Mobile API wrapper overwrites caller cancellation
+- [ ] **AUD-086** — Desktop apiFetch leaks abort listeners
+- [ ] **AUD-087** — Production CORS allowlist always admits localhost origins
+- [ ] **AUD-088** — Hosted backend lacks local-server security headers
+- [ ] **AUD-089** — Stripe webhook bypasses request tracing
+- [ ] **AUD-090** — Local BYOK API is an unauthenticated local key proxy
+- [ ] **AUD-091** — Renderer CSP trusts every localhost port
+- [ ] **AUD-092** — ARCH reports local knowledge/persistence APIs that are not mounted
+- [ ] **AUD-093** — ARCH reasoning policy is declaration-only
+- [ ] **AUD-094** — ARCH process-global perf stats are exposed to each caller
+- [ ] **AUD-095** — Usage reservation/release can cross month boundary
+- [ ] **AUD-096** — planExpiry is persisted but unenforced
+- [ ] **AUD-097** — Max-plan users render as Free on desktop
+- [ ] **AUD-098** — Stripe customer creation can leak orphan customers
+- [ ] **AUD-099** — Hosted sessions have no user count/storage cap
+- [ ] **AUD-100** — Session validation trusts client-provided source
+- [ ] **AUD-101** — Invalid transcript roles can persist role-less turns
+- [ ] **AUD-102** — User documents are a prompt-injection boundary
+- [ ] **AUD-103** — Uploads buffer unsupported file types before rejection
+- [ ] **AUD-104** — Extracted-text cap does not bound parser/decompression work
+- [ ] **AUD-105** — Upload DB failures are misreported as corrupt files
+- [ ] **AUD-106** — Mobile allows End while recording/transcribing
+- [ ] **AUD-107** — Mobile recorder operations have uncovered rejection paths
+- [ ] **AUD-108** — Mobile silently drops document grounding on failure
+- [ ] **AUD-109** — Mock-mode next-question failure leaves state mismatched
+- [ ] **AUD-110** — Mobile onboarding copy is stale
+- [ ] **AUD-111** — Legacy setup unnecessarily requires Deepgram
+- [ ] **AUD-112** — Legacy setup provider guidance is stale/incomplete
+- [ ] **AUD-113** — Apply-keys-live is false in desktop dev mode
+- [ ] **AUD-114** — Provider refresh treats HTTP failures as empty capabilities
+- [ ] **AUD-115** — Desktop document upload has no size/page cap
+- [ ] **AUD-116** — Desktop/mobile document format support differs
+- [ ] **AUD-117** — Reclassifying a document can silently delete another
+- [ ] **AUD-118** — Starting an interview can overwrite newer document-library resume/JD
+- [ ] **AUD-119** — PDF extraction lacks cancellation/resource teardown
+- [ ] **AUD-120** — Crash recovery copy overstates active-session safety
+- [ ] **AUD-121** — Desktop Solo has no in-progress checkpointing
+- [ ] **AUD-122** — Solo duplicates retry ownership despite ARCH no-double-retry
+- [ ] **AUD-123** — TTS does not suspend paid STT transport
+- [ ] **AUD-124** — TTS watchdog can reopen capture while TTS still speaks
+- [ ] **AUD-125** — Most non-streaming LLM endpoints do not cancel on disconnect
+- [ ] **AUD-126** — Session diagnostic context is never cleared
+- [ ] **AUD-127** — Session metrics do synchronous disk I/O on Electron main thread
+- [ ] **AUD-128** — Session metrics file has no rotation/retention
+- [ ] **AUD-129** — Performance counters mix distinct failure concepts
+- [ ] **AUD-130** — markStaleIfNotCurrent does not mark stale state
+- [ ] **AUD-131** — Generation authority has conflicting definitions
+- [ ] **AUD-132** — InterviewState retains only one AI answer
+- [ ] **AUD-133** — commitAnswer does not validate generation authority
+- [ ] **AUD-134** — InterviewState can delete committed questions
+- [ ] **AUD-135** — Long Live sessions truncate opening conversation before evaluation
+- [ ] **AUD-136** — Follow-up parent selection can choose abandoned question
+- [ ] **AUD-137** — AI suggestions are injected into future conversation history
+- [ ] **AUD-138** — Two divergent Mongoose User schemas share one model name
+- [ ] **AUD-139** — Mobile CI exercises little risky runtime behavior
+- [ ] **AUD-140** — Diagnostics rows are lost when append fails
+- [ ] **AUD-141** — Clear diagnostics races an active flush
+- [ ] **AUD-142** — Shutdown does not await diagnostics persistence
+- [ ] **AUD-143** — Desktop AI settings/model state are cross-account
+- [ ] **AUD-144** — Guest mode can permanently overwrite Managed-AI preference
+- [ ] **AUD-145** — Repeated resume tailoring can destroy original backup
+- [ ] **AUD-146** — Resume-tailor summary replacement can remove contact/header info
+- [ ] **AUD-147** — Transcript export labels assistant turns as YOU
+- [ ] **AUD-148** — Duo has stale-hint response race
+- [ ] **AUD-149** — Duo silently hides hint HTTP errors
+- [ ] **AUD-150** — Duo screen-share UI can drift from actual LiveKit state
+- [ ] **AUD-151** — Audio-device recovery reconnects transport without reacquiring device
+- [ ] **AUD-152** — Dead audio tracks have no explicit recovery state
+- [ ] **AUD-153** — Nova-3→Nova-2 fallback unavailable after first successful connection
+- [ ] **AUD-154** — Updater IPC can report success when nothing happened
+- [ ] **AUD-155** — Update install can terminate unsaved active interview
+- [ ] **AUD-156** — Local AI child process is not supervised after startup
+- [ ] **AUD-157** — Local auth/backend child process is not recovered after crash
+- [ ] **AUD-158** — Port-reclamation failure can still trigger readiness
+- [ ] **AUD-159** — BYOK decryption failure looks like no keys configured
+- [ ] **AUD-160** — Encrypted BYOK config lacks atomic write/recovery
+- [ ] **AUD-161** — External-link allowlist is bypassed by normal navigation
+- [ ] **AUD-162** — write-env IPC permits broad suffix-based config names
+- [ ] **AUD-163** — Backend store mode is captured before later env loading
+- [ ] **AUD-164** — Managed AI 401 responses bypass desktop auth lifecycle
+- [ ] **AUD-165** — Guest can switch back to Managed AI
+- [ ] **AUD-166** — Persistent desktop state lacks schema/version migrations
+- [ ] **AUD-167** — Mobile document selection has async stale-state race
+- [ ] **AUD-168** — Mobile preference save can overwrite other-device changes
+- [ ] **AUD-169** — PrepareScreen preferences do not resync after account refresh
+- [ ] **AUD-170** — Mobile signup can succeed remotely then fail locally
+- [ ] **AUD-171** — Mobile deletion can succeed remotely then report failure locally
+- [ ] **AUD-172** — Mobile boot network outage is treated as logged out
+- [ ] **AUD-173** — Mobile production build can omit backend URL
+- [ ] **AUD-174** — SSE parser can drop unfinished final event/UTF-8 tail
+- [ ] **AUD-175** — Any failed hint stream causes another LLM request
+- [ ] **AUD-176** — Streaming cancellation can release quota after partial inference
+- [ ] **AUD-177** — Local session IDs can collide within same millisecond
+- [ ] **AUD-178** — Release tests do not test the final shipped configuration
+- [ ] **AUD-179** — Platform build failure can leave public partial release
+- [ ] **AUD-180** — macOS updater metadata can reference missing ZIP
+- [ ] **AUD-181** — JS runner has timeout but no memory/resource limit
+- [ ] **AUD-182** — STT term repair can mutate legitimate content
+- [ ] **AUD-183** — STT sanitization deletes legitimate repeated words
+- [ ] **AUD-184** — Input-specific LLM 400 can bench provider globally
+- [ ] **AUD-185** — Model discovery temporarily clears known-good global model set
+- [ ] **AUD-186** — RAG embedding failover can create vector-dimension incompatibility
+- [ ] **AUD-187** — Gemini embedding-model configuration semantics are inconsistent
+- [ ] **AUD-188** — Failed reset-email delivery can invalidate a working reset link
+- [ ] **AUD-189** — Reset-email delivery has no network timeout
+- [ ] **AUD-190** — Password-reset token remains in page URL/history
+- [ ] **AUD-191** — Static web app hardcodes localhost backend
+- [ ] **AUD-192** — Static web JWT is stored in localStorage
+- [ ] **AUD-193** — Google OAuth is not integrated into desktop lifecycle
+- [ ] **AUD-194** — Hosted provider diagnostics use inconsistent hosted-mode parsing
+- [ ] **AUD-195** — Desktop quit SIGKILLs child services
+- [ ] **AUD-196** — Password reset signs in browser but not Electron app
+- [ ] **AUD-197** — Password inputs are not bounded to bcrypt's effective input contract
+- [ ] **AUD-198** — Desktop interview snapshot omits language/response-style semantics

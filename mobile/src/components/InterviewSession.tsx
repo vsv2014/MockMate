@@ -5,6 +5,16 @@ import { api, type SyncedSession, type TranscriptTurn, type User } from '../api'
 import type { SessionDraft } from '../domain/session'
 import { theme as T } from '../theme'
 
+function sttLanguage(value?: string) {
+  const raw = String(value || 'English').trim()
+  if (/^[a-z]{2}(?:-[A-Z]{2})?$/.test(raw)) return raw
+  const map: Record<string, string> = {
+    english: 'en', hindi: 'hi', telugu: 'te', tamil: 'ta', kannada: 'kn',
+    malayalam: 'ml', marathi: 'mr', bengali: 'bn', spanish: 'es', french: 'fr', german: 'de',
+  }
+  return map[raw.toLowerCase()] || 'en'
+}
+
 export function InterviewSession({ session, draft, user, onEnd }: {
   session: SyncedSession
   draft: SessionDraft
@@ -23,6 +33,11 @@ export function InterviewSession({ session, draft, user, onEnd }: {
   const recorderState = useAudioRecorderState(recorder)
   const [transcribing, setTranscribing] = useState(false)
   const started = useRef(false)
+  const interviewLanguage = user.language || 'English'
+
+  useEffect(() => () => {
+    try { void recorder.stop().catch(() => {}) } catch {}
+  }, [recorder])
 
   const setTranscript = (next: TranscriptTurn[]) => { turnsRef.current = next; setTurns(next) }
   const profile = {
@@ -30,13 +45,14 @@ export function InterviewSession({ session, draft, user, onEnd }: {
     targetRole: draft.role,
     targetCompany: draft.company,
     customPrompt: draft.customInstructions,
-    language: 'English',
+    language: interviewLanguage,
   }
 
   const contextFor = async (query: string) => {
     if (!draft.selectedDocumentIds.length) return ''
-    try { return (await api.documentContext(query, draft.selectedDocumentIds)).context }
-    catch { return '' }
+    // Selected evidence is a product promise. Do not silently answer ungrounded when
+    // retrieval fails; surface the failure and let the user retry or deselect documents.
+    return (await api.documentContext(query, draft.selectedDocumentIds)).context
   }
 
   const nextQuestion = async (current: TranscriptTurn[]) => {
@@ -48,22 +64,25 @@ export function InterviewSession({ session, draft, user, onEnd }: {
         config: { domainLabel: draft.role, roundLabel: 'Mobile mock', focus: draft.objective, followupDepth: 'normal', relentless: false },
         transcript: current,
         profile,
-        language: 'English',
+        language: interviewLanguage,
         ...(extraContext ? { extraContext } : {}),
       })
       const next = [...current, { role: 'interviewer' as const, text: turn.say, kind: turn.kind || 'question', ts: Date.now() }]
       setTranscript(next)
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load the next question.') }
-    finally { setBusy(false) }
+      return true
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not load the next question.')
+      return false
+    } finally { setBusy(false) }
   }
 
   useEffect(() => {
-    if (mockMode && !started.current) { started.current = true; nextQuestion([]) }
+    if (mockMode && !started.current) { started.current = true; void nextQuestion([]) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const submitMockAnswer = async () => {
     const text = input.trim()
-    if (!text || busy) return
+    if (!text || busy || transcribing || recorderState.isRecording) return
     setInput('')
     const next = [...turnsRef.current, { role: 'candidate' as const, text, kind: 'answer' as const, ts: Date.now() }]
     setTranscript(next)
@@ -72,7 +91,7 @@ export function InterviewSession({ session, draft, user, onEnd }: {
 
   const generateAnswer = async () => {
     const text = question.trim()
-    if (!text || busy) return
+    if (!text || busy || transcribing || recorderState.isRecording) return
     setBusy(true); setError(''); setAnswer('')
     try {
       const extraContext = await contextFor(text)
@@ -80,7 +99,7 @@ export function InterviewSession({ session, draft, user, onEnd }: {
         question: text,
         profile,
         conversationHistory: turnsRef.current.slice(-8),
-        language: 'English',
+        language: interviewLanguage,
         style: draft.responseStyle,
         autoSkip: false,
         ...(extraContext ? { extraContext } : {}),
@@ -97,53 +116,68 @@ export function InterviewSession({ session, draft, user, onEnd }: {
   }
 
   const toggleRecording = async () => {
-    if (recorderState.isRecording) {
-      await recorder.stop()
-      if (!recorder.uri) return setError('The recording could not be saved. You can still type your answer.')
-      setTranscribing(true); setError('')
-      try {
-        const { transcript } = await api.transcribe({ uri: recorder.uri })
-        if (!transcript) throw new Error('No speech was detected. Try again or type instead.')
-        if (mockMode) setInput(transcript)
-        else setQuestion(transcript)
-      } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not transcribe the recording.') }
-      finally { setTranscribing(false) }
-      return
-    }
-    const permission = await requestRecordingPermissionsAsync()
-    if (!permission.granted) return setError('Microphone permission was denied. You can continue by typing.')
+    if (busy || transcribing) return
     setError('')
-    await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true })
-    await recorder.prepareToRecordAsync()
-    recorder.record()
+    try {
+      if (recorderState.isRecording) {
+        await recorder.stop()
+        if (!recorder.uri) throw new Error('The recording could not be saved. You can still type instead.')
+        setTranscribing(true)
+        try {
+          const result = await api.transcribe({ uri: recorder.uri }, sttLanguage(interviewLanguage))
+          if (result.fallback === 'typed-input') {
+            throw new Error('Voice transcription is temporarily unavailable. Type your answer or question instead.')
+          }
+          if (!result.transcript) throw new Error('No speech was detected. Try again or type instead.')
+          if (mockMode) setInput(result.transcript)
+          else setQuestion(result.transcript)
+        } finally { setTranscribing(false) }
+        return
+      }
+
+      const permission = await requestRecordingPermissionsAsync()
+      if (!permission.granted) throw new Error('Microphone permission was denied. You can continue by typing.')
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true })
+      await recorder.prepareToRecordAsync()
+      recorder.record()
+    } catch (cause) {
+      setTranscribing(false)
+      setError(cause instanceof Error ? cause.message : 'Could not use the microphone. You can continue by typing.')
+    }
   }
 
   const end = async () => {
+    if (busy || transcribing || recorderState.isRecording) {
+      setError(recorderState.isRecording ? 'Stop the recording before ending this session.' : 'Wait for the current operation to finish before ending.')
+      return
+    }
     setBusy(true); setError('')
     try { onEnd((await api.updateSession(session._id, turnsRef.current)).session) }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save this session.') }
     finally { setBusy(false) }
   }
 
-  const currentQuestion = [...turns].reverse().find(turn => turn.role === 'interviewer')?.text
+  const lastTurn = turns[turns.length - 1]
+  const currentQuestion = lastTurn?.role === 'interviewer' ? lastTurn.text : ''
+  const sessionBusy = busy || transcribing || recorderState.isRecording
 
   return <KeyboardAvoidingView style={styles.wrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <View style={styles.topbar}><View style={styles.topTitle}><Text style={styles.eyebrow}>{mockMode ? 'VOICE PRACTICE · TEXT BETA' : 'ANSWER ASSIST · TEXT BETA'}</Text><Text style={styles.title}>{session.title}</Text></View><Pressable accessibilityRole="button" onPress={end} disabled={busy}><Text style={styles.end}>End</Text></Pressable></View>
+    <View style={styles.topbar}><View style={styles.topTitle}><Text style={styles.eyebrow}>{mockMode ? 'VOICE PRACTICE · TEXT BETA' : 'ANSWER ASSIST · TEXT BETA'}</Text><Text style={styles.title}>{session.title}</Text></View><Pressable accessibilityRole="button" onPress={end} disabled={sessionBusy}><Text style={[styles.end, sessionBusy && styles.disabled]}>End</Text></Pressable></View>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {mockMode ? <>
-        <View style={styles.questionCard}><Text style={styles.label}>INTERVIEWER</Text>{currentQuestion ? <Text style={styles.question}>{currentQuestion}</Text> : <Text style={styles.muted}>Preparing your first question…</Text>}</View>
+        <View style={styles.questionCard}><Text style={styles.label}>INTERVIEWER</Text>{currentQuestion ? <Text style={styles.question}>{currentQuestion}</Text> : <Text style={styles.muted}>{busy ? 'Preparing your next question…' : 'No active question. Retry after resolving the error below.'}</Text>}</View>
         {turns.filter(turn => turn.role === 'candidate').length > 0 && <Text style={styles.progress}>{turns.filter(turn => turn.role === 'candidate').length} answers completed</Text>}
       </> : <>
         <Text style={styles.intro}>Record or type the exact question you heard. MockMate applies this attempt’s playbook and only the documents you selected.</Text>
-        <VoiceButton recording={recorderState.isRecording} busy={transcribing} onPress={toggleRecording} />
+        <VoiceButton recording={recorderState.isRecording} busy={transcribing || busy} onPress={toggleRecording} />
         <TextInput accessibilityLabel="Interview question" value={question} onChangeText={setQuestion} placeholder="What did the interviewer ask?" placeholderTextColor={T.subtle} multiline textAlignVertical="top" style={[styles.input, styles.questionInput]} />
-        <Pressable accessibilityRole="button" onPress={generateAnswer} disabled={!question.trim() || busy} style={[styles.button, (!question.trim() || busy) && styles.disabled]}><Text style={styles.buttonText}>Generate answer</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={generateAnswer} disabled={!question.trim() || sessionBusy} style={[styles.button, (!question.trim() || sessionBusy) && styles.disabled]}><Text style={styles.buttonText}>Generate answer</Text></Pressable>
         {!!answer && <View style={styles.answerCard}><Text style={styles.label}>SUGGESTED ANSWER</Text><Text selectable style={styles.answer}>{answer}</Text></View>}
       </>}
       {!!error && <View style={styles.errorCard}><Text style={styles.error}>{error}</Text></View>}
       {busy && <ActivityIndicator color={T.accent} />}
     </ScrollView>
-    {mockMode && <View style={styles.composer}><VoiceButton compact recording={recorderState.isRecording} busy={transcribing} onPress={toggleRecording} /><TextInput accessibilityLabel="Your answer" value={input} onChangeText={setInput} placeholder="Answer in your own words…" placeholderTextColor={T.subtle} multiline style={styles.composerInput} /><Pressable accessibilityRole="button" onPress={submitMockAnswer} disabled={!input.trim() || busy || !currentQuestion} style={[styles.send, (!input.trim() || busy || !currentQuestion) && styles.disabled]}><Text style={styles.sendText}>Continue</Text></Pressable></View>}
+    {mockMode && <View style={styles.composer}><VoiceButton compact recording={recorderState.isRecording} busy={transcribing || busy} onPress={toggleRecording} /><TextInput accessibilityLabel="Your answer" value={input} onChangeText={setInput} placeholder="Answer in your own words…" placeholderTextColor={T.subtle} multiline style={styles.composerInput} /><Pressable accessibilityRole="button" onPress={submitMockAnswer} disabled={!input.trim() || sessionBusy || !currentQuestion} style={[styles.send, (!input.trim() || sessionBusy || !currentQuestion) && styles.disabled]}><Text style={styles.sendText}>Continue</Text></Pressable></View>}
   </KeyboardAvoidingView>
 }
 

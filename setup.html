@@ -44,10 +44,10 @@ button:not(:disabled):hover{background:#7c3aed}
 <div class="row">
   <label><span>OPENAI API KEY</span><a href="https://platform.openai.com/api-keys" target="_blank">Get key →</a></label>
   <input id="OPENAI_API_KEY" placeholder="sk-..." />
-  <div class="hint">Required for screen analysis (GPT-4o vision)</div>
+  <div class="hint">Optional; screen analysis can use any configured vision-capable provider.</div>
 </div>
 
-<div class="section">REQUIRED — Live transcription</div>
+<div class="section opt">OPTIONAL — Live transcription</div>
 <div class="row">
   <label><span>DEEPGRAM API KEY</span><a href="https://console.deepgram.com" target="_blank">Get $200 free →</a></label>
   <input id="DEEPGRAM_API_KEY" placeholder="Token ..." />
@@ -61,7 +61,7 @@ button:not(:disabled):hover{background:#7c3aed}
 </div>
 
 <div class="err" id="err"></div>
-<div class="req" id="req">Add at least one LLM key + DEEPGRAM_API_KEY to continue.</div>
+<div class="req" id="req">Add at least one LLM key to continue. Deepgram is only needed for voice transcription.</div>
 <button id="btn" disabled onclick="save()">Save &amp; Start MockMate →</button>
 <div class="saving" id="saving">Saving and restarting…</div>
 
@@ -78,8 +78,7 @@ function vals() {
 function check() {
   const v = vals()
   const hasLLM = LLM.some(k => v[k])
-  const hasDG  = !!v.DEEPGRAM_API_KEY
-  document.getElementById('btn').disabled = !(hasLLM && hasDG)
+  document.getElementById('btn').disabled = !hasLLM
   document.getElementById('req').style.display = (hasLLM && hasDG) ? 'none' : 'block'
 }
 

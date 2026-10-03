@@ -1,10 +1,8 @@
-// Client-side /api router (Phase 2b B5). One drop-in replacement for fetch('/api/…'):
-//   • Managed mode  → the hosted/authed backend baked by release CI (local :4000 only in development),
-//                     with the user's JWT attached → metered per user (Mongo when hosted).
-//   • BYOK mode     → relative /api (the local private server on :3002). No auth, keys stay local.
-// Same signature as fetch(path, opts) and returns a Response, so call sites don't change shape.
+// Client-side /api router:
+//   • Managed mode → hosted/authed backend + JWT
+//   • BYOK mode    → relative local /api on loopback
 import { isManaged } from './aiMode'
-import { getToken } from '../auth/api'
+import { getToken, handleUnauthorized } from '../auth/api'
 import { diagnostic, createDiagnosticRequestId } from './diagnostics'
 
 function managedBase() {
@@ -18,19 +16,22 @@ export async function apiFetch(path, opts = {}) {
   const base = isManaged() ? managedBase() : ''
   const requestId = diagnosticRequestId || createDiagnosticRequestId('api')
   const startedAt = performance.now()
-  const headers = { ...(rest.headers || {}) }
-  headers['X-MockMate-Request-Id'] = requestId
-  if (base) {   // managed → attach the JWT so the backend can auth + meter this user
+  const headers = { ...(rest.headers || {}), 'X-MockMate-Request-Id': requestId }
+  if (base) {
     try { const t = await getToken(); if (t) headers.Authorization = `Bearer ${t}` } catch {}
   }
 
   let signal = outerSignal
   let timer
+  let abortRelay = null
   if (timeoutMs > 0 && typeof AbortController !== 'undefined') {
     const ac = new AbortController()
     if (outerSignal) {
       if (outerSignal.aborted) ac.abort()
-      else outerSignal.addEventListener('abort', () => ac.abort(), { once: true })
+      else {
+        abortRelay = () => ac.abort()
+        outerSignal.addEventListener('abort', abortRelay, { once: true })
+      }
     }
     timer = setTimeout(() => ac.abort(), timeoutMs)
     signal = ac.signal
@@ -43,6 +44,7 @@ export async function apiFetch(path, opts = {}) {
       requestId, path, method: rest.method || 'GET', status: response.status,
       ok: response.ok, durationMs: Math.round(performance.now() - startedAt),
     }, response.ok ? 'info' : 'warn')
+    if (base && response.status === 401) await handleUnauthorized(path)
     return response
   } catch (err) {
     diagnostic('api', 'request_failed', {
@@ -52,5 +54,6 @@ export async function apiFetch(path, opts = {}) {
     throw err
   } finally {
     if (timer) clearTimeout(timer)
+    if (outerSignal && abortRelay) outerSignal.removeEventListener('abort', abortRelay)
   }
 }

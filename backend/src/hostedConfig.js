@@ -1,5 +1,9 @@
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1'])
 
+export function envFlag(name) {
+  return ['1', 'true', 'yes', 'on'].includes(String(process.env[name] || '').trim().toLowerCase())
+}
+
 export function isPublicBind(host = process.env.HOST) {
   return Boolean(host && !LOOPBACK_HOSTS.has(host))
 }
@@ -13,9 +17,14 @@ function requireSecret(name, errors, minLength = 24) {
   if (!value) errors.push(`${name} is required for hosted mode.`)
   else if (value.length < minLength) errors.push(`${name} must be at least ${minLength} characters.`)
 }
+function requireIfGroupConfigured(names, errors, label) {
+  const configured = names.some(name => String(process.env[name] || '').trim())
+  if (!configured) return
+  for (const name of names) if (!String(process.env[name] || '').trim()) errors.push(`${name} is required when ${label} is configured.`)
+}
 
 export function validateHostedConfig() {
-  const hosted = process.env.MOCKMATE_HOSTED === '1' || isPublicBind()
+  const hosted = envFlag('MOCKMATE_HOSTED') || isPublicBind()
   if (!hosted) return { hosted: false, corsOrigins: parseCorsOrigins(), errors: [] }
 
   const errors = []
@@ -29,23 +38,42 @@ export function validateHostedConfig() {
   for (const origin of corsOrigins) {
     try {
       const url = new URL(origin)
-      if (url.protocol !== 'https:' && !LOOPBACK_HOSTS.has(url.hostname)) {
-        errors.push(`CORS_ORIGIN must use HTTPS outside loopback: ${origin}`)
-      }
+      if (url.protocol !== 'https:' && !LOOPBACK_HOSTS.has(url.hostname)) errors.push(`CORS_ORIGIN must use HTTPS outside loopback: ${origin}`)
       if (url.username || url.password) errors.push(`CORS_ORIGIN must not contain credentials: ${origin}`)
       if (url.pathname !== '/' || url.search || url.hash) errors.push(`CORS_ORIGIN must be an origin only, without path/query/hash: ${origin}`)
-    } catch {
-      errors.push(`CORS_ORIGIN contains an invalid URL: ${origin}`)
-    }
+    } catch { errors.push(`CORS_ORIGIN contains an invalid URL: ${origin}`) }
   }
 
-  const hasLlmProvider = [
-    'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'CEREBRAS_API_KEY', 'LLM_API_KEY',
-  ].some(name => String(process.env[name] || '').trim())
+  const hasLlmProvider = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'CEREBRAS_API_KEY', 'LLM_API_KEY']
+    .some(name => String(process.env[name] || '').trim())
   if (!hasLlmProvider) errors.push('At least one server-side LLM provider key is required for hosted Managed AI.')
+  if (!String(process.env.DEEPGRAM_API_KEY || '').trim()) errors.push('DEEPGRAM_API_KEY is required for hosted mobile transcription.')
 
-  if (!String(process.env.DEEPGRAM_API_KEY || '').trim()) {
-    errors.push('DEEPGRAM_API_KEY is required for hosted mobile transcription.')
+  // Optional integrations may remain fully absent in a free/private beta. Once any
+  // member of a group is configured, require a coherent set so readiness never says
+  // healthy for a half-wired billing/OAuth flow.
+  requireIfGroupConfigured(
+    ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_ID', 'BILLING_SUCCESS_URL', 'BILLING_CANCEL_URL'],
+    errors,
+    'Stripe billing',
+  )
+  requireIfGroupConfigured(
+    ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'DESKTOP_REDIRECT'],
+    errors,
+    'Google OAuth',
+  )
+
+  const resetEnabled = envFlag('PASSWORD_RESET_ENABLED') || Boolean(String(process.env.RESEND_API_KEY || '').trim())
+  if (resetEnabled) {
+    if (!String(process.env.RESEND_API_KEY || '').trim()) errors.push('RESEND_API_KEY is required when password reset is enabled in hosted mode.')
+    const resetBase = String(process.env.RESET_URL_BASE || '').trim()
+    if (!resetBase) errors.push('RESET_URL_BASE is required when password reset is enabled in hosted mode.')
+    else {
+      try {
+        const url = new URL(resetBase)
+        if (url.protocol !== 'https:' && !LOOPBACK_HOSTS.has(url.hostname)) errors.push('RESET_URL_BASE must use HTTPS outside loopback.')
+      } catch { errors.push('RESET_URL_BASE must be a valid URL.') }
+    }
   }
 
   return { hosted: true, corsOrigins, errors }

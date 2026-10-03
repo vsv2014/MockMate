@@ -1,13 +1,18 @@
 import { availableProviders, allProviders, deepgramConfigured, searchConfigured, listModels } from './_lib/core.js'
 
-// GET /api/providers — configured providers (default + fallback), the full model
-// catalog with a `configured` flag (for the dropdown), and capability flags.
-//
-// Also answers /api/models via a vercel.json rewrite (?only=models) so we serve two
-// logical endpoints from ONE serverless function — keeps us under the Hobby-plan
-// 12-function limit. The local server + hosted backend expose /api/models directly
-// (apiRoutes.js); this consolidation only affects the Vercel serverless deployment.
+function publicProxyDisabled(res) {
+  if (process.env.VERCEL && process.env.MOCKMATE_ALLOW_PUBLIC_API !== '1') {
+    res.status(403).json({
+      error: 'Public API deploy disabled. Use the managed auth backend, or explicitly enable MOCKMATE_ALLOW_PUBLIC_API=1 for local/private testing.',
+    })
+    return true
+  }
+  return false
+}
+
 export default async function handler(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' })
+  if (publicProxyDisabled(res)) return
   if (req.query?.only === 'models') {
     try { return res.status(200).json({ models: await listModels() }) }
     catch { return res.status(200).json({ models: [] }) }

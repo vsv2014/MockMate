@@ -6,17 +6,18 @@ const original = Object.fromEntries(KEYS.map(key => [key, process.env[key]]))
 afterEach(() => { resetArchCircuits(); resetArchPerformance(); vi.restoreAllMocks(); for (const key of KEYS) { if (original[key] == null) delete process.env[key]; else process.env[key] = original[key] } })
 
 describe('ARCH capability resolver', () => {
-  it('falls back to local storage and typed input without paid services', () => {
+  it('declares typed-input/client-local fallbacks without inventing client capabilities', () => {
     for (const key of KEYS) delete process.env[key]
     const result = resolveCapabilities({ hosted: false })
     expect(result.ablVersion).toBe('0.2')
     expect(result.capabilities.reasoning.mode).toBe('unavailable')
     expect(result.capabilities.speech.stt.live.fallback).toBe('typed-input')
     expect(result.capabilities.speech.stt.batch.fallback).toBe('typed-input')
-    expect(result.capabilities.speech.tts.mode).toBe('browser')
-    expect(result.capabilities.knowledge.mode).toBe('local')
-    expect(result.capabilities.persistence.mode).toBe('local')
+    expect(result.capabilities.speech.tts).toMatchObject({ available: null, mode: 'client' })
+    expect(result.capabilities.knowledge).toMatchObject({ available: false, mode: 'client-local' })
+    expect(result.capabilities.persistence).toMatchObject({ available: false, mode: 'client-local' })
   })
+
   it('separates streaming and batch STT without exposing secrets', () => {
     process.env.GROQ_API_KEY = 'secret-groq-value'; process.env.DEEPGRAM_API_KEY = 'secret-deepgram-value'; process.env.MONGO_URI = 'mongodb://secret-host/mockmate'
     const serialized = JSON.stringify(resolveCapabilities({ hosted: false }))
@@ -28,8 +29,8 @@ describe('ARCH capability resolver', () => {
 })
 
 describe('ARCH reasoning policy', () => {
-  it('maps latency-sensitive and quality-sensitive work to explicit lanes without double retries', () => {
-    expect(reasoningPolicy('hint')).toEqual({ lane: 'fast', executionAdapter: 'core', noDoubleRetry: true })
+  it('uses executable ABL lanes without adding a second retry owner', () => {
+    expect(reasoningPolicy('hint')).toEqual({ lane: 'fast', executionAdapter: 'existing-resilient-core-adapter', noDoubleRetry: true })
     expect(reasoningPolicy('interview').lane).toBe('balanced')
     expect(reasoningPolicy('evaluate').lane).toBe('strong')
     expect(reasoningPolicy('screen').lane).toBe('vision')
@@ -42,15 +43,39 @@ describe('ARCH runtime fallback', () => {
     const result = await executeWithFallback({ capability: 'transcription', providers: ['primary', 'secondary'], retries: 1, timeoutMs: 100, execute: async (provider, attempt) => { calls.push(`${provider}:${attempt}`); if (provider === 'primary') throw new Error('provider-down'); return 'answer' } })
     expect(result).toMatchObject({ ok: true, degraded: true, provider: 'secondary', result: 'answer' }); expect(calls).toEqual(['primary:0', 'primary:1', 'secondary:0'])
   })
+
   it('uses degraded fallback after all providers fail', async () => {
     const result = await executeWithFallback({ capability: 'transcription', providers: ['deepgram'], retries: 0, execute: async () => { throw new Error('offline') }, fallback: async failures => ({ typedInputRequired: true, failures: failures.length }) })
     expect(result.ok).toBe(true); expect(result.fallback).toBe(true); expect(result.result).toEqual({ typedInputRequired: true, failures: 1 })
   })
+
   it('opens a short circuit so repeated requests fail over immediately', async () => {
     const execute = vi.fn(async provider => { if (provider === 'primary') throw new Error('down'); return 'ok' })
     await executeWithFallback({ capability: 'transcription', providers: ['primary', 'secondary'], retries: 0, execute, cooldownMs: 60_000 }); execute.mockClear()
     const second = await executeWithFallback({ capability: 'transcription', providers: ['primary', 'secondary'], retries: 0, execute, cooldownMs: 60_000 })
-    expect(execute).toHaveBeenCalledTimes(1); expect(execute).toHaveBeenCalledWith('secondary', 0); expect(second.failures[0]).toMatchObject({ provider: 'primary', reason: 'circuit-open' })
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(execute.mock.calls[0][0]).toBe('secondary')
+    expect(execute.mock.calls[0][1]).toBe(0)
+    expect(execute.mock.calls[0][2]).toBeInstanceOf(AbortSignal)
+    expect(second.failures[0]).toMatchObject({ provider: 'primary', reason: 'circuit-open' })
+  })
+
+  it('does not retry or open a global circuit for request-specific 400s when classifiers reject them', async () => {
+    const execute = vi.fn(async provider => {
+      if (provider === 'primary') { const error = new Error('bad input'); error.status = 400; throw error }
+      return 'secondary-ok'
+    })
+    const opts = {
+      capability: 'transcription', providers: ['primary', 'secondary'], retries: 1, execute,
+      shouldRetry: error => Number(error.status) >= 500,
+      shouldOpenCircuit: error => Number(error.status) >= 500,
+    }
+    const first = await executeWithFallback(opts)
+    expect(first.provider).toBe('secondary')
+    execute.mockClear()
+    const second = await executeWithFallback(opts)
+    expect(execute.mock.calls[0][0]).toBe('primary')
+    expect(second.provider).toBe('secondary')
   })
 })
 

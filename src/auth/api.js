@@ -1,17 +1,8 @@
 // Single API wrapper for the auth/SaaS backend. Every authenticated call goes
-// through here — token attachment, JSON handling, and 401 handling live in ONE
-// place, not scattered across components.
-//
-// Token storage: Electron safeStorage (encrypted, in userData) via the preload
-// bridge — NEVER localStorage. In plain-browser dev (no Electron) it falls back
-// to an in-memory value, which is fine because the product only ships in Electron.
-
+// through here — token attachment, JSON handling, and 401 handling live in ONE place.
 import { diagnostic, createDiagnosticRequestId } from '../lib/diagnostics'
 
 const electronAuth = typeof window !== 'undefined' ? window.electronAPI?.auth : null
-
-// Base URL is env-configurable so we can point at a hosted backend later with no
-// code change. A build-time hosted URL wins over the local Electron fallback.
 const API_BASE =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE) ||
   (typeof window !== 'undefined' && window.electronAPI?.getApiBase?.()) ||
@@ -19,37 +10,42 @@ const API_BASE =
 
 export const usesDeviceLocalAccounts = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(API_BASE)
 
-// ── Token storage ─────────────────────────────────────────────────────────────
-let memToken = null   // browser-dev fallback only
+let memToken = null
 export async function getToken() {
   if (electronAuth) { try { return await electronAuth.getToken() } catch { return null } }
   return memToken
 }
 export async function setToken(token) {
-  if (electronAuth) { try { await electronAuth.setToken(token) } catch {} }
-  else memToken = token
+  if (electronAuth) {
+    try { await electronAuth.setToken(token); return }
+    catch (error) {
+      diagnostic('auth', 'token_store_failed', { errorName: error?.name || 'Error' }, 'error')
+      throw new ApiError('MockMate could not securely save your session. Restart the app and try again.', 0)
+    }
+  }
+  memToken = token
 }
 export async function clearToken() {
   if (electronAuth) { try { await electronAuth.clearToken() } catch {} }
   else memToken = null
 }
 
-// ── Global 401 handler ──────────────────────────────────────────────────────
-// AuthGate registers a callback; any 401 from an authed call clears the token and
-// fires it (→ redirect to Login) so expired sessions bounce out silently.
 let onUnauthorized = () => {}
 export function setUnauthorizedHandler(fn) { onUnauthorized = fn || (() => {}) }
+export async function handleUnauthorized(source = 'api') {
+  diagnostic('auth', 'session_unauthorized', { source }, 'warn')
+  try { await clearToken() } catch {}
+  try { onUnauthorized() } catch {}
+}
 
-// ── Core request ────────────────────────────────────────────────────────────
 async function request(path, { method = 'GET', body, auth = false, timeoutMs = 15000 } = {}) {
   const requestId = createDiagnosticRequestId('auth')
   const startedAt = performance.now()
-  const headers = {}
-  headers['X-MockMate-Request-Id'] = requestId
+  const headers = { 'X-MockMate-Request-Id': requestId }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (auth) {
     const token = await getToken()
-    if (token) headers['Authorization'] = `Bearer ${token}`
+    if (token) headers.Authorization = `Bearer ${token}`
   }
 
   let res
@@ -58,19 +54,16 @@ async function request(path, { method = 'GET', body, auth = false, timeoutMs = 1
   const timer = controller && timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null
   try {
     res = await fetch(`${API_BASE}${path}`, {
-      method, headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal: controller?.signal,
+      method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, signal: controller?.signal,
     })
   } catch (err) {
     diagnostic('auth', 'request_failed', { requestId, path, method, durationMs: Math.round(performance.now() - startedAt), reason: err?.name === 'AbortError' ? 'timeout' : 'network' }, 'error')
-    // Network / backend-down. Distinct, actionable message — not a bare throw.
     throw new ApiError(
       err?.name === 'AbortError'
         ? 'MockMate took too long to respond. Please try again.'
         : usesDeviceLocalAccounts
-        ? 'MockMate’s account service did not start. Restart the app and try again.'
-        : 'Can’t reach MockMate. Check your connection and try again.',
+          ? 'MockMate’s account service did not start. Restart the app and try again.'
+          : 'Can’t reach MockMate. Check your connection and try again.',
       0,
     )
   } finally {
@@ -78,15 +71,12 @@ async function request(path, { method = 'GET', body, auth = false, timeoutMs = 1
   }
 
   if (res.status === 401 && auth) {
-    diagnostic('auth', 'session_unauthorized', { requestId, path, durationMs: Math.round(performance.now() - startedAt) }, 'warn')
-    await clearToken()
-    onUnauthorized()
+    await handleUnauthorized(path)
     throw new ApiError('Your session expired. Please sign in again.', 401)
   }
 
   let data = null
-  try { data = await res.json() } catch { /* empty/no-json body */ }
-
+  try { data = await res.json() } catch {}
   if (!res.ok) {
     diagnostic('auth', 'request_rejected', { requestId, path, method, status: res.status, durationMs: Math.round(performance.now() - startedAt) }, 'warn')
     throw new ApiError(data?.error || 'Something went wrong. Please try again.', res.status)
@@ -99,11 +89,7 @@ export class ApiError extends Error {
   constructor(message, status) { super(message); this.name = 'ApiError'; this.status = status }
 }
 
-// ── Auth endpoints ────────────────────────────────────────────────────────────
-// Always resolves (backend returns 200 regardless, to avoid email enumeration).
-export async function forgotPassword(email) {
-  return request('/auth/forgot-password', { method: 'POST', body: { email } })
-}
+export async function forgotPassword(email) { return request('/auth/forgot-password', { method: 'POST', body: { email } }) }
 export async function signup({ name, email, password }) {
   const { token, user } = await request('/auth/signup', { method: 'POST', body: { name, email, password } })
   await setToken(token)
@@ -114,40 +100,21 @@ export async function login({ email, password }) {
   await setToken(token)
   return user
 }
-export async function fetchMe() {
-  return request('/auth/me', { auth: true })   // → { user, plan, usage }
-}
-export async function updateProfile(patch) {
-  const { user } = await request('/me', { method: 'PATCH', body: patch, auth: true })
-  return user
-}
+export async function fetchMe() { return request('/auth/me', { auth: true }) }
+export async function updateProfile(patch) { const { user } = await request('/me', { method: 'PATCH', body: patch, auth: true }); return user }
 export async function logout() {
-  try { await request('/auth/logout', { method: 'POST', auth: true }) } catch { /* best-effort */ }
+  try { await request('/auth/logout', { method: 'POST', auth: true }) } catch {}
   await clearToken()
 }
-
-/** Extend a still-valid session (new JWT with same tokenVersion). No-op if logged out. */
 export async function refreshSession() {
   const { token } = await request('/auth/refresh', { method: 'POST', auth: true })
   if (token) await setToken(token)
   return token
 }
 
-// ── Billing (Phase 2c) ─────────────────────────────────────────────────────────
-// Checkout / portal always target the auth backend (JWT-attached), never the local
-// BYOK server. The returned Stripe URL opens in the user's default browser — payment
-// completes there, and a webhook flips the plan to Pro server-side.
 function openUrl(url) {
   if (typeof window !== 'undefined' && window.electronAPI?.openExternal) window.electronAPI.openExternal(url)
   else if (typeof window !== 'undefined') window.open(url, '_blank', 'noopener')
 }
-export async function startCheckout() {
-  const { url } = await request('/billing/checkout', { method: 'POST', auth: true })
-  if (url) openUrl(url)
-  return url
-}
-export async function openBillingPortal() {
-  const { url } = await request('/billing/portal', { method: 'POST', auth: true })
-  if (url) openUrl(url)
-  return url
-}
+export async function startCheckout() { const { url } = await request('/billing/checkout', { method: 'POST', auth: true }); if (url) openUrl(url); return url }
+export async function openBillingPortal() { const { url } = await request('/billing/portal', { method: 'POST', auth: true }); if (url) openUrl(url); return url }
