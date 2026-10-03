@@ -1,5 +1,4 @@
 // Production-safe local diagnostics. JSONL, buffered, rotated, and aggressively redacted.
-// This module must never throw into an interview/audio path.
 const fs = require('fs')
 const path = require('path')
 
@@ -35,6 +34,8 @@ class DiagnosticStore {
     try { fs.mkdirSync(this.dir, { recursive: true }) } catch {}
     this.timer = setInterval(() => this.flush(), 500)
     this.timer.unref?.()
+    this.exitHandler = () => { try { this.flushSync() } catch {} }
+    process.once('exit', this.exitHandler)
   }
 
   event(component, event, fields = {}, level = 'info') {
@@ -56,7 +57,7 @@ class DiagnosticStore {
     }
   }
 
-  async rotate(incomingBytes = 0) {
+  rotateSync(incomingBytes = 0) {
     try {
       const size = fs.existsSync(this.file) ? fs.statSync(this.file).size : 0
       if (size + incomingBytes < MAX_FILE_BYTES) return
@@ -71,6 +72,8 @@ class DiagnosticStore {
     } catch {}
   }
 
+  async rotate(incomingBytes = 0) { this.rotateSync(incomingBytes) }
+
   async flush() {
     if (this.flushing || !this.queue.length) return
     this.flushing = true
@@ -81,7 +84,6 @@ class DiagnosticStore {
       await this.rotate(Buffer.byteLength(chunk))
       await fs.promises.appendFile(this.file, chunk, { mode: 0o600 })
     } catch {
-      // Preserve ordering and retry later; diagnostics must not disappear on transient disk errors.
       this.queue.unshift(...lines)
       if (this.queue.length > MAX_QUEUE) this.queue.length = MAX_QUEUE
     } finally {
@@ -90,8 +92,21 @@ class DiagnosticStore {
     }
   }
 
+  flushSync() {
+    if (!this.queue.length) return
+    const lines = this.queue.splice(0, this.queue.length)
+    const chunk = lines.join('\n') + '\n'
+    try {
+      fs.mkdirSync(this.dir, { recursive: true })
+      this.rotateSync(Buffer.byteLength(chunk))
+      fs.appendFileSync(this.file, chunk, { mode: 0o600 })
+    } catch {
+      this.queue.unshift(...lines)
+      if (this.queue.length > MAX_QUEUE) this.queue.length = MAX_QUEUE
+    }
+  }
+
   async clear() {
-    // Wait for an already-started append before deleting files so a late flush cannot recreate them.
     while (this.flushing) await new Promise(resolve => setTimeout(resolve, 10))
     this.queue = []
     for (let i = 0; i < MAX_FILES; i++) {
@@ -122,7 +137,12 @@ class DiagnosticStore {
     return { path: destination, files: files.length }
   }
 
-  async close() { clearInterval(this.timer); await this.flush() }
+  async close() {
+    clearInterval(this.timer)
+    process.removeListener('exit', this.exitHandler)
+    await this.flush()
+    this.flushSync()
+  }
 }
 
 module.exports = { DiagnosticStore, clean }
