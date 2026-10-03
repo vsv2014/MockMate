@@ -82,6 +82,7 @@ jobs:
           fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n')
           NODE
       - run: npm ci
+      - run: npm --prefix backend ci
 
       - name: Require public-release signing credentials (Windows)
         if: matrix.platform == 'win'
