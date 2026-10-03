@@ -20,21 +20,13 @@ export function currentPeriod() {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
-// Public, transport-safe view of a user. Never includes passwordHash.
 export function toSafeUser(u) {
   if (!u) return null
   return {
-    id: String(u.id || u._id),
-    email: u.email,
-    name: u.name || '',
-    plan: u.plan || 'free',
-    targetRole: u.targetRole || '',
-    yearsExp: u.yearsExp || '',
-    currentRole: u.currentRole || '',
-    language: u.language || 'English',
-    hasResume: !!u.resume,
-    preferences: u.preferences && typeof u.preferences === 'object' ? u.preferences : {},
-    createdAt: u.createdAt,
+    id: String(u.id || u._id), email: u.email, name: u.name || '', plan: u.plan || 'free',
+    targetRole: u.targetRole || '', yearsExp: u.yearsExp || '', currentRole: u.currentRole || '',
+    language: u.language || 'English', hasResume: !!u.resume,
+    preferences: u.preferences && typeof u.preferences === 'object' ? u.preferences : {}, createdAt: u.createdAt,
   }
 }
 
@@ -52,29 +44,26 @@ function makeFileBackend() {
     if (!db.users) db.users = []
     if (!db.usage) db.usage = []
   }
+
   function persist() {
-    writeChain = writeChain.then(() => new Promise((resolve, reject) => {
+    // A failed disk write must fail the caller, but must not poison the queue forever.
+    writeChain = writeChain.catch(() => {}).then(() => {
       const tmp = file + '.tmp'
-      try {
-        fs.writeFileSync(tmp, JSON.stringify(db, null, 2))
-        fs.renameSync(tmp, file)
-        resolve()
-      } catch (e) {
-        console.error('[store] persist failed:', e.message)
-        reject(e)
-      }
-    }))
-    return writeChain
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(tmp, JSON.stringify(db, null, 2))
+      fs.renameSync(tmp, file)
+    })
+    return writeChain.catch(error => {
+      console.error('[store] persist failed:', error.message)
+      throw error
+    })
   }
 
   load()
 
   return {
     async init() {},
-    async findUserByEmail(email) {
-      const e = (email || '').toLowerCase()
-      return db.users.find(u => u.email === e) || null
-    },
+    async findUserByEmail(email) { const e = (email || '').toLowerCase(); return db.users.find(u => u.email === e) || null },
     async findUserById(id) { return db.users.find(u => String(u.id) === String(id)) || null },
     async findUserByGoogleId(googleId) { return db.users.find(u => u.googleId === googleId) || null },
     async findUserByResetToken(hash) { return db.users.find(u => u.resetTokenHash && u.resetTokenHash === hash) || null },
@@ -95,20 +84,17 @@ function makeFileBackend() {
     async updateUser(id, patch) {
       const u = db.users.find(x => String(x.id) === String(id))
       if (!u) return null
-      const previous = structuredClone(u)
       Object.assign(u, patch)
-      try { await persist(); return u }
-      catch (error) { Object.assign(u, previous); throw error }
+      await persist()
+      return u
     },
     async deleteUser(id) {
-      const prevUsers = db.users
-      const prevUsage = db.usage
       const before = db.users.length
       db.users = db.users.filter(u => String(u.id) !== String(id))
       db.usage = db.usage.filter(r => String(r.userId) !== String(id))
       if (db.users.length === before) return false
-      try { await persist(); return true }
-      catch (error) { db.users = prevUsers; db.usage = prevUsage; throw error }
+      await persist()
+      return true
     },
     async getUsage(userId, period) {
       return db.usage.find(r => String(r.userId) === String(userId) && r.period === period)
@@ -117,10 +103,10 @@ function makeFileBackend() {
     async addUsage(userId, period, { llmCalls = 0, sttSeconds = 0 }) {
       let r = db.usage.find(x => String(x.userId) === String(userId) && x.period === period)
       if (!r) { r = { userId: String(userId), period, llmCalls: 0, sttSeconds: 0 }; db.usage.push(r) }
-      const before = { llmCalls: r.llmCalls, sttSeconds: r.sttSeconds }
-      r.llmCalls += llmCalls; r.sttSeconds += sttSeconds
-      try { await persist(); return r }
-      catch (error) { r.llmCalls = before.llmCalls; r.sttSeconds = before.sttSeconds; throw error }
+      r.llmCalls += llmCalls
+      r.sttSeconds += sttSeconds
+      await persist()
+      return r
     },
     async reserveLlmUsage() { return true },
     async releaseLlmUsage() { return true },
