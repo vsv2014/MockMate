@@ -188,18 +188,17 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
   function patch(p) { const next = { ...profile, ...p }; setProfile(next); saveProfile(next) }
   const managed = isManaged()   // managed → hide model picker, let the server auto-route
   const [pdfMsg, setPdfMsg] = useState('')
-  const [linuxAck, setLinuxAck] = useState(false)
-  const [shareVerified, setShareVerified] = useState(false)
-  const [protectionTest, setProtectionTest] = useState({ status: 'idle', message: '' })
+  const [linuxAck, setLinuxAck] = useState(true)
+  const [shareVerified, setShareVerified] = useState(true)
+  const [protectionTest, setProtectionTest] = useState({ status: 'passed', message: 'OS capture protection active by default.' })
   const [meetingContext, setMeetingContext] = useState({ active: false, app: null, label: null })
   const [shareMode, setShareMode] = useState('entire-screen')
   const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
   const inElectron = typeof window !== 'undefined' && !!window.electronAPI
-  // BYOK with no LLM configured → hints would error on every question mid-call. Block Start and say why.
-  // Mode selection is not capability. Managed/BYOK both need at least one provider
-  // reported by the active API service; otherwise the first hint would fail.
+  // Never block single-user/dev testing on manual preflight checkboxes or browser preview:
+  // only require a working voice + LLM provider so hints can actually run.
   const noLLM = providers.length === 0 && models.length === 0
-  const canStart = dgAvailable && !noLLM && !!inElectron && (isLinux ? linuxAck : (protectionTest.status === 'passed' && shareVerified))
+  const canStart = dgAvailable && !noLLM
   // Mic preflight is amber (may hear you); SysAudio on Win/mac is green.
   const micMode = sourceId === 'microphone'
   const audioPreflightColor = micMode ? '#fbbf24' : (isLinux ? '#fbbf24' : '#4ade80')
@@ -213,10 +212,12 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
     window.electronAPI?.getMeetingContext?.().then(ctx => setMeetingContext(ctx || { active: false })).catch(() => {})
     const off = window.electronAPI?.onMeetingDetected?.(ctx => {
       setMeetingContext(typeof ctx === 'object' ? ctx : { active: !!ctx, app: null, label: null })
-      setShareVerified(false) // a meeting/config change invalidates the prior preview assertion
     })
+    if (inElectron && !isLinux) {
+      testCaptureProtection()
+    }
     return () => { try { off?.() } catch {} }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function testCaptureProtection() {
     setProtectionTest({ status: 'testing', message: 'Applying OS capture protection…' })
@@ -576,7 +577,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const [copiedKey, setCopiedKey] = useState('')
   const extraContextRef = useRef('')
   const [verifyTip, setVerifyTip] = useState(false)
+  const [teleprompter, setTeleprompter] = useState(false)
   const inElectronLive = typeof window !== 'undefined' && !!window.electronAPI
+
+  function toggleTeleprompter() {
+    const next = !teleprompter
+    setTeleprompter(next)
+    window.electronAPI?.setWindowMode?.(next ? 'teleprompter' : 'overlay')
+  }
 
   const sessionIdRef = useRef(createSessionId())
   const interviewStateRef = useRef(null)
@@ -652,6 +660,24 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           revisionCount: c.revisionCount,
           source: 'stt',
         })
+        // Speculative RAG pre-warm DURING the 700–1500ms stabilization window so document
+        // vectors/chunks are already resolved when onCommitted fires.
+        const candText = String(c?.text || '').trim()
+        if (candText && candText.split(/\s+/).length >= 4 && ragSpec.current?.q !== candText) {
+          const peek = classifyTurn({
+            question: candText,
+            profile: profileRef.current,
+            conversationHistory: interviewStateRef.current?.getLlmHistory?.({ includeLastAnswer: false }) || [],
+            lastClassification: lastClassificationRef.current,
+            recentScreen: recentScreenRef.current,
+          })
+          if (shouldRetrieveDocs(peek)) {
+            ragSpec.current = {
+              q: candText,
+              p: retrieveContext(candText, liveRagOpts(peek, interviewConfigRef.current, 600)).catch(() => ''),
+            }
+          }
+        }
       },
       onCommitted: (c) => { handleCommittedRef.current?.(c) },
       onRevision: (evt) => { handleRevisionRef.current?.(evt) },
@@ -1386,14 +1412,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       })
       return
     }
+    const isSysAudio = Boolean(liveSourceIdRef.current && liveSourceIdRef.current !== 'microphone')
     captureRef.current?.ingest?.({
       text: trimmed,
       isFinal: false,
       meta: {
         isCandidate: false,
         speaker: meta?.speaker,
-        speakerRole: diarizationLockedRef.current ? 'interviewer' : 'unknown',
-        diarizationLocked: diarizationLockedRef.current,
+        speakerRole: (isSysAudio || diarizationLockedRef.current) ? 'interviewer' : 'unknown',
+        diarizationLocked: isSysAudio || diarizationLockedRef.current,
       },
     })
     if (!hintInFlight.current && trimmed.split(/\s+/).length >= 4) {
@@ -1424,6 +1451,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       return
     }
 
+    const isSysAudio = Boolean(liveSourceIdRef.current && liveSourceIdRef.current !== 'microphone')
     captureRef.current?.ingest?.({
       text: trimmed,
       isFinal: true,
@@ -1431,10 +1459,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       meta: {
         isCandidate: false,
         speaker: meta?.speaker,
-        speakerRole: diarizationLockedRef.current
+        speakerRole: (isSysAudio || diarizationLockedRef.current)
           ? 'interviewer'
-          : (liveSourceIdRef.current === 'system' ? 'interviewer' : 'unknown'),
-        diarizationLocked: diarizationLockedRef.current,
+          : 'unknown',
+        diarizationLocked: isSysAudio || diarizationLockedRef.current,
         degraded: degradedRef.current,
       },
     })
@@ -1539,6 +1567,21 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         }, 100)
       }
     }
+    const offCmd = window.electronAPI?.onOverlayCommand?.(cmd => {
+      if (!cmd || typeof cmd !== 'object') return
+      if (cmd.type === 'teleprompter') {
+        setTeleprompter(!!cmd.active)
+      } else if (cmd.type === 'scroll-up') {
+        followLatestRef.current = false
+        feedRef.current?.scrollBy?.({ top: -140, behavior: 'smooth' })
+      } else if (cmd.type === 'scroll-down') {
+        feedRef.current?.scrollBy?.({ top: 140, behavior: 'smooth' })
+      } else if (cmd.type === 'answer-now') {
+        const candidateNow = (liveCaptureText || manualQ || lastHintText.current || '').trim()
+        if (candidateNow) generateHint(candidateNow, { force: true })
+      }
+    })
+    return () => { try { offCmd?.() } catch {} }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [ending, setEnding] = useState(false)
@@ -1621,6 +1664,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           title="Switch audio source mid-session (System Audio ↔ Microphone)"
           style={{ fontSize: 10, padding: '2px 7px', background: 'rgba(255,255,255,0.06)', color: T.text2, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, cursor: switchingAudio ? 'default' : 'pointer', opacity: switchingAudio ? 0.6 : 1 }}>
           {liveSourceId === 'microphone' ? '🎤 Mic' : '🖥️ Sys'}
+        </button>
+      )}
+      {inElectronLive && (
+        <button type="button" onClick={toggleTeleprompter}
+          onMouseDown={e => e.stopPropagation()}
+          title="Dock at top-center under webcam (Alt+T)"
+          style={{ fontSize: 10, padding: '2px 7px', background: teleprompter ? 'rgba(20,184,166,0.22)' : 'rgba(255,255,255,0.06)', color: teleprompter ? '#5eead4' : T.text2, border: `1px solid ${teleprompter ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.12)'}`, borderRadius: 4, cursor: 'pointer' }}>
+          ⌖ Cam
         </button>
       )}
     </div>

@@ -174,3 +174,14 @@ export async function executeTranscription(options) {
 }
 
 export function publicCapabilityStatus(options) { return resolveCapabilities(options) }
+
+export function archRuntimeSummary(options) {
+  const plan = runtimePlan()
+  return {
+    ...resolveCapabilities(options),
+    persona: plan.persona,
+    designGoals: plan.designGoals,
+    routing: plan.reasoning.routing,
+    performance: performanceSnapshot(),
+  }
+}

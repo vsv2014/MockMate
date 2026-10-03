@@ -29,9 +29,62 @@ export function cosineSim(a, b) {
   return d ? dot / d : 0
 }
 
-export function topK(queryVec, items, { k = 4, minScore = 0.2 } = {}) {
+const STOP_WORDS = new Set([
+  'the', 'and', 'for', 'with', 'that', 'this', 'from', 'your', 'you', 'are', 'was', 'were',
+  'what', 'how', 'why', 'when', 'where', 'who', 'which', 'can', 'could', 'would', 'should',
+  'tell', 'about', 'explain', 'describe', 'walk', 'through', 'have', 'has', 'had', 'into',
+])
+
+function tokenizeLexical(text) {
+  return String(text || '')
+    .toLowerCase()
+    .match(/[a-z0-9+#._-]{2,}/g)
+    ?.filter(tok => !STOP_WORDS.has(tok)) || []
+}
+
+/**
+ * Compute bounded lexical overlap score [0, 1] between a query and chunk text.
+ * Exact technical acronyms/identifiers (e.g. CTE, RBAC, Kafka, Redis) receive higher weight.
+ */
+export function lexicalOverlapScore(queryText, chunkTextStr) {
+  const qTokens = tokenizeLexical(queryText)
+  if (!qTokens.length) return 0
+  const docTokens = new Set(tokenizeLexical(chunkTextStr))
+  if (!docTokens.size) return 0
+  const rawUpperAcronyms = new Set((String(queryText || '').match(/\b[A-Z][A-Z0-9_]{1,12}\b/g) || []).map(s => s.toLowerCase()))
+  let matchedWeight = 0
+  let totalWeight = 0
+  const uniqueQ = [...new Set(qTokens)]
+  for (const tok of uniqueQ) {
+    const w = rawUpperAcronyms.has(tok) || /[0-9+#._-]/.test(tok) ? 1.6 : 1.0
+    totalWeight += w
+    if (docTokens.has(tok)) matchedWeight += w
+  }
+  return totalWeight > 0 ? matchedWeight / totalWeight : 0
+}
+
+export function topK(queryVec, items, { k = 4, minScore = 0.2, queryText = '' } = {}) {
+  const hasQueryText = Boolean(String(queryText || '').trim())
   return items
-    .map(it => ({ ...it, score: cosineSim(queryVec, it.vector) }))
+    .map(it => {
+      const vecScore = cosineSim(queryVec, it.vector)
+      const lexScore = hasQueryText ? lexicalOverlapScore(queryText, it.text) : 0
+      // Hybrid score: vector cosine primary + up to 0.18 lexical boost for exact domain terms
+      const score = vecScore + (lexScore * 0.18)
+      return { ...it, score, vectorScore: vecScore, lexicalScore: lexScore }
+    })
+    .filter(it => it.score >= minScore)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k)
+}
+
+/**
+ * Zero-latency lexical fallback when embeddings time out or are unavailable in local testing.
+ */
+export function lexicalTopK(queryText, items, { k = 4, minScore = 0.22 } = {}) {
+  if (!String(queryText || '').trim() || !Array.isArray(items)) return []
+  return items
+    .map(it => ({ ...it, score: lexicalOverlapScore(queryText, it.text) }))
     .filter(it => it.score >= minScore)
     .sort((a, b) => b.score - a.score)
     .slice(0, k)

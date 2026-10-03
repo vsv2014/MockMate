@@ -33,7 +33,11 @@ import {
   screenFingerprint,
 } from '../shared/screenContext.js'
 
-const inElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
+const inElectron = typeof window !== 'undefined' && (
+  !!window.electronAPI?.isElectron
+  || /^(localhost|127\.0\.0\.1)$/i.test(window.location?.hostname || '')
+  || /[?&]app=1\b/.test(window.location?.search || '')
+)
 const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
 
 // Views that render in the full windowed app shell (large window + sidebar). Solo runs

@@ -48,13 +48,24 @@ function isOwnWindowFocused() {
   } catch { return false }
 }
 
+function activeDisplayWorkArea(win = mainWindow) {
+  try {
+    if (win && !win.isDestroyed()) {
+      const match = screen.getDisplayMatching(win.getBounds())
+      if (match?.workArea) return match.workArea
+    }
+  } catch {}
+  const primary = screen.getPrimaryDisplay()
+  return primary?.workArea || { x: 0, y: 0, width: primary?.workAreaSize?.width || 1280, height: primary?.workAreaSize?.height || 720 }
+}
+
 function applyPillGeometry() {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  const { width } = screen.getPrimaryDisplay().workAreaSize
+  const area = activeDisplayWorkArea(mainWindow)
   const s = 72
   try { mainWindow.setIgnoreMouseEvents(false) } catch {}
   mainWindow.setSize(s, s)
-  mainWindow.setPosition(Math.max(0, width - s - 16), 16)
+  mainWindow.setPosition(Math.max(area.x, area.x + area.width - s - 16), area.y + 16)
   if (!mainWindow.isVisible()) {
     try { mainWindow.showInactive() } catch { mainWindow.show() }
   }
@@ -62,6 +73,19 @@ function applyPillGeometry() {
     try { mainWindow.setAlwaysOnTop(true) } catch {}
   }
   lastWindowMode = 'pill'
+}
+
+function applyTeleprompterGeometry() {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  const area = activeDisplayWorkArea(mainWindow)
+  const w = Math.min(480, Math.max(320, area.width - 40))
+  const h = Math.min(240, Math.max(180, area.height - 40))
+  const x = area.x + Math.max(0, Math.round((area.width - w) / 2))
+  const y = area.y + 8
+  mainWindow.setBounds({ x, y, width: w, height: h })
+  try { mainWindow.setAlwaysOnTop(true, 'screen-saver') } catch {}
+  lastWindowMode = 'teleprompter'
+  try { mainWindow.webContents.send('overlay-command', { type: 'teleprompter', active: true, width: w, height: h }) } catch {}
 }
 
 // Auth/SaaS backend. Base URL is env-configurable so we can point the app at a
@@ -462,12 +486,35 @@ function launchTrayAndShortcuts() {
   // Screen solve: Ctrl+Shift+U (avoids Zoom/browser stealing lone F-keys) + F7 alias.
   globalShortcut.register('CommandOrControl+Shift+U', captureScreen)
   try { globalShortcut.register('F7', captureScreen) } catch {}
+
+  // Zero-mouse overlay navigation & Top-Center Camera Anchor (Teleprompter) mode:
+  try {
+    globalShortcut.register('Alt+T', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      if (lastWindowMode === 'teleprompter') {
+        lastWindowMode = null
+        ipcMain.emit('set-window-mode', null, 'overlay')
+        try { mainWindow.webContents.send('overlay-command', { type: 'teleprompter', active: false, width: lastOverlaySize.w, height: lastOverlaySize.h }) } catch {}
+      } else {
+        applyTeleprompterGeometry()
+      }
+    })
+    globalShortcut.register('Alt+Up', () => {
+      try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-up' }) } catch {}
+    })
+    globalShortcut.register('Alt+Down', () => {
+      try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-down' }) } catch {}
+    })
+    globalShortcut.register('Alt+R', () => {
+      try { mainWindow?.webContents?.send('overlay-command', { type: 'answer-now' }) } catch {}
+    })
+  } catch {}
 }
 
-// Capture the primary screen and hand a compressed JPEG to the renderer for vision analysis.
+// Capture the active/selected screen and hand a crisp compressed JPEG to the renderer for vision analysis.
 // Called by the Ctrl+Shift+U shortcut AND by the in-app "Solve it" button (ipc).
-// Keep resolution/quality modest: full 1920×1080 PNGs routinely trip vision 429s ("busy")
-// and slow TTFT; 1280-wide JPEG is enough for code/diagrams and fails over far more reliably.
+// 1920×1080 JPEG @ quality 82 keeps dense LeetCode/SQL fonts sharp on Windows 1080p/1440p/4K monitors
+// while staying compact enough for fast vision TTFT.
 async function captureScreen(opts = {}) {
   const publish = payload => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('screen-captured', payload)
@@ -482,31 +529,37 @@ async function captureScreen(opts = {}) {
   }
   suppressBlurHide(2500)
   try {
-    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1280, height: 720 } })
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } })
     if (!sources.length) return publish({ error: 'no_sources' })
-    const primaryId = String(screen.getPrimaryDisplay().id)
+    const activeDisplay = (() => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) return screen.getDisplayMatching(mainWindow.getBounds())
+      } catch {}
+      return screen.getPrimaryDisplay()
+    })()
+    const primaryId = String((activeDisplay || screen.getPrimaryDisplay()).id)
     const preferredId = opts.displayId != null ? String(opts.displayId) : null
-    // Prefer explicit display → primary → first. display_id is Electron's link to Display.id when available.
+    // Prefer explicit display → display containing MockMate/primary → first.
     const chosen = (preferredId && sources.find(s => String(s.display_id) === preferredId || s.id === preferredId))
       || sources.find(s => String(s.display_id) === primaryId)
       || sources[0]
     let payload
     try {
-      const img = chosen.thumbnail.resize({ width: 1280, quality: 'better' })
-      const size = img.getSize?.() || { width: 1280, height: 720 }
-      const jpeg = img.toJPEG(72)
+      const img = chosen.thumbnail.resize({ width: 1920, quality: 'better' })
+      const size = img.getSize?.() || { width: 1920, height: 1080 }
+      const jpeg = img.toJPEG(82)
       payload = {
         mime: 'image/jpeg',
         base64: jpeg.toString('base64'),
-        width: size.width || 1280,
-        height: size.height || 720,
+        width: size.width || 1920,
+        height: size.height || 1080,
         bytes: jpeg.length,
         displayId: chosen.display_id || chosen.id || null,
         displayName: chosen.name || null,
       }
     } catch {
       const png = chosen.thumbnail.toPNG()
-      const size = chosen.thumbnail.getSize?.() || { width: 1280, height: 720 }
+      const size = chosen.thumbnail.getSize?.() || { width: 1920, height: 1080 }
       payload = {
         mime: 'image/png',
         base64: png.toString('base64'),
@@ -934,25 +987,30 @@ ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
   }
   lastWindowMode = null
 })
-// Switch between the full windowed dashboard ('app') and the compact overlay ('overlay').
+// Switch between the full windowed dashboard ('app'), compact overlay ('overlay'),
+// top-center camera anchor ('teleprompter'), and minimized badge ('pill').
 ipcMain.on('set-window-mode', (_, mode) => {
   if (!mainWindow || mainWindow.isDestroyed() || mode === lastWindowMode) return
   suppressBlurHide(900)
   lastWindowMode = mode
   try {
-    const { width, height } = screen.getPrimaryDisplay().workAreaSize
+    const area = activeDisplayWorkArea(mainWindow)
     if (mode === 'pill') {
       applyPillGeometry()
+    } else if (mode === 'teleprompter') {
+      applyTeleprompterGeometry()
     } else if (mode === 'app') {
-      const w = Math.min(1200, width - 80), h = Math.min(760, height - 80)
-      mainWindow.setSize(w, h); mainWindow.center()
+      const w = Math.min(1200, area.width - 80), h = Math.min(760, area.height - 80)
+      const x = area.x + Math.max(0, Math.round((area.width - w) / 2))
+      const y = area.y + Math.max(0, Math.round((area.height - h) / 2))
+      mainWindow.setBounds({ x, y, width: w, height: h })
     } else {
-      // Restore the user's last HUD size — never hard-reset to 300×360 after a resize.
-      const w = Math.min(Math.max(240, lastOverlaySize.w || 300), width - 40)
-      const h = Math.min(Math.max(180, lastOverlaySize.h || 360), height - 40)
+      // Restore the user's last HUD size on the current display — never hard-reset to primary monitor.
+      const w = Math.min(Math.max(240, lastOverlaySize.w || 300), area.width - 40)
+      const h = Math.min(Math.max(180, lastOverlaySize.h || 360), area.height - 40)
       const [cx, cy] = mainWindow.getPosition()
-      const x = Math.min(Math.max(0, cx), Math.max(0, width - w))
-      const y = Math.min(Math.max(0, cy), Math.max(0, height - h))
+      const x = Math.min(Math.max(area.x, cx), Math.max(area.x, area.x + area.width - w))
+      const y = Math.min(Math.max(area.y, cy), Math.max(area.y, area.y + area.height - h))
       mainWindow.setBounds({ x, y, width: w, height: h })
     }
   } catch {}

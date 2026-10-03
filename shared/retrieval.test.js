@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { chunkText, topK, groundingBlock, cosineSim } from './retrieval.js'
+import { chunkText, topK, lexicalTopK, lexicalOverlapScore, groundingBlock, cosineSim } from './retrieval.js'
 
 describe('chunkText', () => {
   it('returns empty for blank', () => { expect(chunkText('')).toEqual([]) })
@@ -12,7 +12,7 @@ describe('chunkText', () => {
   })
 })
 
-describe('cosineSim / topK', () => {
+describe('cosineSim / topK / hybrid lexical boost', () => {
   it('ranks identical vector highest', () => {
     const q = [1, 0, 0]
     const items = [
@@ -23,6 +23,27 @@ describe('cosineSim / topK', () => {
     const hits = topK(q, items, { k: 1, minScore: 0.5 })
     expect(hits).toHaveLength(1)
     expect(hits[0].text).toBe('b')
+  })
+
+  it('boosts exact technical acronyms with hybrid queryText scoring', () => {
+    const q = [0.7, 0.7]
+    const items = [
+      { text: 'General access control notes for services', vector: [0.72, 0.69] },
+      { text: 'Implemented RBAC and CTE query optimization in Postgres', vector: [0.69, 0.72] },
+    ]
+    const hits = topK(q, items, { k: 2, minScore: 0.2, queryText: 'How did you implement RBAC and CTE?' })
+    expect(hits[0].text).toMatch(/RBAC and CTE/)
+    expect(lexicalOverlapScore('How did you implement RBAC and CTE?', items[1].text)).toBeGreaterThan(0.5)
+  })
+
+  it('supports zero-latency lexicalTopK fallback when embeddings are unavailable', () => {
+    const items = [
+      { text: 'Frontend React styling tokens', doc: 'Notes' },
+      { text: 'Built Kafka outbox pattern with Postgres idempotency keys', doc: 'Resume' },
+    ]
+    const hits = lexicalTopK('Explain your Kafka outbox pattern', items, { k: 1, minScore: 0.25 })
+    expect(hits).toHaveLength(1)
+    expect(hits[0].doc).toBe('Resume')
   })
 })
 

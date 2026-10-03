@@ -6,9 +6,11 @@ import { makeReport, availableProviders, allProviders, listModels, deepgramConfi
 import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen, streamHint } from './interview.js'
 import { findJobs } from './jobs.js'
 import { atsScore, tailorResume, referralMessage, resumeLatex } from './career.js'
+import { archRuntimeSummary, recordArchMetric, reasoningPolicy as defaultReasoningPolicy } from '../../backend/src/arch.js'
 
 export const API_ROUTE_CONTRACT = [
   { method: 'GET', path: '/api/providers' }, { method: 'GET', path: '/api/models' },
+  { method: 'GET', path: '/api/arch' },
   { method: 'POST', path: '/api/deepgram-token' }, { method: 'POST', path: '/api/token' },
   { method: 'POST', path: '/api/embed' }, { method: 'POST', path: '/api/report' },
   { method: 'POST', path: '/api/interview' }, { method: 'POST', path: '/api/evaluate' },
@@ -39,7 +41,7 @@ export function registerApiRoutes(app, opts = {}) {
   const report = typeof opts.report === 'function' ? opts.report : () => {}
   const onLlm = typeof opts.onLlm === 'function' ? opts.onLlm : null
   const onLlmFailure = typeof opts.onLlmFailure === 'function' ? opts.onLlmFailure : null
-  const resolveReasoningPolicy = typeof opts.reasoningPolicy === 'function' ? opts.reasoningPolicy : null
+  const resolveReasoningPolicy = typeof opts.reasoningPolicy === 'function' ? opts.reasoningPolicy : defaultReasoningPolicy
 
   const bodyWithPolicy = (path, raw = {}) => {
     const body = { ...(raw || {}) }
@@ -56,6 +58,10 @@ export function registerApiRoutes(app, opts = {}) {
   app.get('/api/models', ...guardLight, async (req, res) => {
     try { res.json({ models: await listModels() }) }
     catch (e) { console.error('[api] GET /api/models:', e.message); res.json({ models: [] }) }
+  })
+  app.get('/api/arch', ...guardLight, (_req, res) => {
+    try { res.json(archRuntimeSummary()) }
+    catch (e) { res.status(500).json({ error: e.message }) }
   })
 
   app.post('/api/deepgram-token', ...guardLight, async (req, res) => {
@@ -89,14 +95,17 @@ export function registerApiRoutes(app, opts = {}) {
   })
 
   const post = (path, fn, key) => app.post(path, ...guard, async (req, res) => {
+    const startedAt = Date.now()
     const ac = new AbortController()
     let closed = false
     res.on('close', () => { closed = true; try { ac.abort(new Error('client_disconnected')) } catch {} })
     try {
       const out = await fn({ ...bodyWithPolicy(path, req.body || {}), signal: ac.signal })
+      recordArchMetric('turn_latency_ms', Date.now() - startedAt)
       if (onLlm) { try { await onLlm(req, path) } catch {} }
       if (!closed) res.json(key ? { [key]: out } : out)
     } catch (e) {
+      recordArchMetric('provider_failure_count', 1)
       if (onLlmFailure) { try { await onLlmFailure(req, path) } catch {} }
       if (closed || ac.signal.aborted || e?.name === 'AbortError') return
       report(e)
@@ -111,13 +120,16 @@ export function registerApiRoutes(app, opts = {}) {
   post('/api/hint', generateHint, 'hint')
 
   app.post('/api/analyze-screen', ...guard, async (req, res) => {
+    const startedAt = Date.now()
     const ac = new AbortController()
     res.on('close', () => { try { ac.abort() } catch {} })
     try {
       const out = await analyzeScreen({ ...bodyWithPolicy('/api/analyze-screen', req.body || {}), signal: ac.signal })
+      recordArchMetric('turn_latency_ms', Date.now() - startedAt)
       if (onLlm) { try { await onLlm(req, '/api/analyze-screen') } catch {} }
       if (!ac.signal.aborted) res.json({ analysis: out })
     } catch (e) {
+      recordArchMetric('provider_failure_count', 1)
       if (onLlmFailure) { try { await onLlmFailure(req, '/api/analyze-screen') } catch {} }
       if (ac.signal.aborted || e?.name === 'AbortError') return
       report(e)
@@ -133,6 +145,7 @@ export function registerApiRoutes(app, opts = {}) {
   post('/api/resume-latex', resumeLatex)
 
   app.post('/api/hint-stream', ...guard, async (req, res) => {
+    const startedAt = Date.now()
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache, no-transform')
     res.setHeader('Connection', 'keep-alive')
@@ -158,15 +171,25 @@ export function registerApiRoutes(app, opts = {}) {
     try {
       const out = await streamHint(bodyWithPolicy('/api/hint-stream', req.body || {}), {
         onMeta: m => send('meta', m),
-        onToken: t => { emittedToken = true; send('token', t) },
+        onToken: t => {
+          if (!emittedToken) recordArchMetric('llm_ttft_ms', Date.now() - startedAt)
+          emittedToken = true
+          send('token', t)
+        },
         onUsage: u => send('usage', u),
-        onProviderEvent: e => { providerStarted = true; send('provider', e) },
+        onProviderEvent: e => {
+          providerStarted = true
+          if (e?.event === 'fallback') recordArchMetric('fallback_count', 1)
+          send('provider', e)
+        },
         signal: ac.signal,
       })
+      recordArchMetric('turn_latency_ms', Date.now() - startedAt)
       if (out?.skipped) await releaseReservation()
       else await consumeReservation()
       send(out?.skipped ? 'skip' : 'done', {})
     } catch (e) {
+      recordArchMetric('provider_failure_count', 1)
       if (emittedToken || providerStarted) await consumeReservation()
       else await releaseReservation()
       if (!closed && !ac.signal.aborted && e?.name !== 'AbortError') {

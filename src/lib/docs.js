@@ -2,12 +2,13 @@
 // Session selection: each doc has `selected` (default true). Live/Solo pass selected IDs into
 // retrieveContext so unchecked library docs cannot pollute a new interview.
 import { apiFetch } from './apiClient'
-import { chunkText, topK, groundingBlock } from '../../shared/retrieval.js'
+import { chunkText, topK, lexicalTopK, groundingBlock } from '../../shared/retrieval.js'
 import { getDocThreshold } from './aiSettings'
 import { diagnostic } from './diagnostics'
 import { getScopedItem, setScopedItem } from './accountScope'
 
 const KEY = 'mm-docs'
+const INDEX_STORAGE_KEY = 'mm-docs-index-v1'
 export const MAX_INDEX_CHUNKS_PER_DOC = 40
 export const LONG_DOC_CHARS = 20000
 
@@ -133,6 +134,38 @@ export function documentSignature(text = '') {
 const indexCache = new Map()
 const indexInFlight = new Map()
 
+function loadPersistedIndexEntry(docId, sig) {
+  try {
+    const raw = JSON.parse(getScopedItem(INDEX_STORAGE_KEY, '{}') || '{}')
+    const entry = raw?.[docId]
+    if (entry && entry.sig === sig && Array.isArray(entry.chunks) && entry.dimensions > 0) {
+      return entry
+    }
+  } catch {}
+  return null
+}
+
+function persistIndexEntry(docId, entry) {
+  try {
+    const raw = JSON.parse(getScopedItem(INDEX_STORAGE_KEY, '{}') || '{}')
+    const keys = Object.keys(raw)
+    if (keys.length > 24) delete raw[keys[0]]
+    raw[docId] = entry
+    setScopedItem(INDEX_STORAGE_KEY, JSON.stringify(raw))
+  } catch {}
+}
+
+function buildLexicalItems(docs) {
+  const out = []
+  for (const doc of docs) {
+    const chunks = sampleChunksForIndex(chunkText(doc.text, { size: 600, overlap: 100 }))
+    for (const text of chunks) {
+      out.push({ text, doc: doc.name, type: normalizeDocType(doc.type), docId: doc.id })
+    }
+  }
+  return out
+}
+
 async function embed(texts, signal) {
   const startedAt = performance.now(); const inputCount = Array.isArray(texts) ? texts.length : 0
   const r = await apiFetch('/api/embed', {
@@ -162,6 +195,13 @@ async function indexOne(doc, signal, force = false) {
   const sig = documentSignature(doc.text)
   const cached = indexCache.get(doc.id)
   if (!force && cached?.sig === sig) return cached
+  if (!force) {
+    const persisted = loadPersistedIndexEntry(doc.id, sig)
+    if (persisted) {
+      indexCache.set(doc.id, persisted)
+      return persisted
+    }
+  }
   const existing = indexInFlight.get(doc.id)
   if (!force && existing) return existing
   const task = (async () => {
@@ -171,6 +211,7 @@ async function indexOne(doc, signal, force = false) {
     if (signal?.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
     const entry = { sig, dimensions: vectors[0]?.length || 0, chunks: chunks.map((text, i) => ({ text, vector: vectors[i] || [] })) }
     indexCache.set(doc.id, entry)
+    persistIndexEntry(doc.id, entry)
     return entry
   })().finally(() => { if (indexInFlight.get(doc.id) === task) indexInFlight.delete(doc.id) })
   indexInFlight.set(doc.id, task)
@@ -207,15 +248,22 @@ export async function retrieveContext(question, { k = 4, minScore, budgetMs = 20
       diagnostic('rag', 'retrieval_dimension_mismatch', { queryDimensions: qv.length, documentCount: docs.length }, 'warn')
       return ''
     }
-    const chunks = topK(qv, items, { k, minScore: threshold })
+    const chunks = topK(qv, items, { k, minScore: threshold, queryText: question })
     diagnostic('rag', 'retrieval_completed', { documentCount: docs.length, indexedChunkCount: items.length, hitCount: chunks.length, maxScore: chunks.length ? Number(Math.max(...chunks.map(c => c.score)).toFixed(3)) : 0, minScore: chunks.length ? Number(Math.min(...chunks.map(c => c.score)).toFixed(3)) : 0, durationMs: Math.round(performance.now() - startedAt) })
     return groundingBlock(chunks)
   })().catch(e => {
     if (e?.name !== 'AbortError') diagnostic('rag', 'retrieval_failed', { reason: e?.name || 'error', durationMs: Math.round(performance.now() - startedAt) }, 'warn')
-    return ''
+    const lexicalHits = lexicalTopK(question, buildLexicalItems(docs), { k, minScore: Math.max(0.28, threshold) })
+    return groundingBlock(lexicalHits)
   })
   const result = await Promise.race([work, timeout])
   clearTimeout(timeoutId)
+  if (result) return result
+  // If embedding timed out, fall back to instant lexical retrieval so live answers still stay grounded.
+  if (ac.signal.aborted) {
+    const lexicalHits = lexicalTopK(question, buildLexicalItems(docs), { k, minScore: Math.max(0.28, threshold) })
+    if (lexicalHits.length) return groundingBlock(lexicalHits)
+  }
   return result
 }
 
