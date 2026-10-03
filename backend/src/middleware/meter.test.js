@@ -19,10 +19,10 @@ describe('checkCap fail-closed (hosted)', () => {
       currentPeriod: () => '2026-08',
       store: () => ({ findUserById: async () => { throw new Error('db down') } }),
     }))
-    vi.doMock('../plans.js', () => ({
-      effectivePlan: user => user?.plan || 'free',
-      limitFor: () => ({ llmCalls: 100 }),
-    }))
+    vi.doMock('../plans.js', async (importOriginal) => {
+      const actual = await importOriginal()
+      return { ...actual, effectivePlan: user => user?.plan || 'free', limitFor: () => ({ llmCalls: 100 }) }
+    })
     const { checkCap } = await import('./meter.js')
     const res = { statusCode: 0, body: null, status(c) { this.statusCode = c; return this }, json(b) { this.body = b; return this } }
     let nextCalled = false
@@ -49,10 +49,10 @@ describe('checkCap fail-closed (hosted)', () => {
       currentPeriod: () => '2026-08',
       store: () => ({ findUserById: async () => ({ plan: 'pro' }), reserveLlmUsage: reserve }),
     }))
-    vi.doMock('../plans.js', () => ({
-      effectivePlan: user => user?.plan || 'free',
-      limitFor: () => ({ llmCalls: 100 }),
-    }))
+    vi.doMock('../plans.js', async (importOriginal) => {
+      const actual = await importOriginal()
+      return { ...actual, effectivePlan: user => user?.plan || 'free', limitFor: () => ({ llmCalls: 100 }) }
+    })
     const { checkCap } = await import('./meter.js')
     const req = { userId: 'u1' }
     let nextCalled = false
@@ -97,12 +97,16 @@ describe('estimateLlmUnits multi-call paths (blast-radius BR-1)', () => {
     expect(estimateLlmUnits(big, '/api/hint')).toBe(2)
   })
 
-  it('stays in sync with plans.js MULTI_CALL_PATHS (no ghost routes)', () => {
-    // Guard against the BR-1 class of bug: a path in the bonus set that is
-    // not a real route silently never applies.
-    const { MULTI_CALL_PATHS } = { MULTI_CALL_PATHS: ['/api/report', '/api/evaluate', '/api/tailor-resume', '/api/jobs'] }
+  it('every MULTI_CALL path exists in the real API routing contract (structural ghost-route guard)', async () => {
+    // Derives both sides from PRODUCTION modules — no hardcoded parallel list.
+    // If someone re-points metering at a route that is not in the routing
+    // contract (the original BR-1 bug: '/api/match-jobs'), this fails.
+    vi.resetModules() // ensure we see the real plans.js, not any leaked test mock
+    const { MULTI_CALL_PATHS } = await import('../plans.js')
+    const { OPERATION_BY_PATH } = await import('../../../api/_lib/apiRoutes.js')
+    expect(MULTI_CALL_PATHS.size).toBeGreaterThan(0)
     for (const p of MULTI_CALL_PATHS) {
-      expect(estimateLlmUnits({ q: 'x'.repeat(13_000) }, p)).toBeGreaterThanOrEqual(3)
+      expect(OPERATION_BY_PATH[p], `${p} is metered as multi-call but is not a registered route`).toBeDefined()
     }
   })
 })

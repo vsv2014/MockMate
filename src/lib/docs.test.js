@@ -115,6 +115,74 @@ describe('filterDocsForRetrieve isolation', () => {
   })
 })
 
+describe('RAG privacy race: delete/replace while embed in flight (blast-radius BR-11)', () => {
+  beforeEach(() => { store.clear(); apiFetchMock.mockReset() })
+
+  const persistedIndexRaw = () => {
+    const key = [...store.keys()].find(k => k.startsWith('mm-docs-index-v1'))
+    return key ? store.get(key) : null
+  }
+  const okEmbedResponse = input => ({
+    ok: true,
+    json: async () => ({ vectors: input.map(() => [1, 0]), embeddingModel: 'openai:text-embedding-3-small' }),
+  })
+
+  it('never resurrects persisted chunk text after removeDoc (stale embed resolves late)', async () => {
+    const secret = 'SECRET-RESUME-RACE-TEXT ' + 'padding word '.repeat(80) // >600 chars => 2+ chunks
+    const d = addDoc({ name: 'Secret_Resume.pdf', type: 'resume', text: secret })
+
+    let resolveDocEmbed
+    let docEmbedSignal
+    apiFetchMock.mockImplementation((_path, options) => {
+      const input = JSON.parse(options.body).input
+      if (input.length === 1 && input[0] === 'Tell me about your background') {
+        return Promise.resolve(okEmbedResponse(input)) // query embed resolves instantly
+      }
+      docEmbedSignal = options.signal
+      return new Promise(resolve => { resolveDocEmbed = () => resolve(okEmbedResponse(input)) })
+    })
+
+    const retrieval = retrieveContext('Tell me about your background', { docIds: [d.id], minScore: 0, budgetMs: 8000 })
+    await new Promise(r => setTimeout(r, 20)) // query embed done; document embed now pending
+    expect(resolveDocEmbed).toBeTypeOf('function')
+
+    removeDoc(d.id)          // user deletes the resume while embed is in flight
+    resolveDocEmbed()        // old embed response arrives AFTER deletion
+    await retrieval
+    await new Promise(r => setTimeout(r, 20)) // let any (incorrect) late persist happen
+
+    const raw = persistedIndexRaw()
+    expect(raw || '{}').not.toContain('SECRET-RESUME-RACE-TEXT')
+    expect(docEmbedSignal?.aborted).toBe(true) // stale in-flight request was cancelled
+  })
+
+  it('never persists old text when a resume is replaced while the old index is in flight', async () => {
+    const oldText = 'OLD-PRIVATE-RESUME-TEXT ' + 'padding word '.repeat(80)
+    const d = addDoc({ name: 'Resume', type: 'resume', text: oldText })
+
+    let resolveOldEmbed
+    apiFetchMock.mockImplementation((_path, options) => {
+      const input = JSON.parse(options.body).input
+      if (input.length === 1) return Promise.resolve(okEmbedResponse(input))
+      const isOldText = input.some(t => t.includes('OLD-PRIVATE-RESUME-TEXT'))
+      if (isOldText) return new Promise(resolve => { resolveOldEmbed = () => resolve(okEmbedResponse(input)) })
+      return Promise.resolve(okEmbedResponse(input))
+    })
+
+    const first = retrieveContext('How do you scale systems?', { docIds: [d.id], minScore: 0, budgetMs: 8000 })
+    await new Promise(r => setTimeout(r, 20)) // old document embed now pending
+    expect(resolveOldEmbed).toBeTypeOf('function')
+
+    addDoc({ name: 'Resume', type: 'resume', text: 'Brand new resume content about distributed systems and reliability engineering.' })
+    resolveOldEmbed() // stale embed for the OLD text resolves after replacement
+    await first
+    await new Promise(r => setTimeout(r, 20))
+
+    const raw = persistedIndexRaw()
+    expect(raw || '{}').not.toContain('OLD-PRIVATE-RESUME-TEXT')
+  })
+})
+
 describe('long document indexing', () => {
   it('samples the whole document instead of only its opening', () => {
     const chunks = Array.from({ length: 100 }, (_, i) => `chunk-${i}`)

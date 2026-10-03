@@ -1,24 +1,10 @@
 // Usage metering for the managed-AI proxy. Runs after requireAuth.
 import { store, currentPeriod } from '../store.js'
-import { effectivePlan, limitFor } from '../plans.js'
+import { effectivePlan, limitFor, measureInputChars, estimateLlmUnits } from '../plans.js'
 
-// NOTE: paths must match real registered routes. `/api/jobs` is the job search/match
-// endpoint (blast-radius review fix: '/api/match-jobs' never existed, so the bonus
-// silently never applied).
-const MULTI_CALL_PATHS = new Set(['/api/report', '/api/evaluate', '/api/tailor-resume', '/api/jobs'])
-const CHARS_PER_UNIT = 12_000
-
-export function measureInputChars(body) {
-  if (!body || typeof body !== 'object') return 0
-  try { return JSON.stringify(body).length } catch { return 0 }
-}
-
-export function estimateLlmUnits(body = {}, path = '') {
-  const chars = measureInputChars(body)
-  const sizeUnits = Math.max(1, Math.ceil(chars / CHARS_PER_UNIT))
-  const multiStageBonus = MULTI_CALL_PATHS.has(String(path || '')) ? 1 : 0
-  return Math.min(5, sizeUnits + multiStageBonus)
-}
+// Re-exported for existing consumers/tests; the definitions live in plans.js
+// (single source of truth — blast-radius review fix).
+export { measureInputChars, estimateLlmUnits }
 
 export async function checkCap(req, res, next) {
   if (!process.env.MONGO_URI) { req._plan = 'local'; return next() }

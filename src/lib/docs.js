@@ -102,9 +102,9 @@ export function addDoc({ name, type = 'document', text, selected = true, source 
     if (i >= 0) {
       const prev = docs[i]
       if (src === 'profile' && (prev.source || inferredSource(prev.name)) !== 'profile') return toMeta(prev)
-      indexCache.delete(prev.id)
-      // Replacing a resume/JD invalidates the OLD persisted vectors too (privacy).
-      removePersistedIndexEntry(prev.id)
+      // Replacing a resume/JD invalidates the OLD persisted vectors too (privacy),
+      // including any in-flight indexing task for the old text (same doc id is reused).
+      invalidateDocIndex(prev.id)
       const doc = { ...prev, name: name || prev.name || 'Untitled', text: body, type: t, source: src, selected: selected !== false, addedAt: new Date().toISOString() }
       docs[i] = doc
       return save(docs) ? toMeta(doc) : null
@@ -118,12 +118,11 @@ export function addDoc({ name, type = 'document', text, selected = true, source 
 export function removeDoc(id) {
   const ok = save(load().filter(d => d.id !== id))
   if (ok) {
-    indexCache.delete(id)
-    indexInFlight.delete(id)
     // Privacy (blast-radius review fix): the persisted vector cache stores the
     // ORIGINAL chunk text; deleting the visible document must also delete its
-    // persisted index entry, otherwise removed resume/JD text lingers in storage.
-    removePersistedIndexEntry(id)
+    // persisted index entry — and invalidate any in-flight indexing task so a
+    // still-running embed cannot resurrect the deleted text after we purge it.
+    invalidateDocIndex(id)
   }
   return ok
 }
@@ -141,6 +140,24 @@ export function documentSignature(text = '') {
 
 const indexCache = new Map()
 const indexInFlight = new Map()
+// Privacy race guard (blast-radius review round 4): deleting/replacing a document
+// cannot cancel a promise that is already awaiting /api/embed. A generation counter
+// (bumped on every invalidation) plus per-task AbortControllers let stale tasks
+// detect that they are obsolete and refuse to persist removed private text.
+const indexGeneration = new Map()
+const indexAbort = new Map()
+
+function invalidateDocIndex(id) {
+  indexGeneration.set(id, (indexGeneration.get(id) || 0) + 1)
+  const ctrl = indexAbort.get(id)
+  if (ctrl) {
+    try { ctrl.abort(new DOMException('Document index invalidated', 'AbortError')) } catch {}
+    indexAbort.delete(id)
+  }
+  indexCache.delete(id)
+  indexInFlight.delete(id)
+  removePersistedIndexEntry(id)
+}
 
 function resolvePayloadEmbeddingModel(payload = {}) {
   if (payload?.embeddingModel) return String(payload.embeddingModel)
@@ -195,11 +212,12 @@ function persistIndexEntry(docId, entry) {
       i += 1
       serialized = JSON.stringify(raw)
     }
-    try {
-      setScopedItem(INDEX_STORAGE_KEY, serialized)
-    } catch (storageError) {
-      // Quota/serialization failure: keep working in-memory, but never silently.
-      console.warn('[docs] persisted vector cache write failed:', storageError?.message || storageError)
+    const persistedOk = setScopedItem(INDEX_STORAGE_KEY, serialized)
+    if (!persistedOk) {
+      // setScopedItem swallows storage errors and returns false — check the flag,
+      // not an exception, so quota failures are never silent.
+      console.warn('[docs] persisted vector cache write failed (storage quota or unavailable); continuing in-memory only')
+      diagnostic('rag', 'persisted_cache_write_failed', { docId, bytes: serialized.length }, 'warn')
     }
   } catch {}
 }
@@ -262,21 +280,48 @@ async function indexOne(doc, signal, force = false, expectedEmbeddingModel = nul
   }
   const existing = indexInFlight.get(doc.id)
   if (!force && existing) return existing
+  const generationAtStart = indexGeneration.get(doc.id) || 0
+  const ctrl = new AbortController()
+  const superseded = indexAbort.get(doc.id)
+  if (superseded) {
+    try { superseded.abort(new DOMException('Superseded by a newer index task', 'AbortError')) } catch {}
+  }
+  indexAbort.set(doc.id, ctrl)
+  const onExternalAbort = () => ctrl.abort(signal?.reason || new DOMException('Aborted', 'AbortError'))
+  if (signal) {
+    if (signal.aborted) ctrl.abort(signal.reason || new DOMException('Aborted', 'AbortError'))
+    else signal.addEventListener('abort', onExternalAbort, { once: true })
+  }
   const task = (async () => {
-    const allChunks = chunkText(doc.text, { size: 600, overlap: 100 })
-    const chunks = sampleChunksForIndex(allChunks)
-    const vectors = chunks.length ? await embed(chunks, signal) : []
-    if (signal?.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
-    const embeddingModel = vectors?.embeddingModel || expectedEmbeddingModel || 'default'
-    const entry = {
-      sig,
-      dimensions: vectors[0]?.length || 0,
-      embeddingModel,
-      chunks: chunks.map((text, i) => ({ text, vector: vectors[i] || [] })),
+    try {
+      const allChunks = chunkText(doc.text, { size: 600, overlap: 100 })
+      const chunks = sampleChunksForIndex(allChunks)
+      const vectors = chunks.length ? await embed(chunks, ctrl.signal) : []
+      if (ctrl.signal.aborted) throw ctrl.signal.reason || new DOMException('Aborted', 'AbortError')
+      // Stale-task guards: the document may have been deleted, replaced, or
+      // account-purged while the embed request was in flight. Never write
+      // removed/private text back into the cache or storage in that case.
+      if ((indexGeneration.get(doc.id) || 0) !== generationAtStart) {
+        throw new DOMException('Index invalidated while embedding was in flight', 'AbortError')
+      }
+      const current = load().find(d => d.id === doc.id)
+      if (!current || documentSignature(current.text) !== sig) {
+        throw new DOMException('Document removed or changed during indexing', 'AbortError')
+      }
+      const embeddingModel = vectors?.embeddingModel || expectedEmbeddingModel || 'default'
+      const entry = {
+        sig,
+        dimensions: vectors[0]?.length || 0,
+        embeddingModel,
+        chunks: chunks.map((text, i) => ({ text, vector: vectors[i] || [] })),
+      }
+      indexCache.set(doc.id, entry)
+      persistIndexEntry(doc.id, entry)
+      return entry
+    } finally {
+      if (signal) signal.removeEventListener('abort', onExternalAbort)
+      if (indexAbort.get(doc.id) === ctrl) indexAbort.delete(doc.id)
     }
-    indexCache.set(doc.id, entry)
-    persistIndexEntry(doc.id, entry)
-    return entry
   })().finally(() => { if (indexInFlight.get(doc.id) === task) indexInFlight.delete(doc.id) })
   indexInFlight.set(doc.id, task)
   return task

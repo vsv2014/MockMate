@@ -5,7 +5,10 @@ export const PLAN_LIMITS = {
   max: { llmCalls: 100000, sttSeconds: 500 * 60 * 60, maxInputChars: 320_000 },
 }
 
-const MULTI_CALL_PATHS = new Set(['/api/report', '/api/evaluate', '/api/tailor-resume', '/api/jobs'])
+// Single source of truth for multi-call (multi-stage LLM) route metering
+// (blast-radius review: previously duplicated in meter.js, which let the two copies
+// drift — one of them referenced a route that did not exist).
+export const MULTI_CALL_PATHS = new Set(['/api/report', '/api/evaluate', '/api/tailor-resume', '/api/jobs'])
 const CHARS_PER_UNIT = 12_000
 
 export function effectivePlan(user, now = Date.now()) {
