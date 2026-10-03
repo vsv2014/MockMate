@@ -101,7 +101,12 @@ export function registerApiRoutes(app, opts = {}) {
       if (input.length > 64) return res.status(413).json({ error: 'Too many embedding inputs in one request.' })
       const vectors = await embed(input)
       if (onLlm) { try { await onLlm(req, '/api/embed') } catch {} }
-      res.json({ vectors })
+      res.json({
+        vectors,
+        provider: vectors?.provider || null,
+        model: vectors?.model || null,
+        embeddingModel: vectors?.embeddingModel || null,
+      })
     } catch (e) {
       if (onLlmFailure) { try { await onLlmFailure(req, '/api/embed') } catch {} }
       report(e); res.status(e.status || 500).json({ error: e.message })

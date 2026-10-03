@@ -30,6 +30,7 @@ import { resolveContextSources, formatInterviewDevTrace } from '../shared/contex
 import { createTranscriptBuffer } from '../shared/transcriptBuffer.js'
 import { createQuestionCaptureController, formatCaptureDebugLine } from '../shared/questionCapture.js'
 import { streamLiveHint, fetchLiveHintFallback } from './live/hintTransport.js'
+import { computeLiveCanStart, resolveAnswerNowCandidate } from './live/liveGate.js'
 import { copyText } from './lib/clipboard'
 import { curateModelOptions, configuredProviderNames, curateProviderFallbacks, loadModelSelection, persistModelSelection } from './lib/modelPicker'
 
@@ -206,10 +207,16 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
   // Public builds enforce the full Electron + OS protection + share-preview safety gate;
   // frictionless bypass is strictly restricted to local dev mode.
   const noLLM = providers.length === 0 && models.length === 0
-  const canStart = dgAvailable && !noLLM && (
-    isDevLocal
-    || (!!inElectron && (isLinux ? linuxAck : (protectionTest.status === 'passed' && shareVerified)))
-  )
+  const canStart = computeLiveCanStart({
+    dgAvailable,
+    noLLM,
+    inElectron: !!inElectron,
+    isLinux: !!isLinux,
+    linuxAck,
+    protectionStatus: protectionTest.status,
+    shareVerified,
+    isDevLocal,
+  })
   // Mic preflight is amber (may hear you); SysAudio on Win/mac is green.
   const micMode = sourceId === 'microphone'
   const audioPreflightColor = micMode ? '#fbbf24' : (isLinux ? '#fbbf24' : '#4ade80')
@@ -1622,13 +1629,12 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       } else if (cmd.type === 'scroll-down') {
         feedRef.current?.scrollBy?.({ top: 140, behavior: 'smooth' })
       } else if (cmd.type === 'answer-now') {
-        const candidateNow = (
-          liveCaptureTextRef.current
-          || manualQRef.current
-          || pendingManualQ.current?.text
-          || lastHintText.current
-          || ''
-        ).trim()
+        const candidateNow = resolveAnswerNowCandidate({
+          liveCaptureText: liveCaptureTextRef.current,
+          manualQ: manualQRef.current,
+          pendingManualText: pendingManualQ.current?.text,
+          lastHintText: lastHintText.current,
+        })
         if (candidateNow) generateHintRef.current?.(candidateNow, { force: true })
       }
     })

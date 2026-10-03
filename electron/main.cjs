@@ -535,7 +535,8 @@ async function captureScreen(opts = {}) {
   }
   suppressBlurHide(2500)
   try {
-    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } })
+    const MAX_SCREEN_JPEG_BYTES = 210 * 1024
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1440, height: 810 } })
     if (!sources.length) return publish({ error: 'no_sources' })
     const activeDisplay = (() => {
       try {
@@ -551,21 +552,26 @@ async function captureScreen(opts = {}) {
       || sources[0]
     let payload
     try {
-      const img = chosen.thumbnail.resize({ width: 1920, quality: 'better' })
-      const size = img.getSize?.() || { width: 1920, height: 1080 }
-      const jpeg = img.toJPEG(82)
+      let img = chosen.thumbnail.resize({ width: 1440, quality: 'better' })
+      let size = img.getSize?.() || { width: 1440, height: 810 }
+      let jpeg = img.toJPEG(76)
+      if (jpeg.length > MAX_SCREEN_JPEG_BYTES) {
+        img = chosen.thumbnail.resize({ width: 1280, quality: 'better' })
+        size = img.getSize?.() || { width: 1280, height: 720 }
+        jpeg = img.toJPEG(70)
+      }
       payload = {
         mime: 'image/jpeg',
         base64: jpeg.toString('base64'),
-        width: size.width || 1920,
-        height: size.height || 1080,
+        width: size.width || 1440,
+        height: size.height || 810,
         bytes: jpeg.length,
         displayId: chosen.display_id || chosen.id || null,
         displayName: chosen.name || null,
       }
     } catch {
       const png = chosen.thumbnail.toPNG()
-      const size = chosen.thumbnail.getSize?.() || { width: 1920, height: 1080 }
+      const size = chosen.thumbnail.getSize?.() || { width: 1440, height: 810 }
       payload = {
         mime: 'image/png',
         base64: png.toString('base64'),
