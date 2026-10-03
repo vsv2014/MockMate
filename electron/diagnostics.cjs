@@ -7,7 +7,7 @@ const MAX_FILE_BYTES = 5 * 1024 * 1024
 const MAX_FILES = 4
 const MAX_QUEUE = 2000
 const SECRET_KEY = /api.?key|authorization|password|secret|token|cookie|credential/i
-const CONTENT_KEY = /resume|transcript|prompt|full.?answer|screenshot|image.?base64|audio.?data/i
+const CONTENT_KEY = /resume|transcript|prompt|full.?answer|screenshot|image.?base64|audio.?data|question|job.?description|message|content|name|location/i
 const SECRET_VALUE = /(sk-[a-z0-9_-]{12,}|Bearer\s+\S+|Token\s+\S+|eyJ[a-zA-Z0-9_-]{10,}\.)/gi
 
 function clean(value, key = '', depth = 0) {
