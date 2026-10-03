@@ -8,6 +8,7 @@ import {
   clearProductIntelligenceEvents,
   getReplayOptIn,
   setReplayOptIn,
+  trackProductEvent,
 } from '../lib/productIntelligence'
 
 export default function ProductIntelligencePanel() {
@@ -202,6 +203,7 @@ export default function ProductIntelligencePanel() {
                   type="button"
                   onClick={() => {
                     setAnswerStyle('concise')
+                    trackProductEvent('adaptive_action_applied', { target: 'promote_fast_lane' })
                     setAppliedActionMsg('✓ Switched default response style to Concise (Fast lane)')
                   }}
                   style={{

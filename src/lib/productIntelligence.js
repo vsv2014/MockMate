@@ -85,11 +85,6 @@ export function trackProductEvent(action, fields = {}) {
   }
 }
 
-export function startNewProductSession() {
-  sessionId = `pi_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
-  return sessionId
-}
-
 export function getProductIntelligenceReport(runtimePerformance = null) {
   const events = readProductEvents()
   return summarizeProductIntelligence(events, {

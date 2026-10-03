@@ -356,7 +356,7 @@ export function summarizeProductIntelligence(events = [], options = {}) {
         id: 'slow_ttft_abandon',
         severity: abandonPct >= 40 ? 'warn' : 'info',
         metric: `${abandonPct}%`,
-        text: `${abandonPct}% of sessions with slow first-token latency (>3.5s) ended within 90s (${highTtftAbandonSessions}/${highTtftSessions}).`,
+        text: `${abandonPct}% of sessions with slow first-token latency (≥${Math.round(policies.ttftFastLaneThresholdMs / 100) / 10}s) ended quickly (<90s) or never recorded a session end (${highTtftAbandonSessions}/${highTtftSessions}).`,
       })
     }
   }
