@@ -2,6 +2,8 @@ import 'dotenv/config'
 import dotenv from 'dotenv'
 import os from 'os'
 import path from 'path'
+import fs from 'fs'
+import crypto from 'crypto'
 import express from 'express'
 import cors from 'cors'
 import { initStore, storeMode, storeReady, closeStore } from './src/store.js'
@@ -22,13 +24,36 @@ try { dotenv.config({ path: path.join(MM_DATA_DIR, '.env') }) } catch {}
 
 const PUBLIC_BIND = isPublicBind()
 const HOSTED_ENV = envFlag('MOCKMATE_HOSTED')
-if (!process.env.JWT_SECRET) {
-  if (PUBLIC_BIND || HOSTED_ENV) {
+
+function ensurePersistentLocalJwtSecret() {
+  const secretFile = path.join(MM_DATA_DIR, '.jwt-secret')
+  try {
+    fs.mkdirSync(MM_DATA_DIR, { recursive: true })
+    if (fs.existsSync(secretFile)) {
+      const existing = fs.readFileSync(secretFile, 'utf8').trim()
+      if (existing.length < 32) throw new Error('stored JWT secret is invalid')
+      process.env.JWT_SECRET = existing
+      return
+    }
+    const secret = String(process.env.JWT_SECRET || '').trim() || crypto.randomBytes(48).toString('hex')
+    if (secret.length < 32) throw new Error('JWT secret must be at least 32 characters')
+    const tmp = `${secretFile}.tmp-${process.pid}`
+    fs.writeFileSync(tmp, secret, { mode: 0o600 })
+    fs.renameSync(tmp, secretFile)
+    process.env.JWT_SECRET = secret
+  } catch (error) {
+    throw new Error(`Could not persist the local JWT identity secret: ${error.message}`)
+  }
+}
+
+if (PUBLIC_BIND || HOSTED_ENV) {
+  if (!process.env.JWT_SECRET) {
     console.error('[backend] FATAL: JWT_SECRET is required in hosted/public mode.')
     process.exit(1)
   }
-  process.env.JWT_SECRET = 'mockmate-dev-insecure-secret-change-me'
-  console.warn('[backend] JWT_SECRET not set — using an insecure dev default (loopback only). Do NOT ship like this.')
+} else {
+  try { ensurePersistentLocalJwtSecret() }
+  catch (error) { console.error(`[backend] FATAL: ${error.message}`); process.exit(1) }
 }
 
 let hostedConfig
