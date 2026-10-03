@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isTransient, isRateLimit, isQuotaExhausted } from './llm-errors.js'
+import { isTransient, isRateLimit, isQuotaExhausted, isProviderExhaustedError } from './llm-errors.js'
 
 describe('isTransient', () => {
   it('flags transient HTTP statuses', () => {
@@ -12,6 +12,11 @@ describe('isTransient', () => {
   it('does NOT flag auth / bad-request as transient', () => {
     expect(isTransient({ status: 401, message: 'invalid api key' })).toBe(false)
     expect(isTransient({ status: 400, message: 'bad request' })).toBe(false)
+  })
+  it('does not retry a server message that already exhausted provider failover', () => {
+    const e = { status: 503, message: 'MockMate AI is temporarily unavailable. It usually clears in a few seconds — please try again.' }
+    expect(isProviderExhaustedError(e)).toBe(true)
+    expect(isTransient(e)).toBe(false)
   })
 })
 
