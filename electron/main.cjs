@@ -20,6 +20,7 @@ const isProd = app.isPackaged
 const DEV_URL = 'http://localhost:5174'
 const PROD_URL = 'http://localhost:3002'
 
+let trayRef = null
 let mainWindow, setupWindow, apiServer, backendServer
 let diagnostics = null
 function diag(component, event, fields = {}, level = 'info') {
@@ -205,7 +206,7 @@ async function ensurePortFree(port, label) {
   freePort(port)
   await new Promise(r => setTimeout(r, 400))
   if (await portInUse(port)) {
-    console.error(`[MockMate] ${label} port ${port} still busy after reclaim`)
+    throw new Error(`${label} port ${port} is still busy after reclaim`)
   }
 }
 
@@ -236,10 +237,11 @@ function startApiServer(onReady) {
       app.quit()
     }
   })
-  setTimeout(fire, 6000)   // fallback if 'ready' never arrives
+  // Do not declare readiness by elapsed time. The child must explicitly emit {type:'ready'}.
   }).catch(e => {
     console.error('[API] ensurePortFree failed:', e.message)
-    onReady?.()
+    dialog.showErrorBox('MockMate could not start', e.message || 'The local API port could not be prepared.')
+    app.quit()
   })
 }
 
@@ -315,6 +317,7 @@ function createSetupWindow() {
   setupWindow.on('closed', () => { setupWindow = null; if (!mainWindow) app.quit() })
 }
 
+let rendererLoadFailures = 0
 function createMainWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize
   // Linux compositors often render transparent frameless windows as fully invisible,
@@ -386,12 +389,15 @@ function createMainWindow() {
     if (/^https?:\/\//.test(url) && !sameOrigin) { e.preventDefault(); shell.openExternal(url) }
   })
 
+  mainWindow.webContents.on('did-finish-load', () => { rendererLoadFailures = 0 })
   mainWindow.webContents.on('did-fail-load', (_e, code) => {
-    if (code === -3) return   // ERR_ABORTED — normal during reloads, not a real failure
-    // Retry the URL for THIS environment (dev = Vite, prod = bundled server).
-    // Previously this always reloaded PROD_URL, which in dev pointed at the wrong
-    // server and left the window stuck/black after a reload.
-    setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(isProd ? PROD_URL : DEV_URL) }, 800)
+    if (code === -3) return
+    rendererLoadFailures += 1
+    if (rendererLoadFailures > 5) {
+      dialog.showErrorBox('MockMate could not load', 'The desktop UI failed to load after several retries. Please restart MockMate.')
+      return
+    }
+    setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(isProd ? PROD_URL : DEV_URL) }, Math.min(4000, 500 * rendererLoadFailures))
   })
 
   if (isProd) {
@@ -432,7 +438,9 @@ function launchTrayAndShortcuts() {
   const { Tray, Menu, nativeImage } = require('electron')
   const trayIcon = (() => { try { return nativeImage.createFromPath(iconPath()) } catch { return nativeImage.createEmpty() } })()
   try {
-    const tray = new Tray(trayIcon)
+    trayRef?.destroy?.()
+    trayRef = new Tray(trayIcon)
+    const tray = trayRef
     tray.setToolTip('MockMate — Click to show/hide')
     tray.on('click', toggleVisibility)
     tray.setContextMenu(Menu.buildFromTemplate([
@@ -582,10 +590,18 @@ function setupAutoUpdate() {
   } catch (e) { console.error('[updater] unavailable:', e?.message) }
 }
 // Restart & install the downloaded update now (from the toast's "Restart" button).
-ipcMain.handle('install-update', () => { try { autoUpdaterRef?.quitAndInstall() } catch (e) { console.error('[updater]', e?.message) } ; return { ok: true } })
+ipcMain.handle('install-update', () => {
+  if (!autoUpdaterRef) return { ok: false, error: 'Updater is unavailable.' }
+  try { autoUpdaterRef.quitAndInstall(); return { ok: true } }
+  catch (e) { console.error('[updater]', e?.message); return { ok: false, error: e?.message || 'Install failed.' } }
+})
 // Manually (re)start the download from the toast's "Download" button — covers a stalled
 // auto-download or a user who dismissed and wants it again.
-ipcMain.handle('download-update', () => { try { autoUpdaterRef?.downloadUpdate()?.catch(e => console.error('[updater]', e?.message)) } catch (e) { console.error('[updater]', e?.message) } ; return { ok: true } })
+ipcMain.handle('download-update', async () => {
+  if (!autoUpdaterRef) return { ok: false, error: 'Updater is unavailable.' }
+  try { await autoUpdaterRef.downloadUpdate(); return { ok: true } }
+  catch (e) { console.error('[updater]', e?.message); return { ok: false, error: e?.message || 'Download failed.' } }
+})
 // Manual check. In prod → real check; in dev → simulate the toast sequence so the UI is verifiable.
 let demoUpdateTimer = null
 ipcMain.handle('get-update-status', () => lastUpdateStatus)
@@ -931,7 +947,7 @@ ipcMain.on('set-window-mode', (_, mode) => {
 
 // Phase 6 — append privacy-safe session metrics (JSONL) under userData. Renderer must
 // never send transcript/resume text; main still drops oversized / suspicious payloads.
-ipcMain.handle('append-session-metrics', (_, row) => {
+ipcMain.handle('append-session-metrics', async (_, row) => {
   try {
     if (!row || typeof row !== 'object') return { ok: false, error: 'bad row' }
     const raw = JSON.stringify(row)
@@ -941,7 +957,11 @@ ipcMain.handle('append-session-metrics', (_, row) => {
     }
     const f = path.join(app.getPath('userData'), 'session-metrics.jsonl')
     fs.mkdirSync(path.dirname(f), { recursive: true })
-    fs.appendFileSync(f, raw + '\n', { mode: 0o600 })
+    try {
+      const stat = await fs.promises.stat(f).catch(() => null)
+      if (stat?.size > 2 * 1024 * 1024) await fs.promises.rename(f, `${f}.1`).catch(() => {})
+      await fs.promises.appendFile(f, raw + '\n', { mode: 0o600 })
+    } catch (e) { return { ok: false, error: e.message } }
     return { ok: true }
   } catch (e) { return { ok: false, error: e.message } }
 })
