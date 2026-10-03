@@ -14,7 +14,7 @@ Strengths to protect (already built): multi-provider failover, rate-limit/quota/
 classification, JSON-repair, abort-safe streaming, playbook prompts (`core.js`/`interview.js`);
 content-protected overlay (WDA_EXCLUDEFROMCAPTURE / PiP).
 
-## Current operating scope — solo owner + internal QA team (v1.5.1)
+## Current operating scope — solo owner + internal QA team (v1.5.2)
 
 The public build supports **hosted Managed AI** plus private BYOK. Provider credentials are never
 packaged in installers. Internal QA can use BYOK or the same hosted endpoint as production.
@@ -23,7 +23,7 @@ packaged in installers. Internal QA can use BYOK or the same hosted endpoint as 
 BYOK setup and key errors, bounded request times, recoverable UI errors, safe updates, local session
 continuity, copyable/code-formatted answers, Stealth confirmation, and packaged Windows smoke tests.
 
-**Post-1.5.1 roadmap:** shared/team tenancy, encrypted cloud history, production email recovery,
+**Post-1.5.2 roadmap:** shared/team tenancy, encrypted cloud history, production email recovery,
 analytics at competitor scale, full Linux parity, and precise per-user STT-second reconciliation.
 
 ### v1.4.11 desktop baseline before mobile
@@ -201,10 +201,10 @@ caught. Fix the *process*, not just the bugs.
 - [ ] Add the same verification as a required check on every pull request (release workflow is gated today)
 
 ## P0 — Live intent and answer reliability
-- [x] Windows multi-monitor preservation (`getDisplayMatching`), `760×240` camera-anchored Teleprompter HUD (`Alt+T` / `⌖ Cam`), hands-free overlay shortcuts (`Alt+T`, `Alt+R`, `Alt+Up/Down`), and bounded `1440×810 @ Q76` `F7` screen capture *(1.5.1)*
-- [x] `{ Artemis }` hybrid RAG & PDF pipeline: layout-aware PDF extraction (`src/pdf.js`), header-inherited semantic chunking, `embeddingModel`-bound persistent vector cache (`mm-docs-index-v1`), speculative RAG pre-warm, and Context Audit Trail badges *(1.5.1)*
-- [x] `CustomPromptStudio` playbook builder: 1-click role templates, modular `+ Add block` chips, saved playbook presets, and live `● ALWAYS` vs `⚡ AUTO-ROUTED` compiler badges across Live and Solo *(1.5.1)*
-- [x] Closed-loop `ARCH · Product Intelligence` (`arch/mockmate.abl.json`, `shared/productIntelligence.js`, `ProductIntelligencePanel.jsx`) with zero-PII redaction and automatic `balanced → fast` lane promotion when `p95` TTFT breaches thresholds *(1.5.1)*
+- [x] Windows multi-monitor preservation (`getDisplayMatching`), `760×240` camera-anchored Teleprompter HUD (`Alt+T` / `⌖ Cam`), hands-free overlay shortcuts (`Alt+T`, `Alt+R`, `Alt+Up/Down`), and bounded `1440×810 @ Q76` `F7` screen capture *(1.5.2)*
+- [x] `{ Artemis }` hybrid RAG & PDF pipeline: layout-aware PDF extraction (`src/pdf.js`), header-inherited semantic chunking, `embeddingModel`-bound persistent vector cache (`mm-docs-index-v1`), speculative RAG pre-warm, and Context Audit Trail badges *(1.5.2)*
+- [x] `CustomPromptStudio` playbook builder: 1-click role templates, modular `+ Add block` chips, saved playbook presets, and live `● ALWAYS` vs `⚡ AUTO-ROUTED` compiler badges across Live and Solo *(1.5.2)*
+- [x] Closed-loop `ARCH · Product Intelligence` (`arch/mockmate.abl.json`, `shared/productIntelligence.js`, `ProductIntelligencePanel.jsx`) with zero-PII redaction and automatic `balanced → fast` lane promotion when `p95` TTFT breaches thresholds *(1.5.2)*
 - [x] Prominent Live Setup **Interview Playbook** editor; compile long instructions into invariant core + question-relevant sections, preserve late SQL/coding/architecture rules and enforce personal/product/general/hypothetical source modes *(1.4.11)*
 - [x] Ordered Live setup with a visible **Interview Documents** source count immediately after the playbook, explicit per-document inclusion and a sticky final Start action *(1.4.11)*
 - [x] Real-interview regression patch: bounded candidate expiry/commit, contextual CTE/polling/RBAC/CI term repair, logistical-turn suppression, correction/topic isolation and stricter résumé-truth contracts *(1.4.11)*

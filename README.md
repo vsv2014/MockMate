@@ -325,7 +325,7 @@ BYOK keys stay encrypted on the user's machine.
 
 ## Roadmap
 
-**Done (1.5.1)**
+**Done (1.5.2)**
 - ✅ **Windows Multi-Monitor & 760×240 Teleprompter HUD (`Alt+T` / `⌖ Cam`)** — docks the Live overlay at top-center beneath the webcam, preserves active monitor and user-resized dimensions (`lastOverlaySize`), and scopes `Alt+T`, `Alt+R`, and `Alt+Up/Down` to active overlay/teleprompter modes.
 - ✅ **Turn-1 System Audio & `{ Artemis }` Hybrid RAG** — `+25` Turn-1 system-audio confidence boost, Deepgram `Finalize` pause flush, layout-aware PDF extraction (`src/pdf.js`), header-inherited semantic chunking, `embeddingModel`-bound persistent vector cache (`mm-docs-index-v1`), speculative RAG pre-warm, and Context Audit Trail badges.
 - ✅ **`CustomPromptStudio` Playbook Builder** — 1-click role playbooks (`SWE / Coding`, `System Design`, `AI / LLM / RAG`, `Data / SQL`, `Behavioral STAR`), modular `+ Add block` chips, saved presets, and live `● ALWAYS` vs `⚡ AUTO-ROUTED` compiler badges across Live and Solo.

@@ -4,7 +4,7 @@
 the cutoff. RAG chunks + embeds documents once and retrieves only chunks relevant to the *current*
 question. Matches LockedIn-style documents panel (incl. the "filter document" relevance threshold).
 
-## Built + verified (server + client — v1.5.1)
+## Built + verified (server + client — v1.5.2)
 
 ### Server & shared core
 - ✅ `shared/retrieval.js` — header-inherited semantic `chunkText` (`[Section: ...]`), metric/entity

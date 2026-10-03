@@ -1,4 +1,4 @@
-# MockMate v1.5.1 Release Notes (2026-10-03)
+# MockMate v1.5.2 Release Notes (2026-10-03)
 
 ## 1. Windows Multi-Monitor, 760×240 Teleprompter HUD & Bounded `F7` Capture
 

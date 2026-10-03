@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.5.1 — 2026-10-03
+## v1.5.2 — 2026-10-03
 
 Desktop-first Windows & multi-monitor HUD upgrade, `{ Artemis }` hybrid RAG & PDF extraction pipeline, `CustomPromptStudio` playbook builder, UI/UX overhaul, and closed-loop `ARCH · Product Intelligence`.
 
