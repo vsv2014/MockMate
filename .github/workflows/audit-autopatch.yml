@@ -28,14 +28,15 @@ jobs:
         run: |
           node scripts/audit-autopatch.mjs
           node scripts/audit-test-align.mjs
+          node scripts/audit-electron-patch-v2.mjs
       - name: Verify patched source
         run: npm ci && npm --prefix backend ci && npm test && npm run smoke:api && npm run build
       - name: Commit verified patch
         run: |
           git config user.name 'mockmate-audit-bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add api/_lib/core.js src/useSystemAudio.js src/Solo.jsx shared/questionCapture.test.js api/_lib/providerHealth.test.js src/lib/sessionMetrics.test.js
+          git add api/_lib/core.js src/useSystemAudio.js src/Solo.jsx electron/main.cjs shared/questionCapture.test.js api/_lib/providerHealth.test.js src/lib/sessionMetrics.test.js
           git diff --cached --quiet && exit 0
-          git commit -m 'Close provider, diarization and Solo recovery audit gaps'
+          git commit -m 'Close desktop runtime, provider and Electron audit gaps'
           git pull --rebase origin codex/desktop-audit-67
           git push origin HEAD:codex/desktop-audit-67
