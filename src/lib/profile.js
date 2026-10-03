@@ -68,7 +68,17 @@ export function applyTailorToResume(resume, tailor) {
       lines.splice(heading + 1, Math.max(0, end - heading - 1), summary)
       text = lines.join('\n')
     } else {
-      text = `${summary}\n\n${text.trimStart()}`
+      const first = lines.findIndex(l => l.trim())
+      const next = first >= 0 ? lines.findIndex((l, i) => i > first && l.trim()) : -1
+      const firstText = first >= 0 ? lines[first].trim() : ''
+      const looksContact = /@|https?:|linkedin|github|\+?\d[\d ()-]{7,}/i.test(firstText)
+      const nextLooksBullet = next >= 0 && /^[-•*]|\d+\./.test(lines[next].trim())
+      if (first >= 0 && !looksContact && nextLooksBullet && firstText.length <= 280) {
+        lines.splice(first, 1, summary)
+        text = lines.join('\n')
+      } else {
+        text = `${summary}\n\n${text.trimStart()}`
+      }
     }
   }
 
