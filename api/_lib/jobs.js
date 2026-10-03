@@ -1,6 +1,7 @@
 import { completeJSON, availableProviders } from './core.js'
 import { fetchWithTimeout as fetchT } from './http.js'
 import { fetchCompanyBoard } from '../../shared/companyBoards.js'
+import { fetchYcJobs } from '../../shared/ycJobs.js'
 
 // ── Agentic job matching ─────────────────────────────────────────────────────
 // Upload a resume → we fetch live job postings and rank them for relevance to
@@ -128,6 +129,14 @@ export function countryFor(loc = '') {
   return null
 }
 
+// City-level hint for Adzuna's `where` param. Country-level strings ("India")
+// make Adzuna return almost nothing — same class of bug as showing Sydney jobs
+// to a Hyderabad user. When no city is present, search the whole country.
+export function cityFor(loc = '') {
+  const m = String(loc).match(/\b(hyderabad|secunderabad|bengaluru|bangalore|mumbai|new delhi|delhi|chennai|pune|kolkata|noida|gurgaon|gurugram|toronto|vancouver|montreal|london|manchester|berlin|munich|paris|amsterdam|dublin|madrid|barcelona|rome|milan|warsaw|sydney|melbourne|brisbane|auckland|singapore|tokyo|seoul|austin|seattle|new york|boston|chicago|san francisco|denver|atlanta|portland)\b/i)
+  return m ? m[1] : ''
+}
+
 async function fetchAdzuna({ what, where, country }, limit = 50) {
   const params = new URLSearchParams({
     app_id: process.env.ADZUNA_APP_ID, app_key: process.env.ADZUNA_APP_KEY,
@@ -241,22 +250,25 @@ export async function findJobs({ resume = '', targetRole = '', query = '', locat
   // (Adzuna, city-targeted) and REMOTE jobs (Remotive) IN PARALLEL — independent
   // network calls; concurrency roughly halves search latency.
   let remoteErr = null
-  let [company, local, remote] = await Promise.all([
+  let [company, local, remote, yc] = await Promise.all([
     companyUrl
       ? fetchCompanyBoard(companyUrl, (u, o) => fetchT(u, o)).catch(() => [])       // non-fatal
       : Promise.resolve([]),
     (localEnabled && country)
-      ? fetchAdzuna({ what: queryText, where: loc, country }, 50).catch(() => [])   // non-fatal
+      ? fetchAdzuna({ what: queryText, where: cityFor(loc) || undefined, country }, 50).catch(() => [])   // non-fatal
       : Promise.resolve([]),
     fetchJobs({ category, query: queryText }, 100)
       .then(js => js.map(j => ({ ...j, source: 'remote' })))
-      .catch(e => { remoteErr = e; return [] })
+      .catch(e => { remoteErr = e; return [] }),
+    fetchYcJobs((u, o) => fetchT(u, o)).catch(() => [])                                  // non-fatal
   ])
-  if (!remote.length && !local.length && !company.length && remoteErr) throw remoteErr   // only hard-fail if we have nothing at all
+  if (!remote.length && !local.length && !company.length && !yc.length && remoteErr) throw remoteErr   // only hard-fail if we have nothing at all
 
   let tokens = null, note = ''
   if (loc) {
     tokens = userRegionTokens(loc)
+    // YC/HN postings are bonus discovery — keep only region-compatible ones.
+    if (yc.length) yc = yc.filter(j => locationOk(j.location, tokens))
     const okRemote = remote.filter(j => locationOk(j.location, tokens))
     // If we already have local jobs, only keep region-compatible remote ones. Otherwise
     // keep the broader remote pool (ranker pushes region-mismatched down) so it's not empty.
@@ -268,10 +280,10 @@ export async function findJobs({ resume = '', targetRole = '', query = '', locat
     }
   }
 
-  // Merge company-board first (most intentional source), then local, then remote;
-  // de-duplicate by title+company.
+  // Merge company-board first (most intentional source), then local on-site,
+  // then YC startup discovery, then broad remote; de-duplicate by title+company.
   const seen = new Set()
-  let jobs = [...company, ...local, ...remote].filter(j => {
+  let jobs = [...company, ...local, ...yc, ...remote].filter(j => {
     const k = `${(j.title || '').toLowerCase()}|${(j.company || '').toLowerCase()}`
     if (seen.has(k)) return false; seen.add(k); return true
   })

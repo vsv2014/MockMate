@@ -10,7 +10,7 @@ vi.mock('./core.js', () => ({
 
 import { fetchWithTimeout } from './http.js'
 import { availableProviders, completeJSON } from './core.js'
-import { categoryFor, countryFor, userRegionTokens, locationOk, findJobs, adzunaConfigured } from './jobs.js'
+import { categoryFor, countryFor, cityFor, userRegionTokens, locationOk, findJobs, adzunaConfigured } from './jobs.js'
 
 describe('categoryFor', () => {
   it('maps roles to Remotive categories', () => {
@@ -180,5 +180,17 @@ describe('findJobs provider/contract', () => {
     process.env.ADZUNA_APP_ID = 'id'
     process.env.ADZUNA_APP_KEY = 'key'
     expect(adzunaConfigured()).toBe(true)
+  })
+})
+
+describe('cityFor', () => {
+  it('extracts a city for Adzuna where-param', () => {
+    expect(cityFor('Hyderabad, India')).toBe('hyderabad')
+    expect(cityFor('Bengaluru')).toBe('bengaluru')
+    expect(cityFor('New York, USA')).toBe('new york')
+  })
+  it('returns empty for country-level locations so the whole country is searched', () => {
+    expect(cityFor('India')).toBe('')
+    expect(cityFor('')).toBe('')
   })
 })
