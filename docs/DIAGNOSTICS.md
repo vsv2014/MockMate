@@ -35,9 +35,13 @@ Both renderer and Electron redact. The following are excluded: API keys, authori
 tokens, passwords, cookies, secrets, credentials, résumé, transcripts, prompts, full answers,
 screenshot/base64 data and audio. Strings, arrays, nesting, event size and queue size are bounded.
 
-Settings provides **Export logs** and **Clear**. Export creates a shareable JSONL bundle with a
-privacy declaration plus the rotated event history. Clearing diagnostics does not delete interview
-history.
+Settings provides **Export logs** and **Clear**, plus the **ARCH · Product Intelligence** inspector
+(`shared/productIntelligence.js`, `src/components/ProductIntelligencePanel.jsx`), which summarizes
+redacted funnel conversion (`live_interview`, `solo_practice`, `screen_solve`), sequence patterns
+(such as `overlay_resize → teleprompter_toggle`), rage clicks, and closed-loop `ARCH` latency
+promotions (`reasoningPolicy` promoting `'balanced'` to `'fast'` when `p95` TTFT breaches the
+declarative `arch/mockmate.abl.json` threshold). Interaction breadcrumb replay is **OFF** by default
+and requires explicit opt-in in Settings. Clearing diagnostics does not delete interview history.
 
 ## Future deep-debug mode
 
