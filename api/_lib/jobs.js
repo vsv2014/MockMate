@@ -2,6 +2,7 @@ import { completeJSON, availableProviders } from './core.js'
 import { fetchWithTimeout as fetchT } from './http.js'
 import { fetchCompanyBoard } from '../../shared/companyBoards.js'
 import { fetchYcJobs } from '../../shared/ycJobs.js'
+import { resumeFacts, bandForYears, titleBand, parseYearsExpInput } from '../../shared/resumeFacts.js'
 
 // ── Agentic job matching ─────────────────────────────────────────────────────
 // Upload a resume → we fetch live job postings and rank them for relevance to
@@ -168,12 +169,13 @@ async function fetchAdzuna({ what, where, country }, limit = 50) {
 // Keyword-overlap fallback (used when no LLM provider is configured). The pool is
 // already topically relevant (fetched by category), so reward overlap generously
 // and always return the best available rather than filtering down to nothing.
-function rankHeuristic(jobs, resume, targetRole, max, tokens) {
+export function rankHeuristic(jobs, resume, targetRole, max, tokens, candBand = null) {
   const profileKw = [...new Set(keywords(`${targetRole} ${resume}`, 25))]
   // Use the first MEANINGFUL role word (skip generic seniority terms) so "Senior Test
   // Engineer" matches on "test", not "senior" (which falsely matched unrelated roles).
   const SENIORITY = new Set(['senior', 'junior', 'sr', 'jr', 'lead', 'principal', 'staff', 'mid', 'associate', 'entry', 'chief', 'head'])
   const roleWord = (targetRole || '').toLowerCase().split(/\s+/).filter(w => w && !SENIORITY.has(w))[0]
+  const roleTokens = (targetRole || '').toLowerCase().split(/[^a-z+#]+/).filter(w => w.length > 2 && !SENIORITY.has(w))
   const scored = jobs.map(j => {
     const title = (j.title || '').toLowerCase()
     const tagStr = j.tags.join(' ').toLowerCase()
@@ -184,14 +186,28 @@ function rankHeuristic(jobs, resume, targetRole, max, tokens) {
     const snipHits = profileKw.filter(k => !title.includes(k) && !tagStr.includes(k) && snip.includes(k))
     const titleMatch = roleWord && roleWord.length > 2 && title.includes(roleWord)
     let score = Math.min(96, titleTagHits.length * 14 + snipHits.length * 3 + (titleMatch ? 18 : 0))
+    // Target-role token overlap in the title (stronger than a single role word).
+    score = Math.min(97, score + Math.min(18, roleTokens.filter(t => title.includes(t)).length * 7))
     // Company-board postings are the candidate's explicitly tracked targets — boost them.
     if (j.source === 'company') score = Math.min(97, score + 10)
+    // Seniority fit: honest band distance (0 junior · 1 mid · 2 senior · 3 staff).
+    let seniorityGap = ''
+    if (candBand != null) {
+      const d = Math.abs(titleBand(j.title) - candBand)
+      if (d >= 2) { score = Math.max(5, score - 25); seniorityGap = 'Seniority mismatch' }
+      else if (d === 1) score = Math.max(5, score - 8)
+    }
+    // Recency: fresh postings outrank stale ones at equal overlap.
+    const age = j.postedTs ? Date.now() - j.postedTs : 0
+    if (j.postedTs && age < 14 * 86400000) score = Math.min(97, score + 4)
+    else if (j.postedTs && age < 45 * 86400000) score = Math.min(97, score + 2)
     // Push region-locked-elsewhere postings down so local/worldwide rises to the top.
     // Company-board roles are exempt: the user tracks that employer on purpose.
     const locOk = j.source === 'company' ? true : locationOk(j.location, tokens)
     if (!locOk) score = Math.max(5, score - 30)
     const allHits = [...new Set([...titleTagHits, ...snipHits])]
-    return { ...j, score, reason: allHits.length ? `Overlaps on: ${allHits.slice(0, 6).join(', ')}` : 'Same field as your resume', gaps: locOk ? '' : 'May be region-locked outside your location' }
+    const gaps = [locOk ? '' : 'May be region-locked outside your location', seniorityGap].filter(Boolean).join('; ')
+    return { ...j, score, reason: allHits.length ? `Overlaps on: ${allHits.slice(0, 6).join(', ')}` : 'Same field as your resume', gaps }
   }).sort((a, b) => b.score - a.score)
   // Prefer ≥30 matches; if too few clear that bar, still show the top of the pool.
   const strong = scored.filter(j => j.score >= 30)
@@ -243,6 +259,11 @@ export async function findJobs({ resume = '', targetRole = '', query = '', locat
   const queryText = (roleText || keywords(resume, 4).join(' ') || 'software engineer').trim()
   const loc = location.trim()
   const country = loc ? countryFor(loc) : null
+  // Structured resume facts → seniority-aware ranking on BOTH ranker paths,
+  // and an auto-filled experience hint when the user left the field empty.
+  const facts = resume.trim() ? resumeFacts(resume) : null
+  const effYears = yearsExp.trim() || (facts?.years ? `${facts.years} years` : '')
+  const candBand = facts?.band ?? bandForYears(parseYearsExpInput(yearsExp))
   const localEnabled = adzunaConfigured()
   const search = `${category} · ${queryText}${loc ? ` · ${loc}` : ''}`
 
@@ -295,9 +316,9 @@ export async function findJobs({ resume = '', targetRole = '', query = '', locat
   const providers = availableProviders()
   if (providers.length) {
     try {
-      const ranked = await rankWithLLM(pool, resume, targetRole, location, providers[0].id, max, yearsExp)
+      const ranked = await rankWithLLM(pool, resume, targetRole, location, providers[0].id, max, effYears)
       if (ranked.length) return { search, jobs: ranked, ranker: 'ai', note: (note || '') + companyNote, localEnabled, companyCount }
     } catch { /* fall through to heuristic so the feature never hard-fails */ }
   }
-  return { search, jobs: rankHeuristic(pool, resume, targetRole, max, tokens), ranker: 'keyword', note: (note || '') + companyNote, localEnabled, companyCount }
+  return { search, jobs: rankHeuristic(pool, resume, targetRole, max, tokens, candBand), ranker: 'keyword', note: (note || '') + companyNote, localEnabled, companyCount }
 }
