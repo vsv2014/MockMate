@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*.*.*'
+    branches:
+      - 'release/v1.5.0'
   workflow_dispatch:
     inputs:
       tag:
@@ -31,7 +33,7 @@ jobs:
         id: meta
         shell: bash
         env:
-          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || (github.ref == 'refs/heads/release/v1.5.0' && 'v1.5.0') || github.ref_name }}
         run: |
           set -euo pipefail
           git fetch origin main --no-tags
