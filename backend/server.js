@@ -6,6 +6,7 @@ import fs from 'fs'
 import crypto from 'crypto'
 import express from 'express'
 import cors from 'cors'
+import rateLimit from 'express-rate-limit'
 import { initStore, storeMode, storeReady, closeStore } from './src/store.js'
 import authRoutes from './src/routes/auth.js'
 import meRoutes from './src/routes/me.js'
@@ -24,7 +25,6 @@ try { dotenv.config({ path: path.join(MM_DATA_DIR, '.env') }) } catch {}
 
 const PUBLIC_BIND = isPublicBind()
 const HOSTED_ENV = envFlag('MOCKMATE_HOSTED')
-
 function ensurePersistentLocalJwtSecret() {
   const secretFile = path.join(MM_DATA_DIR, '.jwt-secret')
   try {
@@ -41,16 +41,10 @@ function ensurePersistentLocalJwtSecret() {
     fs.writeFileSync(tmp, secret, { mode: 0o600 })
     fs.renameSync(tmp, secretFile)
     process.env.JWT_SECRET = secret
-  } catch (error) {
-    throw new Error(`Could not persist the local JWT identity secret: ${error.message}`)
-  }
+  } catch (error) { throw new Error(`Could not persist the local JWT identity secret: ${error.message}`) }
 }
-
 if (PUBLIC_BIND || HOSTED_ENV) {
-  if (!process.env.JWT_SECRET) {
-    console.error('[backend] FATAL: JWT_SECRET is required in hosted/public mode.')
-    process.exit(1)
-  }
+  if (!process.env.JWT_SECRET) { console.error('[backend] FATAL: JWT_SECRET is required in hosted/public mode.'); process.exit(1) }
 } else {
   try { ensurePersistentLocalJwtSecret() }
   catch (error) { console.error(`[backend] FATAL: ${error.message}`); process.exit(1) }
@@ -96,6 +90,13 @@ app.use((req, res, next) => {
 
 app.post('/billing/webhook', express.raw({ type: 'application/json' }), stripeWebhook)
 app.use(express.json({ limit: '2mb' }))
+
+const apiLimiter = rateLimit({ windowMs: 60_000, limit: 90, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many AI requests. Please slow down for a moment.' } })
+const mediaLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many media requests. Please wait a moment.' } })
+const uploadLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many uploads. Please wait a moment.' } })
+app.use('/api', apiLimiter)
+app.use('/transcribe', mediaLimiter)
+app.use('/documents/upload', uploadLimiter)
 
 let processReady = false
 const healthy = () => processReady && storeReady()
