@@ -59,7 +59,7 @@
       "artifactName": "MockMate-Setup-${version}.${ext}",
       "signtoolOptions": { "publisherName": "MockMate", "signingHashAlgorithms": ["sha256"] },
       "signAndEditExecutable": true,
-      "verifyUpdateCodeSignature": true
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,
