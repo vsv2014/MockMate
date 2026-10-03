@@ -15,7 +15,7 @@ describe('sessionMetrics (Phase 6)', () => {
     expect(out.question).toBeUndefined()
   })
 
-  it('tracks TTFT and summary without throwing offline', () => {
+  it('tracks TTFT and transport fallback without throwing offline', () => {
     const m = createSessionMetrics('live')
     const h = m.startHint()
     m.markFirstToken(h)
@@ -24,12 +24,13 @@ describe('sessionMetrics (Phase 6)', () => {
     const s = m.end()
     expect(s.hints).toBe(1)
     expect(s.sttReconnects).toBe(1)
-    expect(s.streamFallbacks).toBe(1)
+    expect(s.transportFallbacks).toBe(1)
+    expect(s.providerFailovers).toBe(0)
     expect(s.ttftAvgMs).toEqual(expect.any(Number))
     expect(s.type).toBe('session_end')
   })
 
-  it('counts provider failover, timeout, and cancellation lifecycle events', () => {
+  it('separates provider failover failures from user-visible errors', () => {
     const m = createSessionMetrics('live')
     m.markProviderEvent({ type: 'started', attemptIndex: 0, provider: 'gemini' })
     m.markProviderEvent({ type: 'failed', attemptIndex: 0, provider: 'gemini', status: 404 })
@@ -37,10 +38,11 @@ describe('sessionMetrics (Phase 6)', () => {
     m.markProviderEvent({ type: 'timed_out', attemptIndex: 1, provider: 'groq', status: 504 })
     m.markProviderEvent({ type: 'cancelled', attemptIndex: 2, provider: 'openai' })
     const s = m.summary()
-    expect(s.streamFallbacks).toBe(1)
+    expect(s.transportFallbacks).toBe(0)
+    expect(s.providerFailovers).toBe(1)
     expect(s.providerAttemptFailures).toBe(2)
     expect(s.providerTimeouts).toBe(1)
     expect(s.providerCancellations).toBe(1)
-    expect(s.errors).toBe(2)
+    expect(s.errors).toBe(0)
   })
 })
