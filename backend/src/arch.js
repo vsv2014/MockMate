@@ -74,21 +74,15 @@ export function resolveCapabilities({ hosted = hostedMode() } = {}) {
             : { available: false, mode: 'unavailable', provider: null, fallback: stt.batch.fallback },
         },
         tts: {
-          available: null,
-          mode: 'client',
-          provider: null,
+          available: null, mode: 'client', provider: null,
           declaredModes: plan.speech.tts.streaming?.preferredModes || [],
           required: plan.speech.tts.streaming?.required === true,
         },
         turnDetection: plan.speech.turnDetection,
         hotPath: plan.speech.hotPath,
       },
-      knowledge: mongo
-        ? { available: true, mode: 'managed', provider: 'mongo-lexical' }
-        : { available: false, mode: 'client-local', provider: null },
-      persistence: mongo
-        ? { available: true, mode: 'managed', provider: 'mongo' }
-        : { available: false, mode: 'client-local', provider: null },
+      knowledge: mongo ? { available: true, mode: 'managed', provider: 'mongo-lexical' } : { available: false, mode: 'client-local', provider: null },
+      persistence: mongo ? { available: true, mode: 'managed', provider: 'mongo' } : { available: false, mode: 'client-local', provider: null },
     },
     policy: { reasoningAdapter: plan.reasoning.executionAdapter, noDoubleRetry: plan.reasoning.noDoubleRetry },
   }
@@ -96,14 +90,22 @@ export function resolveCapabilities({ hosted = hostedMode() } = {}) {
 
 export async function executeWithFallback({
   capability, providers, execute, fallback, retries = 1, timeoutMs = 15_000, cooldownMs = DEFAULT_COOLDOWN_MS,
+  signal: outerSignal,
+  shouldRetry = () => true,
+  shouldOpenCircuit = () => true,
 }) {
   const failures = []
+  if (outerSignal?.aborted) return { ok: false, aborted: true, degraded: true, provider: null, failures }
+
   for (const provider of providers) {
     const circuitKey = `${capability}:${provider}`
     if (circuitOpen(circuitKey)) { failures.push({ provider, reason: 'circuit-open' }); continue }
     for (let attempt = 0; attempt <= retries; attempt += 1) {
+      if (outerSignal?.aborted) return { ok: false, aborted: true, degraded: true, provider: null, failures }
       const started = Date.now()
       const controller = new AbortController()
+      const relay = () => controller.abort(outerSignal?.reason)
+      if (outerSignal) outerSignal.addEventListener('abort', relay, { once: true })
       let timer
       const deadline = new Promise((_, reject) => {
         timer = setTimeout(() => {
@@ -114,23 +116,28 @@ export async function executeWithFallback({
         timer.unref?.()
       })
       try {
-        // Pass an AbortSignal to adapters *and* race a hard deadline. Adapters that
-        // honor the signal stop upstream work; adapters that do not can no longer
-        // block ARCH's request path past the deadline.
         const result = await Promise.race([Promise.resolve().then(() => execute(provider, attempt, controller.signal)), deadline])
         clearTimeout(timer)
+        outerSignal?.removeEventListener('abort', relay)
         circuits.delete(circuitKey)
         recordArchMetric(`${capability}_provider_ms`, Date.now() - started)
         return { ok: true, degraded: provider !== providers[0], provider, result, failures }
       } catch (error) {
         clearTimeout(timer)
+        outerSignal?.removeEventListener('abort', relay)
+        if (outerSignal?.aborted) return { ok: false, aborted: true, degraded: true, provider: null, failures }
         const timedOut = controller.signal.aborted || error?.message === 'ARCH_TIMEOUT' || error?.name === 'AbortError'
         const reason = timedOut ? 'timeout' : String(error?.message || 'provider-failure').slice(0, 160)
-        failures.push({ provider, attempt, reason })
-        if (attempt === retries) openCircuit(circuitKey, cooldownMs)
+        failures.push({ provider, attempt, reason, status: error?.status || 0 })
+        const retryable = timedOut || shouldRetry(error)
+        if (!retryable || attempt === retries) {
+          if (shouldOpenCircuit(error, { timedOut })) openCircuit(circuitKey, cooldownMs)
+          break
+        }
       }
     }
   }
+  if (outerSignal?.aborted) return { ok: false, aborted: true, degraded: true, provider: null, failures }
   if (fallback) {
     const result = await fallback(failures)
     return { ok: true, degraded: true, provider: null, fallback: true, result, failures }
@@ -143,6 +150,15 @@ export function reasoningPolicy(operation) {
   return { lane: reasoningLane(operation), executionAdapter: plan.reasoning.executionAdapter, noDoubleRetry: plan.reasoning.noDoubleRetry }
 }
 
+function sttRetryable(error) {
+  const status = Number(error?.status || 0)
+  return !status || status === 408 || status === 429 || status >= 500
+}
+function sttCircuitWorthy(error, { timedOut } = {}) {
+  const status = Number(error?.status || 0)
+  return timedOut || !status || status === 401 || status === 403 || status === 429 || status >= 500
+}
+
 export async function executeTranscription(options) {
   const plan = runtimePlan().runtime.transcription?.batch || {}
   const providers = options.providers || (configured('DEEPGRAM_API_KEY') ? ['deepgram'] : [])
@@ -151,6 +167,8 @@ export async function executeTranscription(options) {
     retries: Number.isInteger(plan.retries) ? plan.retries : 1,
     timeoutMs: Number(plan.timeoutMs) || 30_000,
     cooldownMs: Number(plan.cooldownMs) || DEFAULT_COOLDOWN_MS,
+    shouldRetry: sttRetryable,
+    shouldOpenCircuit: sttCircuitWorthy,
     ...options,
   })
 }
