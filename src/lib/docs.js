@@ -2,12 +2,13 @@
 // Session selection: each doc has `selected` (default true). Live/Solo pass selected IDs into
 // retrieveContext so unchecked library docs cannot pollute a new interview.
 import { apiFetch } from './apiClient'
-import { chunkText, topK, groundingBlock } from '../../shared/retrieval.js'
+import { chunkText, topK, lexicalTopK, groundingBlock } from '../../shared/retrieval.js'
 import { getDocThreshold } from './aiSettings'
 import { diagnostic } from './diagnostics'
 import { getScopedItem, setScopedItem } from './accountScope'
 
 const KEY = 'mm-docs'
+const INDEX_STORAGE_KEY = 'mm-docs-index-v1'
 export const MAX_INDEX_CHUNKS_PER_DOC = 40
 export const LONG_DOC_CHARS = 20000
 
@@ -133,6 +134,52 @@ export function documentSignature(text = '') {
 const indexCache = new Map()
 const indexInFlight = new Map()
 
+function resolvePayloadEmbeddingModel(payload = {}) {
+  if (payload?.embeddingModel) return String(payload.embeddingModel)
+  if (payload?.provider && payload?.model) return `${payload.provider}:${payload.model}`
+  if (payload?.model) return String(payload.model)
+  return 'default'
+}
+
+function loadPersistedIndexEntry(docId, sig, expectedEmbeddingModel = null) {
+  try {
+    const raw = JSON.parse(getScopedItem(INDEX_STORAGE_KEY, '{}') || '{}')
+    const entry = raw?.[docId]
+    if (
+      entry &&
+      entry.sig === sig &&
+      Array.isArray(entry.chunks) &&
+      entry.dimensions > 0 &&
+      entry.embeddingModel &&
+      (!expectedEmbeddingModel || entry.embeddingModel === expectedEmbeddingModel)
+    ) {
+      return entry
+    }
+  } catch {}
+  return null
+}
+
+function persistIndexEntry(docId, entry) {
+  try {
+    const raw = JSON.parse(getScopedItem(INDEX_STORAGE_KEY, '{}') || '{}')
+    const keys = Object.keys(raw)
+    if (keys.length > 24) delete raw[keys[0]]
+    raw[docId] = entry
+    setScopedItem(INDEX_STORAGE_KEY, JSON.stringify(raw))
+  } catch {}
+}
+
+function buildLexicalItems(docs) {
+  const out = []
+  for (const doc of docs) {
+    const chunks = sampleChunksForIndex(chunkText(doc.text, { size: 600, overlap: 100 }))
+    for (const text of chunks) {
+      out.push({ text, doc: doc.name, type: normalizeDocType(doc.type), docId: doc.id })
+    }
+  }
+  return out
+}
+
 async function embed(texts, signal) {
   const startedAt = performance.now(); const inputCount = Array.isArray(texts) ? texts.length : 0
   const r = await apiFetch('/api/embed', {
@@ -143,7 +190,9 @@ async function embed(texts, signal) {
     throw new Error(`embed ${r.status}`)
   }
   const payload = await r.json(); const vectors = payload.vectors || []
-  diagnostic('rag', 'embedding_completed', { inputCount, vectorCount: vectors.length, dimensions: vectors[0]?.length || 0, durationMs: Math.round(performance.now() - startedAt) })
+  const embeddingModel = resolvePayloadEmbeddingModel(payload)
+  Object.defineProperty(vectors, 'embeddingModel', { value: embeddingModel, enumerable: false })
+  diagnostic('rag', 'embedding_completed', { inputCount, vectorCount: vectors.length, dimensions: vectors[0]?.length || 0, embeddingModel, durationMs: Math.round(performance.now() - startedAt) })
   return vectors
 }
 
@@ -158,10 +207,24 @@ function filterDocs(docs, { docIds, types } = {}) {
   return out
 }
 
-async function indexOne(doc, signal, force = false) {
+async function indexOne(doc, signal, force = false, expectedEmbeddingModel = null) {
   const sig = documentSignature(doc.text)
   const cached = indexCache.get(doc.id)
-  if (!force && cached?.sig === sig) return cached
+  if (
+    !force &&
+    cached?.sig === sig &&
+    cached?.embeddingModel &&
+    (!expectedEmbeddingModel || cached.embeddingModel === expectedEmbeddingModel)
+  ) {
+    return cached
+  }
+  if (!force) {
+    const persisted = loadPersistedIndexEntry(doc.id, sig, expectedEmbeddingModel)
+    if (persisted) {
+      indexCache.set(doc.id, persisted)
+      return persisted
+    }
+  }
   const existing = indexInFlight.get(doc.id)
   if (!force && existing) return existing
   const task = (async () => {
@@ -169,53 +232,122 @@ async function indexOne(doc, signal, force = false) {
     const chunks = sampleChunksForIndex(allChunks)
     const vectors = chunks.length ? await embed(chunks, signal) : []
     if (signal?.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
-    const entry = { sig, dimensions: vectors[0]?.length || 0, chunks: chunks.map((text, i) => ({ text, vector: vectors[i] || [] })) }
+    const embeddingModel = vectors?.embeddingModel || expectedEmbeddingModel || 'default'
+    const entry = {
+      sig,
+      dimensions: vectors[0]?.length || 0,
+      embeddingModel,
+      chunks: chunks.map((text, i) => ({ text, vector: vectors[i] || [] })),
+    }
     indexCache.set(doc.id, entry)
+    persistIndexEntry(doc.id, entry)
     return entry
   })().finally(() => { if (indexInFlight.get(doc.id) === task) indexInFlight.delete(doc.id) })
   indexInFlight.set(doc.id, task)
   return task
 }
 
-async function ensureIndexed(docs, { signal, force = false } = {}) {
+async function ensureIndexed(docs, { signal, force = false, expectedEmbeddingModel = null } = {}) {
   const all = []
   for (const doc of docs) {
     if (signal?.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
-    const entry = await indexOne(doc, signal, force)
-    for (const c of entry.chunks) if (c.vector?.length) all.push({ text: c.text, vector: c.vector, dimensions: entry.dimensions, doc: doc.name, type: normalizeDocType(doc.type), docId: doc.id })
+    const entry = await indexOne(doc, signal, force, expectedEmbeddingModel)
+    for (const c of entry.chunks) {
+      if (c.vector?.length) {
+        all.push({
+          text: c.text,
+          vector: c.vector,
+          dimensions: entry.dimensions,
+          embeddingModel: entry.embeddingModel || 'default',
+          doc: doc.name,
+          type: normalizeDocType(doc.type),
+          docId: doc.id,
+        })
+      }
+    }
   }
   return all
 }
 
-export async function retrieveContext(question, { k = 4, minScore, budgetMs = 2000, docIds, types } = {}) {
+const SPEC_STOP_WORDS = new Set([
+  'the', 'and', 'for', 'with', 'that', 'this', 'from', 'your', 'you', 'are', 'was', 'were',
+  'what', 'how', 'why', 'when', 'where', 'who', 'which', 'can', 'could', 'would', 'should',
+  'tell', 'about', 'explain', 'describe', 'walk', 'through', 'have', 'has', 'had', 'into', 'please',
+  'did', 'does', 'in', 'on', 'at', 'to', 'of', 'by', 'as', 'is', 'it', 'or', 'be', 'do', 'an', 'so',
+])
+
+function significantWords(text = '') {
+  return String(text || '')
+    .toLowerCase()
+    .match(/[a-z0-9+#._-]{2,}/g)
+    ?.filter(w => !SPEC_STOP_WORDS.has(w)) || []
+}
+
+/**
+ * Determine whether a speculative RAG result pre-warmed for `specQuery` can be reused
+ * for `committedQuery` without issuing a second `/api/embed` request.
+ */
+export function canReuseSpeculativeRag(specQuery = '', committedQuery = '') {
+  const a = String(specQuery || '').trim().toLowerCase().replace(/[?.!,;:]+$/g, '')
+  const b = String(committedQuery || '').trim().toLowerCase().replace(/[?.!,;:]+$/g, '')
+  if (!a || !b) return false
+  if (a === b) return true
+  const wordsA = significantWords(a)
+  const wordsB = significantWords(b)
+  if (wordsA.length < 2 || wordsB.length < 2) return false
+  const setA = new Set(wordsA)
+  const overlap = wordsB.filter(w => setA.has(w)).length
+  if (b.startsWith(a) && wordsB.length - wordsA.length <= 3) return true
+  return overlap / wordsB.length >= 0.7
+}
+
+export async function retrieveContext(question, { k = 4, minScore, budgetMs = 2000, docIds, types, signal: externalSignal } = {}) {
   if (!question || !String(question).trim()) return ''
+  if (externalSignal?.aborted) return ''
   if (Array.isArray(docIds) && docIds.length === 0) return ''
   const docs = filterDocs(load(), { docIds, types }); if (!docs.length) return ''
   const threshold = typeof minScore === 'number' ? minScore : getDocThreshold()
   const startedAt = performance.now(); const ac = new AbortController(); let timeoutId
+  const onExternalAbort = () => {
+    clearTimeout(timeoutId)
+    ac.abort(externalSignal?.reason || new DOMException('Speculative RAG cancelled', 'AbortError'))
+  }
+  if (externalSignal) externalSignal.addEventListener('abort', onExternalAbort, { once: true })
   diagnostic('rag', 'retrieval_started', { documentCount: docs.length, requestedK: k, threshold, budgetMs })
   const timeout = new Promise(resolve => { timeoutId = setTimeout(() => { ac.abort(new DOMException('RAG deadline exceeded', 'AbortError')); diagnostic('rag', 'retrieval_timed_out', { documentCount: docs.length, budgetMs, durationMs: Math.round(performance.now() - startedAt) }, 'warn'); resolve('') }, budgetMs) })
   const work = (async () => {
-    const [qv] = await embed([question], ac.signal)
-    if (!qv?.length) return ''
-    let items = await ensureIndexed(docs, { signal: ac.signal })
-    if (items.some(item => item.vector?.length && item.vector.length !== qv.length)) {
+    const qvList = await embed([question], ac.signal)
+    const [qv] = qvList || []
+    const queryEmbeddingModel = qvList?.embeddingModel || 'default'
+    if (!qv?.length || externalSignal?.aborted) return ''
+    let items = await ensureIndexed(docs, { signal: ac.signal, expectedEmbeddingModel: queryEmbeddingModel })
+    if (items.some(item => item.vector?.length && (item.vector.length !== qv.length || item.embeddingModel !== queryEmbeddingModel))) {
       for (const doc of docs) indexCache.delete(doc.id)
-      items = await ensureIndexed(docs, { signal: ac.signal, force: true })
+      items = await ensureIndexed(docs, { signal: ac.signal, force: true, expectedEmbeddingModel: queryEmbeddingModel })
     }
-    if (!items.length || items.some(item => item.vector?.length && item.vector.length !== qv.length)) {
-      diagnostic('rag', 'retrieval_dimension_mismatch', { queryDimensions: qv.length, documentCount: docs.length }, 'warn')
+    if (!items.length || items.some(item => item.vector?.length && (item.vector.length !== qv.length || item.embeddingModel !== queryEmbeddingModel))) {
+      diagnostic('rag', 'retrieval_dimension_mismatch', { queryDimensions: qv.length, queryEmbeddingModel, documentCount: docs.length }, 'warn')
       return ''
     }
-    const chunks = topK(qv, items, { k, minScore: threshold })
+    const chunks = topK(qv, items, { k, minScore: threshold, queryText: question })
     diagnostic('rag', 'retrieval_completed', { documentCount: docs.length, indexedChunkCount: items.length, hitCount: chunks.length, maxScore: chunks.length ? Number(Math.max(...chunks.map(c => c.score)).toFixed(3)) : 0, minScore: chunks.length ? Number(Math.min(...chunks.map(c => c.score)).toFixed(3)) : 0, durationMs: Math.round(performance.now() - startedAt) })
     return groundingBlock(chunks)
   })().catch(e => {
+    if (externalSignal?.aborted) return ''
     if (e?.name !== 'AbortError') diagnostic('rag', 'retrieval_failed', { reason: e?.name || 'error', durationMs: Math.round(performance.now() - startedAt) }, 'warn')
-    return ''
+    const lexicalHits = lexicalTopK(question, buildLexicalItems(docs), { k, minScore: Math.max(0.28, threshold) })
+    return groundingBlock(lexicalHits)
   })
   const result = await Promise.race([work, timeout])
   clearTimeout(timeoutId)
+  if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
+  if (externalSignal?.aborted) return ''
+  if (result) return result
+  // If embedding timed out, fall back to instant lexical retrieval so live answers still stay grounded.
+  if (ac.signal.aborted) {
+    const lexicalHits = lexicalTopK(question, buildLexicalItems(docs), { k, minScore: Math.max(0.28, threshold) })
+    if (lexicalHits.length) return groundingBlock(lexicalHits)
+  }
   return result
 }
 

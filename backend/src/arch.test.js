@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { executeWithFallback, performanceSnapshot, reasoningPolicy, recordArchMetric, resetArchCircuits, resetArchPerformance, resolveCapabilities } from './arch.js'
+import { archRuntimeSummary, executeWithFallback, performanceSnapshot, reasoningPolicy, recordArchMetric, resetArchCircuits, resetArchPerformance, resolveCapabilities } from './arch.js'
 
 const KEYS = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'CEREBRAS_API_KEY', 'LLM_API_KEY', 'DEEPGRAM_API_KEY', 'MONGO_URI']
 const original = Object.fromEntries(KEYS.map(key => [key, process.env[key]]))
@@ -80,8 +80,14 @@ describe('ARCH runtime fallback', () => {
 })
 
 describe('ARCH performance telemetry', () => {
-  it('reports bounded p50/p95 stage metrics', () => {
+  it('reports bounded p50/p95 stage metrics Locally and omits process-global performance on hosted mode', () => {
     for (const value of [100, 120, 140, 500]) recordArchMetric('stt_final_ms', value)
     expect(performanceSnapshot().stt_final_ms).toEqual({ count: 4, p50: 120, p95: 500 })
+    const summary = archRuntimeSummary({ hosted: false })
+    expect(summary.routing.hint).toBe('fast')
+    expect(summary.performance.stt_final_ms).toEqual({ count: 4, p50: 120, p95: 500 })
+
+    const hostedSummary = archRuntimeSummary({ hosted: true })
+    expect(hostedSummary.performance).toBeUndefined()
   })
 })

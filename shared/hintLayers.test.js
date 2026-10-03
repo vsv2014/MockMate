@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { stripHintMeta, glanceLayers, isHintMetaObject, ensureCodingCodeBlock } from './hintLayers.js'
+import { stripHintMeta, glanceLayers, isHintMetaObject, ensureCodingCodeBlock, sanitizeSpokenProse } from './hintLayers.js'
 
 describe('stripHintMeta', () => {
   it('strips META: line + keeps prose', () => {
@@ -62,5 +62,22 @@ describe('ensureCodingCodeBlock', () => {
 
   it('does not format ordinary technical prose as code', () => {
     expect(ensureCodingCodeBlock('JWT is a signed token.', 'technical')).toBe('JWT is a signed token.')
+  })
+})
+
+describe('sanitizeSpokenProse (Artemis-style streaming output guardrail)', () => {
+  it('strips robotic AI preambles and rewrites banned AI-tell words in spoken prose', () => {
+    const raw = "Sure! Here's how I would answer that: We utilized Redis streams to delve into backpressure issues."
+    const out = sanitizeSpokenProse(raw)
+    expect(out).toBe('We used Redis streams to dig into backpressure issues.')
+    const layers = glanceLayers(raw)
+    expect(layers.opener).toBe('We used Redis streams to dig into backpressure issues.')
+  })
+
+  it('never alters identifiers inside fenced code blocks', () => {
+    const raw = 'Certainly! Use a helper.\n\n```js\nfunction utilizeCache() { return true }\n```'
+    const out = sanitizeSpokenProse(raw)
+    expect(out).toMatch(/^Use a helper\./)
+    expect(out).toContain('function utilizeCache()')
   })
 })

@@ -174,3 +174,16 @@ export async function executeTranscription(options) {
 }
 
 export function publicCapabilityStatus(options) { return resolveCapabilities(options) }
+
+export function archRuntimeSummary(options = {}) {
+  const plan = runtimePlan()
+  const hosted = options?.hosted ?? hostedMode()
+  const includePerformance = options?.includePerformance ?? !hosted
+  return {
+    ...resolveCapabilities({ ...options, hosted }),
+    persona: plan.persona,
+    designGoals: plan.designGoals,
+    routing: plan.reasoning.routing,
+    ...(includePerformance ? { performance: performanceSnapshot() } : {}),
+  }
+}

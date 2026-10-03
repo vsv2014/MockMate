@@ -3,7 +3,7 @@ import express from 'express'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
-import { registerApiRoutes, API_ROUTE_CONTRACT } from './apiRoutes.js'
+import { registerApiRoutes, API_ROUTE_CONTRACT, isProviderFailureError } from './apiRoutes.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -38,5 +38,21 @@ describe('API route contract', () => {
     expect(src).toMatch(/registerApiRoutes\s*\(/)
     expect(src).not.toMatch(/app\.get\(['"]\/api\/providers['"]/)
     expect(src).toMatch(/from ['"]\.\/api\/_lib\/apiRoutes\.js['"]/)
+  })
+
+  it('isProviderFailureError ignores client disconnects/aborts and 400 validation errors while counting real provider errors', () => {
+    const ac = new AbortController()
+    ac.abort()
+    expect(isProviderFailureError(new Error('any'), { signal: ac.signal })).toBe(false)
+    expect(isProviderFailureError(new Error('closed'), { closed: true })).toBe(false)
+    const abortErr = Object.assign(new Error('Aborted'), { name: 'AbortError' })
+    expect(isProviderFailureError(abortErr)).toBe(false)
+    const validationErr = Object.assign(new Error('No screenshot'), { status: 400, code: 'SCREEN_EMPTY' })
+    expect(isProviderFailureError(validationErr)).toBe(false)
+
+    const rateErr = Object.assign(new Error('Rate limit'), { status: 429 })
+    expect(isProviderFailureError(rateErr)).toBe(true)
+    const upstreamErr = Object.assign(new Error('Provider 503'), { status: 503 })
+    expect(isProviderFailureError(upstreamErr)).toBe(true)
   })
 })

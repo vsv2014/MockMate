@@ -355,16 +355,19 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
         }
         lastEarlyTrigger.current = ''
         // Never hint on candidate speech — even if question-shaped ("Can you repeat?").
+        const isSystemLoopback = Boolean(sourceIdRef.current && sourceIdRef.current !== 'microphone')
         onFinalRef.current?.(text, {
           speaker: sp,
-          isCandidate: !!isCandidate,
+          isCandidate: isSystemLoopback ? false : !!isCandidate,
           isQuestion: looksLikeQuestion(text),
           confidence: Number.isFinite(alt?.confidence) ? alt.confidence : null,
-          diarizationLocked: !!interviewerSpeaker.current,
+          diarizationLocked: isSystemLoopback || !!interviewerSpeaker.current,
           interviewerSpeaker: interviewerSpeaker.current,
-          speakerRole: interviewerSpeaker.current != null && sp != null
-            ? (sp === interviewerSpeaker.current ? 'interviewer' : (candidateSpeaker.current != null && sp === candidateSpeaker.current ? 'candidate' : 'unknown'))
-            : 'unknown',
+          speakerRole: isSystemLoopback
+            ? 'interviewer'
+            : (interviewerSpeaker.current != null && sp != null
+              ? (sp === interviewerSpeaker.current ? 'interviewer' : (candidateSpeaker.current != null && sp === candidateSpeaker.current ? 'candidate' : 'unknown'))
+              : 'unknown'),
           degraded: !!degradedAudio.current,
         })
         setInterim('')

@@ -11,7 +11,7 @@ import { LANGUAGES, STT_LANG } from './lib/languages'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { createSessionId, createGeneration, hasEnoughAnswerLength } from './lib/sessionGen'
-import { retrieveContext, warmDocs, addDoc, getSelectedDocIds } from './lib/docs'
+import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, hasDocs } from './lib/docs'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import Documents from './Documents'
 import { extractPdfText } from './pdf'
@@ -323,8 +323,11 @@ export default function Solo({ onHome, noProviders }) {
   function saveProfile(p) { setProfile(p); persistProfile(p) }
   function patchProfile(patch) { saveProfile({ ...profile, ...patch }) }
 
-  const hasContext = !!(String(profile.resume || '').trim().length > 40 || String(profile.jobDescription || '').trim().length > 40)
-  const canStartSolo = !noProviders && hasContext
+  const isDevLocal = Boolean(import.meta.env?.DEV)
+    && typeof window !== 'undefined'
+    && /^(localhost|127\.0\.0\.1)$/i.test(window.location?.hostname || '')
+  const hasContext = !!(String(profile.resume || '').trim().length > 40 || String(profile.jobDescription || '').trim().length > 40 || hasDocs())
+  const canStartSolo = !noProviders && (hasContext || isDevLocal)
 
   async function requestTurn(current, attempt = 0, gen = null) {
     const turnG = attempt === 0 ? turnGen.current.bump() : gen

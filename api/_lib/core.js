@@ -1098,6 +1098,11 @@ export async function embed(input) {
     try {
       const r = await llm.embeddings.create({ model: prov.model, input: list.map(t => String(t).slice(0, 8000)) })
       const vectors = r.data.map(d => d.embedding)
+      Object.defineProperties(vectors, {
+        provider: { value: provider, enumerable: false },
+        model: { value: prov.model, enumerable: false },
+        embeddingModel: { value: `${provider}:${prov.model}`, enumerable: false },
+      })
       providerDiagnostic('embedding_succeeded', { attemptId, provider, model: prov.model, inputCount: list.length, vectorCount: vectors.length, dimensions: vectors[0]?.length || 0, durationMs: Date.now() - startedAt })
       return vectors
     } catch (e) {

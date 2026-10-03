@@ -4,6 +4,7 @@ import { completeJSON, visionComplete, extractJSON, streamText, pickFastProvider
 import { analyze, BANNED_WORDS } from '../../shared/delivery.js'
 import { glanceLayers, stripHintMeta } from '../../shared/hintLayers.js'
 import { classifyTurn, inferRoleFamily, isLogisticalCheck } from '../../shared/interviewClassify.js'
+import { hasRetrievedDocuments, parseRetrievedSources } from '../../shared/retrieval.js'
 import {
   contextNeedsForScreenAnalysis,
   normalizeScreenContentType,
@@ -75,7 +76,7 @@ export function packCandidateContext(profile = {}, extraContext = '', opts = {})
     || { identity: true, resume: 'full', jd: 'full', rag: true, customPrompt: true, codingLanguage: false, history: true }
 
   const extra = String(extraContext || '').trim()
-  const hasRag = /RELEVANT FROM YOUR DOCUMENTS/i.test(extra)
+  const hasRag = hasRetrievedDocuments(extra)
   const parts = [CONTEXT_PRECEDENCE]
 
   if (needs.identity !== false) {
@@ -141,7 +142,7 @@ function buildPrompt(config = {}, profile = {}, extraContext = '') {
   const ctx = packCandidateContext(profile, extraContext) || profileBlock(profile)
   const hasResume = !!(profile.resume && String(profile.resume).trim().length > 40)
   const hasJd = !!(profile.jobDescription && String(profile.jobDescription).trim().length > 40)
-  const hasRag = /RELEVANT FROM YOUR DOCUMENTS/i.test(String(extraContext || ''))
+  const hasRag = hasRetrievedDocuments(extraContext)
   const hasGrounding = hasResume || hasJd || hasRag
   const track = [config.domainLabel, config.roundLabel].filter(Boolean).join(' — ') || 'general interview'
   const depth = config.followupDepth
@@ -459,6 +460,7 @@ export async function streamHint({ question, profile = {}, conversationHistory =
 
   let buf = '', metaSent = false, skipped = false, proseEmitted = false
   const emitProse = t => { if (t) { proseEmitted = true; onToken?.(t) } }
+  const ragSources = parseRetrievedSources(extraContext)
   const routingExtra = {
     roleFamily: classification.roleFamily,
     questionType: classification.questionType,
@@ -471,6 +473,7 @@ export async function streamHint({ question, profile = {}, conversationHistory =
     screenContextId: relevance.attach ? recentScreen?.screenContextId : null,
     screenContextVersion: SCREEN_CONTEXT_VERSION,
     modelStrategy: strategy,
+    ...(ragSources.length ? { ragSources } : {}),
   }
   await streamText({
     provider: chosen, maxTokens, onProviderEvent,
@@ -606,6 +609,7 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
   const prose = hint.fullAnswer || hint.sampleAnswer || hint.answer || ''
   if (!String(prose).trim()) return null
   const normalized = normalizeHint(hint, prose)
+  const ragSources = parseRetrievedSources(extraContext)
   normalized._routing = {
     roleFamily: classification.roleFamily,
     questionType: classification.questionType,
@@ -618,6 +622,7 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
     screenContextId: relevance.attach ? recentScreen?.screenContextId : null,
     screenContextVersion: SCREEN_CONTEXT_VERSION,
     modelStrategy: strategy,
+    ...(ragSources.length ? { ragSources } : {}),
   }
   return normalized
 }

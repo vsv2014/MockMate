@@ -4,7 +4,7 @@ vi.mock('./apiClient', () => ({ apiFetch: (...args) => apiFetchMock(...args) }))
 import {
   addDoc, listDocs, removeDoc, inferDocType, getSelectedDocIds, setDocSelected,
   setDocType, filterDocsForRetrieve, DOC_TYPES,
-  sampleChunksForIndex, retrieveContext,
+  sampleChunksForIndex, retrieveContext, canReuseSpeculativeRag,
 } from './docs.js'
 
 const store = new Map()
@@ -131,5 +131,64 @@ describe('long document indexing', () => {
     })
     const result = await retrieveContext('unrelated question', { docIds: [d.id], minScore: 0.2, budgetMs: 500 })
     expect(result).toBe('')
+  })
+
+  it('reuses speculative RAG when committed question shares significant terms and cancels aborted speculative requests', async () => {
+    expect(canReuseSpeculativeRag(
+      'How did you implement Redis streams',
+      'How did you implement Redis streams in production?',
+    )).toBe(true)
+    expect(canReuseSpeculativeRag(
+      'How did you implement Redis streams',
+      'Design a URL shortener with Postgres',
+    )).toBe(false)
+
+    const d = addDoc({ name: 'Resume', type: 'resume', text: 'Implemented Redis streams and consumer groups for high throughput.' })
+    const ac = new AbortController()
+    ac.abort()
+    apiFetchMock.mockClear()
+    const cancelled = await retrieveContext('How did you implement Redis streams?', { docIds: [d.id], signal: ac.signal })
+    expect(cancelled).toBe('')
+    expect(apiFetchMock).not.toHaveBeenCalled()
+  })
+
+  it('invalidates cached and persisted vectors when the embedding provider/model changes even if dimensions match', async () => {
+    store.clear()
+    apiFetchMock.mockReset()
+    const d = addDoc({
+      name: 'Distributed_Systems_Resume.pdf',
+      type: 'resume',
+      text: 'Architected Kafka event pipelines and Redis stream consumer groups handling 150k msg/sec.',
+    })
+
+    let currentEmbeddingModel = 'openai:text-embedding-3-small'
+    let docEmbedCalls = 0
+    apiFetchMock.mockImplementation(async (_path, options) => {
+      const input = JSON.parse(options.body).input
+      const isQuery = input.length === 1 && input[0].startsWith('How did you architect')
+      if (!isQuery) docEmbedCalls += 1
+      // Model A maps matching vectors along [1, 0]; Model B maps matching vectors along [0, 1] (same dimension = 2!)
+      const vec = currentEmbeddingModel.startsWith('openai:') ? [1, 0] : [0, 1]
+      return {
+        ok: true,
+        json: async () => ({
+          vectors: input.map(() => vec),
+          embeddingModel: currentEmbeddingModel,
+        }),
+      }
+    })
+
+    // First retrieval indexes under openai:text-embedding-3-small
+    const first = await retrieveContext('How did you architect Kafka pipelines?', { docIds: [d.id], minScore: 0.2, budgetMs: 800 })
+    expect(first).toContain('Kafka event pipelines')
+    expect(docEmbedCalls).toBe(1)
+
+    // Switch active embedding model to gemini:gemini-embedding-001 with identical vector dimension (2)
+    // If stale [1, 0] vectors from Model A were reused against Model B's [0, 1] query vector,
+    // cosine similarity would be 0 and retrieval would fail unless re-indexed!
+    currentEmbeddingModel = 'gemini:gemini-embedding-001'
+    const second = await retrieveContext('How did you architect Kafka pipelines?', { docIds: [d.id], minScore: 0.2, budgetMs: 800 })
+    expect(second).toContain('Kafka event pipelines')
+    expect(docEmbedCalls).toBe(2)
   })
 })
