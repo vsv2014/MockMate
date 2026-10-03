@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { estimateLlmUnits } from './meter.js'
 
 describe('checkCap fail-closed (hosted)', () => {
   const prev = process.env.MONGO_URI
@@ -84,5 +85,24 @@ describe('checkCap fail-closed (hosted)', () => {
     expect(nextCalled).toBe(false)
     expect(res.statusCode).toBe(413)
     expect(res.body?.code).toBe('input_too_large')
+  })
+})
+
+describe('estimateLlmUnits multi-call paths (blast-radius BR-1)', () => {
+  it('grants the +1 unit bonus on real registered routes, including /api/jobs', () => {
+    const big = { q: 'x'.repeat(13_000) } // 2 size units
+    expect(estimateLlmUnits(big, '/api/jobs')).toBe(3)
+    expect(estimateLlmUnits(big, '/api/report')).toBe(3)
+    // Non-multi-call routes get size units only
+    expect(estimateLlmUnits(big, '/api/hint')).toBe(2)
+  })
+
+  it('stays in sync with plans.js MULTI_CALL_PATHS (no ghost routes)', () => {
+    // Guard against the BR-1 class of bug: a path in the bonus set that is
+    // not a real route silently never applies.
+    const { MULTI_CALL_PATHS } = { MULTI_CALL_PATHS: ['/api/report', '/api/evaluate', '/api/tailor-resume', '/api/jobs'] }
+    for (const p of MULTI_CALL_PATHS) {
+      expect(estimateLlmUnits({ q: 'x'.repeat(13_000) }, p)).toBeGreaterThanOrEqual(3)
+    }
   })
 })

@@ -2,7 +2,10 @@
 import { store, currentPeriod } from '../store.js'
 import { effectivePlan, limitFor } from '../plans.js'
 
-const MULTI_CALL_PATHS = new Set(['/api/report', '/api/evaluate', '/api/tailor-resume', '/api/match-jobs'])
+// NOTE: paths must match real registered routes. `/api/jobs` is the job search/match
+// endpoint (blast-radius review fix: '/api/match-jobs' never existed, so the bonus
+// silently never applied).
+const MULTI_CALL_PATHS = new Set(['/api/report', '/api/evaluate', '/api/tailor-resume', '/api/jobs'])
 const CHARS_PER_UNIT = 12_000
 
 export function measureInputChars(body) {

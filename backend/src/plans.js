@@ -5,7 +5,7 @@ export const PLAN_LIMITS = {
   max: { llmCalls: 100000, sttSeconds: 500 * 60 * 60, maxInputChars: 320_000 },
 }
 
-const MULTI_CALL_PATHS = new Set(['/api/report', '/api/evaluate', '/api/tailor-resume', '/api/match-jobs'])
+const MULTI_CALL_PATHS = new Set(['/api/report', '/api/evaluate', '/api/tailor-resume', '/api/jobs'])
 const CHARS_PER_UNIT = 12_000
 
 export function effectivePlan(user, now = Date.now()) {
