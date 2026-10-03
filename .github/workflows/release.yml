@@ -1,4 +1,4 @@
-name: Build & Release MockMate
+name: Build & Release MockMate (Windows)
 
 on:
   push:
@@ -51,25 +51,16 @@ jobs:
           NODE
           echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
 
-  build:
+  build-windows:
     needs: provenance
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux
-          - os: windows-latest
-            platform: win
-          - os: macos-latest
-            platform: mac
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+
       - name: Sync release version into lock metadata
         shell: bash
         run: |
@@ -81,35 +72,23 @@ jobs:
           if (lock.packages?.['']) lock.packages[''].version = pkg.version
           fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n')
           NODE
+
       - run: npm ci
       - run: npm --prefix backend ci
 
-      - name: Require public-release signing credentials (Windows)
-        if: matrix.platform == 'win'
+      - name: Require Windows Authenticode signing credentials
         shell: bash
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
-          test -n "$WIN_CSC_LINK" && test -n "$WIN_CSC_KEY_PASSWORD" || { echo 'Windows signing credentials are required for a public release.' >&2; exit 1; }
-
-      - name: Require public-release signing/notarization credentials (macOS)
-        if: matrix.platform == 'mac'
-        shell: bash
-        env:
-          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          test -n "$MAC_CSC_LINK" && test -n "$MAC_CSC_KEY_PASSWORD" && test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID" \
-            || { echo 'macOS signing + notarization credentials are required for a public release.' >&2; exit 1; }
+          test -n "$WIN_CSC_LINK" && test -n "$WIN_CSC_KEY_PASSWORD" || {
+            echo 'Windows signing credentials are required for the public Windows release.' >&2
+            exit 1
+          }
 
       - name: Bootstrap Electron runtime
-        shell: bash
-        run: |
-          if [ "${{ matrix.platform }}" = "linux" ]; then npx electron --no-sandbox --version; else npx electron --version; fi
+        run: npx electron --version
 
       - name: Unit, API smoke and production build
         run: npm test && npm run smoke:api && npm run build
@@ -140,21 +119,15 @@ jobs:
       - name: Verify final configured application
         run: npm test && npm run build
 
-      - name: Build Electron installer
+      - name: Build signed Windows installer
         shell: bash
-        run: npx electron-builder --${{ matrix.platform }} --publish never
+        run: npx electron-builder --win --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Verify Windows Authenticode signature
-        if: matrix.platform == 'win'
         shell: pwsh
         run: |
           $installer = Get-ChildItem release -Filter *.exe | Select-Object -First 1
@@ -162,64 +135,42 @@ jobs:
           $sig = Get-AuthenticodeSignature $installer.FullName
           if ($sig.Status -ne 'Valid') { throw "Invalid Authenticode signature: $($sig.Status)" }
 
-      - name: Verify macOS code signature
-        if: matrix.platform == 'mac'
-        shell: bash
+      - name: Verify Windows release artifacts
+        shell: pwsh
         run: |
-          set -euo pipefail
-          APP=$(find release -type d -name '*.app' -print -quit)
-          if [ -z "$APP" ]; then echo 'Packaged .app missing for signature verification.' >&2; exit 1; fi
-          codesign --verify --deep --strict --verbose=2 "$APP"
-
-      - name: Verify required artifacts
-        shell: bash
-        env:
-          PLATFORM: ${{ matrix.platform }}
-        run: |
-          node <<'NODE'
-          const fs = require('fs')
-          const files = fs.readdirSync('release')
-          const has = re => files.some(f => re.test(f))
-          const required = process.env.PLATFORM === 'win'
-            ? [[/\.exe$/i, 'Windows installer'], [/^latest\.yml$/i, 'latest.yml'], [/\.blockmap$/i, 'Windows blockmap']]
-            : process.env.PLATFORM === 'linux'
-              ? [[/\.AppImage$/i, 'Linux AppImage'], [/^latest-linux\.yml$/i, 'latest-linux.yml']]
-              : [[/\.dmg$/i, 'macOS DMG'], [/\.zip$/i, 'macOS updater ZIP'], [/^latest-mac\.yml$/i, 'latest-mac.yml']]
-          const missing = required.filter(([re]) => !has(re)).map(([, label]) => label)
-          if (missing.length) throw new Error(`Missing required artifacts: ${missing.join(', ')}; generated: ${files.join(', ')}`)
-          NODE
+          $exe = Get-ChildItem release -Filter *.exe | Select-Object -First 1
+          $yml = Get-ChildItem release -Filter latest.yml | Select-Object -First 1
+          $blockmap = Get-ChildItem release -Filter *.blockmap | Select-Object -First 1
+          if (-not $exe) { throw 'Windows installer missing' }
+          if (-not $yml) { throw 'latest.yml missing' }
+          if (-not $blockmap) { throw 'Windows blockmap missing' }
 
       - uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.platform }}
+          name: release-win
           path: |
             release/*.exe
             release/*.blockmap
-            release/*.AppImage
-            release/*.dmg
-            release/*.zip
-            release/*.yml
+            release/latest.yml
           if-no-files-found: error
           retention-days: 3
 
   publish:
-    needs: [provenance, build]
+    needs: [provenance, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: release-*
+          name: release-win
           path: staged
-          merge-multiple: true
-      - name: Verify all platform artifacts are staged
+      - name: Verify Windows artifacts are staged
         shell: bash
         run: |
           set -euo pipefail
           test -n "$(find staged -maxdepth 1 -name '*.exe' -print -quit)"
-          test -n "$(find staged -maxdepth 1 -name '*.AppImage' -print -quit)"
-          test -n "$(find staged -maxdepth 1 -name '*.dmg' -print -quit)"
-          test -n "$(find staged -maxdepth 1 -name '*.zip' -print -quit)"
-      - name: Publish one atomic GitHub Release
+          test -n "$(find staged -maxdepth 1 -name 'latest.yml' -print -quit)"
+          test -n "$(find staged -maxdepth 1 -name '*.blockmap' -print -quit)"
+      - name: Publish Windows GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           draft: false
