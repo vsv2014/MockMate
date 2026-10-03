@@ -113,11 +113,13 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const lastEarlyTrigger = useRef('')
   // Turn-1 Finalize-on-pause: Deepgram can hold the OPENING utterance open across
   // natural pauses, so the interviewer's first question sits in interim land
-  // indefinitely. Scope is deliberately narrow (PR review fix):
+  // indefinitely. Scope is deliberately narrow (PR review fixes):
   //   1. SYSTEM/LOOPBACK capture only — microphone Live has working endpointing and
   //      a forced 900ms finalization would split natural thinking pauses.
   //   2. Disabled permanently once the first question commits (opener problem solved);
-  //      the consumer calls setFinalizeOnPause(false).
+  //      the consumer calls setFinalizeOnPause(false). This decision is SESSION-level:
+  //      it survives reconnects, retries and source switches (teardown does not reset
+  //      it); only a genuinely new Live session — a fresh hook instance — starts enabled.
   // When active, a pending interim quiet for FINALIZE_PAUSE_MS triggers exactly one
   // { type: 'Finalize' } control frame per utterance.
   const finalizeWatcher = useRef(null)
@@ -148,7 +150,11 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     clearInterval(keepAlive.current); keepAlive.current = null
     clearInterval(finalizeWatcher.current); finalizeWatcher.current = null
     pendingInterim.current = false; finalizeSent.current = false
-    finalizeEnabled.current = true
+    // NOTE (PR review fix): `finalizeEnabled` is deliberately NOT reset here. teardown
+    // runs on every reconnect/retry/source-switch mid-session, and the disable-after-
+    // first-commit decision is SESSION-level, owned by the consumer via
+    // setFinalizeOnPause(). A genuinely new Live session mounts a fresh hook instance,
+    // whose useRef(true) starts enabled.
     clearTimeout(reconnectTimer.current); reconnectTimer.current = null
     abandonSocket(activeSocketRef.current || ws.current)
     activeSocketRef.current = null

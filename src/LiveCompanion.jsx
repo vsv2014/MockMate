@@ -1544,8 +1544,12 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   function retryTranscription() {
     setError('')
-    finalizeOffOnceRef.current = false
-    audio.restart(liveSourceId, audioOpts()).catch(e => setError(`Could not restart transcription: ${e.message || e}`))
+    // Session-level state stays authoritative: do NOT reset finalizeOffOnceRef here —
+    // a mid-session STT retry must not re-arm the Turn-1 Finalize heuristic.
+    // Re-assert the current state defensively once the socket is back up.
+    audio.restart(liveSourceId, audioOpts())
+      .then(() => { try { audio.setFinalizeOnPause(!finalizeOffOnceRef.current) } catch {} })
+      .catch(e => setError(`Could not restart transcription: ${e.message || e}`))
   }
 
   async function switchAudioSource() {
@@ -1569,6 +1573,9 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     setLiveSourceId(id === 'microphone' ? 'microphone' : id)
     try {
       await audio.restart(id, audioOpts())
+      // Source switching is still the SAME Live session — keep the Turn-1 Finalize
+      // decision authoritative (disabled once the first question committed).
+      try { audio.setFinalizeOnPause(!finalizeOffOnceRef.current) } catch {}
     } catch (e) {
       setError(`Could not switch audio: ${e.message || e}`)
     } finally {
