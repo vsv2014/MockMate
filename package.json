@@ -2,7 +2,7 @@
   "name": "mockmate",
   "version": "1.4.11",
   "type": "module",
-  "main": "electron/main.cjs",
+  "main": "electron/bootstrap.cjs",
   "description": "Real-Time AI Interview Companion — Solo practice + Live overlay for Zoom/Teams/Meet (content protection on Win/macOS; verify share preview)",
   "author": "MockMate",
   "license": "MIT",
@@ -59,7 +59,7 @@
       "artifactName": "MockMate-Setup-${version}.${ext}",
       "signtoolOptions": { "publisherName": "MockMate", "signingHashAlgorithms": ["sha256"] },
       "signAndEditExecutable": true,
-      "verifyUpdateCodeSignature": false
+      "verifyUpdateCodeSignature": true
     },
     "nsis": {
       "oneClick": false,
