@@ -182,11 +182,45 @@ desktopCapturer.getSources = function singleFlightSources(options = {}) {
   return windowSourcesInFlight
 }
 
+// ── Update handoff guard ─────────────────────────────────────────────────────
+// electron-updater replaces the installed EXE in-place. On Windows there can be a short
+// handoff window where the already-running renderer exists but process.execPath is temporarily
+// absent. child_process.fork() uses process.execPath, so starting the local auth/AI service in
+// that window fails with `spawn ... MockMate.exe ENOENT`. Only when that condition is observed,
+// wait for the new executable to appear and remain stable before forking the service.
+const handoffSleeper = new Int32Array(new SharedArrayBuffer(4))
+function waitForInstalledExecutable(maxWaitMs = 15000, stableMs = 750) {
+  if (!app.isPackaged || fs.existsSync(process.execPath)) return true
+  console.warn('[bootstrap] installed executable temporarily unavailable; waiting for updater handoff:', process.execPath)
+  const deadline = Date.now() + maxWaitMs
+  let stableSince = 0
+  while (Date.now() < deadline) {
+    const exists = fs.existsSync(process.execPath)
+    if (exists) {
+      if (!stableSince) stableSince = Date.now()
+      if (Date.now() - stableSince >= stableMs) {
+        console.log('[bootstrap] updater handoff complete; installed executable is stable')
+        return true
+      }
+    } else {
+      stableSince = 0
+    }
+    Atomics.wait(handoffSleeper, 0, 0, 100)
+  }
+  return false
+}
+
 // ── Child lifecycle: graceful intentional shutdown + recovery on real crash ──
 const originalFork = childProcess.fork.bind(childProcess)
 childProcess.fork = function supervisedFork(modulePath, args, options) {
-  const proc = originalFork(modulePath, args, options)
   const isMockMateService = /(?:^|[\\/])(?:server-entry\.cjs)$/i.test(String(modulePath))
+  if (isMockMateService && !waitForInstalledExecutable()) {
+    const error = new Error(`MockMate is still finishing an update and its installed executable is not available yet: ${process.execPath}`)
+    error.code = 'ENOENT'
+    throw error
+  }
+
+  const proc = originalFork(modulePath, args, options)
   if (!isMockMateService) return proc
 
   let intentional = false
