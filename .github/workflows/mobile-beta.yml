@@ -63,6 +63,7 @@ jobs:
           import fs from 'node:fs';
           const config = JSON.parse(fs.readFileSync('app.json', 'utf8')).expo;
           if (!process.env.EXPO_TOKEN) throw new Error('Set EXPO_TOKEN in the mobile-beta GitHub environment.');
+          if (!process.env.EXPO_PUBLIC_API_BASE) throw new Error('Set EXPO_PUBLIC_API_BASE in the mobile-beta GitHub environment.');
           const url = new URL(process.env.EXPO_PUBLIC_API_BASE);
           if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Set a public HTTPS backend URL without credentials.');
           if (!config.extra?.eas?.projectId) throw new Error('Link the Expo project with eas init and commit its projectId first.');
@@ -72,7 +73,7 @@ jobs:
           NODE
       - uses: expo/expo-github-action@v8
         with:
-          eas-version: latest
+          eas-version: 16.0.0
           token: ${{ secrets.EXPO_TOKEN }}
       - name: Embed verified backend URL in EAS build profiles
         run: |
