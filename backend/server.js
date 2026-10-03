@@ -11,7 +11,7 @@ import { requireAuth } from './src/middleware/auth.js'
 import { checkCap, recordLlm, releaseLlm, enforceManagedModelPolicy } from './src/middleware/meter.js'
 import { registerApiRoutes } from '../api/_lib/apiRoutes.js'
 import billingRoutes, { stripeWebhook } from './src/routes/billing.js'
-import { assertHostedConfig, isPublicBind, parseCorsOrigins } from './src/hostedConfig.js'
+import { assertHostedConfig, envFlag, isPublicBind, parseCorsOrigins } from './src/hostedConfig.js'
 import { publicCapabilityStatus } from './src/arch.js'
 
 const MM_DATA_DIR = process.env.MOCKMATE_DATA_DIR
@@ -21,7 +21,7 @@ const MM_DATA_DIR = process.env.MOCKMATE_DATA_DIR
 try { dotenv.config({ path: path.join(MM_DATA_DIR, '.env') }) } catch {}
 
 const PUBLIC_BIND = isPublicBind()
-const HOSTED_ENV = ['1', 'true'].includes(String(process.env.MOCKMATE_HOSTED || '').toLowerCase())
+const HOSTED_ENV = envFlag('MOCKMATE_HOSTED')
 if (!process.env.JWT_SECRET) {
   if (PUBLIC_BIND || HOSTED_ENV) {
     console.error('[backend] FATAL: JWT_SECRET is required in hosted/public mode.')
@@ -35,9 +35,9 @@ let hostedConfig
 try { hostedConfig = assertHostedConfig() }
 catch (error) { console.error(`[backend] FATAL: ${error.message}`); process.exit(1) }
 
-if (process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_WEBHOOK_SECRET) {
-  console.warn('[backend] STRIPE_SECRET_KEY is set but STRIPE_WEBHOOK_SECRET is missing — webhooks will 400 and plans will NOT upgrade.')
-}
+// Downstream adapters historically checked only literal "1". Normalize once after
+// validation so diagnostics, STT and provider behavior cannot disagree about hosted mode.
+if (hostedConfig?.hosted) process.env.MOCKMATE_HOSTED = '1'
 process.env.MOCKMATE_MANAGED = '1'
 
 const app = express()
@@ -48,8 +48,6 @@ const CORS_ALLOW = hostedConfig?.corsOrigins || parseCorsOrigins()
 function corsOriginAllowed(origin) {
   if (!origin) return true
   if (CORS_ALLOW.includes(origin)) return true
-  // Loopback origin convenience is local-development-only; hosted deployments honor
-  // the explicit allowlist exactly.
   if (!hostedConfig?.hosted && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true
   return false
 }
@@ -58,7 +56,6 @@ app.use(cors({
   credentials: true,
 }))
 
-// API security headers without pulling another runtime dependency into the backend package.
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('X-Frame-Options', 'DENY')
@@ -69,8 +66,6 @@ app.use((req, res, next) => {
   next()
 })
 
-// Trace every request, including Stripe webhooks. This middleware does not touch the body,
-// so Stripe can still receive the exact raw bytes required for signature verification.
 app.use((req, res, next) => {
   const supplied = String(req.get('X-MockMate-Request-Id') || '')
   req.requestId = /^[a-zA-Z0-9_-]{6,96}$/.test(supplied) ? supplied : `srv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
