@@ -115,6 +115,13 @@ export async function logout() {
   await clearToken()
   clearActiveAccountScope()
 }
+export async function deleteAccount() {
+  await request('/me', { method: 'DELETE', auth: true, timeoutMs: 30000 })
+  await clearToken()
+  clearActiveAccountScope()
+  try { onUnauthorized() } catch {}
+  return true
+}
 export async function refreshSession() {
   const { token } = await request('/auth/refresh', { method: 'POST', auth: true })
   if (token) await setToken(token)
