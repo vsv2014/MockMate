@@ -12,7 +12,7 @@ import { checkCap, recordLlm, releaseLlm, enforceManagedModelPolicy } from './sr
 import { registerApiRoutes } from '../api/_lib/apiRoutes.js'
 import billingRoutes, { stripeWebhook } from './src/routes/billing.js'
 import { assertHostedConfig, envFlag, isPublicBind, parseCorsOrigins } from './src/hostedConfig.js'
-import { publicCapabilityStatus } from './src/arch.js'
+import { publicCapabilityStatus, reasoningPolicy } from './src/arch.js'
 
 const MM_DATA_DIR = process.env.MOCKMATE_DATA_DIR
   || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support', 'mockmate')
@@ -34,9 +34,6 @@ if (!process.env.JWT_SECRET) {
 let hostedConfig
 try { hostedConfig = assertHostedConfig() }
 catch (error) { console.error(`[backend] FATAL: ${error.message}`); process.exit(1) }
-
-// Downstream adapters historically checked only literal "1". Normalize once after
-// validation so diagnostics, STT and provider behavior cannot disagree about hosted mode.
 if (hostedConfig?.hosted) process.env.MOCKMATE_HOSTED = '1'
 process.env.MOCKMATE_MANAGED = '1'
 
@@ -51,10 +48,7 @@ function corsOriginAllowed(origin) {
   if (!hostedConfig?.hosted && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true
   return false
 }
-app.use(cors({
-  origin(origin, cb) { corsOriginAllowed(origin) ? cb(null, true) : cb(new Error('CORS origin is not allowed')) },
-  credentials: true,
-}))
+app.use(cors({ origin(origin, cb) { corsOriginAllowed(origin) ? cb(null, true) : cb(new Error('CORS origin is not allowed')) }, credentials: true }))
 
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -71,10 +65,7 @@ app.use((req, res, next) => {
   req.requestId = /^[a-zA-Z0-9_-]{6,96}$/.test(supplied) ? supplied : `srv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
   res.setHeader('X-MockMate-Request-Id', req.requestId)
   const started = Date.now()
-  res.on('finish', () => console.log(JSON.stringify({
-    ts: new Date().toISOString(), component: 'http', event: 'request_completed', requestId: req.requestId,
-    method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - started, authenticated: !!req.userId,
-  })))
+  res.on('finish', () => console.log(JSON.stringify({ ts: new Date().toISOString(), component: 'http', event: 'request_completed', requestId: req.requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - started, authenticated: !!req.userId })))
   next()
 })
 
@@ -95,19 +86,18 @@ registerApiRoutes(app, {
   authLight: [requireAuth],
   onLlm: recordLlm,
   onLlmFailure: releaseLlm,
+  reasoningPolicy,
 })
 
 const PORT = Number(process.env.PORT) || 4000
 let server = null
 let shuttingDown = false
-
 async function shutdown(signal) {
   if (shuttingDown) return
   shuttingDown = true
   processReady = false
   console.log(`[backend] ${signal}: draining`)
-  const force = setTimeout(() => process.exit(1), 10_000)
-  force.unref?.()
+  const force = setTimeout(() => process.exit(1), 10_000); force.unref?.()
   try {
     if (server) await new Promise(resolve => server.close(() => resolve()))
     await closeStore()
@@ -135,9 +125,7 @@ initStore()
       app.use('/transcribe', transcribeRoutes)
     }
     const HOST = process.env.HOST || '127.0.0.1'
-    if (storeMode() !== 'mongo' && HOST !== '127.0.0.1' && HOST !== 'localhost') {
-      throw new Error(`Refusing to bind ${HOST} without Mongo storage (usage caps would be disabled).`)
-    }
+    if (storeMode() !== 'mongo' && HOST !== '127.0.0.1' && HOST !== 'localhost') throw new Error(`Refusing to bind ${HOST} without Mongo storage (usage caps would be disabled).`)
     server = app.listen(PORT, HOST, () => {
       processReady = true
       console.log(`[backend] auth${storeMode() === 'mongo' ? '+managed AI' : ''} API on http://${HOST}:${PORT} (store: ${storeMode()})`)
