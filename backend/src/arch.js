@@ -58,7 +58,10 @@ export function reasoningLane(operation = 'interview') {
 
 export function recordArchMetric(name, valueMs) {
   const plan = runtimePlan()
-  if (plan.telemetry.length && !plan.telemetry.includes(name) && !name.endsWith('_provider_ms')) return
+  // Support operation-scoped metric names like `turn_latency_ms:interview` —
+  // the ABL allowlist applies to the base metric name.
+  const base = String(name).split(':')[0]
+  if (plan.telemetry.length && !plan.telemetry.includes(base) && !base.endsWith('_provider_ms')) return
   const value = Number(valueMs)
   if (!Number.isFinite(value) || value < 0) return
   const values = perf.get(name) || []
@@ -188,8 +191,14 @@ export function reasoningPolicy(operation, { adaptive = false } = {}) {
   const policies = plan.productIntelligence?.adaptivePolicies || {}
   const ttftThreshold = Number(policies.ttftFastLaneThresholdMs) || 3200
   const turnThreshold = Number(policies.turnLatencyFastLaneThresholdMs) || 6000
-  const ttftP95 = Number(snap?.llm_ttft_ms?.p95) || 0
-  const turnP95 = Number(snap?.turn_latency_ms?.p95) || 0
+  // Operation-scoped promotion (PR review fix): adaptive routing may only react to
+  // latency measured ON THE OPERATION BEING ROUTED. A slow vision/evaluate/career
+  // call must not push a healthy interview onto the fast lane. TTFT only feeds the
+  // streaming hint domain.
+  const turnP95 = Number(snap?.[`turn_latency_ms:${operation}`]?.p95) || 0
+  const ttftP95 = operation === 'hint' || operation === 'live_hint'
+    ? (Number(snap?.llm_ttft_ms?.p95) || 0)
+    : 0
   const shouldPromoteToFast =
     baseLane === 'balanced' &&
     (ttftP95 >= ttftThreshold || turnP95 >= turnThreshold)

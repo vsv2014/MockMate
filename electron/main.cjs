@@ -1010,10 +1010,15 @@ ipcMain.on('set-ignore-mouse-events', (_, { ignore, forward } = {}) => {
 ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const [x, y] = mainWindow.getPosition(); mainWindow.setPosition(x + dx, y + dy)
-  // Preserve overlay shortcut eligibility ('overlay' / 'teleprompter') when dragging the HUD;
-  // dragging out of the top-center teleprompter dock transitions to free-floating 'overlay'.
-  if (lastWindowMode === 'teleprompter' || lastWindowMode === 'overlay') {
+  // Dragging out of the top-center teleprompter dock exits teleprompter mode.
+  // IMPORTANT (PR review fix): notify the renderer in the same transition — otherwise
+  // Electron thinks 'overlay' while React still renders teleprompter typography/state,
+  // and Alt+T / the Cam control desynchronize.
+  if (lastWindowMode === 'teleprompter') {
     lastWindowMode = 'overlay'
+    try { mainWindow.webContents.send('overlay-command', { type: 'teleprompter', active: false, width: lastOverlaySize.w, height: lastOverlaySize.h }) } catch {}
+  } else if (lastWindowMode !== 'overlay') {
+    if (lastWindowMode === 'pill' || lastWindowMode == null) lastWindowMode = 'overlay'
   }
   syncOverlayShortcuts()
 })
@@ -1034,7 +1039,9 @@ ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
   if (lastWindowMode === 'overlay' || lastWindowMode === 'teleprompter' || lastWindowMode === 'pill' || lastWindowMode == null) {
     if (nw < 900 && nh < 900) {
       lastOverlaySize = { w: nw, h: nh }
-      if (lastWindowMode !== 'app') lastWindowMode = 'overlay'
+      // Resizing the teleprompter KEEPS teleprompter mode (React already agrees, so
+      // both sides stay in sync); other modes normalize to 'overlay'.
+      if (lastWindowMode !== 'app' && lastWindowMode !== 'teleprompter') lastWindowMode = 'overlay'
     }
   }
   syncOverlayShortcuts()

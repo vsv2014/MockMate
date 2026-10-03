@@ -29,7 +29,7 @@ export default async function handler(req, res) {
       onProviderEvent: e => send('provider', e),
       signal: ac.signal,
     })
-    recordArchMetric('turn_latency_ms', Date.now() - startedAt)
+    recordArchMetric('turn_latency_ms:hint', Date.now() - startedAt)
     send(out?.skipped ? 'skip' : 'done', {})
   } catch (e) {
     if (!ac.signal.aborted) {

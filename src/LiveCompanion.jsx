@@ -648,6 +648,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const handleCommittedRef = useRef(null)
   const handleRevisionRef = useRef(null)
   const handleRefinementRef = useRef(null)
+  // One-shot guard: Turn-1 Finalize-on-pause is disabled after the first committed question.
+  const finalizeOffOnceRef = useRef(false)
 
   const cancelSpeculativeRag = useCallback(({ keepComplete = false } = {}) => {
     clearTimeout(ragSpec.current?.timer)
@@ -1356,6 +1358,13 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   // Durable commit handler — question visible before any generation.
   handleCommittedRef.current = (captured) => {
     if (!sessionActiveRef.current || !captured?.text) return
+    // Turn-1 opener fix: once the first question commits, the Finalize-on-pause
+    // heuristic has served its purpose — hand utterance timing back to Deepgram's
+    // own endpointing for the rest of the session.
+    if (!finalizeOffOnceRef.current) {
+      finalizeOffOnceRef.current = true
+      try { audio.setFinalizeOnPause?.(false) } catch {}
+    }
     const state = interviewStateRef.current
     const q = state.commitQuestion(captured.text, null, {
       questionId: captured.id || newQuestionId(),
@@ -1535,6 +1544,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   function retryTranscription() {
     setError('')
+    finalizeOffOnceRef.current = false
     audio.restart(liveSourceId, audioOpts()).catch(e => setError(`Could not restart transcription: ${e.message || e}`))
   }
 
@@ -1581,6 +1591,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   }, [transcript, hint, hintLoading, buyTimePhrase, pipWindow, audio.active, streaming]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    finalizeOffOnceRef.current = false
     audio.start(liveSourceId, audioOpts())
     warmDocs(interviewConfigRef.current?.selectedDocumentIds)   // pre-embed selected docs only
     metricsRef.current = createSessionMetrics('live')

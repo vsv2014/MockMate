@@ -4,7 +4,7 @@
 //
 // Security: unauthenticated Vercel deploys with real provider keys = public LLM proxy.
 // Refuse by default on Vercel unless MOCKMATE_ALLOW_PUBLIC_API=1 (escape hatch only).
-import { applyArchReasoningPolicy, isProviderFailureError } from './_lib/apiRoutes.js'
+import { applyArchReasoningPolicy, isProviderFailureError, OPERATION_BY_PATH } from './_lib/apiRoutes.js'
 import { recordArchMetric } from '../backend/src/arch.js'
 
 export function postHandler(fn, key) {
@@ -21,7 +21,7 @@ export function postHandler(fn, key) {
       const rawBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
       const body = applyArchReasoningPolicy(routePath, rawBody)
       const out = await fn(body)
-      recordArchMetric('turn_latency_ms', Date.now() - startedAt)
+      recordArchMetric(`turn_latency_ms:${OPERATION_BY_PATH[routePath] || 'default'}`, Date.now() - startedAt)
       res.status(200).json(key ? { [key]: out } : out)
     } catch (e) {
       if (isProviderFailureError(e)) recordArchMetric('provider_failure_count', 1)

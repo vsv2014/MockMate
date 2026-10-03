@@ -176,8 +176,11 @@ secret-looking key. Cached by mtime; overridable path for tests.
 ### 10.2 Policy & routing
 
 `reasoningPolicy()` returns the lane per operation; adaptive mode promotes
-`balanced → fast` when p95 TTFT or turn latency exceeds ABL thresholds. The promotion
-signal comes from process-global metrics (§15 scoping limitation).
+`balanced → fast` only on **operation-scoped** evidence: the p95 of
+`turn_latency_ms:<operation>` for that very operation (TTFT feeds only the streaming
+hint domain). A slow vision/evaluate/career episode can therefore no longer downgrade
+a healthy interview — cross-operation contamination is structurally excluded. The
+underlying perf maps remain process-local (§15 scoping limitation).
 
 ### 10.3 Runtime resilience
 
@@ -304,12 +307,12 @@ extraction, real Duo pairing.
 
 | ID | Area | Limitation | Path |
 |---|---|---|---|
-| ARCH-1 | Adaptive routing | Perf/PI state is process-global: one slow episode can re-route everyone on that process; nothing persists across restarts/instances | scope to provider+operation+deployment, then account/session, before hosted scale-out |
+| ARCH-1 | Adaptive routing | Perf/PI state is process-local: nothing persists across restarts/instances and decisions are not per-account (operation mixing itself is solved — metrics are scoped `turn_latency_ms:<operation>`) | persist + scope to provider+operation+deployment, then account/session, before hosted scale-out |
 | ARCH-2 | Execution coverage | Only transcription uses `executeWithFallback`; LLM/embedding/vision paths use their own adapters | migrate hot capabilities incrementally (§16) |
 | PI-1 | Backend PI | Dormant; local-only today | decision recorded in §11.4 |
 | PI-2 | Rage-click targets | Fallback to `title`/`aria-label` can carry dynamic values; slugified but meaning may survive | prefer `data-pi-target`/`id` on sensitive screens |
 | LIVE-1 | Question dedupe | Compares only against last committed question | windowed history |
-| LIVE-2 | Finalize-on-pause | Timer heuristic; extreme pauses can mis-flush | tune + evaluate against recorded sessions |
+| LIVE-2 | Finalize-on-pause | Timer heuristic, but narrowly scoped: system/loopback capture only, and permanently disabled after the first question commits | tune against recorded sessions if needed |
 | CAP-1 | Screen capture | Display-level only; no foreground-window detection or region cropping | platform APIs where available |
 
 ## 16. Target architecture

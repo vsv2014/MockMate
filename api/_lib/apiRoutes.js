@@ -29,7 +29,7 @@ export const API_ROUTE_CONTRACT = [
   { method: 'POST', path: '/api/resume-latex' }, { method: 'POST', path: '/api/hint-stream' },
 ]
 
-const OPERATION_BY_PATH = {
+export const OPERATION_BY_PATH = {
   '/api/interview': 'interview',
   '/api/hint': 'hint',
   '/api/hint-stream': 'hint',
@@ -126,7 +126,9 @@ export function registerApiRoutes(app, opts = {}) {
     res.on('close', () => { closed = true; try { ac.abort(new Error('client_disconnected')) } catch {} })
     try {
       const out = await fn({ ...bodyWithPolicy(path, req.body || {}), signal: ac.signal })
-      recordArchMetric('turn_latency_ms', Date.now() - startedAt)
+      // Operation-scoped latency: adaptive routing must see THIS operation's p95,
+      // not a global bucket contaminated by unrelated slow operations.
+      recordArchMetric(`turn_latency_ms:${OPERATION_BY_PATH[path] || 'default'}`, Date.now() - startedAt)
       if (onLlm) { try { await onLlm(req, path) } catch {} }
       if (!closed) res.json(key ? { [key]: out } : out)
     } catch (e) {
@@ -153,7 +155,7 @@ export function registerApiRoutes(app, opts = {}) {
     res.on('close', () => { closed = true; try { ac.abort() } catch {} })
     try {
       const out = await analyzeScreen({ ...bodyWithPolicy('/api/analyze-screen', req.body || {}), signal: ac.signal })
-      recordArchMetric('turn_latency_ms', Date.now() - startedAt)
+      recordArchMetric('turn_latency_ms:screen', Date.now() - startedAt)
       if (onLlm) { try { await onLlm(req, '/api/analyze-screen') } catch {} }
       if (!ac.signal.aborted) res.json({ analysis: out })
     } catch (e) {
@@ -216,7 +218,7 @@ export function registerApiRoutes(app, opts = {}) {
         },
         signal: ac.signal,
       })
-      recordArchMetric('turn_latency_ms', Date.now() - startedAt)
+      recordArchMetric('turn_latency_ms:hint', Date.now() - startedAt)
       if (out?.skipped) await releaseReservation()
       else await consumeReservation()
       send(out?.skipped ? 'skip' : 'done', {})

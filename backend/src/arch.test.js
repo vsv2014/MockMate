@@ -36,8 +36,8 @@ describe('ARCH reasoning policy', () => {
     expect(reasoningPolicy('screen').lane).toBe('vision')
   })
 
-  it('closes the loop by promoting balanced operations to the fast lane when ARCH p95 TTFT breaches the ABL threshold', () => {
-    for (const ms of [3400, 3600, 3900]) recordArchMetric('llm_ttft_ms', ms)
+  it('closes the loop by promoting a balanced operation when ITS OWN p95 turn latency breaches the ABL threshold', () => {
+    for (const ms of [7000, 7500, 8200]) recordArchMetric('turn_latency_ms:interview', ms)
     const adaptive = reasoningPolicy('interview', { adaptive: true })
     expect(adaptive.baseLane).toBe('balanced')
     expect(adaptive.lane).toBe('fast')
@@ -45,6 +45,24 @@ describe('ARCH reasoning policy', () => {
 
     // Strong/vision lanes remain preserved for deep evaluation and screen analysis
     expect(reasoningPolicy('evaluate', { adaptive: true }).lane).toBe('strong')
+  })
+
+  it('adaptive promotion is operation-scoped — slow other operations must not contaminate interview routing', () => {
+    resetArchPerformance()
+    // Slow vision/career episodes on their own operations...
+    for (const ms of [9000, 9500, 12000]) {
+      recordArchMetric('turn_latency_ms:screen', ms)
+      recordArchMetric('turn_latency_ms:career', ms)
+    }
+    // ...and slow streaming TTFT (hint domain) must NOT downgrade a healthy interview.
+    for (const ms of [5000, 5400, 6000]) recordArchMetric('llm_ttft_ms', ms)
+    const adaptive = reasoningPolicy('interview', { adaptive: true })
+    expect(adaptive.baseLane).toBe('balanced')
+    expect(adaptive.lane).toBe('balanced')
+    expect(adaptive.adaptivePromotion).toBeNull()
+    // Interview stays balanced while only its own latency is high afterwards
+    for (const ms of [7000, 7200]) recordArchMetric('turn_latency_ms:interview', ms)
+    expect(reasoningPolicy('interview', { adaptive: true }).lane).toBe('fast')
   })
 })
 

@@ -111,14 +111,20 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const speakerStats = useRef(new Map()), interviewerSpeaker = useRef(null), candidateSpeaker = useRef(null)
   const everConnected = useRef(false), degradedAudio = useRef(false)
   const lastEarlyTrigger = useRef('')
-  // Turn-1 Finalize-on-pause (v1.5.2, PR #45 review): Deepgram keeps holding an utterance
-  // open across natural pauses, so the interviewer's first question can sit in interim
-  // land indefinitely. When a pending interim goes quiet for FINALIZE_PAUSE_MS we send a
-  // { type: 'Finalize' } control frame to flush it as a final exactly once per utterance.
+  // Turn-1 Finalize-on-pause: Deepgram can hold the OPENING utterance open across
+  // natural pauses, so the interviewer's first question sits in interim land
+  // indefinitely. Scope is deliberately narrow (PR review fix):
+  //   1. SYSTEM/LOOPBACK capture only — microphone Live has working endpointing and
+  //      a forced 900ms finalization would split natural thinking pauses.
+  //   2. Disabled permanently once the first question commits (opener problem solved);
+  //      the consumer calls setFinalizeOnPause(false).
+  // When active, a pending interim quiet for FINALIZE_PAUSE_MS triggers exactly one
+  // { type: 'Finalize' } control frame per utterance.
   const finalizeWatcher = useRef(null)
   const pendingInterim = useRef(false)
   const lastSttAt = useRef(0)
   const finalizeSent = useRef(false)
+  const finalizeEnabled = useRef(true)
   const onFinalRef = useRef(onFinal), onFailRef = useRef(onFail), onEarlyRef = useRef(onEarlyQuestion), onReconnectRef = useRef(onReconnect)
   useEffect(() => { onFinalRef.current = onFinal }, [onFinal])
   useEffect(() => { onFailRef.current = onFail }, [onFail])
@@ -130,10 +136,19 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     [],
   )
 
+  // One-way kill switch for the Turn-1 Finalize heuristic: called by the consumer
+  // after the first question commits so later utterances rely on Deepgram's own
+  // endpointing again.
+  const setFinalizeOnPause = useCallback(enabled => {
+    finalizeEnabled.current = Boolean(enabled)
+    if (!finalizeEnabled.current) { pendingInterim.current = false; finalizeSent.current = false }
+  }, [])
+
   const teardown = useCallback(() => {
     clearInterval(keepAlive.current); keepAlive.current = null
     clearInterval(finalizeWatcher.current); finalizeWatcher.current = null
     pendingInterim.current = false; finalizeSent.current = false
+    finalizeEnabled.current = true
     clearTimeout(reconnectTimer.current); reconnectTimer.current = null
     abandonSocket(activeSocketRef.current || ws.current)
     activeSocketRef.current = null
@@ -254,14 +269,16 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       clearInterval(finalizeWatcher.current)
       finalizeWatcher.current = setInterval(() => {
         if (!owns()) return
+        const isSystemLoopback = Boolean(sourceIdRef.current && sourceIdRef.current !== 'microphone')
         if (
+          finalizeEnabled.current && isSystemLoopback &&
           pendingInterim.current && !finalizeSent.current &&
           lastSttAt.current > 0 && Date.now() - lastSttAt.current >= FINALIZE_PAUSE_MS &&
           sock.readyState === 1
         ) {
           finalizeSent.current = true
           try { sock.send(JSON.stringify({ type: 'Finalize' })) } catch {}
-          diagnostic('stt', 'finalize_on_pause', { pauseMs: FINALIZE_PAUSE_MS })
+          diagnostic('stt', 'finalize_on_pause', { pauseMs: FINALIZE_PAUSE_MS, source: 'system' })
         }
       }, 300)
     }
@@ -471,5 +488,5 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   }, [abandonSocket, connectSocket, restart])
 
   useEffect(() => () => { userStop.current = true; connectGen.current += 1; teardown() }, [teardown])
-  return { supported: true, active, reconnecting, interim, diarizationLocked, degraded, start, stop, restart }
+  return { supported: true, active, reconnecting, interim, diarizationLocked, degraded, start, stop, restart, setFinalizeOnPause }
 }
