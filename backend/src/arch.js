@@ -57,7 +57,6 @@ export function resolveCapabilities({ hosted = hostedMode() } = {}) {
   const mongo = configured('MONGO_URI')
   const lanes = plan.reasoning.lanes
   const stt = plan.speech.stt
-
   return {
     ablVersion: plan.ablVersion,
     application: plan.application,
@@ -74,8 +73,6 @@ export function resolveCapabilities({ hosted = hostedMode() } = {}) {
             ? { available: true, mode: hosted ? 'managed' : 'byok', provider: 'deepgram', transport: 'upload', fallback: stt.batch.fallback }
             : { available: false, mode: 'unavailable', provider: null, fallback: stt.batch.fallback },
         },
-        // Browser TTS is a client capability. The backend can declare the ABL policy,
-        // but cannot truthfully claim that a particular device/browser supports it.
         tts: {
           available: null,
           mode: 'client',
@@ -86,8 +83,6 @@ export function resolveCapabilities({ hosted = hostedMode() } = {}) {
         turnDetection: plan.speech.turnDetection,
         hotPath: plan.speech.hotPath,
       },
-      // These hosted HTTP capabilities are only reachable when Mongo-backed routes are mounted.
-      // Desktop-local RAG/persistence live in the client and are not claimed by this backend status.
       knowledge: mongo
         ? { available: true, mode: 'managed', provider: 'mongo-lexical' }
         : { available: false, mode: 'client-local', provider: null },
@@ -95,10 +90,7 @@ export function resolveCapabilities({ hosted = hostedMode() } = {}) {
         ? { available: true, mode: 'managed', provider: 'mongo' }
         : { available: false, mode: 'client-local', provider: null },
     },
-    policy: {
-      reasoningAdapter: plan.reasoning.executionAdapter,
-      noDoubleRetry: plan.reasoning.noDoubleRetry,
-    },
+    policy: { reasoningAdapter: plan.reasoning.executionAdapter, noDoubleRetry: plan.reasoning.noDoubleRetry },
   }
 }
 
@@ -112,10 +104,20 @@ export async function executeWithFallback({
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       const started = Date.now()
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(new Error('ARCH_TIMEOUT')), timeoutMs)
-      timer.unref?.()
+      let timer
+      const deadline = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error('ARCH_TIMEOUT')
+          controller.abort(error)
+          reject(error)
+        }, timeoutMs)
+        timer.unref?.()
+      })
       try {
-        const result = await execute(provider, attempt, controller.signal)
+        // Pass an AbortSignal to adapters *and* race a hard deadline. Adapters that
+        // honor the signal stop upstream work; adapters that do not can no longer
+        // block ARCH's request path past the deadline.
+        const result = await Promise.race([Promise.resolve().then(() => execute(provider, attempt, controller.signal)), deadline])
         clearTimeout(timer)
         circuits.delete(circuitKey)
         recordArchMetric(`${capability}_provider_ms`, Date.now() - started)
@@ -153,6 +155,4 @@ export async function executeTranscription(options) {
   })
 }
 
-// Public status intentionally excludes process-global performance samples: per-process
-// telemetry belongs in diagnostics/observability, not in a tenant-facing capability response.
 export function publicCapabilityStatus(options) { return resolveCapabilities(options) }
