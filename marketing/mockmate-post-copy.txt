@@ -1,17 +1,22 @@
-MOCKMATE PROMO — READY-TO-POST COPY
+MOCKMATE PROMO — WEBSITE-FIRST POST COPY
+
+Hook: The follow-up question is where your story gets stronger.
 
 Caption:
-Interview coming up? Rehearse with MockMate Solo Practice: role-focused questions, realistic follow-ups, and feedback to help you see what to work on next. Practice with your own experience and go into the conversation with a plan.
+Sometimes the real interview question comes after your first answer: “What did you try next?”
 
-Get the latest desktop release: https://github.com/vsv2014/MockMate/releases/latest
+MockMate Solo Practice helps you rehearse that moment with questions tailored to your role, realistic follow-ups, and feedback based on what you actually said. Practice your own stories, see what to improve, and try again.
+
+Explore MockMate and see the current download options on the official website:
+https://mock-mate-theta-nine.vercel.app/landing.html
 
 #InterviewPrep #MockInterview #JobSearch #CareerPrep
 
 Alt text — portrait image:
-A job candidate prepares at a desk beside a laptop. The graphic reads: “Interview coming up? Practice role-focused questions. Get thoughtful follow-ups and feedback before the real conversation.” It is branded MockMate and labeled Solo Practice, Desktop.
+A job candidate prepares beside a laptop. The graphic reads “Practice the follow-up, too” and highlights role-tailored questions, realistic follow-ups, and feedback after practice. It is branded MockMate and links viewers to the MockMate website.
 
 Alt text — square image:
-A calm interview-prep desk scene with a laptop and notebook. The graphic reads: “Practice. Reflect. Improve. Role-focused mock questions. Realistic follow-ups. Clear feedback.” It is branded MockMate and labeled Solo Practice.
+A calm laptop-and-notebook preparation scene. The graphic reads “Tell your story. Handle the follow-up.” It describes role-calibrated mock interviews and feedback based on what the candidate said, and points to the MockMate website.
 
-Production note:
-The people shown are illustrative AI-generated campaign visuals, not customer testimonials. Product claims focus on Solo Practice; verify the latest release/setup details before publishing.
+Creative note:
+People in the visuals are illustrative AI-generated campaign imagery, not customers or testimonials. The example interview question in the video is illustrative, not a screenshot or a promise that every session asks that exact question.
