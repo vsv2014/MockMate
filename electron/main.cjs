@@ -21,6 +21,7 @@ const DEV_URL = 'http://localhost:5174'
 const PROD_URL = 'http://localhost:3002'
 
 let trayRef = null
+let quitDrainStarted = false
 let mainWindow, setupWindow, apiServer, backendServer
 let diagnostics = null
 function diag(component, event, fields = {}, level = 'info') {
@@ -544,10 +545,10 @@ async function listScreenDisplays() {
   }
 }
 
-// New windows start unprotected. Explicit protected-hints actions opt their
-// window in; normal MockMate windows remain visible in capture when Stealth is off.
+// Privacy-safe default: new Win/macOS windows are protected before their first frame.
+// The renderer may explicitly disable protection later when the user turns Stealth off.
 app.on('browser-window-created', (_, win) => {
-  try { win.setContentProtection(false) } catch {}
+  try { win.setContentProtection(process.platform !== 'linux') } catch {}
 })
 
 // Silent auto-update: download new releases in the background and install on the
@@ -706,6 +707,15 @@ if (!gotTheLock) {
     } catch (e) { console.warn('[MockMate] display events unavailable:', e.message) }
   })
 }
+
+app.on('before-quit', e => {
+  if (quitDrainStarted || !diagnostics) return
+  e.preventDefault()
+  quitDrainStarted = true
+  Promise.resolve(diagnostics.close())
+    .catch(err => console.warn('[diagnostics] final drain failed:', err?.message || err))
+    .finally(() => app.quit())
+})
 
 app.on('will-quit', () => {
   diag('app', 'will_quit')

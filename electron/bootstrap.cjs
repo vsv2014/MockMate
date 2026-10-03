@@ -138,11 +138,11 @@ ipcMain.handle = function hardenedHandle(channel, handler) {
   return originalHandle(channel, handler)
 }
 
-// Every new Win/macOS window starts protected after all synchronous create listeners have run.
+// Every new Win/macOS window is protected synchronously before its first frame can be shown.
 // The main window can still explicitly disable protection later when the user turns Stealth off.
 app.on('browser-window-created', (_event, win) => {
   if (process.platform !== 'linux') {
-    setImmediate(() => { try { if (!win.isDestroyed()) win.setContentProtection(true) } catch {} })
+    try { if (!win.isDestroyed()) win.setContentProtection(true) } catch {}
   } else {
     win.webContents?.once?.('did-finish-load', () => {
       // The Duo co-pilot is intentionally allowed on Linux, but Linux has no exclusion API.
