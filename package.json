@@ -35,7 +35,7 @@
     "appId": "com.mockmate.app",
     "productName": "MockMate",
     "directories": { "output": "release" },
-    "asar": false,
+    "asar": true,
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -69,7 +69,7 @@
       "createStartMenuShortcut": true,
       "shortcutName": "MockMate",
       "uninstallDisplayName": "MockMate ${version}",
-      "deleteAppDataOnUninstall": false,
+      "deleteAppDataOnUninstall": true,
       "runAfterFinish": true,
       "include": "build/installer.nsh"
     },
