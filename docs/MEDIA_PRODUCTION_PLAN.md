@@ -79,3 +79,10 @@ Keep these identifiers and behaviors stable unless the corresponding integration
 - Managed AI/STT uses hosted MockMate services and plan quotas where configured.
 - Do not advertise macOS/Linux as current v1.5.2 public downloads unless release artifacts actually exist.
 - No fake testimonials, fabricated user counts, or invented latency guarantees.
+
+## Validation before publishing rendered media
+
+- Run both Solo and Live renders in the manual workflow.
+- Verify captions against the rendered audio and adjust SRT timings if they drift.
+- Confirm the Live render contains Live narration, not the Solo script.
+- Verify the social image and landing media resolve from `/media/` on the deployed origin.
