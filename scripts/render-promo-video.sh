@@ -46,6 +46,8 @@ print(max(1, math.ceil(float('${DURATION:-10}') * 30)))
 PY
 )"
 
+# Keep filenames/path inputs simple; if future inputs contain ':' or quote characters,
+# escape them for ffmpeg's subtitles filter before passing them here.
 ffmpeg -y \
   -loop 1 -i "$CARD" \
   -i "$VOICE" \
