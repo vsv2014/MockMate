@@ -19,8 +19,12 @@
 - Repo-owner follow-ups `b6494a9` + `b187d8a` closed the remaining upload-path gap:
   `/transcribe` now reserves the **server-probed** media duration atomically before
   Deepgram spend (with release/top-up settlement), covered by dedicated tests; the
-  read-only `checkSttQuota` gate was deleted as dead code in the commit shipping
-  with this revision.
+  read-only `checkSttQuota` gate was deleted as dead code in `ec4f95d`.
+- Final full-branch review (all 131 files against `main`) raised BR-15: the release
+  workflow's stale v1.5.1 wiring. Fixed in the commit shipping with this revision by
+  making `release.yml` version-generic, together with the Mongo release-clamp fix and
+  watchlist items BR-W6 (pre-existing freePort debt) and BR-W7 (unverified Vercel
+  failure cause).
 - PR snapshot at last revision: 38 commits, 115+ files, +7,212/−1,593 and growing.
 
 **Method:** enumerate every changed surface → map dependents (fan-in) → check deleted-file
@@ -91,6 +95,7 @@ test coverage of changed code. Findings are rated by how far a failure would tra
 | BR-12 | **Hosted email-verification signup broken**: with `REQUIRE_EMAIL_VERIFICATION=1` the backend returns `{verificationRequired, user}` with **no token**, but desktop/mobile assumed a token and proceeded into session loading; `verify.html` did not exist; hosted mode never required delivery prerequisites | **P1 auth (merge blocker)** | ✅ Fixed — explicit response union in desktop (`signup()` branches, never stores a token on the verification branch, new Check-your-email view + resend) and mobile (`SignupResult` union, `saveAuth` only with a real token); backend contract tests for both branches; `public/verify.html` added; hosted boot **refuses to start** with verification enabled unless `RESEND_API_KEY` + HTTPS `VERIFY_URL_BASE` are configured |
 | BR-13 | **Managed STT plan limits advertised but not enforced**: `/api/deepgram-token` used auth-only guarding; streaming audio bypasses the backend, so free-tier `sttSeconds` was effectively unlimited (provider-cost/abuse exposure). Round-6 follow-up: the first lease implementation was not atomic (concurrent overrun + swallowed usage-write errors), and `/transcribe` still used a read-only gate ("1s remaining → upload a long clip" overrun) | **P1 billing (merge blocker)** | ✅ Fixed — both paths now reserve **atomically before provider spend**, mirroring the LLM reserve/release pattern. Streaming: `reserveSttLease` middleware reserves the 300s lease before minting the grant and releases it if mint fails. Uploads (`b6494a9`): the server probes the media duration itself (MP4 `moov`→`mvhd` box walk, RIFF chunk walk — client-supplied durations are never trusted; unprobeable formats get 415) and reserves duration + 2s margin; unused margin is released on success, provider failure, or abort; if provider duration exceeds the reservation the difference is topped up atomically (fail-closed 402, cap never exceeded). The now-dead read-only `checkSttQuota` gate was removed |
 | BR-14 | **PiP capture-protection confirmation could target the wrong window**: `bootstrap.cjs`'s hardened `ipcMain.handle` wrapper intercepted `exclude-from-capture` before `main.cjs`'s PiP-aware handler could register, so the confirmation protected the *sender* window while the UI claimed the PiP was protected | **P1/P2 capture protection** | ✅ Fixed — the hardened handler now implements the focused-window-first policy itself and returns both the protected window id and the sender id; the dead `main.cjs` handler is removed; LiveCompanion only confirms PiP protection when the protected window is not the opener, otherwise it shows the honest warning banner |
+| BR-15 | **Release automation stale-version dependency**: `package.json` bumped to 1.5.2 but `release.yml` still triggered on `release/v1.5.1` branches, defaulted `workflow_dispatch` to `v1.5.1`, and special-cased that branch in `RELEASE_TAG` — while enforcing `tag === pkg.version`. Default/branch releases of a merged v1.5.2 would have failed (fail-safe, but knowingly broken automation for this release) | **P1 release (merge blocker)** | ✅ Fixed — workflow is now version-generic: tag-push trigger `v*.*.*` only, dispatch tag input required with no default, `RELEASE_TAG = inputs.tag || ref_name`, zero hardcoded versions; the provenance step still enforces tag↔`package.json` equality and main-ancestry. Also fixed while in billing hardening: Mongo `releaseSttUsage`/`releaseLlmUsage` now clamp at zero atomically (the old `$gt:0 + $inc` could drive counters negative = silent free quota; file store already clamped) |
 
 ## 4. Watchlist (not blockers)
 
@@ -101,6 +106,8 @@ test coverage of changed code. Findings are rated by how far a failure would tra
 | BR-W3 | RAG vectors serialized as JSON in localStorage — workable, not ideal | byte budget + re-embed fallback + stale-index guard keep correctness and privacy | storage pressure → IndexedDB |
 | BR-W4 | Unit-based metering is user-visible behavior change | intended hardening, tested | announce in support copy |
 | BR-W5 | STT lease accounting bills in ≤5-minute grant increments (a user who requests a grant and never streams still spends up to one grant's seconds; failed mints release their lease) | conservative by design; atomic reservation makes the ≤300s overrun bound a guarantee, not an aspiration | per-second client usage reporting if complaints appear |
+| BR-W6 | **Pre-existing on `main` (not introduced by this PR)**: dev-server `freePort()` force-kills whatever process owns ports 3002/4000 (`taskkill /F` / `fuser -k` / SIGKILL) without verifying the PID belongs to MockMate, despite the "orphan MockMate child" comment | out of scope for PR #45 — recorded here so it is not lost; dev-machine impact only | separate fix: verify process identity before killing |
+| BR-W7 | Vercel: the latest deploy at the reviewed head failed with a generic "Deployment has failed — run `npx vercel inspect`" message; the earlier assumption that all failures were Hobby build-quota is no longer provable from GitHub | Vercel is not the desktop release path; inspection requires repo-owner dashboard/log access | inspect logs (or get one clean deploy) before any hosted release |
 
 ## 5. Bottom line
 

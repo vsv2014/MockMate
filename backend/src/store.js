@@ -202,7 +202,13 @@ async function makeMongoBackend() {
     },
     async releaseLlmUsage(userId, period, units = 1) {
       const delta = Math.max(1, Number(units) || 1)
-      await Usage.updateOne({ userId, period, llmCalls: { $gt: 0 } }, { $inc: { llmCalls: -delta } })
+      // Clamped at zero atomically (BR-15 follow-up): full decrement only when
+      // there is room, otherwise snap a positive balance below delta to 0 —
+      // $gt:0 + $inc could drive the counter negative.
+      const decremented = await Usage.updateOne({ userId, period, llmCalls: { $gte: delta } }, { $inc: { llmCalls: -delta } })
+      if (!decremented?.modifiedCount) {
+        await Usage.updateOne({ userId, period, llmCalls: { $gt: 0, $lt: delta } }, { $set: { llmCalls: 0 } })
+      }
       return true
     },
     // Atomic capped reservation (round-6 review): ONE conditional update — the $lte
@@ -216,7 +222,14 @@ async function makeMongoBackend() {
     },
     async releaseSttUsage(userId, period, seconds = 0) {
       const delta = Math.max(1, Math.floor(Number(seconds) || 0))
-      await Usage.updateOne({ userId, period, sttSeconds: { $gt: 0 } }, { $inc: { sttSeconds: -delta } })
+      // Clamped at zero atomically (parity with the file store): full decrement
+      // only when there is room, otherwise snap a positive balance below delta
+      // to 0 — the old $gt:0 + $inc could drive sttSeconds negative, which would
+      // silently grant free quota.
+      const decremented = await Usage.updateOne({ userId, period, sttSeconds: { $gte: delta } }, { $inc: { sttSeconds: -delta } })
+      if (!decremented?.modifiedCount) {
+        await Usage.updateOne({ userId, period, sttSeconds: { $gt: 0, $lt: delta } }, { $set: { sttSeconds: 0 } })
+      }
       return true
     },
   }
