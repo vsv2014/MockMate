@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.5.4 — 2026-10-04
+
+Windows hotfix for packaged local-service startup. `child_process.fork()` can report `spawn MockMate.exe ENOENT` when the child working directory is invalid even if the executable itself exists. In packaged MockMate, both local services were started with a `cwd` under `app.asar`, which is a virtual archive path rather than a real Windows process directory.
+
+### Fixed
+- Normalize only MockMate's packaged `server-entry.cjs` forks to the real, writable Electron `userData` directory before the existing service supervisor runs.
+- Keep the v1.5.3 installer/update handoff protections: no NSIS auto-run, no updater auto-relaunch, and no service forks while the installed executable is absent.
+- Preserve all Solo/Live/Duo/UI behavior; this changes only child-process startup plumbing.
+
+### Windows validation gate
+- Install v1.5.4 over v1.5.3 with MockMate fully closed.
+- Launch manually from Start/Desktop.
+- Verify account sign-in service starts without ENOENT, then verify local UI/API, Solo, and Live startup.
+
+---
+
 ## v1.5.3 — 2026-10-04
 
 Windows hotfix for the installer/updater handoff that could leave a still-running MockMate process pointing at an executable path NSIS was replacing, causing local child services to fail with `spawn ... MockMate.exe ENOENT`.
