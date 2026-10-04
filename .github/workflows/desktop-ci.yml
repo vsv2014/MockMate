@@ -34,6 +34,7 @@ jobs:
       - run: npm test
       - run: npm run smoke:api
       - run: npm run build
+      - run: npm run verify:vite-output
       - name: Package desktop directory
         run: npx electron-builder --linux --dir --publish never
       - name: Verify packaged runtime entrypoints
@@ -66,6 +67,7 @@ jobs:
       - run: npm test
       - run: npm run smoke:api
       - run: npm run build
+      - run: npm run verify:vite-output
       - name: Build Windows validation installer
         run: npx electron-builder --win --publish never
         env:
