@@ -1,0 +1,32 @@
+name: Render promo media
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Promo variant
+        required: true
+        default: solo
+        type: choice
+        options:
+          - solo
+          - live
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Render
+        run: bash scripts/render-promo-video.sh "${{ inputs.mode }}"
+      - name: Upload rendered video
+        uses: actions/upload-artifact@v4
+        with:
+          name: mockmate-${{ inputs.mode }}-promo
+          path: marketing/rendered/*.mp4
+          if-no-files-found: error
