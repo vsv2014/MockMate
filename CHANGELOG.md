@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.5.3 — 2026-10-04
+
+Windows hotfix for the installer/updater handoff that could leave a still-running MockMate process pointing at an executable path NSIS was replacing, causing local child services to fail with `spawn ... MockMate.exe ENOENT`.
+
+### Fixed
+- Disable NSIS `runAfterFinish` so fresh installs do not auto-launch MockMate while installation is still finalizing.
+- Disable `electron-updater` post-install auto-relaunch before the existing Electron bootstrap loads.
+- Add a pre-bootstrap packaged-app guard: if the installed executable is missing, MockMate does not start local account/API child services and instead exits with a repair/reopen instruction.
+- Preserve all existing v1.5.2 runtime/bootstrap behavior after the new handoff gate passes.
+
+### Windows validation gate
+- Install v1.5.3 over v1.5.2 with MockMate fully closed.
+- Confirm the installer finishes without auto-launching the app.
+- Launch MockMate manually from Start/Desktop and verify sign-in/account service, local API, Solo, and Live startup.
+- Repeat once through the in-app updater path when a newer test build is available.
+
+---
+
 ## v1.5.2 — 2026-10-04
 
 Windows-first desktop release focused on Live reliability, hybrid RAG, interview playbooks, managed auth/STT hardening, and release/deployment correctness.
