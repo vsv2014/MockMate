@@ -1,29 +1,15 @@
-# Deploying the MockMate hosted backend
+# Deploying MockMate's hosted backend
 
-This guide describes the current v1.5.2 deployment shape. Local desktop development can still fork `backend/server.js` with the file store. Hosted/shared accounts require MongoDB and a stable HTTPS backend.
+This is the canonical deployment guide. Keep deployment details here rather than creating separate phase/runbook files.
 
-## Deployment shapes
+## Deployment shape
 
-- **Express hosted backend (Render/Fly/Railway/etc.)** — deploy the **whole repository**, because `backend/server.js` imports shared logic from `api/_lib/*`. Start with `node backend/server.js`.
-- **Vercel serverless surface** — the web/API deployment uses 12 top-level Serverless Functions on Hobby after PR #46. Four career endpoints (`/api/ats-score`, `/api/referral`, `/api/resume-latex`, `/api/tailor-resume`) are preserved through rewrites to the consolidated `api/career.js` function.
-- **Desktop local mode** — leave `MOCKMATE_API_BASE` unset to use the local backend/BYOK path.
+MockMate supports two runtime shapes:
 
-## Required hosted configuration
+- **Desktop/local BYOK** — Electron can use the local backend and locally stored provider keys.
+- **Hosted Managed AI** — the Express backend provides accounts, Mongo-backed state, billing, managed LLM/STT usage and shared APIs. Vercel hosts selected serverless/web endpoints.
 
-At minimum configure:
-
-- `MONGO_URI` — durable MongoDB store
-- `JWT_SECRET` — long, stable secret
-- `HOST=0.0.0.0` for public Express hosts
-- explicit `CORS_ORIGIN`
-- provider credentials needed by Managed AI
-- `DEEPGRAM_API_KEY` for managed STT
-
-If `REQUIRE_EMAIL_VERIFICATION=1`, hosted startup also requires working verification-mail configuration including `RESEND_API_KEY` and an HTTPS `VERIFY_URL_BASE`. Password-reset mail configuration is separate.
-
-## Render example
-
-Use the repository root, not `backend/` as the Render root:
+Deploy the **whole repository** for the Express service because `backend/server.js` imports shared `api/_lib/*` modules.
 
 ```text
 Root Directory: <blank>
@@ -31,30 +17,95 @@ Build Command:  npm install
 Start Command:  node backend/server.js
 ```
 
-Render supplies `PORT`; the server reads it automatically.
+## Required hosted configuration
 
-## Point clients at the hosted service
+At minimum, configure:
 
-For desktop release builds, set the repository variable `MOCKMATE_API_BASE` to the production HTTPS endpoint. Release CI validates the URL and exposes it to the renderer as `VITE_API_BASE`. An absent value intentionally produces a BYOK-only build.
+- `MONGO_URI`
+- stable `JWT_SECRET`
+- `HOST=0.0.0.0`
+- explicit production `CORS_ORIGIN`
+- the provider credentials used by Managed AI
+- `DEEPGRAM_API_KEY` for managed voice
 
-Mobile uses `EXPO_PUBLIC_API_BASE` and requires HTTPS for beta/production builds.
+Never package Mongo credentials or platform provider keys in the desktop application.
 
-## Verify
+### Email verification / recovery
+
+If hosted email verification is enabled, `validateHostedConfig()` requires its mail-delivery prerequisites, including `RESEND_API_KEY` and an HTTPS `VERIFY_URL_BASE` plus sender configuration. Password-reset configuration is separate.
+
+Signup has two valid contracts:
+
+- verification disabled → `{ token, user }`
+- verification enabled → `verificationRequired: true` with **no session token** until verification/login completes
+
+## Vercel
+
+The Hobby deployment is intentionally kept at **12 Serverless Functions**. Four career/resume URLs are consolidated behind `api/career.js` with `vercel.json` rewrites:
+
+- `/api/ats-score`
+- `/api/referral`
+- `/api/resume-latex`
+- `/api/tailor-resume`
+
+Adding new top-level `api/*.js` files can push the deployment back over Hobby's limit; re-check the function count whenever the API surface changes.
+
+Public Vercel AI access remains default-deny unless explicitly enabled.
+
+## Managed usage and billing
+
+The backend is authoritative for plan enforcement:
+
+- LLM usage reserves quota before provider work.
+- Streaming STT reserves a conservative lease before a Deepgram grant is minted.
+- Uploaded transcription server-probes duration and reserves before provider spend, then settles usage.
+- Mongo release operations clamp counters at zero.
+- Stripe checkout/webhook/portal/reconciliation code is available when Stripe is configured; the signed webhook and authoritative reconciliation path determine entitlement state.
+
+For Stripe deployment, configure the values documented in `.env.example` / `backend/.env.example` and validate test-mode checkout → webhook → entitlement → portal → cancellation before enabling production billing.
+
+## Verify a hosted deployment
+
+Run the repository verification first:
+
+```bash
+npm ci
+npm test
+npm run smoke:api
+npm run build
+```
+
+Then verify the host:
 
 ```bash
 API=https://your-api.example.com
 curl -s "$API/health"
 curl -s -o /dev/null -w "%{http_code}\n" -X POST "$API/api/interview" -d '{}'
-# Expected: 401 without auth.
+# unauthenticated managed call should return 401
 ```
 
-Signup has two valid contracts:
+Complete signup/login (and email verification when enabled), then verify:
 
-- verification disabled: `{ token, user }`
-- verification required: `{ verificationRequired: true, ... }`, followed by email verification and login
+- Managed AI works without local provider keys.
+- LLM and STT limits return the expected 402 paths.
+- Mobile `/transcribe` succeeds for supported recordings and respects quota.
+- Stripe upgrade/downgrade/reconcile works when billing is enabled.
+- Desktop and mobile clients can reach the hosted service through HTTPS.
 
-Do not write deployment tests that assume signup always returns a token.
+## Client configuration
 
-## Release truth
+Desktop public builds use `MOCKMATE_API_BASE`; release CI validates it as a non-loopback HTTPS URL and exposes it to the renderer as `VITE_API_BASE`.
 
-Before calling the hosted service production-ready, verify one clean deployment, signup/login (including the email-verification branch if enabled), Managed AI, atomic STT quota enforcement, billing reconciliation, and CORS from the shipped desktop build.
+Mobile beta/production uses HTTPS `EXPO_PUBLIC_API_BASE`.
+
+## Production evidence gate
+
+Do not call the hosted service production-proven until there is evidence for:
+
+- one clean deployment on the final public head;
+- production CORS/JWT/Mongo/provider configuration;
+- signup/login/verification/recovery flows;
+- managed LLM/STT quota behavior;
+- billing lifecycle when enabled;
+- packaged desktop connectivity;
+- and the release ledger in [`evidence/VALIDATION_STATUS.md`](evidence/VALIDATION_STATUS.md).
