@@ -22,6 +22,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24.21.0
+      - run: npm run verify:platform
       - run: npm ci
       - run: npm --prefix backend ci
       - run: npm test
@@ -53,6 +54,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24.21.0
+      - run: npm run verify:platform
       - run: npm ci
       - run: npm --prefix backend ci
       - run: npm test
@@ -65,15 +67,50 @@ jobs:
       - name: Smoke packaged Windows runtime
         shell: pwsh
         run: ./scripts/windows-packaged-smoke.ps1
-      - name: Verify Windows validation artifacts
+      - name: Verify Windows validation artifacts and record baselines
         shell: pwsh
         run: |
           $exe = Get-ChildItem release -Filter *.exe | Select-Object -First 1
           $yml = Get-ChildItem release -Filter latest.yml | Select-Object -First 1
           $blockmap = Get-ChildItem release -Filter *.blockmap | Select-Object -First 1
+          $asar = Get-Item release/win-unpacked/resources/app.asar
           if (-not $exe) { throw 'Windows validation installer missing' }
           if (-not $yml) { throw 'Windows validation latest.yml missing' }
           if (-not $blockmap) { throw 'Windows validation blockmap missing' }
+          if (-not $asar) { throw 'Windows packaged app.asar missing' }
+
+          $latestText = Get-Content $yml.FullName -Raw
+          $releaseSha512 = if ($latestText -match '(?m)^sha512:\s*(\S+)') { $Matches[1] } else { '' }
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          $lock = Get-Content package-lock.json -Raw | ConvertFrom-Json
+          $manifest = [ordered]@{
+            appVersion = $pkg.version
+            electron = $lock.packages.'node_modules/electron'.version
+            electronBuilder = $lock.packages.'node_modules/electron-builder'.version
+            electronUpdater = $lock.packages.'node_modules/electron-updater'.version
+            node = (node --version)
+            installer = [ordered]@{
+              name = $exe.Name
+              sizeBytes = $exe.Length
+              sha256 = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+              releaseSha512 = $releaseSha512
+            }
+            latestYml = [ordered]@{
+              sizeBytes = $yml.Length
+              sha256 = (Get-FileHash $yml.FullName -Algorithm SHA256).Hash.ToLower()
+            }
+            blockmap = [ordered]@{
+              name = $blockmap.Name
+              sizeBytes = $blockmap.Length
+              sha256 = (Get-FileHash $blockmap.FullName -Algorithm SHA256).Hash.ToLower()
+            }
+            asar = [ordered]@{
+              sizeBytes = $asar.Length
+              sha256 = (Get-FileHash $asar.FullName -Algorithm SHA256).Hash.ToLower()
+            }
+          }
+          $manifest | ConvertTo-Json -Depth 6 | Set-Content release/validation-baseline.json
+          Get-Content release/validation-baseline.json
       - uses: actions/upload-artifact@v4
         with:
           name: mockmate-windows-pr-${{ github.event.pull_request.number || github.run_number }}
@@ -81,5 +118,6 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/latest.yml
+            release/validation-baseline.json
           if-no-files-found: error
           retention-days: 3
