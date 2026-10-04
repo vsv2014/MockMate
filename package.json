@@ -7,7 +7,9 @@
   "author": "MockMate",
   "license": "MIT",
   "managedApiBase": "",
-  "engines": { "node": ">=24 <25" },
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "dev": "concurrently \"node server.js\" \"vite\"",
     "build": "vite build",
@@ -32,12 +34,15 @@
     "mobile:start": "npm --prefix mobile start",
     "mobile:android": "npm --prefix mobile run android",
     "mobile:ios": "npm --prefix mobile run ios",
-    "mobile:verify": "npm --prefix mobile run typecheck && npm --prefix mobile test"
+    "mobile:verify": "npm --prefix mobile run typecheck && npm --prefix mobile test",
+    "verify:vitest5": "node scripts/verify-vitest5.mjs"
   },
   "build": {
     "appId": "com.mockmate.app",
     "productName": "MockMate",
-    "directories": { "output": "release" },
+    "directories": {
+      "output": "release"
+    },
     "asar": true,
     "files": [
       "dist/**/*",
@@ -55,12 +60,29 @@
       "!node_modules/electron/**/*",
       "!node_modules/.cache/**/*"
     ],
-    "extraFiles": [{ "from": "assets", "to": "assets" }],
+    "extraFiles": [
+      {
+        "from": "assets",
+        "to": "assets"
+      }
+    ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "assets/icon.png",
       "artifactName": "MockMate-Setup-${version}.${ext}",
-      "signtoolOptions": { "publisherName": "MockMate", "signingHashAlgorithms": ["sha256"] },
+      "signtoolOptions": {
+        "publisherName": "MockMate",
+        "signingHashAlgorithms": [
+          "sha256"
+        ]
+      },
       "signAndEditExecutable": true,
       "verifyUpdateCodeSignature": false
     },
@@ -76,11 +98,29 @@
       "runAfterFinish": false,
       "include": "build/installer.nsh"
     },
-    "publish": [{ "provider": "github", "owner": "vsv2014", "repo": "MockMate" }],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "vsv2014",
+        "repo": "MockMate"
+      }
+    ],
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] },
-        { "target": "zip", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "icon": "assets/icon.png",
       "category": "public.app-category.productivity",
@@ -95,9 +135,18 @@
         "NSCameraUsageDescription": "MockMate may capture screen content to analyze on-screen questions."
       }
     },
-    "dmg": { "writeUpdateInfo": false },
+    "dmg": {
+      "writeUpdateInfo": false
+    },
     "linux": {
-      "target": [{ "target": "AppImage", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "assets/icon.png",
       "category": "Utility",
       "artifactName": "MockMate-${version}.${ext}"
@@ -132,7 +181,7 @@
     "electron": "44.5.1",
     "electron-builder": "26.17.0",
     "vite": "8.3.2",
-    "vitest": "^4.1.9",
+    "vitest": "5.0.3",
     "wait-on": "^8.0.0"
   }
 }
