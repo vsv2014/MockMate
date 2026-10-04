@@ -1,337 +1,130 @@
 # MockMate — Architecture
 
-> How the system is structured and why. This document describes the **current**
-> architecture; future direction lives in §16. Release history, validation status,
-> and remediation counts are deliberately NOT tracked here — see §17 links.
+This document describes the current v1.5.2 architecture. Roadmap items live in `docs/ROADMAP.md`; release evidence lives in `docs/evidence/VALIDATION_STATUS.md`.
 
----
+## 1. System shape
 
-## 1. Scope & architecture principles
+MockMate is desktop-first with a private-beta mobile client.
 
-MockMate is a desktop-first interview preparation **and** live-performance companion:
-a dashboard workspace (Solo practice, Resume Studio, Job matching, Documents, Career)
-plus a live overlay that listens to the interviewer and renders resume-grounded answers.
+- **Desktop:** Electron + React/Vite, with Solo, Live overlay/teleprompter, Resume Studio, Jobs, Documents/RAG, Career and Duo surfaces.
+- **Local backend:** `server.js` / `backend/src` for local development and BYOK-compatible flows.
+- **Hosted backend:** Express/Mongo for accounts, sessions, documents, billing and managed transcription.
+- **Vercel API:** serverless AI/API surface sharing logic from `api/_lib/*`.
+- **Mobile:** Expo/React Native private beta using the hosted HTTPS API.
 
-Principles:
+## 2. Desktop runtime
 
-1. **ARCH-first.** MockMate is the first consumer of the ARCH runtime intelligence layer;
-   ARCH is designed to outlive MockMate as a reusable policy engine.
-2. **Privacy by default.** Telemetry is structured and redacted; resumes, transcripts,
-   prompts, keys, screenshots, and raw audio never enter it (§11.2, §14).
-3. **Provider portability.** AI capabilities use provider-independent routing with
-   capability-specific fallback paths; a local fallback exists only where explicitly
-   supported. There is no universal local model.
-4. **Isomorphic shared logic.** `shared/` modules run unchanged in the browser, the
-   Express shim, and serverless functions, with broad unit-test coverage.
-5. **Honest capability reporting.** What the system does today is documented separately
-   from what it targets (§10.5, §16).
+`electron/main.cjs` owns BrowserWindow lifecycle, overlay modes, global shortcuts, capture, content protection, updater behavior and local child-process startup.
 
-## 2. System context
+Window modes include dashboard/app, overlay, camera-anchored teleprompter and pill. Overlay-specific shortcuts are registered only while overlay/teleprompter modes are active.
 
-Actors: the candidate (user), the meeting application whose audio/screen is consumed,
-AI providers (LLM ×6, Deepgram STT), optional hosted services (Mongo, hosted proxy),
-and ATS job boards (Greenhouse/Lever public APIs, Adzuna, YC public listings).
+Windows/macOS use Electron content protection where supported. This is a partial protection mechanism, not a universal invisibility guarantee; meeting-app share preview must still be verified. Linux does not provide the same protected-overlay guarantee.
 
-MockMate never injects into the meeting application; it passively observes audio/screen
-and produces guidance in its own windows.
+The current public v1.5.2 automated release artifact is Windows NSIS. macOS/Linux runtime and packaging code remain in the repository but are not claimed as automated v1.5.2 public artifacts.
 
-## 3. Deployment topology
+## 3. Live interview pipeline
 
-| Shape | Where | Components |
-|---|---|---|
-| Desktop (primary) | Windows installer, macOS dmg, Linux AppImage | Electron shell + bundled SPA; AI via BYOK keys stored locally or managed proxy |
-| Local server | `npm run dev` / self-host | `server.js` Express shim over `backend/src` (auth, sessions, documents, uploads, transcribe, billing/metering) |
-| Hosted API | Vercel | `api/*` serverless functions + optional Mongo; `MOCKMATE_HOSTED=1` switches capability mode to managed |
-| Mobile foundation | Expo/React Native (`mobile/`) | private-beta; see §13 |
-
-The SPA talks to whichever backend is present via `src/lib/apiClient.js` (dev proxy for
-`/api/*`; absolute base only when `VITE_API_BASE` is set).
-
-## 4. Electron desktop runtime (`electron/`)
-
-- `main.cjs` — lifecycle, single window reconfigured across modes: `app` (dashboard),
-  `overlay` (compact always-on-top HUD), `teleprompter` (top-center camera anchor),
-  `pill` (badge). Mode transitions drive geometry, always-on-top level, and —
-  importantly — **mode-scoped global shortcut registration**.
-- **Shortcut ownership.** `Alt+T/R/Up/Down` are registered only while in
-  overlay/teleprompter mode and unregistered on every mode change
-  (`syncOverlayShortcuts`), so the OS never reserves those accelerators outside those
-  modes. App-level hotkeys (`Alt+H` stealth, `Alt+C` click-through rescue,
-  `Ctrl+Shift+U` / `F7` capture) stay global by design.
-- **Screen capture.** `desktopCapturer` over `types: ['screen']` captures the
-  **entire selected display** as a bounded/resized JPEG (1440→1280 wide, ≤210 KB).
-  Display precedence: explicit picker choice → last chosen/captured display →
-  display containing the MockMate window → first source. There is no foreground-window
-  detection (not portable across Win/macOS) and no region cropping.
-- **Screen protection.** OS content-protection flags exclude protected windows from
-  common capture paths on Windows/macOS; documented as *partial / verify per meeting
-  app*, unsupported on Linux. Public builds keep the full safety gate
-  (`shareVerified`, `linuxAck`, `protectionTest`, `inElectron`).
-- `preload.cjs` — minimal `electronAPI` surface (window control, capture, display list,
-  audio sources, metrics append, diagnostics, power events).
-- Session metrics JSONL appender + diagnostics store persist locally in userData.
-
-## 5. React application (`src/`)
-
-React 18 + Vite, dark design tokens (`src/auth/tokens.js`), desktop-first layouts.
-
-| Surface | Responsibility |
-|---|---|
-| Dashboard (`Dashboard.jsx`) | hub; hosts ARCH · Product Intelligence panel |
-| Solo (`Solo.jsx`, `SoloFeedback.jsx`) | practice interviews, strong-lane evaluation reports |
-| Live (`LiveCompanion.jsx`, `src/live/*`) | overlay/inline live assistance (§6) |
-| Duo Room (`Duo.jsx`, `Room.jsx`) | paired practice room |
-| Skills / Resume Studio | skill-gap matrix (`shared/skillsMatrix.js`), resume editing, LaTeX export |
-| Jobs (`Jobs.jsx`) | job search + ranking (§12 ranking details) |
-| Career (`Career.jsx`) | career-page aggregation over public ATS board APIs |
-| Documents (`Documents.jsx`) | document upload, chunking, embeddings, context selection |
-| Custom Prompt Studio | playbook templates incl. Anti-Fail Guardrails (forensic rules distilled from competitor transcript autopsies), quick snippets |
-| Auth (`src/auth/*`) | hosted sign-up/sign-in, guest mode, onboarding |
-| Settings (`ApiKeys.jsx`, `aiSettings.js`, `modelPicker.js`) | BYOK keys (local), live model discovery, answer style |
-
-Client infra: `apiClient.js`, `accountScope.js` (per-account storage namespacing),
-`diagnostics.js`, `ErrorBoundary.jsx`, `useDeepgram.js` + `lib/deepgramTransport.js`
-(STT socket lifecycle, reconnects, PCM queueing).
-
-## 6. Live interview pipeline (the hot path)
-
-```
-Meeting audio (loopback/system source or mic)
-  → Deepgram streaming STT (nova-3, nova-2 degraded fallback; reconnect + typed-input
-    fallback per ABL; Finalize-on-pause flushes held-open utterances)
-  → shared/questionCapture.js — candidate stabilization, correction/revision/refinement
-    signals, speaker-role gating, duplicate rejection, Turn-1 system-audio boost
-  → shared/interviewClassify.js — technical / behavioral / coding / logistical / dsa
-  → shared/retrieval.js — RAG over explicitly selected documents (embedding cache
-    validates provider+model identity, not just dimensions)
-  → api/hint-stream.js — LLM streaming on the ARCH hint lane (fast)
-  → shared/hintLayers.js — meta/JSON leak stripping, code-block normalization,
-    spoken-prose sanitization, glance layers (opener → bullets → full)
-  → delivery (shared/delivery.js, generationManager.js) — teleprompter text, optional
-    TTS, answer-now, skip/retry
-  → session metrics + PI events (timings/counters only, §14)
+```text
+system/mic audio
+→ Deepgram STT
+→ question stabilization/classification
+→ selected-document hybrid RAG
+→ managed/BYOK LLM route
+→ hint layers / teleprompter delivery
+→ privacy-safe metrics
 ```
 
-**Known limitations (live capture):**
-- Question dedupe compares only against the *last* committed question — a
-  Q1→Q2→Q1 repeat slips through.
-- Finalize-on-pause is a timer heuristic; extreme pause patterns can still over- or
-  under-flush.
+Turn-1 system-audio handling, duplicate suppression, corrections, answer-now behavior and bounded generation are implemented in shared/live modules.
 
-## 7. Solo pipeline
+### STT quota model
 
-Question generation (role/seniority-aware) → candidate answer (voice or typed) →
-`api/evaluate.js` on the strong lane → structured feedback report. Same metrics
-discipline as Live; no STT required for typed flow.
+Managed streaming grants reserve STT quota atomically **before** minting a Deepgram grant. Failed grant minting releases the reservation.
 
-## 8. Screen Solve pipeline
+Managed upload transcription parses supported audio duration server-side, reserves quota before Deepgram processing, then settles/reconciles the reservation against provider duration. Client-supplied duration is not trusted for billing.
 
-F7 / Ctrl+Shift+U / in-app button → capture the selected display (§4) →
-`api/analyze-screen.js` on the vision lane → Code/Steps tab UX with
-coding-session continuity (`shared/screenContext.js`, `shared/codingSessionContext.js`)
-and sandboxed local execution (`src/lib/codeRunner.js`, `shared/codeRunnerPolicy.js`).
-Linux is explicitly unsupported (Wayland portal hang risk) — the UI says so.
+## 4. Documents / RAG
 
-## 9. Documents / RAG
+Selected résumé/JD/notes are parsed, chunked and embedded. Persistent vectors in `mm-docs-index-v1` are tied to document signature, vector dimensions and exact `provider:model` embedding identity.
 
-Upload → parse → chunk → embed (`api/embed.js`) → persist in
-`mm-docs-index-v1` with embedding **provider + model identity recorded**; cache entries
-from a different provider/model are never served even at equal dimensionality.
-Context selection (`shared/contextSelection.js`) gates which sources may feed which
-question types; the Context Audit Trail records what grounded each answer.
+Delete/replace invalidates in-flight generations so stale async embedding work cannot resurrect removed document content. Local persistence is account-scoped and bounded by a byte budget.
 
-## 10. ARCH — runtime intelligence
+## 5. API topology
 
-ARCH is MockMate's declarative behavior contract plus a policy engine. It is split into
-a **policy plane** (what should happen) and an **execution plane** (what runs today):
+Two execution shapes share common logic:
 
-```
-POLICY PLANE (implemented)
-  arch/mockmate.abl.json ──validate──► compileAblRuntime()
-      capabilities, lanes, routing, telemetry contract, PI spec
-                │
-                ▼
-      resolveCapabilities()          reasoningPolicy(operation, {adaptive})
-      (env × ABL → capability        (lane selection; adaptive promotion on
-       matrix: byok/managed/          p95 TTFT/turn-latency thresholds)
-       unavailable)                          │
-                                             ▼
-      performanceSnapshot() ◄── recordArchMetric()  (bounded percentiles)
+- **Express:** auth, `/me`, sessions, documents, uploads/transcribe, billing, metering and `/api/*` mounted behind middleware.
+- **Vercel:** top-level `api/*.js` Serverless Functions backed by `api/_lib/*`.
 
-EXECUTION PLANE (implemented where noted)
-  STT transcription ──► executeWithFallback()   ← circuit breakers, timeouts,
-                                                 retries, provider failover
-  LLM reasoning     ──► existing resilient core adapter (NOT executeWithFallback)
-  Everything else   ──► direct capability implementations
-```
+For the Hobby plan, the deployed Vercel surface is intentionally kept at **12 Serverless Functions**. Four career endpoints (`/api/ats-score`, `/api/referral`, `/api/resume-latex`, `/api/tailor-resume`) are rewritten to one consolidated `api/career.js` function while preserving their external URLs.
 
-### 10.1 ABL (`arch/mockmate.abl.json`)
+`vercel.json` also rewrites `/api/models` through the providers route. Adding new top-level `api/*.js` files must include a function-count review.
 
-Declarative, validated at load (`backend/src/abl.js`): persona, reasoning lanes
-(`fast|balanced|strong|vision`), operation→lane routing, speech modes with typed-input
-fallback, telemetry metric allowlist, hot-path percentiles, and
-`policies.credentials = never_in_abl` enforced by a validator that rejects any
-secret-looking key. Cached by mtime; overridable path for tests.
+## 6. Authentication and hosted accounts
 
-### 10.2 Policy & routing
+Hosted auth supports signup/login/logout, account deletion and optional email verification.
 
-`reasoningPolicy()` returns the lane per operation; adaptive mode promotes
-`balanced → fast` only on **operation-scoped** evidence: the p95 of
-`turn_latency_ms:<operation>` for that very operation (TTFT feeds only the streaming
-hint domain). A slow vision/evaluate/career episode can therefore no longer downgrade
-a healthy interview — cross-operation contamination is structurally excluded. The
-underlying perf maps remain process-local (§15 scoping limitation).
+Signup has two valid outcomes:
 
-### 10.3 Runtime resilience
+- immediate `{ token, user }` when verification is disabled;
+- a verification-required response when `REQUIRE_EMAIL_VERIFICATION=1`, followed by verification/login.
 
-`executeWithFallback()` — per-provider circuit breaker (30 s cooldown), per-attempt
-timeout raced with AbortController, bounded retries, outer-signal relay, provider
-failover, optional fallback callback, success/failure telemetry. `noDoubleRetry` policy
-prevents retry stacking across layers.
+Hosted verification configuration fails closed if required mail settings are incomplete.
 
-### 10.4 Telemetry
+Desktop tokens are persisted through the Electron auth bridge; mobile tokens use OS-protected secure storage.
 
-Only ABL-declared hot-path metrics are recorded (stt timings, llm_ttft_ms, tts_ttfa_ms,
-turn_latency_ms, fallback/failure counts), bounded at 500 samples per metric,
-reported at ABL percentiles. Hosted mode hides performance + PI from `/api/arch`.
+## 7. Billing / metering
 
-### 10.5 What ARCH does NOT yet control
+The backend is authoritative for plan limits. LLM-cost routes are guarded before provider spend. Managed model policy, request-size weighting, atomic reservations and release/reconciliation live in `backend/src/middleware/meter.js`, `backend/src/plans.js` and store implementations.
 
-- **LLM reasoning execution.** Hint/interview/evaluate/report/vision calls run through
-  the existing resilient core adapter (`policies.reasoningExecution`), not
-  `executeWithFallback`. Only transcription routes through the ARCH executor today.
-- **Embeddings and vision pipelines** have no ARCH circuit/fallback coverage.
-- **Cross-process state.** Perf and PI maps are process-local; nothing is shared
-  across instances or persisted.
-- **Tenant/user scoping** of adaptive decisions (§15).
+Mongo and file stores both clamp usage releases at zero. Stripe checkout/webhook/portal/reconcile code exists, while production Stripe configuration remains a deployment-validation item.
 
-## 11. Product Intelligence (behavioral subsystem)
+## 8. ARCH runtime intelligence
 
-Product Intelligence is a **consumer subsystem that feeds behavioral signals into
-ARCH**, not the same layer as runtime telemetry:
+ARCH is a declarative policy/runtime layer built around `arch/mockmate.abl.json`.
 
-```
-Product Intelligence ──behavioral signals (funnels, friction, adoption)──┐
-                                                                          ▼
-Runtime telemetry ──latency / failures / fallbacks──────────────► ARCH policy engine
-                                                                          ▼
-                                                                adaptive decisions
-```
+Implemented today:
 
-### 11.1 Local event architecture
+- validated ABL capabilities and lane routing;
+- operation-scoped latency metrics;
+- adaptive `balanced → fast` lane promotion for the affected operation only;
+- transcription fallback execution with retries/timeouts/circuit behavior;
+- bounded performance snapshots.
 
-```
-UI interactions ──► trackProductEvent()
-                     redactInteractionEvent: forbidden-key regex drops content-like keys;
-                     allowlists keep structural keys; values slugified + truncated
-                     ▼
-              account-scoped localStorage ring buffer (bounded)
-              + rage-click observer (structural attributes only)
-                     ▼
-              summarizeProductIntelligence() (shared)
-              funnels · friction · adoption · insights · adaptive actions
-                     ▼
-              ProductIntelligencePanel (Dashboard)
+Not all LLM/vision/embedding execution goes through the same ARCH fallback executor yet. Performance state remains process-local and is not a hosted cross-instance learning system.
 
-──────────────── no production bridge ────────────────
+## 9. Product Intelligence
 
-backend/src/arch.js PI store — dormant; see §11.4
-```
+Product Intelligence is **local/runtime adaptive telemetry**, not hosted closed-loop analytics.
 
-`sessionMetrics.js` bridges session lifecycle events (`live_started/ended`,
-`first_hint_rendered` with TTFT) into the PI stream while raw timings go to the
-Electron JSONL store — never transcript text.
+Renderer interactions are reduced to structural, redacted events in an account-scoped bounded local store. Resumes, transcripts, prompts, answers, screenshots, audio, API keys and passwords are excluded by contract/sanitization.
 
-Funnels: live_interview (6 steps), solo_practice (4), screen_solve (3). Correlations:
-preflight stall rate, resize-before-teleprompter, slow-TTFT → early abandon or
-missing session end, playbook-before-Live adoption.
+The backend PI store is currently dormant with no production bridge. Any future hosted PI path requires an explicit opt-in/privacy design.
 
-### 11.2 Privacy boundary
+## 10. Mobile architecture
 
-Structured, redacted UI flows only. Excluded by contract and by code: resumes,
-interview transcripts, prompts, answers, API keys, passwords, screenshots, raw meeting
-audio. Secret patterns are scrubbed from any value that survives key filtering.
-Opt-in breadcrumb replay exists behind an explicit default-off switch.
+The Expo/React Native client currently supports:
 
-### 11.3 Adaptive-action bridge
+- hosted auth and secure token persistence;
+- Prepare / History / Duo / Account;
+- selected hosted text documents;
+- text mock / Answer Assist sessions;
+- microphone recording with explicit consent/state;
+- authenticated `/transcribe` upload flow;
+- synced session/history/account usage contracts.
 
-Summarized insights can surface one-click actions (e.g. apply Concise/Fast style when
-latency is high); applying an action emits its own event so the loop is measurable.
+Still private-beta gated: PDF/DOCX mobile extraction, real Duo pairing/remote controls, physical-device certification, store privacy/distribution and same-device meeting capture guarantees.
 
-### 11.4 Backend PI — future path decision
+## 11. Security boundaries
 
-The backend PI store (`recordArchProductEvent` + snapshot in `backend/src/arch.js`)
-has **no production callers today**. Decision: it is the **reference implementation for
-a future explicit opt-in hosted telemetry path** (option A). It stays only so long as
-hosted PI remains plausible; if that roadmap decision goes negative, it is a deletion
-candidate. Until a bridge exists, PI is desktop/local by construction — which is also
-the privacy posture the UI advertises.
+- Platform/provider secrets remain server-side for Managed AI.
+- BYOK credentials remain device-local where selected.
+- RAG persistence is account-scoped.
+- Product Intelligence and diagnostics prohibit content-like/private fields.
+- Hosted API configuration fails closed on invalid public URLs/security prerequisites.
+- Vercel public API remains default-deny unless explicitly enabled.
 
-## 12. Backend / API topology
+## 12. Release/validation boundaries
 
-Two shapes share one logic layer:
+Code review and green CI do not equal a field-proven release. v1.5.2 still requires the packaged Windows smoke/share-preview/updater evidence recorded in `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md` before the release is called fully validated.
 
-- **Express shim** — `server.js` + `backend/src`: auth (JWT), sessions, documents,
-  uploads, transcribe, billing/metering middleware, `/api/arch`. Mongo optional.
-- **Serverless** — `api/*.js` with a route registry (`api/_lib/apiRoutes.js`).
-  Most simple POST handlers share `api/_handler.js`; streaming and specialized routes
-  (e.g. `hint-stream`) perform equivalent ARCH policy/metric wiring directly.
-- **Capability modes**: hosted (`MOCKMATE_HOSTED=1`, managed proxy, no user keys) vs
-  BYOK (keys client-local); `resolveCapabilities()` exposes which is live.
-
-Jobs: 5 source families — Adzuna (city-level location handling via
-`shared/jobLocation.js`), JSearch-style aggregation, Greenhouse boards, Lever boards
-(`shared/companyBoards.js`), and the YC startup pipeline (`shared/ycJobs.js`).
-Ranking (`rankHeuristic` in `api/_lib/jobs.js`): title-token overlap, seniority-distance
-penalty, recency boost; candidate band from structured resume facts
-(`shared/resumeFacts.js`), optionally refined by an LLM ranker.
-
-## 13. Mobile (`mobile/`)
-
-Expo/React Native (TypeScript) foundation: hosted auth, Prepare/History/Duo/Account,
-interview session component, explicit hosted-document selection, secure token storage,
-transcript sync. Release milestones (not current): microphone transcription, file
-extraction, real Duo pairing.
-
-## 14. Security boundaries
-
-- Keys and PI events live in account-scoped local storage / Electron userData only.
-- PI redaction is double-layered (key allowlists + value sanitization), with the
-  excluded-data list also enforced by ABL validation.
-- Session metrics block content-like keys (`sanitizeMetric`).
-- RAG cache integrity requires embedding provider+model identity match.
-- Live safety gate is preserved on public builds; frictionless paths are dev/local-only.
-- Secrets are rejected from ABL, telemetry, and logs.
-
-## 15. Known architectural limitations
-
-| ID | Area | Limitation | Path |
-|---|---|---|---|
-| ARCH-1 | Adaptive routing | Perf/PI state is process-local: nothing persists across restarts/instances and decisions are not per-account (operation mixing itself is solved — metrics are scoped `turn_latency_ms:<operation>`) | persist + scope to provider+operation+deployment, then account/session, before hosted scale-out |
-| ARCH-2 | Execution coverage | Only transcription uses `executeWithFallback`; LLM/embedding/vision paths use their own adapters | migrate hot capabilities incrementally (§16) |
-| PI-1 | Backend PI | Dormant; local-only today | decision recorded in §11.4 |
-| PI-2 | Rage-click targets | Fallback to `title`/`aria-label` can carry dynamic values; slugified but meaning may survive | prefer `data-pi-target`/`id` on sensitive screens |
-| LIVE-1 | Question dedupe | Compares only against last committed question | windowed history |
-| LIVE-2 | Finalize-on-pause | Timer heuristic, but narrowly scoped: system/loopback capture only, and permanently disabled after the first question commits | tune against recorded sessions if needed |
-| CAP-1 | Screen capture | Display-level only; no foreground-window detection or region cropping | platform APIs where available |
-
-## 16. Target architecture
-
-- **ARCH as orchestration framework**: reasoning execution, embeddings, and vision
-  migrate onto `executeWithFallback` so circuit-breaking/failover/metrics apply
-  uniformly; ABL becomes the single place lanes and fallbacks are declared.
-- **Scoped adaptive routing**: per provider+operation+deployment, then account.
-- **Hosted PI** behind explicit opt-in with tenant isolation, or deletion of the
-  dormant backend store (§11.4).
-- **Mobile parity milestones** per §13.
-
-## 17. Status & evidence links
-
-Volatile facts (test counts, audit remediation status, release notes, validation
-evidence) are tracked outside this document:
-
-- `CHANGELOG.md` — release history incl. v1.5.x lineage
-- `docs/audit-remediation.md` — audit item status
-- `docs/audit-status-*.md` — dated audit snapshots
-- `docs/ROADMAP.md`, `docs/DUO_PLAN.md` — planned work
-- `docs/lockedin-failure-patterns.md` — competitor-autopsy ledger feeding Anti-Fail rules
+Current automated verification baseline: **66 suites / 478 tests**, API smoke and production build green on the reviewed branch.
