@@ -25,6 +25,7 @@ jobs:
       - run: npm run verify:platform
       - run: npm run verify:react19
       - run: npm run verify:vitest5
+      - run: npm run verify:dev-tooling
       - run: npm ci
       - run: npm --prefix backend ci
       - name: Require zero dependency advisories
@@ -66,6 +67,7 @@ jobs:
       - run: npm run verify:platform
       - run: npm run verify:react19
       - run: npm run verify:vitest5
+      - run: npm run verify:dev-tooling
       - run: npm ci
       - run: npm --prefix backend ci
       - run: npm test
