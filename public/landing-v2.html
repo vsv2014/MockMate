@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MockMate — AI interview practice & live companion</title>
+  <meta name="description" content="Prepare with realistic mock interviews and use context-aware assistance when interviews get real. MockMate grounds help in your resume, job description, documents, playbook, and current conversation." />
+  <meta name="theme-color" content="#07110f" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="mockmate-api-base" content="" />
+
+  <link rel="canonical" href="https://mock-mate-theta-nine.vercel.app/landing.html" />
+  <link rel="icon" href="/icon.png" />
+  <link rel="preload" href="/icon.svg" as="image" type="image/svg+xml" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="MockMate — prepare better, think faster when interviews get real" />
+  <meta property="og:description" content="AI interview practice and live assistance grounded in your resume, JD, documents, playbook, and conversation." />
+  <meta property="og:url" content="https://mock-mate-theta-nine.vercel.app/landing.html" />
+  <meta property="og:image" content="https://mock-mate-theta-nine.vercel.app/icon.png" />
+  <meta name="twitter:card" content="summary" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "MockMate",
+    "applicationCategory": "EducationalApplication",
+    "operatingSystem": "Windows; macOS; Linux",
+    "description": "AI interview preparation and live interview companion with resume- and job-context grounding.",
+    "url": "https://mock-mate-theta-nine.vercel.app/landing.html",
+    "downloadUrl": "https://github.com/vsv2014/MockMate/releases/latest"
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Do I need an API key?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "MockMate supports managed services where configured and bring-your-own-key mode for supported providers. Availability depends on the deployed environment and plan."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is the overlay hidden from screen sharing?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "On supported Windows and macOS environments, MockMate can use operating-system content protection for common capture paths. You must verify the actual Zoom, Meet, or Teams share preview before relying on it. Linux does not support this protection."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What can MockMate use as context?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "MockMate can ground interview help in your resume, job description, selected documents, interview playbook, and current conversation."
+        }
+      }
+    ]
+  }
+  </script>
+
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('mm-theme')
+        var dark = saved ? saved === 'dark' : true
+        if (dark) document.documentElement.setAttribute('data-theme', 'dark')
+      } catch (e) { document.documentElement.setAttribute('data-theme', 'dark') }
+    })()
+  </script>
+
+  <style>
+    @font-face { font-family: 'KanitLocal'; src: url('/fonts/kanit-400-latin.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'KanitLocal'; src: url('/fonts/kanit-500-latin.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'KanitLocal'; src: url('/fonts/kanit-600-latin.woff2') format('woff2'); font-weight: 600; font-style: normal; font-display: swap; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; }
+    button, input { font: inherit; }
+    :root { --bg:#f3f7f5; --bg2:#eaf1ee; --surface:rgba(255,255,255,.82); --surface-strong:#fff; --ink:#0e1715; --muted:#5f6e69; --faint:#82908b; --line:rgba(14,23,21,.11); --line-strong:rgba(14,23,21,.18); --teal:#0d9488; --teal2:#0f766e; --mint:#d8f6ee; --good:#0a8f62; --warn:#b7791f; --shadow:0 24px 70px rgba(16,52,44,.12); --nav:rgba(243,247,245,.82); --radius:22px; --max:1180px; }
+    [data-theme="dark"] { --bg:#07110f; --bg2:#0b1714; --surface:rgba(14,28,24,.78); --surface-strong:#0e1c18; --ink:#effaf6; --muted:#9db1aa; --faint:#6d817a; --line:rgba(223,255,245,.10); --line-strong:rgba(223,255,245,.17); --teal:#32d5bf; --teal2:#17aa98; --mint:rgba(50,213,191,.12); --good:#55e1a9; --warn:#f3be68; --shadow:0 28px 80px rgba(0,0,0,.42); --nav:rgba(7,17,15,.78); }
+    body { background:radial-gradient(900px 520px at 65% -120px,rgba(24,175,152,.20),transparent 60%),radial-gradient(760px 520px at -10% 22%,rgba(21,132,116,.09),transparent 63%),var(--bg); color:var(--ink); font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.55; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
+    a { color: inherit; }
+    .skip-link { position:fixed; top:10px; left:12px; z-index:1000; transform:translateY(-140%); background:var(--surface-strong); color:var(--ink); border:1px solid var(--line-strong); border-radius:10px; padding:10px 14px; text-decoration:none; }
+    .skip-link:focus { transform:translateY(0); }
+    .shell { width:min(var(--max),calc(100% - 40px)); margin-inline:auto; }
+    .section { padding:104px 0; }
+    .eyebrow { display:inline-flex; gap:8px; align-items:center; font-size:12px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:var(--teal); }
+    .eyebrow::before { content:""; width:20px; height:2px; border-radius:99px; background:currentColor; }
+    h1,h2,h3 { font-family:KanitLocal,Inter,system-ui,sans-serif; margin:0; letter-spacing:-.025em; }
+    h1 { font-size:clamp(52px,7.4vw,96px); line-height:.97; font-weight:600; max-width:970px; }
+    h2 { font-size:clamp(34px,5vw,58px); line-height:1.02; font-weight:500; }
+    h3 { font-size:22px; line-height:1.15; font-weight:500; }
+    p { margin:0; }
+    .lead { color:var(--muted); font-size:clamp(17px,2vw,21px); max-width:720px; }
+    .muted { color:var(--muted); }
+    .accent { color:var(--teal); }
+    nav { position:sticky; top:0; z-index:120; border-bottom:1px solid transparent; background:var(--nav); backdrop-filter:blur(18px) saturate(1.25); -webkit-backdrop-filter:blur(18px) saturate(1.25); }
+    nav.scrolled { border-bottom-color:var(--line); }
+    .nav-inner { width:min(1240px,calc(100% - 32px)); margin:auto; height:70px; display:flex; align-items:center; justify-content:space-between; gap:22px; }
+    .brand { display:inline-flex; align-items:center; gap:10px; text-decoration:none; font-weight:800; }
+    .brand img { width:30px; height:30px; border-radius:9px; }
+    .nav-links { display:flex; align-items:center; gap:26px; }
+    .nav-links a { color:var(--muted); text-decoration:none; font-size:14px; }
+    .nav-links a:hover { color:var(--ink); }
+    .nav-actions { display:flex; gap:10px; align-items:center; }
+    .nav-link-btn { background:none; border:0; color:var(--muted); cursor:pointer; padding:8px 4px; font-weight:600; }
+    .theme-toggle { width:40px; height:40px; border-radius:12px; background:var(--surface); color:var(--ink); border:1px solid var(--line); cursor:pointer; }
+    .btn { border:0; border-radius:13px; padding:13px 20px; min-height:48px; display:inline-flex; align-items:center; justify-content:center; gap:9px; text-decoration:none; font-weight:800; cursor:pointer; transition:transform .18s ease,border-color .18s ease,background .18s ease; }
+    .btn:hover { transform:translateY(-2px); }
+    .btn-primary { background:linear-gradient(135deg,var(--teal),var(--teal2)); color:#02110d; box-shadow:0 18px 38px rgba(26,193,168,.18); }
+    [data-theme="dark"] .btn-primary { color:#031612; }
+    .btn-secondary { background:var(--surface); color:var(--ink); border:1px solid var(--line-strong); }
+    .btn-small { min-height:42px; padding:10px 15px; font-size:13px; }
+    .hero { padding:88px 0 72px; min-height:calc(100vh - 70px); display:grid; align-items:center; }
+    .hero-grid { display:grid; grid-template-columns:1.05fr .95fr; gap:72px; align-items:center; }
+    .hero-copy { display:flex; flex-direction:column; align-items:flex-start; gap:24px; }
+    .hero h1 .soft { color:var(--muted); }
+    .hero-actions { display:flex; gap:12px; flex-wrap:wrap; }
+    .hero-proof { display:flex; gap:10px; flex-wrap:wrap; }
+    .proof-chip { border:1px solid var(--line); background:var(--surface); padding:8px 11px; border-radius:999px; color:var(--muted); font-size:12px; }
+    .product-stage { position:relative; isolation:isolate; }
+    .stage-glow { position:absolute; inset:16% 4% 0; background:radial-gradient(circle,rgba(50,213,191,.24),transparent 62%); filter:blur(22px); z-index:-1; }
+    .product-window { background:#08110f; color:#ecfaf5; border:1px solid rgba(255,255,255,.11); border-radius:24px; box-shadow:0 46px 90px rgba(0,0,0,.42); overflow:hidden; transform:perspective(1200px) rotateY(-3deg) rotateX(1deg); }
+    .window-bar { height:44px; display:flex; align-items:center; gap:8px; padding:0 15px; border-bottom:1px solid rgba(255,255,255,.08); color:#81958e; font-size:11px; }
+    .dot { width:8px; height:8px; border-radius:50%; background:#33453f; }
+    .live-dot { margin-left:auto; color:#79e8c0; font-weight:800; }
+    .window-body { padding:22px; }
+    .question-label { color:#6ee4c6; font-size:10px; letter-spacing:.12em; font-weight:900; }
+    .question { font-size:18px; font-weight:700; line-height:1.36; margin:8px 0 18px; }
+    .context-row { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:17px; }
+    .ctx { background:rgba(49,210,184,.10); border:1px solid rgba(49,210,184,.19); color:#a7eee0; border-radius:999px; padding:5px 8px; font-size:10px; font-weight:800; }
+    .answer { background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; }
+    .answer strong { display:block; margin-bottom:9px; font-size:14px; }
+    .answer ul { margin:0; padding-left:18px; color:#b4c4be; font-size:12px; }
+    .tele-strip { margin-top:14px; border:1px solid rgba(255,255,255,.08); border-radius:13px; padding:10px 12px; color:#9fb0aa; font-size:11px; display:flex; justify-content:space-between; }
+    .trust-strip { border-top:1px solid var(--line); border-bottom:1px solid var(--line); background:color-mix(in srgb,var(--surface) 70%,transparent); }
+    .trust-inner { width:min(var(--max),calc(100% - 40px)); margin:auto; padding:18px 0; display:grid; grid-template-columns:repeat(4,1fr); gap:16px; color:var(--muted); font-size:13px; }
+    .trust-inner strong { color:var(--ink); display:block; margin-bottom:2px; }
+    .split-head { display:flex; justify-content:space-between; align-items:end; gap:26px; margin:14px 0 38px; }
+    .split-head .lead { max-width:520px; }
+    .mode-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; }
+    .mode-card { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:30px; box-shadow:var(--shadow); min-height:380px; display:flex; flex-direction:column; gap:18px; position:relative; overflow:hidden; }
+    .mode-card::after { content:""; position:absolute; width:240px; height:240px; right:-80px; bottom:-110px; border-radius:50%; background:radial-gradient(circle,rgba(50,213,191,.16),transparent 66%); }
+    .mode-icon { width:44px; height:44px; border-radius:13px; display:grid; place-items:center; background:var(--mint); color:var(--teal); font-weight:900; }
+    .checklist { list-style:none; padding:0; margin:0; display:grid; gap:10px; color:var(--muted); font-size:14px; }
+    .checklist li::before { content:"✓"; color:var(--teal); font-weight:900; margin-right:9px; }
+    .mode-demo { margin-top:auto; background:var(--bg2); border:1px solid var(--line); border-radius:14px; padding:16px; color:var(--muted); font-size:12px; }
+    .grounding { display:grid; grid-template-columns:.9fr 1.1fr; gap:70px; align-items:center; }
+    .source-stack { display:grid; gap:12px; }
+    .source { display:flex; align-items:center; gap:14px; padding:15px 16px; background:var(--surface); border:1px solid var(--line); border-radius:14px; }
+    .source b { flex:1; }
+    .source span { color:var(--good); font-size:12px; font-weight:900; }
+    .grounding-copy { display:grid; gap:22px; }
+    .coding-panel { display:grid; grid-template-columns:1.02fr .98fr; gap:0; border:1px solid var(--line); border-radius:26px; overflow:hidden; background:var(--surface); box-shadow:var(--shadow); }
+    .coding-copy { padding:50px; display:flex; flex-direction:column; justify-content:center; gap:18px; }
+    .code-ui { min-height:430px; background:#07100f; color:#d9eee7; padding:26px; border-left:1px solid rgba(255,255,255,.09); font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+    .code-tabs { display:flex; gap:8px; margin-bottom:24px; }
+    .code-tab { border:1px solid rgba(255,255,255,.10); border-radius:8px; padding:7px 10px; color:#7f9890; font-size:11px; }
+    .code-tab.active { color:#7df1d5; border-color:rgba(125,241,213,.22); background:rgba(125,241,213,.07); }
+    .code-q { font-family:Inter,sans-serif; font-size:16px; font-weight:700; margin-bottom:18px; }
+    .code-line { font-size:12px; line-height:1.7; color:#a7bbb4; }
+    .kw { color:#67dfc5; } .fn { color:#e5cf79; } .cm { color:#5e766e; }
+    .privacy-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; margin-top:38px; }
+    .info-card { background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:24px; min-height:235px; }
+    .info-card h3 { margin:14px 0 10px; }
+    .info-card p { color:var(--muted); font-size:14px; }
+    .info-icon { font-size:22px; }
+    .caution { margin-top:24px; border-left:3px solid var(--warn); background:color-mix(in srgb,var(--surface) 78%,transparent); padding:15px 17px; border-radius:0 12px 12px 0; color:var(--muted); font-size:13px; }
+    .demo-grid { display:grid; grid-template-columns:.75fr 1.25fr; gap:34px; align-items:center; }
+    .demo-copy { display:grid; gap:18px; }
+    .demo-frame { background:#020806; border:1px solid var(--line); border-radius:20px; overflow:hidden; box-shadow:var(--shadow); }
+    .demo-frame video { display:block; width:100%; max-height:560px; background:#020806; }
+    .more-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-top:36px; }
+    .mini-card { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:18px; min-height:140px; }
+    .mini-card b { display:block; margin:8px 0 4px; }
+    .mini-card p { color:var(--muted); font-size:12px; }
+    .faq { display:grid; grid-template-columns:.72fr 1.28fr; gap:56px; align-items:start; }
+    .faq-list { display:grid; gap:10px; }
+    details { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
+    summary { cursor:pointer; font-weight:800; list-style:none; }
+    summary::-webkit-details-marker { display:none; }
+    details p { color:var(--muted); margin-top:11px; font-size:14px; }
+    .final-cta { border:1px solid var(--line); border-radius:28px; padding:clamp(36px,7vw,76px); background:radial-gradient(600px 300px at 92% 10%,rgba(50,213,191,.18),transparent 65%),var(--surface); display:grid; gap:22px; text-align:center; justify-items:center; }
+    .final-cta p { color:var(--muted); max-width:670px; }
+    footer { padding:40px 0 96px; color:var(--faint); font-size:12px; }
+    .footer-inner { display:flex; justify-content:space-between; gap:22px; flex-wrap:wrap; }
+    .footer-inner a { text-decoration:none; color:var(--muted); }
+    .mobile-cta { display:none; position:fixed; z-index:130; left:12px; right:12px; bottom:12px; border:1px solid var(--line-strong); border-radius:15px; padding:10px; background:color-mix(in srgb,var(--surface-strong) 94%,transparent); backdrop-filter:blur(16px); box-shadow:var(--shadow); }
+    .mobile-cta .btn { width:100%; }
+    .au-avatar { display:inline-flex; align-items:center; justify-content:center; border-radius:50%; background:var(--mint); color:var(--teal); font-weight:700; flex-shrink:0; }
+    .au-avatar-sm { width:28px; height:28px; font-size:11px; }
+    .au-plan { font-size:10px; font-weight:700; padding:2px 7px; border-radius:999px; background:var(--mint); color:var(--teal); }
+    .au-menu-item { display:block; width:100%; text-align:left; background:none; border:none; color:var(--ink); font-size:13px; padding:8px 10px; border-radius:8px; cursor:pointer; }
+    .au-menu-item:hover { background:var(--mint); }
+    .au-overlay { position:fixed; inset:0; background:rgba(0,0,0,.62); backdrop-filter:blur(5px); display:none; align-items:center; justify-content:center; padding:20px; z-index:1000; }
+    .au-card { position:relative; background:var(--surface-strong); border:1px solid var(--line); border-radius:18px; padding:30px; max-width:420px; width:100%; box-shadow:var(--shadow); }
+    .au-title { font-size:22px; margin:0 0 18px; }
+    .au-label { display:block; font-size:12px; font-weight:800; color:var(--muted); margin:10px 0 6px; }
+    .au-input { width:100%; padding:11px 13px; background:var(--bg); border:1px solid var(--line-strong); border-radius:10px; color:var(--ink); outline:none; }
+    .au-input:focus { border-color:var(--teal); box-shadow:0 0 0 3px rgba(50,213,191,.10); }
+    .au-btn { width:100%; padding:12px; margin-top:14px; border:none; border-radius:10px; background:linear-gradient(135deg,var(--teal),var(--teal2)); color:#02110d; font-weight:900; cursor:pointer; }
+    .au-link { background:none; border:none; color:var(--teal); font-size:13px; cursor:pointer; padding:0; font-weight:800; }
+    .au-switch { margin-top:16px; text-align:center; font-size:13px; color:var(--muted); }
+    .au-error { color:#ef7c7c; font-size:13px; min-height:18px; margin-top:8px; }
+    .au-success { color:var(--good); font-size:13px; line-height:1.5; margin-top:8px; }
+    .au-close { position:absolute; top:13px; right:15px; border:none; background:none; color:var(--muted); font-size:24px; cursor:pointer; }
+    .reveal { opacity:0; transform:translateY(18px); transition:opacity .65s ease,transform .65s ease; }
+    .reveal.in { opacity:1; transform:none; }
+    @media (max-width:980px) { .nav-links{display:none}.hero{min-height:auto;padding-top:72px}.hero-grid,.grounding,.coding-panel,.demo-grid,.faq{grid-template-columns:1fr}.hero-grid{gap:50px}.product-window{transform:none}.trust-inner{grid-template-columns:repeat(2,1fr)}.privacy-grid{grid-template-columns:1fr}.more-grid{grid-template-columns:repeat(2,1fr)}.code-ui{border-left:0;border-top:1px solid rgba(255,255,255,.09);min-height:330px} }
+    @media (max-width:700px) { .shell{width:min(100% - 28px,var(--max))}.section{padding:78px 0}.hero{padding:54px 0}.hero-grid{gap:38px}.hero h1{font-size:clamp(44px,14vw,66px)}.hero-actions{width:100%}.hero-actions .btn{width:100%}.mode-grid{grid-template-columns:1fr}.split-head{align-items:flex-start;flex-direction:column}.trust-inner{grid-template-columns:1fr 1fr}.coding-copy{padding:28px}.more-grid{grid-template-columns:1fr 1fr}.nav-inner{height:62px}.nav-actions .btn-small{display:none}.mobile-cta{display:block}footer{padding-bottom:120px} }
+    @media (max-width:440px) { .trust-inner,.more-grid{grid-template-columns:1fr} }
+    @media (prefers-reduced-motion:reduce) { *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}.reveal{opacity:1;transform:none} }
+  </style>
+  <noscript><style>.reveal{opacity:1!important;transform:none!important}.mobile-cta{display:none!important}</style></noscript>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <nav id="nav" aria-label="Main navigation"><div class="nav-inner">
+    <a class="brand" href="#top" aria-label="MockMate home"><img src="/icon.svg" alt="" aria-hidden="true" /><span>MockMate</span></a>
+    <div class="nav-links"><a href="#modes">Solo + Live</a><a href="#grounding">Grounding</a><a href="#coding">Coding</a><a href="#privacy">Privacy</a><a href="#faq">FAQ</a></div>
+    <div class="nav-actions">
+      <button class="nav-link-btn" id="nav-signin" type="button">Sign in</button>
+      <div id="nav-user" style="display:none;position:relative"><button id="nav-user-btn" class="nav-link-btn" type="button" aria-haspopup="menu" aria-expanded="false" style="display:flex;align-items:center;gap:7px"><span class="au-avatar au-avatar-sm" id="nav-avatar">?</span><span id="nav-name"></span><span class="au-plan" id="nav-plan">Free</span></button><div id="nav-menu" role="menu" style="display:none;position:absolute;right:0;top:38px;background:var(--surface-strong);border:1px solid var(--line);border-radius:12px;padding:7px;width:150px;box-shadow:var(--shadow)"><button class="au-menu-item" id="menu-account" role="menuitem" type="button">Dashboard</button><button class="au-menu-item" id="menu-signout" role="menuitem" type="button">Sign out</button></div></div>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle light and dark theme">◐</button>
+      <a class="btn btn-primary btn-small" id="nav-download" href="https://github.com/vsv2014/MockMate/releases/latest" target="_blank" rel="noopener">Download for Windows →</a>
+    </div>
+  </div></nav>
+  <main id="main">
+    <section class="hero" id="top"><div class="shell hero-grid">
+      <div class="hero-copy"><span class="eyebrow reveal">Interview practice + live companion</span><h1 class="reveal">Prepare better. <span class="soft">Think faster when the interview gets real.</span></h1><p class="lead reveal">MockMate helps you rehearse realistic interviews and gives you context-aware assistance when you need it—grounded in your resume, job description, selected documents, playbook, and conversation.</p><div class="hero-actions reveal"><a class="btn btn-primary" id="hero-download" href="https://github.com/vsv2014/MockMate/releases/latest" target="_blank" rel="noopener">↓ Download for Windows</a><a class="btn btn-secondary" href="#demo">▶ Watch 30-sec demo</a></div><div class="hero-proof reveal"><span class="proof-chip">Windows public release</span><span class="proof-chip">Solo + Live</span><span class="proof-chip">Managed AI + BYOK</span><span class="proof-chip" id="hero-stealth-chip">Win/macOS: verify share preview before relying on content protection</span></div></div>
+      <div class="product-stage reveal" aria-label="Illustration of the MockMate live companion"><div class="stage-glow"></div><div class="product-window"><div class="window-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>MockMate · Live</span><span class="live-dot">● LISTENING</span></div><div class="window-body"><div class="question-label">QUESTION DETECTED</div><div class="question">Tell me about a production incident you owned end to end.</div><div class="context-row"><span class="ctx">✓ RESUME</span><span class="ctx">✓ JD</span><span class="ctx">✓ PLAYBOOK</span><span class="ctx">✓ CONVERSATION</span></div><div class="answer"><strong>Open with ownership, then walk the recovery path.</strong><ul><li>State impact + how you identified the failure mode.</li><li>Explain the decision you personally made.</li><li>Close with prevention and measurable follow-up.</li></ul></div><div class="tele-strip"><span>⌖ Teleprompter</span><span>F7 Screen · Alt+T Camera</span></div></div></div></div>
+    </div></section>
+    <div class="trust-strip"><div class="trust-inner"><div><strong>Context grounded</strong>Resume · JD · docs · playbook</div><div><strong>Two modes</strong>Practice before · assistance during</div><div><strong>Your AI choice</strong>Managed services or supported BYOK</div><div><strong>Clear limits</strong>No “undetectable” or guaranteed-outcome claims</div></div></div>
+    <section class="section" id="modes"><div class="shell"><span class="eyebrow reveal">One product, two jobs</span><div class="split-head"><h2 class="reveal">Practice before it matters.<br /><span class="accent">Stay grounded when it does.</span></h2><p class="lead reveal">Keep preparation and live assistance distinct, so you always know what MockMate is doing for you.</p></div><div class="mode-grid"><article class="mode-card reveal"><div class="mode-icon">S</div><h3>Solo Practice</h3><p class="muted">Rehearse the interview, including the follow-up that usually exposes weak stories.</p><ul class="checklist"><li>Role- and context-calibrated questions</li><li>Realistic follow-ups</li><li>Resume-aware practice</li><li>Feedback based on what you actually said</li><li>Repeat weak areas until the story is yours</li></ul><div class="mode-demo">“What did you try next?” → practice the second question, not just the polished opener.</div></article><article class="mode-card reveal"><div class="mode-icon">L</div><h3>Live Companion</h3><p class="muted">Keep a compact, glance-first helper beside your interview instead of bouncing between tools.</p><ul class="checklist"><li>Real-time transcription flow</li><li>Resume + JD + selected-doc grounding</li><li>Coding and system-design support</li><li>Screen-question analysis with F7</li><li>Camera-anchored teleprompter mode</li></ul><div class="mode-demo">Use concise openers + bullets as support. Always follow interviewer/employer policy and represent your own experience truthfully.</div></article></div></div></section>
+    <section class="section" id="grounding"><div class="shell grounding"><div class="source-stack reveal"><div class="source"><span>📄</span><b>Resume</b><span>READY ✓</span></div><div class="source"><span>🎯</span><b>Job description</b><span>READY ✓</span></div><div class="source"><span>🗂</span><b>Selected documents</b><span>READY ✓</span></div><div class="source"><span>🧭</span><b>Interview playbook</b><span>READY ✓</span></div><div class="source"><span>💬</span><b>Current conversation</b><span>READY ✓</span></div></div><div class="grounding-copy"><span class="eyebrow reveal">Your strongest differentiator</span><h2 class="reveal">Answers that know <span class="accent">your story.</span></h2><p class="lead reveal">Generic AI knows the question. MockMate can also use the experience, role, documents, playbook, and current conversation behind your answer.</p><p class="muted reveal">The goal is not to invent a better candidate. It is to surface the strongest truthful version of the candidate you already are.</p></div></div></section>
+    <section class="section" id="coding"><div class="shell"><div class="coding-panel reveal"><div class="coding-copy"><span class="eyebrow">Coding + screen questions</span><h2>Technical interviews without the tool shuffle.</h2><p class="lead">Use the same workflow for coding prompts, screenshots, system-design diagrams, and follow-up explanations.</p><ul class="checklist"><li>Approach before implementation</li><li>Code + complexity + edge cases</li><li>F7 screen capture with display memory</li><li>Compact All / Code / Steps view</li></ul></div><div class="code-ui"><div class="code-tabs"><span class="code-tab active">All</span><span class="code-tab">Code</span><span class="code-tab">Steps</span></div><div class="code-q">Implement an LRU cache with O(1) get and put.</div><div class="code-line"><span class="cm">// Approach: HashMap + doubly linked list</span></div><div class="code-line"><span class="kw">class</span> LRUCache {</div><div class="code-line">&nbsp;&nbsp;<span class="fn">get</span>(key) { <span class="cm">// move node to MRU</span> }</div><div class="code-line">&nbsp;&nbsp;<span class="fn">put</span>(key, value) { <span class="cm">// evict LRU when full</span> }</div><div class="code-line">}</div><br /><div class="code-line"><span class="cm">Time:</span> O(1) get / put</div><div class="code-line"><span class="cm">Space:</span> O(capacity)</div></div></div></div></section>
+    <section class="section" id="privacy"><div class="shell"><span class="eyebrow reveal">Trust, without magical claims</span><div class="split-head"><h2 class="reveal">Designed for a discreet desktop workflow.</h2><p class="lead reveal">MockMate documents what it can protect, what still leaves your device, and what you must verify yourself.</p></div><div class="privacy-grid"><article class="info-card reveal"><div class="info-icon">🛡</div><h3>Content protection</h3><p>On supported Windows and macOS environments, the overlay can use OS-level content protection for common capture paths. Always verify the actual Zoom, Meet, or Teams share preview before relying on it.</p></article><article class="info-card reveal"><div class="info-icon">☁</div><h3>Managed AI</h3><p>Where managed services are enabled, sign in and use MockMate-hosted quotas. Managed transcription is quota-gated before provider spend.</p></article><article class="info-card reveal"><div class="info-icon">🔑</div><h3>Bring your own key</h3><p>Supported provider credentials stay on your device. Relevant prompts, audio, screenshots, or other inputs may still be sent to the AI/transcription providers you choose.</p></article></div><div class="caution reveal"><strong>Linux note:</strong> overlay content protection is not supported on Linux. Do not assume the overlay is hidden in screen sharing.</div></div></section>
+    <section class="section" id="demo"><div class="shell demo-grid"><div class="demo-copy"><span class="eyebrow reveal">See the idea in motion</span><h2 class="reveal">Practice the follow-up, too.</h2><p class="lead reveal">The first answer gets rehearsed. The follow-up is where the story usually gets tested. This short explainer shows the preparation loop.</p><p class="muted reveal">Campaign imagery is illustrative, not a customer testimonial. Product UI claims should be verified against the current build.</p></div><div class="demo-frame reveal"><video controls preload="metadata" poster="/icon.png" aria-label="MockMate promotional explainer"><source src="https://raw.githubusercontent.com/vsv2014/MockMate/main/marketing/mockmate-promotional-video.mp4" type="video/mp4" />Your browser cannot play the explainer video.</video></div></div></section>
+    <section class="section" id="more"><div class="shell"><span class="eyebrow reveal">More with MockMate</span><div class="split-head"><h2 class="reveal">A broader toolkit, without crowding the core story.</h2><p class="lead reveal">These tools support the interview journey but stay below Solo + Live in the product hierarchy.</p></div><div class="more-grid"><div class="mini-card reveal"><span>📄</span><b>Resume Studio</b><p>Improve and tailor truthful resume content.</p></div><div class="mini-card reveal"><span>🎯</span><b>Job Matching</b><p>Compare roles against your actual background.</p></div><div class="mini-card reveal"><span>🧠</span><b>Skills</b><p>Surface strengths and weak areas from practice.</p></div><div class="mini-card reveal"><span>🧭</span><b>Playbooks</b><p>Save interview rules and role-specific guidance.</p></div><div class="mini-card reveal"><span>👥</span><b>Duo</b><p>Paired practice and collaborative preparation.</p></div></div></div></section>
+    <section class="section" id="faq"><div class="shell faq"><div><span class="eyebrow reveal">FAQ</span><h2 class="reveal" style="margin-top:12px">The questions people should ask before downloading.</h2></div><div class="faq-list reveal"><details open><summary>Do I need an API key?</summary><p>Not always. MockMate supports managed services where they are enabled, and it also supports bring-your-own-key mode for supported providers. Availability and quotas depend on the deployed environment and plan.</p></details><details><summary>Does MockMate guarantee the overlay is hidden from screen sharing?</summary><p>No. On supported Windows and macOS environments, OS-level content protection can exclude the overlay from common capture paths. Always check the actual meeting-app share preview first. Linux does not support this protection.</p></details><details><summary>What happens to my data in BYOK mode?</summary><p>Your supported provider credentials are stored locally by the application. Relevant prompts, audio, screenshots, or other inputs can still be sent to the AI/transcription providers you configure. MockMate should not be described as fully offline or zero-data-sharing.</p></details><details><summary>Which desktop download should I use?</summary><p>The current automated public v1.5.2 release artifact is Windows NSIS. macOS and Linux runtime/packaging support remains in the repository; check the Releases page for the actual artifacts available for your platform.</p></details><details><summary>Can MockMate invent achievements for my resume or interview answers?</summary><p>It should not. Resume and interview workflows are intended to ground suggestions in your supplied experience and context. You are responsible for keeping every claim truthful and for following interviewer/employer policy.</p></details><details><summary>Does MockMate work for coding interviews?</summary><p>Yes. The desktop workflow includes coding assistance, complexity and edge-case guidance, and F7 screen-question analysis. Exact provider/model capabilities depend on your configured setup.</p></details></div></div></section>
+    <section class="section" style="padding-top:40px"><div class="shell final-cta"><span class="eyebrow reveal">Ready when you are</span><h2 class="reveal">Make the next answer sound more like you—just sharper.</h2><p class="reveal">Practice realistic follow-ups, keep your context close, and use the same interview-specific workflow when the real conversation starts.</p><div class="hero-actions reveal" style="justify-content:center"><a class="btn btn-primary" id="cta-download" href="https://github.com/vsv2014/MockMate/releases/latest" target="_blank" rel="noopener">↓ Download for Windows</a><button class="btn btn-secondary" id="cta-signin" type="button">Sign in</button></div></div></section>
+  </main>
+  <footer><div class="shell footer-inner"><span>© 2026 MockMate</span><span>Interview preparation + live companion</span><span><a href="https://github.com/vsv2014/MockMate" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/vsv2014/MockMate/issues" target="_blank" rel="noopener">Report issue</a></span></div></footer>
+  <div class="mobile-cta"><a class="btn btn-primary" id="mobile-download" href="https://github.com/vsv2014/MockMate/releases/latest" target="_blank" rel="noopener">↓ Download for Windows</a></div>
+  <div class="au-overlay" id="au-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-title"><div class="au-card"><button class="au-close" id="au-close" type="button" aria-label="Close sign in dialog">×</button><div id="au-login"><h3 class="au-title" id="auth-title">Sign in to MockMate</h3><label class="au-label" for="li-email">Email</label><input class="au-input" id="li-email" type="email" autocomplete="email" /><label class="au-label" for="li-pass">Password</label><input class="au-input" id="li-pass" type="password" autocomplete="current-password" /><div class="au-error" id="li-error" role="status" aria-live="polite"></div><button class="au-btn" id="li-submit" type="button">Sign in</button><div style="text-align:center;margin-top:12px"><button class="au-link" id="li-forgot" type="button">Forgot password?</button></div><div class="au-switch">Don't have an account? <button class="au-link" id="to-signup" type="button">Sign up</button></div></div><div id="au-signup" style="display:none"><h3 class="au-title">Create your account</h3><label class="au-label" for="su-name">Full name</label><input class="au-input" id="su-name" type="text" autocomplete="name" /><label class="au-label" for="su-email">Email</label><input class="au-input" id="su-email" type="email" autocomplete="email" /><label class="au-label" for="su-pass">Password</label><input class="au-input" id="su-pass" type="password" minlength="8" autocomplete="new-password" /><div class="au-error" id="su-error" role="status" aria-live="polite"></div><div class="au-success" id="su-success" role="status" aria-live="polite"></div><button class="au-btn" id="su-submit" type="button">Create account</button><div class="au-switch">Already have an account? <button class="au-link" id="to-login" type="button">Sign in</button></div></div></div></div>
+  <script src="/auth-web.js"></script>
+  <script>
+    (function () {
+      var $=function(id){return document.getElementById(id)},nav=$('nav'),themeColor=document.querySelector('meta[name="theme-color"]'),reduceMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      function syncThemeMeta(){var dark=document.documentElement.getAttribute('data-theme')==='dark';if(themeColor)themeColor.setAttribute('content',dark?'#07110f':'#f3f7f5')}
+      syncThemeMeta();$('theme-toggle').addEventListener('click',function(){var dark=document.documentElement.getAttribute('data-theme')==='dark';if(dark)document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme','dark');try{localStorage.setItem('mm-theme',dark?'light':'dark')}catch(e){}syncThemeMeta()})
+      function navScroll(){nav.classList.toggle('scrolled',window.scrollY>8)}navScroll();window.addEventListener('scroll',navScroll,{passive:true})
+      var reveals=document.querySelectorAll('.reveal');if(reduceMotion||!('IntersectionObserver'in window)){reveals.forEach(function(el){el.classList.add('in')})}else{var io=new IntersectionObserver(function(entries){entries.forEach(function(entry){if(entry.isIntersecting){entry.target.classList.add('in');io.unobserve(entry.target)}})},{rootMargin:'0px 0px -7% 0px',threshold:.06});reveals.forEach(function(el){io.observe(el)})}
+      var ua=navigator.userAgent||'',isWindows=ua.indexOf('Windows')>=0,isMac=ua.indexOf('Macintosh')>=0||ua.indexOf('Mac OS')>=0,isLinux=ua.indexOf('Linux')>=0&&ua.indexOf('Android')<0,repo='https://github.com/vsv2014/MockMate',releases=repo+'/releases/latest',downloadIds=['nav-download','hero-download','cta-download','mobile-download']
+      function setDownloadLabel(text){downloadIds.forEach(function(id){var el=$(id);if(!el)return;el.href=releases;el.textContent=text})}
+      var stealthChip=$('hero-stealth-chip');if(isWindows){setDownloadLabel('↓ Download for Windows');if($('nav-download'))$('nav-download').textContent='Download for Windows →'}else if(isMac){setDownloadLabel('View macOS builds →');if(stealthChip)stealthChip.textContent='macOS: content protection can be available — verify your actual share preview'}else if(isLinux){setDownloadLabel('View Linux builds →');if(stealthChip)stealthChip.textContent='Linux: overlay content protection is not supported'}
+      if(!window.MMAuth)return
+      var api=MMAuth.api,token=MMAuth.token,setToken=MMAuth.setToken,clearToken=MMAuth.clearToken,overlay=$('au-overlay'),lastFocus=null
+      function openAuth(view){lastFocus=document.activeElement;$('au-login').style.display=view==='au-login'?'block':'none';$('au-signup').style.display=view==='au-signup'?'block':'none';overlay.style.display='flex';var first=view==='au-signup'?$('su-name'):$('li-email');if(first)setTimeout(function(){first.focus()},0)}
+      function closeAuth(){overlay.style.display='none';if(lastFocus&&lastFocus.focus)lastFocus.focus()}
+      function clearErrors(){$('li-error').textContent='';$('su-error').textContent='';$('su-success').textContent=''}
+      overlay.addEventListener('click',function(e){if(e.target===overlay)closeAuth()});$('au-close').addEventListener('click',closeAuth);document.addEventListener('keydown',function(e){if(e.key==='Escape'&&overlay.style.display==='flex')closeAuth()});$('to-signup').addEventListener('click',function(){clearErrors();openAuth('au-signup')});$('to-login').addEventListener('click',function(){clearErrors();openAuth('au-login')});$('nav-signin').addEventListener('click',function(){clearErrors();openAuth('au-login')});$('cta-signin').addEventListener('click',function(){clearErrors();openAuth('au-login')})
+      function renderLoggedOut(){$('nav-signin').style.display='';$('nav-user').style.display='none'}
+      function renderLoggedIn(me){var u=(me&&me.user)||{},plan=(me&&me.plan)||u.plan||'free';$('nav-signin').style.display='none';$('nav-user').style.display='';$('nav-avatar').textContent=MMAuth.initials(u.name,u.email);$('nav-name').textContent=(u.name||u.email||'').split(' ')[0];$('nav-plan').textContent=MMAuth.planLabel(plan)}
+      MMAuth.setUnauthorizedHandler(renderLoggedOut)
+      $('nav-user-btn').addEventListener('click',function(e){e.stopPropagation();var menu=$('nav-menu'),open=menu.style.display==='block';menu.style.display=open?'none':'block';$('nav-user-btn').setAttribute('aria-expanded',open?'false':'true')});document.addEventListener('click',function(){$('nav-menu').style.display='none';$('nav-user-btn').setAttribute('aria-expanded','false')});$('menu-account').addEventListener('click',function(){location.href='/dashboard.html'});$('menu-signout').addEventListener('click',function(){clearToken();location.reload()})
+      $('li-submit').addEventListener('click',async function(){clearErrors();var email=$('li-email').value.trim(),password=$('li-pass').value;if(!email||!password){$('li-error').textContent='Enter your email and password.';return}try{var r=await api('/auth/login',{method:'POST',body:{email:email,password:password}});if(!r||!r.token)throw new Error('Login did not return a session token');setToken(r.token);closeAuth();renderLoggedIn(await api('/auth/me',{auth:true}))}catch(e){$('li-error').textContent=e.network?'Can’t reach the server.':(e.message||'Could not sign in.')}})
+      $('li-forgot').addEventListener('click',async function(){var email=$('li-email').value.trim();if(!email){$('li-error').textContent='Enter your email first.';return}try{await api('/auth/forgot-password',{method:'POST',body:{email:email}})}catch(e){}$('li-error').textContent='If an account exists for that email, a reset link is on its way.'})
+      $('su-submit').addEventListener('click',async function(){clearErrors();var name=$('su-name').value.trim(),email=$('su-email').value.trim(),password=$('su-pass').value;if(!name||!email||!password){$('su-error').textContent='Please fill in all fields.';return}if(password.length<8){$('su-error').textContent='Password must be at least 8 characters.';return}try{var r=await api('/auth/signup',{method:'POST',body:{name:name,email:email,password:password}});if(r&&r.verificationRequired){$('su-success').textContent='Account created. Check your email to verify it before signing in.';$('su-submit').disabled=true;$('su-submit').textContent='Verification email sent';return}if(!r||!r.token)throw new Error('Signup did not return a session token');setToken(r.token);closeAuth();renderLoggedIn(await api('/auth/me',{auth:true}))}catch(e){$('su-error').textContent=e.network?'Can’t reach the server.':(e.status===409?'Email already registered. Sign in instead.':(e.message||'Could not create account.'))}})
+      ;['li-email','li-pass'].forEach(function(id){$(id).addEventListener('keydown',function(e){if(e.key==='Enter')$('li-submit').click()})});['su-name','su-email','su-pass'].forEach(function(id){$(id).addEventListener('keydown',function(e){if(e.key==='Enter')$('su-submit').click()})});(async function(){if(!token()){renderLoggedOut();return}try{renderLoggedIn(await api('/auth/me',{auth:true}))}catch(e){renderLoggedOut()}})()
+    })()
+  </script>
+</body>
+</html>
