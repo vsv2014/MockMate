@@ -2,7 +2,8 @@
 set -euo pipefail
 
 MODE="${1:-solo}"
-mkdir -p marketing/rendered
+OUT_DIR="artifacts/marketing"
+mkdir -p "$OUT_DIR"
 TMP_VOICE=""
 cleanup() {
   if [[ -n "$TMP_VOICE" && -f "$TMP_VOICE" ]]; then rm -f "$TMP_VOICE"; fi
@@ -11,17 +12,17 @@ trap cleanup EXIT
 
 case "$MODE" in
   solo)
-    CARD="marketing/card-solo-practice.png"
-    VOICE="marketing/voiceover-solo.mp3"
-    SRT="marketing/captions-solo.srt"
+    CARD="public/media/card-solo-practice.png"
+    VOICE="public/media/mockmate-voiceover.mp3"
+    SRT="public/media/mockmate-video-captions.srt"
     ;;
   live)
-    CARD="marketing/card-live-mode.png"
-    SCRIPT_TEXT="marketing/voiceover-live.txt"
-    SRT="marketing/captions-live.srt"
+    CARD="public/media/card-live-mode.png"
+    SCRIPT_TEXT="public/media/live-voiceover.txt"
+    SRT="public/media/live-captions.srt"
     command -v espeak >/dev/null || { echo "espeak is required for Live narration" >&2; exit 1; }
     [[ -f "$SCRIPT_TEXT" ]] || { echo "missing input: $SCRIPT_TEXT" >&2; exit 1; }
-    TMP_VOICE="marketing/rendered/.voiceover-live.wav"
+    TMP_VOICE="$OUT_DIR/.voiceover-live.wav"
     espeak -v en-us -s 155 -f "$SCRIPT_TEXT" -w "$TMP_VOICE"
     VOICE="$TMP_VOICE"
     ;;
@@ -37,7 +38,7 @@ done
 
 command -v ffmpeg >/dev/null || { echo "ffmpeg is required" >&2; exit 1; }
 command -v ffprobe >/dev/null || { echo "ffprobe is required" >&2; exit 1; }
-OUT="marketing/rendered/mockmate-${MODE}.mp4"
+OUT="$OUT_DIR/mockmate-${MODE}.mp4"
 
 DURATION="$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$VOICE")"
 FRAMES="$(python3 - <<PY
@@ -46,8 +47,6 @@ print(max(1, math.ceil(float('${DURATION:-10}') * 30)))
 PY
 )"
 
-# Keep filenames/path inputs simple; if future inputs contain ':' or quote characters,
-# escape them for ffmpeg's subtitles filter before passing them here.
 ffmpeg -y \
   -loop 1 -i "$CARD" \
   -i "$VOICE" \
