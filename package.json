@@ -36,7 +36,8 @@
     "mobile:ios": "npm --prefix mobile run ios",
     "mobile:verify": "npm --prefix mobile run typecheck && npm --prefix mobile test",
     "verify:vitest5": "node scripts/verify-vitest5.mjs",
-    "verify:dev-tooling": "node scripts/verify-dev-tooling.mjs"
+    "verify:dev-tooling": "node scripts/verify-dev-tooling.mjs",
+    "verify:auth-config": "node scripts/verify-auth-config-majors.mjs"
   },
   "build": {
     "appId": "com.mockmate.app",
@@ -158,9 +159,9 @@
     "@livekit/components-styles": "^1.1.6",
     "@sentry/electron": "^7.20.0",
     "@sentry/node": "^10.76.0",
-    "bcryptjs": "^2.4.3",
+    "bcryptjs": "3.0.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
+    "dotenv": "18.0.5",
     "electron-updater": "6.8.10",
     "express": "^4.22.3",
     "express-rate-limit": "^8.7.0",
