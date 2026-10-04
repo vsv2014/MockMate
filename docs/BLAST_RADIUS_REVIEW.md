@@ -8,8 +8,15 @@
   BR-1's regression test to derive from production modules.
 - Reviewer re-review of `98b14fc` raised BR-12 (email-verification signup contract),
   BR-13 (managed STT quota enforcement) and BR-14 (PiP capture-protection confirmation);
-  **all three fixed in `def4f02`**, together with the missing `verify.html` page and
-  the fail-fast hosted-config guard.
+  all three fixed in `def4f02`, together with the missing `verify.html` page and the
+  fail-fast hosted-config guard.
+- Reviewer re-audit of `1a6adbe` found BR-13's lease accounting was not atomic
+  (concurrent overrun + swallowed usage-write errors) and that the new test harness
+  broke Node HTTP teardown in CI; **both fixed in the commit this revision ships
+  with** — atomic `reserveSttUsage`/`releaseSttUsage` mirroring the LLM
+  reserve/release pattern, lease reserved BEFORE minting and released on mint
+  failure, and the fabricated-request test helpers replaced with real ephemeral
+  HTTP servers.
 - PR snapshot at last revision: 38 commits, 115+ files, +7,212/−1,593 and growing.
 
 **Method:** enumerate every changed surface → map dependents (fan-in) → check deleted-file
@@ -78,7 +85,7 @@ test coverage of changed code. Findings are rated by how far a failure would tra
 | BR-10 | `.env.example` instructed maintainers to embed provider secrets into installers (stale, dangerous) | P2 security/docs | ✅ Fixed — guidance deleted, explicit prohibition added |
 | BR-11 | **Stale in-flight indexing race**: `removeDoc`/replace/purge deleted the persisted entry, but an `indexOne()` task already awaiting `/api/embed` later re-persisted the deleted private text | **P1 privacy (merge blocker)** | ✅ Fixed in `99fbb34` — per-doc generation counter + per-task AbortController (cancels the embed request) + post-embed re-validation of generation and document existence/signature before persisting. Regression tests cover delete-before-resolve and replace-before-resolve |
 | BR-12 | **Hosted email-verification signup broken**: with `REQUIRE_EMAIL_VERIFICATION=1` the backend returns `{verificationRequired, user}` with **no token**, but desktop/mobile assumed a token and proceeded into session loading; `verify.html` did not exist; hosted mode never required delivery prerequisites | **P1 auth (merge blocker)** | ✅ Fixed — explicit response union in desktop (`signup()` branches, never stores a token on the verification branch, new Check-your-email view + resend) and mobile (`SignupResult` union, `saveAuth` only with a real token); backend contract tests for both branches; `public/verify.html` added; hosted boot **refuses to start** with verification enabled unless `RESEND_API_KEY` + HTTPS `VERIFY_URL_BASE` are configured |
-| BR-13 | **Managed STT plan limits advertised but not enforced**: `/api/deepgram-token` used auth-only guarding; streaming audio bypasses the backend, so free-tier `sttSeconds` was effectively unlimited (provider-cost/abuse exposure) | **P1 billing (merge blocker)** | ✅ Fixed — `checkSttQuota` middleware (fail-closed, local parity with `checkCap`) now guards `/api/deepgram-token` and `/transcribe` pre-Deepgram; each issued grant **reserves its lifetime (lease, capped 300s)** against the monthly allowance so renewals are denied at the limit; 402 surfaces as a permanent (non-retrying) token failure with a quota message; tests for denial, pass-through, reservation, fallback non-billing |
+| BR-13 | **Managed STT plan limits advertised but not enforced**: `/api/deepgram-token` used auth-only guarding; streaming audio bypasses the backend, so free-tier `sttSeconds` was effectively unlimited (provider-cost/abuse exposure). Round-6 follow-up: the first lease implementation was a read-only check plus a swallowed usage write — concurrent requests could overrun and a write failure could hand out an unmetered grant | **P1 billing (merge blocker)** | ✅ Fixed — the lease is now **reserved atomically before the grant is minted**: `store.reserveSttUsage(userId, period, limit, 300)` is one conditional Mongo update (`sttSeconds ≤ limit−300` ⇒ `$inc`), mirrored in the file store with rollback-on-persist-failure; `reserveSttLease` middleware (fail-closed, local parity with `checkCap`) runs before minting, and the route **releases the lease if minting fails**; `/transcribe` keeps the read-only gate + actual-duration accounting; 402 surfaces as a permanent (non-retrying) token failure with a quota message; tests cover denial, reserve-before-mint ordering, release-on-failure, no-release-on-success |
 | BR-14 | **PiP capture-protection confirmation could target the wrong window**: `bootstrap.cjs`'s hardened `ipcMain.handle` wrapper intercepted `exclude-from-capture` before `main.cjs`'s PiP-aware handler could register, so the confirmation protected the *sender* window while the UI claimed the PiP was protected | **P1/P2 capture protection** | ✅ Fixed — the hardened handler now implements the focused-window-first policy itself and returns both the protected window id and the sender id; the dead `main.cjs` handler is removed; LiveCompanion only confirms PiP protection when the protected window is not the opener, otherwise it shows the honest warning banner |
 
 ## 4. Watchlist (not blockers)
@@ -89,7 +96,7 @@ test coverage of changed code. Findings are rated by how far a failure would tra
 | BR-W2 | `src/lib/productIntelligence.js`, `src/lib/windowDrag.js` lack direct tests | logic lives in tested `shared/` modules; collectors are thin glue | before adding non-trivial collector logic |
 | BR-W3 | RAG vectors serialized as JSON in localStorage — workable, not ideal | byte budget + re-embed fallback + stale-index guard keep correctness and privacy | storage pressure → IndexedDB |
 | BR-W4 | Unit-based metering is user-visible behavior change | intended hardening, tested | announce in support copy |
-| BR-W5 | STT lease accounting bills in ≤5-minute grant increments (a user who requests a grant and never streams still spends up to one grant's seconds) | conservative by design; bound is one grant per request; tests pin the cap | per-second client usage reporting if complaints appear |
+| BR-W5 | STT lease accounting bills in ≤5-minute grant increments (a user who requests a grant and never streams still spends up to one grant's seconds; failed mints release their lease) | conservative by design; atomic reservation makes the ≤300s overrun bound a guarantee, not an aspiration | per-second client usage reporting if complaints appear |
 
 ## 5. Bottom line
 

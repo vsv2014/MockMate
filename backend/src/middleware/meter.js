@@ -7,13 +7,10 @@ import { effectivePlan, limitFor, measureInputChars, estimateLlmUnits } from '..
 export { measureInputChars, estimateLlmUnits }
 
 /**
- * STT quota guard (round-5 review P1): managed streaming STT hands the browser a
- * Deepgram grant and the audio bypasses the backend, so streaming seconds are
- * accounted via lease reservations at grant time (see onSttGrant wiring in
- * server.js) plus actual-duration accounting in /transcribe. This middleware
- * enforces the plan's sttSeconds limit before either path spends provider money.
- * Fail-closed like checkCap; skipped for local device-local accounts (parity
- * with checkCap, which does not meter when MONGO_URI is unset).
+ * Read-only STT gate for the upload path (/transcribe): rejects once the monthly
+ * allowance is exhausted; the ACTUAL duration is still accounted after
+ * transcription. The streaming-grant path uses reserveSttLease below instead.
+ * Fail-closed like checkCap; skipped when MONGO_URI is unset (local parity).
  */
 export async function checkSttQuota(req, res, next) {
   if (!process.env.MONGO_URI) { req._sttRemainingSeconds = Infinity; return next() }
@@ -36,6 +33,42 @@ export async function checkSttQuota(req, res, next) {
     next()
   } catch (e) {
     console.error('[meter] checkSttQuota failed (blocking):', e.message)
+    return res.status(503).json({ error: 'Usage metering is temporarily unavailable. Try again in a moment.', code: 'metering_unavailable' })
+  }
+}
+
+/** Lease size reserved per streaming grant — matches the Deepgram grant TTL. */
+export const STT_GRANT_LEASE_SECONDS = 300
+
+/**
+ * STT lease reservation (round-6 review): replaces the read-only remaining-check
+ * for the streaming-grant path. The lease is reserved ATOMICALLY (one conditional
+ * update in Mongo; see store.reserveSttUsage) BEFORE the route mints the Deepgram
+ * grant, so concurrent requests cannot all pass the same remaining-check and
+ * overrun the allowance, and no grant can ever be returned unmetered. If minting
+ * fails the route releases the lease via opts.onSttRelease. Skipped for local
+ * device-local accounts (parity with checkCap); fail-closed like checkCap.
+ */
+export async function reserveSttLease(req, res, next) {
+  if (!process.env.MONGO_URI) { req._sttLeaseSeconds = 0; return next() }
+  try {
+    const user = await store().findUserById(req.userId)
+    if (!user) return res.status(401).json({ error: 'Your session expired. Please sign in again.', code: 'unauthorized' })
+    const plan = effectivePlan(user)
+    const period = currentPeriod()
+    const limit = limitFor(plan).sttSeconds
+    const reserved = await store().reserveSttUsage(req.userId, period, limit, STT_GRANT_LEASE_SECONDS)
+    if (!reserved) {
+      return res.status(402).json({
+        error: 'You’ve used this month’s voice-transcription allowance. It resets next billing period, or upgrade for more.',
+        code: 'stt_quota_exhausted',
+        period,
+      })
+    }
+    req._sttLeaseSeconds = STT_GRANT_LEASE_SECONDS
+    next()
+  } catch (e) {
+    console.error('[meter] reserveSttLease failed (blocking):', e.message)
     return res.status(503).json({ error: 'Usage metering is temporarily unavailable. Try again in a moment.', code: 'metering_unavailable' })
   }
 }

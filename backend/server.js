@@ -11,7 +11,7 @@ import { initStore, storeMode, storeReady, closeStore, store, currentPeriod } fr
 import authRoutes from './src/routes/auth.js'
 import meRoutes from './src/routes/me.js'
 import { requireAuth } from './src/middleware/auth.js'
-import { checkCap, checkSttQuota, recordLlm, releaseLlm, enforceManagedModelPolicy } from './src/middleware/meter.js'
+import { checkCap, reserveSttLease, recordLlm, releaseLlm, enforceManagedModelPolicy } from './src/middleware/meter.js'
 import { registerApiRoutes } from '../api/_lib/apiRoutes.js'
 import billingRoutes, { stripeWebhook } from './src/routes/billing.js'
 import { assertHostedConfig, envFlag, isPublicBind, parseCorsOrigins } from './src/hostedConfig.js'
@@ -110,11 +110,14 @@ app.use('/billing', billingRoutes)
 registerApiRoutes(app, {
   auth: [requireAuth, checkCap, enforceManagedModelPolicy],
   authLight: [requireAuth],
-  // Managed STT quota enforcement (round-5 review P1): streaming grants are denied
-  // once the plan's monthly sttSeconds allowance is exhausted, and each issued
-  // grant reserves its lifetime against that allowance (lease accounting).
-  sttGuard: [checkSttQuota],
-  onSttGrant: (req, seconds) => store().addUsage(req.userId, currentPeriod(), { sttSeconds: seconds }),
+  // Managed STT quota enforcement (round-5/6 review): the streaming lease is
+  // reserved ATOMICALLY before the Deepgram grant is minted (no concurrent overrun,
+  // no unmetered grants), and released again if minting fails. /transcribe keeps
+  // the read-only pre-check plus actual-duration accounting.
+  sttGuard: [reserveSttLease],
+  onSttRelease: req => (req._sttLeaseSeconds
+    ? store().releaseSttUsage(req.userId, currentPeriod(), req._sttLeaseSeconds)
+    : Promise.resolve()),
   onLlm: recordLlm,
   onLlmFailure: releaseLlm,
   reasoningPolicy,

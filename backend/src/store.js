@@ -125,6 +125,26 @@ function makeFileBackend() {
       try { await persist() } catch {}
       return true
     },
+    // STT mirrors the LLM reserve/release pattern (round-6 review): streaming grants
+    // must be atomically reserved BEFORE the Deepgram grant is returned, otherwise
+    // concurrent requests can all pass a read-only remaining-check and overrun the
+    // allowance, and a usage-write failure would hand out an unmetered grant.
+    async reserveSttUsage(userId, period, limit, seconds = 0) {
+      const delta = Math.max(1, Math.floor(Number(seconds) || 0))
+      let r = db.usage.find(x => String(x.userId) === String(userId) && x.period === period)
+      if (!r) { r = { userId: String(userId), period, llmCalls: 0, sttSeconds: 0 }; db.usage.push(r) }
+      if (Number.isFinite(limit) && r.sttSeconds + delta > limit) return false
+      r.sttSeconds += delta
+      try { await persist(); return true } catch { r.sttSeconds = Math.max(0, r.sttSeconds - delta); return false }
+    },
+    async releaseSttUsage(userId, period, seconds = 0) {
+      const delta = Math.max(1, Math.floor(Number(seconds) || 0))
+      const r = db.usage.find(x => String(x.userId) === String(userId) && x.period === period)
+      if (!r) return true
+      r.sttSeconds = Math.max(0, r.sttSeconds - delta)
+      try { await persist() } catch {}
+      return true
+    },
   }
 }
 
@@ -183,6 +203,20 @@ async function makeMongoBackend() {
     async releaseLlmUsage(userId, period, units = 1) {
       const delta = Math.max(1, Number(units) || 1)
       await Usage.updateOne({ userId, period, llmCalls: { $gt: 0 } }, { $inc: { llmCalls: -delta } })
+      return true
+    },
+    // Atomic capped reservation (round-6 review): ONE conditional update — the $lte
+    // predicate means concurrent grants cannot both pass; exactly one increments.
+    async reserveSttUsage(userId, period, limit, seconds = 0) {
+      const delta = Math.max(1, Math.floor(Number(seconds) || 0))
+      try { await Usage.updateOne({ userId, period }, { $setOnInsert: { llmCalls: 0, sttSeconds: 0 } }, { upsert: true }) }
+      catch (e) { if (e?.code !== 11000) throw e }
+      const reserved = await Usage.findOneAndUpdate({ userId, period, sttSeconds: { $lte: limit - delta } }, { $inc: { sttSeconds: delta } }, { new: true })
+      return !!reserved
+    },
+    async releaseSttUsage(userId, period, seconds = 0) {
+      const delta = Math.max(1, Math.floor(Number(seconds) || 0))
+      await Usage.updateOne({ userId, period, sttSeconds: { $gt: 0 } }, { $inc: { sttSeconds: -delta } })
       return true
     },
   }

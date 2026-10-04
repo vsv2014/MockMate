@@ -164,6 +164,84 @@ describe('checkSttQuota (round-5 P1: managed STT allowance enforcement)', () => 
   })
 })
 
+describe('reserveSttLease (round-6: atomic lease before grant minting)', () => {
+  const prev = process.env.MONGO_URI
+  beforeEach(() => {
+    vi.resetModules()
+    vi.doMock('../plans.js', async importOriginal => importOriginal())
+  })
+  afterEach(() => {
+    if (prev === undefined) delete process.env.MONGO_URI
+    else process.env.MONGO_URI = prev
+    vi.restoreAllMocks()
+  })
+
+  it('skips reservation for local device-local accounts (no MONGO_URI)', async () => {
+    delete process.env.MONGO_URI
+    const { reserveSttLease } = await import('./meter.js')
+    const req = { userId: 'u1' }
+    let nextCalled = false
+    await reserveSttLease(req, {}, () => { nextCalled = true })
+    expect(nextCalled).toBe(true)
+    expect(req._sttLeaseSeconds).toBe(0)
+  })
+
+  it('returns 402 when the atomic reservation is rejected (allowance exhausted)', async () => {
+    process.env.MONGO_URI = 'mongodb://test'
+    const reserveCalls = []
+    vi.doMock('../store.js', () => ({
+      currentPeriod: () => '2026-10',
+      store: () => ({
+        findUserById: async () => ({ plan: 'free' }),
+        reserveSttUsage: async (userId, period, limit, seconds) => {
+          reserveCalls.push({ userId, period, limit, seconds })
+          return false // atomic conditional update found no room
+        },
+      }),
+    }))
+    const { reserveSttLease, STT_GRANT_LEASE_SECONDS } = await import('./meter.js')
+    const res = { statusCode: 0, body: null, status(c) { this.statusCode = c; return this }, json(b) { this.body = b; return this } }
+    let nextCalled = false
+    await reserveSttLease({ userId: 'u1' }, res, () => { nextCalled = true })
+    expect(nextCalled).toBe(false)
+    expect(res.statusCode).toBe(402)
+    expect(res.body?.code).toBe('stt_quota_exhausted')
+    expect(reserveCalls).toEqual([{ userId: 'u1', period: '2026-10', limit: 30 * 60, seconds: STT_GRANT_LEASE_SECONDS }])
+  })
+
+  it('records the reserved lease on the request when the reservation succeeds', async () => {
+    process.env.MONGO_URI = 'mongodb://test'
+    vi.doMock('../store.js', () => ({
+      currentPeriod: () => '2026-10',
+      store: () => ({
+        findUserById: async () => ({ plan: 'free' }),
+        reserveSttUsage: async () => true,
+      }),
+    }))
+    const { reserveSttLease, STT_GRANT_LEASE_SECONDS } = await import('./meter.js')
+    const req = { userId: 'u1' }
+    let nextCalled = false
+    await reserveSttLease(req, {}, () => { nextCalled = true })
+    expect(nextCalled).toBe(true)
+    expect(req._sttLeaseSeconds).toBe(STT_GRANT_LEASE_SECONDS)
+  })
+
+  it('fails closed with 503 when the store throws (does not allow)', async () => {
+    process.env.MONGO_URI = 'mongodb://test'
+    vi.doMock('../store.js', () => ({
+      currentPeriod: () => '2026-10',
+      store: () => ({ findUserById: async () => { throw new Error('db down') } }),
+    }))
+    const { reserveSttLease } = await import('./meter.js')
+    const res = { statusCode: 0, body: null, status(c) { this.statusCode = c; return this }, json(b) { this.body = b; return this } }
+    let nextCalled = false
+    await reserveSttLease({ userId: 'u1' }, res, () => { nextCalled = true })
+    expect(nextCalled).toBe(false)
+    expect(res.statusCode).toBe(503)
+    expect(res.body?.code).toBe('metering_unavailable')
+  })
+})
+
 describe('estimateLlmUnits multi-call paths (blast-radius BR-1)', () => {
   it('grants the +1 unit bonus on real registered routes, including /api/jobs', () => {
     const big = { q: 'x'.repeat(13_000) } // 2 size units

@@ -62,11 +62,12 @@ export function applyArchReasoningPolicy(path, raw = {}, resolveReasoningPolicy 
 export function registerApiRoutes(app, opts = {}) {
   const guard = opts.auth ? [].concat(opts.auth) : []
   const guardLight = opts.authLight ? [].concat(opts.authLight) : guard
-  // STT quota enforcement is injected by the server (round-5 review P1): the
-  // Express backend supplies middleware + a lease-accounting callback; the
-  // public-disabled Vercel handlers stay unaffected by default.
+  // STT quota enforcement is injected by the server (round-5/6 review): the Express
+  // backend supplies a lease-reservation middleware (runs BEFORE this route mints
+  // the grant) and a release callback used when minting fails; the public-disabled
+  // Vercel handlers stay unaffected by default.
   const sttGuard = opts.sttGuard ? [].concat(opts.sttGuard) : []
-  const onSttGrant = typeof opts.onSttGrant === 'function' ? opts.onSttGrant : null
+  const onSttRelease = typeof opts.onSttRelease === 'function' ? opts.onSttRelease : null
   const report = typeof opts.report === 'function' ? opts.report : () => {}
   const onLlm = typeof opts.onLlm === 'function' ? opts.onLlm : null
   const onLlmFailure = typeof opts.onLlmFailure === 'function' ? opts.onLlmFailure : null
@@ -90,21 +91,19 @@ export function registerApiRoutes(app, opts = {}) {
   })
 
   app.post('/api/deepgram-token', ...guardLight, ...sttGuard, async (req, res) => {
+    // Sequence (round-6 review): authenticate → sttGuard reserves the lease
+    // ATOMICALLY → mint grant → on mint failure, release the reservation → respond.
+    // No grant can be returned unmetered, and a Deepgram outage cannot burn the
+    // user's allowance.
     try {
       const ip = req.ip || req.socket?.remoteAddress || ''
       const remoteHosted = ['1', 'true'].includes(String(process.env.MOCKMATE_HOSTED || '').toLowerCase())
       const allowApiKeyFallback = !remoteHosted && (isLoopbackAddress(ip) || !ip)
-      const grant = await deepgramToken({ allowApiKeyFallback })
-      // Lease accounting (round-5 review P1): streaming audio bypasses the backend,
-      // so reserve the grant's lifetime against the user's STT allowance at grant
-      // time. Continuous streaming renews every ~5 min ≈ real usage; the local raw-key
-      // fallback (never returned when hosted) is not billed.
-      if (onSttGrant && grant?.access_token && grant.fallback !== 'api_key') {
-        const grantSeconds = Math.max(1, Math.min(300, Number(grant.expires_in) || 300))
-        try { await onSttGrant(req, grantSeconds) } catch {}
-      }
-      res.json(grant)
-    } catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
+      res.json(await deepgramToken({ allowApiKeyFallback }))
+    } catch (e) {
+      if (onSttRelease) { try { await onSttRelease(req) } catch {} }
+      report(e); res.status(e.status || 500).json({ error: e.message })
+    }
   })
 
   app.post('/api/token', ...guardLight, async (req, res) => {
