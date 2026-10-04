@@ -20,8 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Verify ffmpeg
+        run: ffmpeg -version | head -n 1
+      - name: Ensure Live narration tool
+        if: ${{ inputs.mode == 'live' }}
+        run: command -v espeak >/dev/null || (sudo apt-get update && sudo apt-get install -y espeak)
       - name: Render
         run: bash scripts/render-promo-video.sh "${{ inputs.mode }}"
       - name: Upload rendered video
