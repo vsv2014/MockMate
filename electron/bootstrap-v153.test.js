@@ -7,9 +7,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 const gate = fs.readFileSync(path.join(root, 'electron', 'bootstrap-v153.cjs'), 'utf8')
 
-describe('v1.5.4 Windows packaged child-process guard', () => {
+describe('Windows packaged child-process guard', () => {
   it('keeps the pre-bootstrap gate and disables NSIS auto-run', () => {
-    expect(pkg.version).toBe('1.5.4')
     expect(pkg.main).toBe('electron/bootstrap-v153.cjs')
     expect(pkg.build?.nsis?.runAfterFinish).toBe(false)
   })

@@ -21,9 +21,16 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.21.0
+      - run: npm run verify:platform
       - run: npm ci
       - run: npm --prefix backend ci
+      - name: Audit dependency advisories
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --audit-level=critical
+          npm --prefix backend audit --audit-level=critical
       - run: npm test
       - run: npm run smoke:api
       - run: npm run build
@@ -42,26 +49,81 @@ jobs:
           grep -Fxq '/backend/server-entry.cjs' /tmp/mockmate-asar.txt
           grep -Fxq '/api/_lib/core.js' /tmp/mockmate-asar.txt
 
-  # Windows must validate the runtime we actually ship, not only source-level tests.
+  # Windows validates both the runtime directory and the NSIS package we actually ship.
   # The unpacked executable is launched and both local services are probed so ASAR,
   # cwd, process-spawn and packaged-path regressions fail before merge/release.
   windows-tests:
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.21.0
+      - run: npm run verify:platform
       - run: npm ci
       - run: npm --prefix backend ci
       - run: npm test
       - run: npm run smoke:api
       - run: npm run build
-      - name: Package Windows runtime directory
-        run: npx electron-builder --win --dir --publish never
+      - name: Build Windows validation installer
+        run: npx electron-builder --win --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
       - name: Smoke packaged Windows runtime
         shell: pwsh
         run: ./scripts/windows-packaged-smoke.ps1
+      - name: Verify Windows validation artifacts and record baselines
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem release -Filter *.exe | Select-Object -First 1
+          $yml = Get-ChildItem release -Filter latest.yml | Select-Object -First 1
+          $blockmap = Get-ChildItem release -Filter *.blockmap | Select-Object -First 1
+          $asar = Get-Item release/win-unpacked/resources/app.asar
+          if (-not $exe) { throw 'Windows validation installer missing' }
+          if (-not $yml) { throw 'Windows validation latest.yml missing' }
+          if (-not $blockmap) { throw 'Windows validation blockmap missing' }
+          if (-not $asar) { throw 'Windows packaged app.asar missing' }
+
+          $latestText = Get-Content $yml.FullName -Raw
+          $releaseSha512 = if ($latestText -match '(?m)^sha512:\s*(\S+)') { $Matches[1] } else { '' }
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          $lock = Get-Content package-lock.json -Raw | ConvertFrom-Json -AsHashtable
+          $manifest = [ordered]@{
+            appVersion = $pkg.version
+            electron = $lock['packages']['node_modules/electron']['version']
+            electronBuilder = $lock['packages']['node_modules/electron-builder']['version']
+            electronUpdater = $lock['packages']['node_modules/electron-updater']['version']
+            node = (node --version)
+            installer = [ordered]@{
+              name = $exe.Name
+              sizeBytes = $exe.Length
+              sha256 = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+              releaseSha512 = $releaseSha512
+            }
+            latestYml = [ordered]@{
+              sizeBytes = $yml.Length
+              sha256 = (Get-FileHash $yml.FullName -Algorithm SHA256).Hash.ToLower()
+            }
+            blockmap = [ordered]@{
+              name = $blockmap.Name
+              sizeBytes = $blockmap.Length
+              sha256 = (Get-FileHash $blockmap.FullName -Algorithm SHA256).Hash.ToLower()
+            }
+            asar = [ordered]@{
+              sizeBytes = $asar.Length
+              sha256 = (Get-FileHash $asar.FullName -Algorithm SHA256).Hash.ToLower()
+            }
+          }
+          $manifest | ConvertTo-Json -Depth 6 | Set-Content release/validation-baseline.json
+          Get-Content release/validation-baseline.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mockmate-windows-pr-${{ github.event.pull_request.number || github.run_number }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+            release/validation-baseline.json
+          if-no-files-found: error
+          retention-days: 7

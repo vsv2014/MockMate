@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.21.0
           cache: npm
 
       - name: Sync release version into lock metadata
@@ -70,6 +70,7 @@ jobs:
           fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n')
           NODE
 
+      - run: npm run verify:platform
       - run: npm ci
       - run: npm --prefix backend ci
 
