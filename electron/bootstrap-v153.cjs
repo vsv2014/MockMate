@@ -7,6 +7,7 @@
 // directory. app.getAppPath() points inside app.asar when packaged, and an ASAR
 // virtual path cannot be used as a Windows process working directory.
 const fs = require('fs')
+const path = require('path')
 const childProcess = require('child_process')
 const { app, dialog } = require('electron')
 
@@ -22,11 +23,12 @@ function installRealServiceForkCwd() {
     const isMockMateService = /(?:^|[\\/])server-entry\.cjs$/i.test(String(modulePath || ''))
     if (!isMockMateService) return originalFork(modulePath, args, options)
 
-    // Use userData because it is a real, writable directory outside app.asar.
-    // Neither local service relies on process.cwd(): code resolves relative to its
-    // module URL and persistent account data is already passed via MOCKMATE_DATA_DIR.
-    const cwd = app.getPath('userData')
-    try { fs.mkdirSync(cwd, { recursive: true }) } catch {}
+    // Never use app.getAppPath()/app.asar as an OS process working directory.
+    // Keep cwd separate from userData's config files so dotenv/config cannot
+    // accidentally treat a userData .env as a process-cwd environment file.
+    const cwd = path.join(app.getPath('userData'), 'runtime')
+    fs.mkdirSync(cwd, { recursive: true })
+    if (!fs.statSync(cwd).isDirectory()) throw new Error(`MockMate runtime directory is unavailable: ${cwd}`)
     return originalFork(modulePath, args, { ...(options || {}), cwd })
   }
 }
