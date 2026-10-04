@@ -1,0 +1,39 @@
+name: Refresh platform lockfile
+
+on:
+  push:
+    branches:
+      - chore/electron-44-stable
+    paths:
+      - package.json
+      - .github/workflows/refresh-platform-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: chore/electron-44-stable
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.21.0
+          cache: npm
+      - name: Regenerate lockfile from pinned stable platform dependencies
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Commit generated lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- package-lock.json; then
+            echo "package-lock.json already current"
+            exit 0
+          fi
+          git add package-lock.json
+          git commit -m "chore(platform): regenerate dependency lockfile"
+          git push origin HEAD:chore/electron-44-stable
