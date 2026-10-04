@@ -37,8 +37,6 @@
     if (heroH1) heroH1.innerHTML = 'Prepare better.<br><span class="highlight">Think faster when the interview gets real.</span>';
     var heroSub = document.querySelector('.hero-sub');
     if (heroSub) heroSub.textContent = 'Practice realistic interviews before they happen, then stay grounded in live interviews with help based on your resume, job description, selected documents, playbook, and conversation.';
-    var heroDownload = document.getElementById('hero-download');
-    if (heroDownload) heroDownload.innerHTML = '↓ Download for Windows';
     var heroSecondary = document.querySelector('.hero-ctas .btn-secondary');
     if (heroSecondary) {
       heroSecondary.href = '#core-modes';
@@ -141,8 +139,6 @@
 
     var ctaP = document.querySelector('.cta-section p');
     if (ctaP) ctaP.textContent = 'Practice with your own context, then carry that context into the real interview.';
-    var cta = document.getElementById('cta-download');
-    if (cta) cta.innerHTML = '↓ Download for Windows';
 
     if (!document.querySelector('.mm-mobile-cta')) {
       var sticky = document.createElement('a');
