@@ -1,5 +1,0 @@
-And this is Live.
-
-When the real interview starts, MockMate keeps your resume, job description, selected documents, playbook, and current conversation close. It can help with follow-up questions, coding prompts, and screen questions while you stay focused on the conversation.
-
-On Windows and macOS, content protection is available, but always verify the actual Zoom, Meet, or Teams share preview before relying on it. Linux content protection is not supported.
