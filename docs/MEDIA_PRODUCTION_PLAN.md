@@ -17,13 +17,13 @@ Canonical assets:
 - `public/media/live-voiceover.txt`
 - `public/media/live-captions.srt`
 
-`marketing/` is for campaign copy and publishing notes only. Generated renders and bundles go under `artifacts/marketing/` and are not committed.
+`marketing/` is for campaign copy and publishing notes only. Generated renders and bundles go under `artifacts/marketing/` and are gitignored.
 
 The closed Arena session's original Live brand-voice MP3 did not survive the handoff. Do not substitute the Solo MP3 under a Live filename. Live rendering synthesizes deterministic narration from `public/media/live-voiceover.txt`; its captions are distinct and match the Live script. A future brand-voice recording may replace that generated narration after audio/caption QA.
 
 ## Goals
 
-- Keep one source-controlled copy of each media asset wherever possible.
+- Keep one source-controlled copy of each media asset wherever practical.
 - Keep landing media reproducible from repository assets.
 - Use truthful product language: no undetectable/guaranteed capture claims.
 - Keep Win/macOS share-preview verification and Linux content-protection limitations visible.
