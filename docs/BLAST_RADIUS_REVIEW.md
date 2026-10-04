@@ -12,11 +12,15 @@
   fail-fast hosted-config guard.
 - Reviewer re-audit of `1a6adbe` found BR-13's lease accounting was not atomic
   (concurrent overrun + swallowed usage-write errors) and that the new test harness
-  broke Node HTTP teardown in CI; **both fixed in the commit this revision ships
-  with** — atomic `reserveSttUsage`/`releaseSttUsage` mirroring the LLM
-  reserve/release pattern, lease reserved BEFORE minting and released on mint
-  failure, and the fabricated-request test helpers replaced with real ephemeral
-  HTTP servers.
+  broke Node HTTP teardown in CI; fixed in `8a2b89f` — atomic
+  `reserveSttUsage`/`releaseSttUsage` mirroring the LLM reserve/release pattern,
+  lease reserved BEFORE minting and released on mint failure, and the
+  fabricated-request test helpers replaced with real ephemeral HTTP servers.
+- Repo-owner follow-ups `b6494a9` + `b187d8a` closed the remaining upload-path gap:
+  `/transcribe` now reserves the **server-probed** media duration atomically before
+  Deepgram spend (with release/top-up settlement), covered by dedicated tests; the
+  read-only `checkSttQuota` gate was deleted as dead code in the commit shipping
+  with this revision.
 - PR snapshot at last revision: 38 commits, 115+ files, +7,212/−1,593 and growing.
 
 **Method:** enumerate every changed surface → map dependents (fan-in) → check deleted-file
@@ -85,7 +89,7 @@ test coverage of changed code. Findings are rated by how far a failure would tra
 | BR-10 | `.env.example` instructed maintainers to embed provider secrets into installers (stale, dangerous) | P2 security/docs | ✅ Fixed — guidance deleted, explicit prohibition added |
 | BR-11 | **Stale in-flight indexing race**: `removeDoc`/replace/purge deleted the persisted entry, but an `indexOne()` task already awaiting `/api/embed` later re-persisted the deleted private text | **P1 privacy (merge blocker)** | ✅ Fixed in `99fbb34` — per-doc generation counter + per-task AbortController (cancels the embed request) + post-embed re-validation of generation and document existence/signature before persisting. Regression tests cover delete-before-resolve and replace-before-resolve |
 | BR-12 | **Hosted email-verification signup broken**: with `REQUIRE_EMAIL_VERIFICATION=1` the backend returns `{verificationRequired, user}` with **no token**, but desktop/mobile assumed a token and proceeded into session loading; `verify.html` did not exist; hosted mode never required delivery prerequisites | **P1 auth (merge blocker)** | ✅ Fixed — explicit response union in desktop (`signup()` branches, never stores a token on the verification branch, new Check-your-email view + resend) and mobile (`SignupResult` union, `saveAuth` only with a real token); backend contract tests for both branches; `public/verify.html` added; hosted boot **refuses to start** with verification enabled unless `RESEND_API_KEY` + HTTPS `VERIFY_URL_BASE` are configured |
-| BR-13 | **Managed STT plan limits advertised but not enforced**: `/api/deepgram-token` used auth-only guarding; streaming audio bypasses the backend, so free-tier `sttSeconds` was effectively unlimited (provider-cost/abuse exposure). Round-6 follow-up: the first lease implementation was a read-only check plus a swallowed usage write — concurrent requests could overrun and a write failure could hand out an unmetered grant | **P1 billing (merge blocker)** | ✅ Fixed — the lease is now **reserved atomically before the grant is minted**: `store.reserveSttUsage(userId, period, limit, 300)` is one conditional Mongo update (`sttSeconds ≤ limit−300` ⇒ `$inc`), mirrored in the file store with rollback-on-persist-failure; `reserveSttLease` middleware (fail-closed, local parity with `checkCap`) runs before minting, and the route **releases the lease if minting fails**; `/transcribe` keeps the read-only gate + actual-duration accounting; 402 surfaces as a permanent (non-retrying) token failure with a quota message; tests cover denial, reserve-before-mint ordering, release-on-failure, no-release-on-success |
+| BR-13 | **Managed STT plan limits advertised but not enforced**: `/api/deepgram-token` used auth-only guarding; streaming audio bypasses the backend, so free-tier `sttSeconds` was effectively unlimited (provider-cost/abuse exposure). Round-6 follow-up: the first lease implementation was not atomic (concurrent overrun + swallowed usage-write errors), and `/transcribe` still used a read-only gate ("1s remaining → upload a long clip" overrun) | **P1 billing (merge blocker)** | ✅ Fixed — both paths now reserve **atomically before provider spend**, mirroring the LLM reserve/release pattern. Streaming: `reserveSttLease` middleware reserves the 300s lease before minting the grant and releases it if mint fails. Uploads (`b6494a9`): the server probes the media duration itself (MP4 `moov`→`mvhd` box walk, RIFF chunk walk — client-supplied durations are never trusted; unprobeable formats get 415) and reserves duration + 2s margin; unused margin is released on success, provider failure, or abort; if provider duration exceeds the reservation the difference is topped up atomically (fail-closed 402, cap never exceeded). The now-dead read-only `checkSttQuota` gate was removed |
 | BR-14 | **PiP capture-protection confirmation could target the wrong window**: `bootstrap.cjs`'s hardened `ipcMain.handle` wrapper intercepted `exclude-from-capture` before `main.cjs`'s PiP-aware handler could register, so the confirmation protected the *sender* window while the UI claimed the PiP was protected | **P1/P2 capture protection** | ✅ Fixed — the hardened handler now implements the focused-window-first policy itself and returns both the protected window id and the sender id; the dead `main.cjs` handler is removed; LiveCompanion only confirms PiP protection when the protected window is not the opener, otherwise it shows the honest warning banner |
 
 ## 4. Watchlist (not blockers)

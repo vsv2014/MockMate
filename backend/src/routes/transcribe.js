@@ -207,7 +207,9 @@ router.post('/', requireAuth, upload.single('audio'), async (req, res) => {
       if (actual > lease.seconds) {
         // This should only happen if provider metadata materially disagrees with
         // the container duration. Reserve the difference before returning the
-        // paid result; fail closed if there is no room.
+        // paid result; fail closed if there is no room. (If the user vanished
+        // mid-request, limit falls to 0 → 402, and the original reservation stays
+        // charged: never exceed the cap.)
         const extra = actual - lease.seconds
         const user = await store().findUserById(req.userId)
         const limit = user ? limitFor(effectivePlan(user)).sttSeconds : 0

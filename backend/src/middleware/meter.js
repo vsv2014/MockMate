@@ -6,38 +6,10 @@ import { effectivePlan, limitFor, measureInputChars, estimateLlmUnits } from '..
 // (single source of truth — blast-radius review fix).
 export { measureInputChars, estimateLlmUnits }
 
-/**
- * Read-only STT gate for the upload path (/transcribe): rejects once the monthly
- * allowance is exhausted; the ACTUAL duration is still accounted after
- * transcription. The streaming-grant path uses reserveSttLease below instead.
- * Fail-closed like checkCap; skipped when MONGO_URI is unset (local parity).
- */
-export async function checkSttQuota(req, res, next) {
-  if (!process.env.MONGO_URI) { req._sttRemainingSeconds = Infinity; return next() }
-  try {
-    const user = await store().findUserById(req.userId)
-    if (!user) return res.status(401).json({ error: 'Your session expired. Please sign in again.', code: 'unauthorized' })
-    const plan = effectivePlan(user)
-    const period = currentPeriod()
-    const usage = await store().getUsage(user.id, period)
-    const limit = limitFor(plan).sttSeconds
-    const remaining = limit - (usage.sttSeconds || 0)
-    req._sttRemainingSeconds = remaining
-    if (remaining <= 0) {
-      return res.status(402).json({
-        error: 'You’ve used this month’s voice-transcription allowance. It resets next billing period, or upgrade for more.',
-        code: 'stt_quota_exhausted',
-        period,
-      })
-    }
-    next()
-  } catch (e) {
-    console.error('[meter] checkSttQuota failed (blocking):', e.message)
-    return res.status(503).json({ error: 'Usage metering is temporarily unavailable. Try again in a moment.', code: 'metering_unavailable' })
-  }
-}
-
 /** Lease size reserved per streaming grant — matches the Deepgram grant TTL. */
+// NOTE: the old read-only checkSttQuota gate was removed in b6494a9: /transcribe
+// now reserves the server-probed media duration atomically before provider spend
+// (the read-only check allowed "1s remaining → upload a long clip" overruns).
 export const STT_GRANT_LEASE_SECONDS = 300
 
 /**
