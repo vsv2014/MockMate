@@ -71,6 +71,8 @@ jobs:
           NODE
 
       - run: npm run verify:platform
+      - run: npm run verify:react19
+      - run: npm run verify:vitest5
       - run: npm ci
       - run: npm --prefix backend ci
 
@@ -78,7 +80,7 @@ jobs:
         run: npx electron --version
 
       - name: Unit, API smoke and production build
-        run: npm test && npm run smoke:api && npm run build
+        run: npm test && npm run smoke:api && npm run build && npm run verify:vite-output
 
       - name: Configure final release AI mode
         shell: bash
@@ -104,7 +106,7 @@ jobs:
           NODE
 
       - name: Verify final configured application
-        run: npm test && npm run build
+        run: npm test && npm run build && npm run verify:vite-output
 
       - name: Build Windows installer
         shell: bash
