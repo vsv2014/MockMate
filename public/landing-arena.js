@@ -10,7 +10,6 @@
     var hero = document.querySelector('.hero');
     if (!hero || document.getElementById('mm-arena-hero')) return;
 
-    // Official app icon + campaign hook, without replacing the existing landing surface.
     var heroBrand = hero.querySelector('.hero-brand');
     if (heroBrand) {
       var mark = heroBrand.querySelector('.mark');
@@ -33,10 +32,10 @@
       media.className = 'mm-campaign-stage';
       media.innerHTML = [
         '<div class="mm-campaign-card mm-card-a">',
-          '<img src="/../marketing/card-solo-practice.png" width="1080" height="1080" alt="Illustrative MockMate Solo Practice campaign card" />',
+          '<img src="/media/card-solo-practice.png" width="1080" height="1080" alt="Illustrative MockMate Solo Practice campaign card" />',
         '</div>',
         '<div class="mm-campaign-card mm-card-b">',
-          '<img src="/../marketing/card-live-mode.png" width="920" height="920" alt="Illustrative MockMate Live mode campaign card" />',
+          '<img src="/media/card-live-mode.png" width="920" height="920" alt="Illustrative MockMate Live mode campaign card" />',
         '</div>',
         '<span class="mm-illustrative-label">Illustrative campaign visuals</span>'
       ].join('');
@@ -48,7 +47,6 @@
       if (platforms) platforms.classList.add('mm-platforms-full');
     }
 
-    // Campaign hook band from Arena handoff.
     if (!document.getElementById('mm-practice-band')) {
       var band = document.createElement('section');
       band.id = 'mm-practice-band';
@@ -57,7 +55,6 @@
       hero.insertAdjacentElement('afterend', band);
     }
 
-    // Narrated 9:16 explainer using native browser controls; no custom overlay covers volume.
     var how = document.getElementById('how');
     if (how && !document.getElementById('mm-explainer')) {
       var explainer = document.createElement('section');
@@ -69,12 +66,12 @@
           '<div>',
             '<h2 class="section-h reveal in">Practice the first answer — and the follow-up.</h2>',
             '<p class="section-p reveal in">A short narrated walkthrough of the interview-practice flow. Controls are the browser’s native controls, including volume, captions, and fullscreen.</p>',
-            '<p class="mm-explainer-links"><a href="/../marketing/mockmate-video-transcript.txt" target="_blank" rel="noopener">Read transcript</a> · <a href="/../marketing/mockmate-voiceover.mp3" target="_blank" rel="noopener">Audio only</a></p>',
+            '<p class="mm-explainer-links"><a href="/media/mockmate-video-transcript.txt" target="_blank" rel="noopener">Read transcript</a> · <a href="/media/mockmate-voiceover.mp3" target="_blank" rel="noopener">Audio only</a></p>',
           '</div>',
           '<div class="mm-video-frame reveal in">',
-            '<video controls playsinline preload="metadata" poster="/../marketing/card-solo-practice.png">',
-              '<source src="/../marketing/mockmate-promotional-video.mp4" type="video/mp4" />',
-              '<track kind="captions" srclang="en" label="English" src="/../marketing/mockmate-video-captions.srt" default />',
+            '<video controls playsinline preload="metadata" poster="/media/card-solo-practice.png">',
+              '<source src="/media/mockmate-promotional-video.mp4" type="video/mp4" />',
+              '<track kind="captions" srclang="en" label="English" src="/media/mockmate-video-captions.srt" default />',
               'Your browser does not support HTML video.',
             '</video>',
           '</div>',
@@ -83,26 +80,23 @@
       how.parentNode.insertBefore(explainer, how);
     }
 
-    // Official social preview asset.
     var og = document.querySelector('meta[property="og:image"]');
     if (!og) {
       og = document.createElement('meta');
       og.setAttribute('property', 'og:image');
       document.head.appendChild(og);
     }
-    og.content = location.origin + '/../marketing/mockmate-promo-square.png';
+    og.content = location.origin + '/media/og-social.png';
 
-    // Hero preload for campaign card.
     if (!document.querySelector('link[data-mm-hero-preload]')) {
       var preload = document.createElement('link');
       preload.rel = 'preload';
       preload.as = 'image';
-      preload.href = '/../marketing/card-solo-practice.png';
+      preload.href = '/media/card-solo-practice.png';
       preload.dataset.mmHeroPreload = '1';
       document.head.appendChild(preload);
     }
 
-    // No-JS/reveal safety marker for supporting CSS already present on the page.
     document.documentElement.classList.add('mm-arena-ready');
   });
 
