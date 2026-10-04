@@ -27,12 +27,12 @@ jobs:
       - run: npm run verify:vitest5
       - run: npm ci
       - run: npm --prefix backend ci
-      - name: Audit dependency advisories
+      - name: Require zero dependency advisories
         shell: bash
         run: |
           set -euo pipefail
-          npm audit --audit-level=critical
-          npm --prefix backend audit --audit-level=critical
+          npm audit --audit-level=low
+          npm --prefix backend audit --audit-level=low
       - run: npm test
       - run: npm run smoke:api
       - run: npm run build
