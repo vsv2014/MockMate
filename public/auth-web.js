@@ -65,8 +65,9 @@
   };
 })(window);
 
-// Landing-specific conversion/accuracy improvements are layered onto the existing
-// public landing instead of replacing its established visual system and native player.
+// Keep public/landing.html as the canonical, established landing surface. Landing-only
+// conversion/accuracy enhancements are layered on top so we preserve its visual system,
+// native player controls, CTA IDs, theme behavior, and existing auth DOM contract.
 (function () {
   try {
     if (!/\/landing(?:\.html)?$/i.test(window.location.pathname)) return;
