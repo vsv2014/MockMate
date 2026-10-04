@@ -64,3 +64,17 @@
     initials: initials, planLabel: planLabel, greeting: greeting,
   };
 })(window);
+
+// Landing-specific conversion/accuracy improvements are layered onto the existing
+// public landing instead of replacing its established visual system and native player.
+(function () {
+  try {
+    if (!/\/landing(?:\.html)?$/i.test(window.location.pathname)) return;
+    if (document.querySelector('script[data-mm-landing-enhance]')) return;
+    var script = document.createElement('script');
+    script.src = '/landing-enhance.js';
+    script.defer = true;
+    script.dataset.mmLandingEnhance = '1';
+    document.head.appendChild(script);
+  } catch (e) {}
+})();
