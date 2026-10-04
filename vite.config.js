@@ -7,25 +7,30 @@ import { readFileSync } from 'fs'
 // IPC round-trip — works in the browser dev server and the packaged app alike.
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url)))
 
-// Dev server on 5174 (the Electron app uses 5173). API calls to /token and
-// /report are proxied to the Express server so the browser stays same-origin.
 export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: [react()],
   build: {
     chunkSizeWarningLimit: 550,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks(id) {
-          if (!id.includes('node_modules')) return undefined
-          if (id.includes('@sentry')) return 'vendor-sentry'
-          if (id.includes('@livekit')) return 'vendor-livekit-ui'
-          if (id.includes('livekit-client')) return 'vendor-livekit-client'
-          if (id.includes('html2canvas')) return 'vendor-html2canvas'
-          if (id.includes('jspdf')) return 'vendor-jspdf'
-          if (id.includes('pdfjs-dist')) return 'vendor-pdf-reader'
-          if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) return 'vendor-react'
-          return undefined
+        codeSplitting: {
+          groups: [
+            { name: 'vendor-sentry', test: /node_modules[\\/]@sentry[\\/]/, priority: 110 },
+            // livekit-client can be nested below @livekit packages. Give the more
+            // specific client group higher priority so it is not swallowed by
+            // the broader @livekit UI group under Rolldown's first-match rules.
+            { name: 'vendor-livekit-client', test: /node_modules[\\/]livekit-client[\\/]/, priority: 100 },
+            { name: 'vendor-livekit-ui', test: /node_modules[\\/]@livekit[\\/]/, priority: 90 },
+            { name: 'vendor-html2canvas', test: /node_modules[\\/]html2canvas[\\/]/, priority: 70 },
+            { name: 'vendor-jspdf', test: /node_modules[\\/]jspdf[\\/]/, priority: 60 },
+            { name: 'vendor-pdf-reader', test: /node_modules[\\/]pdfjs-dist[\\/]/, priority: 50 },
+            {
+              name: 'vendor-react',
+              test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/,
+              priority: 40,
+            },
+          ],
         },
       },
     },
@@ -39,6 +44,9 @@ export default defineConfig({
   },
   server: {
     port: 5174,
+    // Keep Vite's safe default host policy. Controlled preview hosts can be
+    // added through __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS rather than opening
+    // the dev server to every Host header.
     // In dev, proxy /api/* to the local Express shim (server.js). In production
     // on Vercel, /api/* is served by the serverless functions directly.
     proxy: {
