@@ -31,5 +31,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mockmate-${{ inputs.mode }}-promo
-          path: marketing/rendered/*.mp4
+          path: artifacts/marketing/*.mp4
           if-no-files-found: error
