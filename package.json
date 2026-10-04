@@ -1,8 +1,8 @@
 {
   "name": "mockmate",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "type": "module",
-  "main": "electron/bootstrap.cjs",
+  "main": "electron/bootstrap-v153.cjs",
   "description": "Real-Time AI Interview Companion — Solo practice + Live overlay for Zoom/Teams/Meet (content protection on Win/macOS; verify share preview)",
   "author": "MockMate",
   "license": "MIT",
@@ -70,7 +70,7 @@
       "shortcutName": "MockMate",
       "uninstallDisplayName": "MockMate ${version}",
       "deleteAppDataOnUninstall": true,
-      "runAfterFinish": true,
+      "runAfterFinish": false,
       "include": "build/installer.nsh"
     },
     "publish": [{ "provider": "github", "owner": "vsv2014", "repo": "MockMate" }],
