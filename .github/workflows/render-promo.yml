@@ -1,0 +1,35 @@
+name: Render promo media
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Promo variant
+        required: true
+        default: solo
+        type: choice
+        options:
+          - solo
+          - live
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify ffmpeg
+        run: ffmpeg -version | head -n 1
+      - name: Ensure Live narration tool
+        if: ${{ inputs.mode == 'live' }}
+        run: command -v espeak >/dev/null || (sudo apt-get update && sudo apt-get install -y espeak)
+      - name: Render
+        run: bash scripts/render-promo-video.sh "${{ inputs.mode }}"
+      - name: Upload rendered video
+        uses: actions/upload-artifact@v4
+        with:
+          name: mockmate-${{ inputs.mode }}-promo
+          path: artifacts/marketing/*.mp4
+          if-no-files-found: error

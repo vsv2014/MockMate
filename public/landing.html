@@ -3,1058 +3,132 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MockMate — AI interview companion</title>
-  <meta name="description" content="MockMate is a private AI copilot for live interviews and Solo practice. Resume-grounded answers in about a second. On Windows & macOS, content protection can exclude the overlay from common screen-share APIs — always verify share preview. Not supported on Linux." />
+  <title>MockMate — AI interview practice & live companion</title>
+  <meta name="description" content="Prepare with realistic mock interviews and use context-aware assistance when interviews get real. MockMate grounds help in your resume, job description, selected documents, playbook, and current conversation." />
   <meta name="theme-color" content="#f4f0e9" />
-
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-
+  <link rel="canonical" href="https://mock-mate-theta-nine.vercel.app/landing.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="MockMate — prepare better, think faster when interviews get real" />
+  <meta property="og:description" content="AI interview practice and live assistance grounded in your resume, JD, documents, playbook, and conversation." />
+  <meta property="og:url" content="https://mock-mate-theta-nine.vercel.app/landing.html" />
+  <meta property="og:image" content="https://mock-mate-theta-nine.vercel.app/media/og-social.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="MockMate — AI interview practice & live companion" />
+  <meta name="twitter:description" content="Practice the first answer — and the follow-up. Stay grounded when the real interview starts." />
+  <meta name="twitter:image" content="https://mock-mate-theta-nine.vercel.app/media/og-social.png" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="preload" href="/media/card-solo-practice.png" as="image" fetchpriority="high" />
   <script>
-    /* Set theme before paint to avoid a flash. Default: warm light, unless the
-       visitor saved a choice or their OS is in dark mode. */
     (function () {
+      document.documentElement.classList.add('js');
       try {
-        var saved = localStorage.getItem('mm-theme')
-        var dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
-        if (dark) document.documentElement.setAttribute('data-theme', 'dark')
+        var saved = localStorage.getItem('mm-theme');
+        var dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (dark) document.documentElement.setAttribute('data-theme', 'dark');
       } catch (e) {}
-    })()
+    })();
   </script>
-
+  <noscript><style>.reveal{opacity:1!important;transform:none!important}.noscript-note{display:block!important}</style></noscript>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      /* Warm paper neutrals */
-      --bg:        #f4f0e9;
-      --bg-2:      #efe9df;
-      --paper:     #fbf9f4;
-      --surface:   #ffffff;
-      --ink:       #1c1a16;
-      --text:      #1c1a16;
-      --muted:     #6d685e;
-      --faint:     #a39d91;
-      --border:    rgba(28,26,22,0.10);
-      --border-2:  rgba(28,26,22,0.16);
-
-      /* Single accent — warm ember (deliberately NOT violet) */
-      --accent:      #0d9488;
-      --accent-deep: #0f766e;
-      --accent-soft: rgba(13,148,136,0.10);
-      --green:       #1f7a52;
-
-      --shadow-sm:  0 1px 2px rgba(28,26,22,0.05), 0 2px 8px -2px rgba(28,26,22,0.06);
-      --shadow-md:  0 2px 4px rgba(28,26,22,0.05), 0 18px 40px -16px rgba(28,26,22,0.18);
-      --radius: 16px;
-      --ease: cubic-bezier(0.22, 1, 0.36, 1);
-
-      /* Theming hooks (overridden by [data-theme="dark"]) */
-      --nav-bg: rgba(244,240,233,0.6);
-      --nav-bg-solid: rgba(244,240,233,0.82);
-      --grain-blend: multiply;
-      --grain-opacity: 0.5;
-
-      /* Dark tokens for the app mockup (the real app is a dark overlay) */
-      --d-bg: #121117; --d-border: rgba(255,255,255,0.12);
-    }
-
-    /* ── WARM DARK MODE — same ember accent, never violet ── */
-    [data-theme="dark"] {
-      --bg:        #16130f;
-      --bg-2:      #1d1812;
-      --paper:     #211c15;
-      --surface:   #211c16;
-      --ink:       #f5efe6;
-      --text:      #f5efe6;
-      --muted:     #aaa294;
-      --faint:     #6f685c;
-      --border:    rgba(255,255,255,0.09);
-      --border-2:  rgba(255,255,255,0.15);
-
-      --accent:      #14b8a6;
-      --accent-deep: #0d9488;
-      --accent-soft: rgba(20,184,166,0.14);
-      --green:       #34d399;
-
-      --shadow-sm:  0 1px 2px rgba(0,0,0,0.3), 0 2px 8px -2px rgba(0,0,0,0.4);
-      --shadow-md:  0 2px 4px rgba(0,0,0,0.3), 0 18px 40px -16px rgba(0,0,0,0.6);
-
-      --nav-bg: rgba(22,19,15,0.6);
-      --nav-bg-solid: rgba(22,19,15,0.85);
-      --grain-blend: overlay;
-      --grain-opacity: 0.35;
-    }
-
-    html { scroll-behavior: smooth; }
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      line-height: 1.6;
-      -webkit-font-smoothing: antialiased;
-      text-rendering: optimizeLegibility;
-      overflow-x: hidden;
-      position: relative;
-    }
-
-    /* ── Ambient: faint warm sunrise glow + paper grain ── */
-    .bg-mesh {
-      position: fixed; inset: 0; z-index: -2; pointer-events: none;
-      background:
-        radial-gradient(70% 50% at 50% -10%, rgba(13,148,136,0.10), transparent 60%),
-        radial-gradient(40% 35% at 90% 5%, rgba(13,148,136,0.05), transparent 70%),
-        var(--bg);
-    }
-    .bg-grain {
-      position: fixed; inset: 0; z-index: -1; pointer-events: none;
-      opacity: var(--grain-opacity); mix-blend-mode: var(--grain-blend);
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
-    }
-
-    ::selection { background: rgba(13,148,136,0.22); color: var(--ink); }
-
-    /* ── NAV ── */
-    nav {
-      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 14px clamp(20px, 5vw, 48px);
-      background: var(--nav-bg);
-      backdrop-filter: blur(20px) saturate(1.3);
-      -webkit-backdrop-filter: blur(20px) saturate(1.3);
-      border-bottom: 1px solid transparent;
-      transition: border-color 0.3s, background 0.3s;
-    }
-    nav.scrolled { border-bottom-color: var(--border); background: var(--nav-bg-solid); }
-    .logo {
-      font-family: 'Inter Tight', sans-serif;
-      font-size: 19px; font-weight: 700; letter-spacing: -0.02em;
-      display: inline-flex; align-items: center; gap: 9px; color: var(--ink);
-    }
-    .logo-mark {
-      width: 22px; height: 22px; border-radius: 7px;
-      background: linear-gradient(150deg, var(--accent), var(--accent-deep));
-      box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset, 0 4px 12px rgba(13,148,136,0.35);
-      display: grid; place-items: center; font-size: 12px; color: #fff;
-    }
-    nav a { color: var(--muted); font-size: 14px; text-decoration: none; transition: color 0.2s; }
-    nav a:hover { color: var(--ink); }
-    .nav-links { display: flex; gap: 30px; }
-    .nav-cta {
-      background: var(--ink); color: var(--paper) !important;
-      padding: 9px 18px; border-radius: 10px; font-weight: 600; font-size: 14px;
-      box-shadow: var(--shadow-sm);
-      transition: transform 0.2s var(--ease), background 0.2s !important;
-    }
-    .nav-cta:hover { transform: translateY(-1px); background: #34302a; }
-    .nav-right { display: flex; align-items: center; gap: 12px; }
-    .theme-toggle {
-      width: 38px; height: 38px; display: grid; place-items: center;
-      background: var(--surface); border: 1px solid var(--border-2); border-radius: 10px;
-      cursor: pointer; color: var(--ink); font-size: 16px; line-height: 1;
-      box-shadow: var(--shadow-sm); transition: transform 0.2s var(--ease), border-color 0.2s;
-    }
-    .theme-toggle:hover { transform: translateY(-1px); border-color: var(--accent); }
-    .theme-toggle .sun { display: none; }
-    .theme-toggle .moon { display: block; }
-    [data-theme="dark"] .theme-toggle .sun { display: block; }
-    [data-theme="dark"] .theme-toggle .moon { display: none; }
-
-    /* ── HERO ── */
-    .hero {
-      min-height: 100vh;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      padding: 150px 24px 80px; text-align: center; position: relative;
-    }
-    .hero-brand {
-      font-family: 'Inter Tight', sans-serif;
-      font-size: clamp(40px, 6.5vw, 72px);
-      font-weight: 800; letter-spacing: -0.04em; line-height: 1; color: var(--ink);
-      margin-bottom: 18px;
-      display: inline-flex; align-items: center; gap: 14px;
-    }
-    .hero-brand .mark {
-      width: clamp(36px, 5vw, 52px); height: clamp(36px, 5vw, 52px); border-radius: 14px;
-      background: linear-gradient(150deg, var(--accent), var(--accent-deep));
-      box-shadow: 0 1px 0 rgba(255,255,255,0.35) inset, 0 10px 28px rgba(13,148,136,0.35);
-      display: grid; place-items: center; color: #fff; font-size: clamp(16px, 2.2vw, 22px);
-      flex-shrink: 0;
-    }
-    .hero h1 {
-      font-family: 'Inter Tight', sans-serif;
-      font-size: clamp(28px, 4.2vw, 42px);
-      font-weight: 650; letter-spacing: -0.03em; line-height: 1.15; color: var(--ink);
-      margin-bottom: 16px; max-width: 720px;
-    }
-    .hero h1 .highlight {
-      font-family: 'Instrument Serif', Georgia, serif;
-      font-weight: 400; font-style: italic; letter-spacing: -0.005em;
-      color: var(--accent);
-    }
-    .hero-sub {
-      font-size: clamp(15px, 2vw, 18px);
-      color: var(--muted); max-width: 520px; margin: 0 auto 36px; line-height: 1.55;
-    }
-    .hero-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 18px; }
-    .hero-trust {
-      margin-top: 8px; margin-bottom: 48px; font-size: 13px; color: var(--muted);
-      display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; max-width: 720px;
-    }
-    .hero-trust span { max-width: 280px; }
-
-    .btn-hero {
-      position: relative; overflow: hidden;
-      display: inline-flex; align-items: center; gap: 10px;
-      background: linear-gradient(150deg, var(--accent), var(--accent-deep)); color: #fff;
-      padding: 15px 30px; border-radius: 12px;
-      font-size: 15.5px; font-weight: 600; text-decoration: none; letter-spacing: -0.01em;
-      box-shadow: 0 1px 0 rgba(255,255,255,0.25) inset, 0 10px 28px -10px rgba(13,148,136,0.55);
-      transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease);
-    }
-    .btn-hero::after {
-      content: ''; position: absolute; inset: 0;
-      background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.3) 50%, transparent 70%);
-      transform: translateX(-120%); transition: transform 0.6s var(--ease);
-    }
-    .btn-hero:hover { transform: translateY(-2px); box-shadow: 0 1px 0 rgba(255,255,255,0.3) inset, 0 16px 40px -12px rgba(13,148,136,0.7); }
-    .btn-hero:hover::after { transform: translateX(120%); }
-
-    .btn-secondary {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: var(--surface); color: var(--ink);
-      padding: 15px 28px; border-radius: 12px;
-      font-size: 15.5px; font-weight: 600; text-decoration: none; letter-spacing: -0.01em;
-      border: 1px solid var(--border-2); box-shadow: var(--shadow-sm);
-      transition: transform 0.25s var(--ease), border-color 0.2s;
-    }
-    .btn-secondary:hover { transform: translateY(-2px); border-color: var(--accent); }
-
-    /* ── MOCKUP (dark — the real app overlay) ── */
-    .mockup-wrap {
-      position: relative; display: inline-block; width: min(470px, 92vw);
-      animation: float 7s ease-in-out infinite;
-    }
-    @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
-    .mockup-glow {
-      position: absolute; inset: -50px -30px;
-      background: radial-gradient(circle at 50% 40%, rgba(13,148,136,0.18), transparent 68%);
-      pointer-events: none; filter: blur(8px);
-    }
-    .mockup {
-      position: relative;
-      background: linear-gradient(180deg, #16151c, #0e0d12);
-      border: 1px solid var(--d-border);
-      border-radius: 18px;
-      box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 40px 80px -28px rgba(28,26,22,0.45);
-      overflow: hidden; text-align: left;
-    }
-    .mockup-titlebar {
-      display: flex; align-items: center; gap: 8px;
-      padding: 11px 16px; background: rgba(0,0,0,0.3);
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-    }
-    .m-dot { width: 11px; height: 11px; border-radius: 50%; }
-    .m-r { background: #ff5f57; } .m-y { background: #febc2e; }
-    .m-g { background: #28c840; box-shadow: 0 0 8px #28c840; animation: pulse-g 2s ease-in-out infinite; }
-    @keyframes pulse-g { 0%,100%{box-shadow:0 0 6px #28c840} 50%{box-shadow:0 0 16px #28c840} }
-    .m-title { font-family: 'Inter Tight', sans-serif; font-size: 12.5px; font-weight: 700; letter-spacing: -0.01em; margin-left: 4px; margin-right: auto; color: #fbe4dc; }
-    .m-live { font-size: 10px; color: #4ade80; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.04em; }
-    .mockup-body { padding: 18px; }
-    .m-q-label { font-size: 9px; color: #fca98e; font-weight: 700; letter-spacing: 0.16em; margin-bottom: 7px; }
-    .m-q { font-size: 13px; color: #f4d9cf; background: rgba(13,148,136,0.12); border: 1px solid rgba(13,148,136,0.28); border-radius: 10px; padding: 11px 13px; margin-bottom: 15px; line-height: 1.5; }
-    .m-answer { background: rgba(6,40,28,0.5); border: 1px solid rgba(52,211,153,0.2); border-radius: 12px; padding: 15px; }
-    .m-badges { display: flex; gap: 6px; margin-bottom: 11px; }
-    .m-badge { font-size: 9px; padding: 3px 9px; border-radius: 100px; font-weight: 700; letter-spacing: 0.02em; }
-    .m-b-resume { background: rgba(16,185,129,0.18); color: #6ee7b7; }
-    .m-b-type { background: rgba(13,148,136,0.22); color: #fca98e; }
-    .m-text { font-size: 13px; color: #d1fae5; line-height: 1.75; }
-    .m-cursor { display: inline-block; width: 2px; height: 0.9em; background: #4ade80; margin-left: 2px; vertical-align: text-bottom; animation: blink 0.7s step-end infinite; }
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-    .m-watch { margin-top: 11px; padding-top: 11px; border-top: 1px solid rgba(52,211,153,0.14); font-size: 11px; color: #fbbf24; }
-
-    /* ── PLATFORMS ── */
-    .platforms { text-align: center; padding: 56px 24px 0; }
-    .platforms p { font-size: 12px; color: var(--faint); margin-bottom: 18px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; }
-    .platform-list { display: flex; justify-content: center; gap: clamp(20px,4vw,40px); flex-wrap: wrap; }
-    .platform-list span { font-family: 'Inter Tight', sans-serif; font-size: 15px; font-weight: 700; color: var(--faint); transition: color 0.2s; letter-spacing: -0.01em; }
-    .platform-list span:hover { color: var(--muted); }
-
-    /* ── SECTION BASE ── */
-    .section { padding: 110px 24px; max-width: 1120px; margin: 0 auto; }
-    .section-tag {
-      font-size: 12px; font-weight: 600; letter-spacing: 0.02em; color: var(--accent-deep);
-      margin-bottom: 16px; display: inline-flex; align-items: center; gap: 8px;
-    }
-    .section-tag::before { content: ''; width: 18px; height: 1px; background: var(--accent); opacity: 0.7; }
-    .section-h { font-family: 'Inter Tight', sans-serif; font-size: clamp(30px, 4.2vw, 52px); font-weight: 700; letter-spacing: -0.035em; line-height: 1.05; margin-bottom: 18px; color: var(--ink); }
-    .section-p { font-size: 17px; color: var(--muted); max-width: 560px; line-height: 1.65; }
-
-    /* ── HOW IT WORKS ── */
-    .steps { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-top: 56px; }
-    .step {
-      position: relative; background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 30px; box-shadow: var(--shadow-sm);
-      transition: transform 0.3s var(--ease), box-shadow 0.3s, border-color 0.3s;
-    }
-    .step:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); border-color: var(--border-2); }
-    .step-num { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; color: var(--accent); letter-spacing: 0.06em; margin-bottom: 20px; }
-    .step-icon { font-size: 30px; margin-bottom: 16px; display: block; }
-    .step h3 { font-family: 'Inter Tight', sans-serif; font-size: 18px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 9px; }
-    .step p { font-size: 13.5px; color: var(--muted); line-height: 1.65; }
-
-    /* ── FEATURES ── */
-    .features { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-top: 56px; }
-    .feat {
-      position: relative; background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 26px; overflow: hidden; box-shadow: var(--shadow-sm);
-      transition: border-color 0.3s, transform 0.3s var(--ease), box-shadow 0.3s;
-    }
-    .feat::before {
-      content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
-      background: radial-gradient(140px 90px at var(--mx,50%) var(--my,0%), rgba(13,148,136,0.55), transparent 70%);
-      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-      -webkit-mask-composite: xor; mask-composite: exclude;
-      opacity: 0; transition: opacity 0.3s;
-    }
-    .feat:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); }
-    .feat:hover::before { opacity: 1; }
-    .feat-icon { font-size: 26px; margin-bottom: 16px; display: block; }
-    .feat h3 { font-family: 'Inter Tight', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: -0.015em; margin-bottom: 9px; }
-    .feat p { font-size: 13.5px; color: var(--muted); line-height: 1.65; }
-    .feat strong { color: var(--accent-deep); font-weight: 600; }
-
-    /* ── PROTECTION ── */
-    .protection-wrap {
-      position: relative; overflow: hidden;
-      background: linear-gradient(135deg, var(--paper), var(--bg-2));
-      border: 1px solid var(--border-2);
-      border-radius: 24px; padding: clamp(32px,5vw,56px); margin-top: 56px;
-      display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 48px; align-items: center;
-      box-shadow: var(--shadow-md);
-    }
-    .protection-text h3 { font-family: 'Inter Tight', sans-serif; font-size: clamp(24px,3vw,30px); font-weight: 700; letter-spacing: -0.03em; margin-bottom: 14px; line-height: 1.1; }
-    .protection-text > p { font-size: 14.5px; color: var(--muted); line-height: 1.7; margin-bottom: 24px; }
-    .protection-items { display: flex; flex-direction: column; gap: 12px; }
-    .pitem { display: flex; align-items: center; gap: 11px; font-size: 13.5px; color: var(--ink); }
-    .pitem::before {
-      content: '✓'; color: var(--green); font-weight: 700; flex-shrink: 0;
-      width: 20px; height: 20px; display: grid; place-items: center; font-size: 11px;
-      background: rgba(31,122,82,0.12); border-radius: 6px;
-    }
-    .shield-visual {
-      position: relative; display: flex; align-items: center; justify-content: center;
-      background: radial-gradient(circle at 50% 40%, var(--accent-soft), transparent 70%);
-      border: 1px solid var(--border); border-radius: 20px; padding: 48px; min-height: 200px;
-      font-size: 84px; text-align: center;
-    }
-
-    /* ── SETUP ── */
-    .setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: start; margin-top: 56px; }
-    .setup-steps { list-style: none; counter-reset: s; }
-    .setup-steps li { counter-increment: s; display: flex; gap: 16px; margin-bottom: 26px; align-items: flex-start; }
-    .setup-steps li::before {
-      content: counter(s, decimal-leading-zero); min-width: 36px; height: 36px;
-      background: var(--surface); color: var(--accent-deep); border: 1px solid var(--border-2);
-      border-radius: 11px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600;
-      display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: var(--shadow-sm);
-    }
-    .setup-steps li h4 { font-family: 'Inter Tight', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: -0.015em; margin-bottom: 4px; }
-    .setup-steps li p { font-size: 13.5px; color: var(--muted); line-height: 1.6; }
-    .code-box {
-      background: #1a1814; color: #e7e1d6;
-      border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius); padding: 24px;
-      font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 2;
-      box-shadow: var(--shadow-md); position: relative;
-    }
-    .code-box::before {
-      content: ''; position: absolute; top: 14px; left: 16px; width: 36px; height: 8px;
-      background: radial-gradient(circle 4px at 4px 4px, #ff5f57 99%, transparent), radial-gradient(circle 4px at 18px 4px, #febc2e 99%, transparent), radial-gradient(circle 4px at 32px 4px, #28c840 99%, transparent);
-    }
-    .code-box > div:first-child { margin-top: 18px; }
-    .c-comment { color: #8a8378; }
-    .c-cmd { color: #7ee0a8; }
-    .c-flag { color: #fca98e; }
-
-    /* ── KEYS ── */
-    .keys-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-top: 48px; }
-    .key-card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px;
-      box-shadow: var(--shadow-sm); transition: transform 0.3s var(--ease), box-shadow 0.3s;
-    }
-    .key-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
-    /* Generic card — used by the FAQ list */
-    .card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 18px 20px; box-shadow: var(--shadow-sm);
-    }
-    .key-card code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-deep); background: var(--accent-soft); padding: 4px 9px; border-radius: 6px; display: inline-block; margin-bottom: 12px; }
-    .key-card p { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; line-height: 1.5; }
-    .free-tag { font-size: 10px; background: rgba(31,122,82,0.12); color: var(--green); padding: 3px 9px; border-radius: 100px; font-weight: 700; letter-spacing: 0.02em; }
-
-    /* ── LANGUAGES ── */
-    .lang-list { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 32px; }
-    .lang {
-      background: var(--surface); border: 1px solid var(--border); padding: 7px 16px; border-radius: 100px;
-      font-size: 13.5px; color: var(--muted); transition: transform 0.2s var(--ease), border-color 0.2s, color 0.2s;
-    }
-    .lang:hover { transform: translateY(-2px); border-color: var(--accent); color: var(--ink); }
-
-    /* ── CTA SECTION ── */
-    .cta-section {
-      position: relative; text-align: center; padding: 130px 24px; margin-top: 40px;
-      border-top: 1px solid var(--border); overflow: hidden;
-    }
-    .cta-section::before {
-      content: ''; position: absolute; inset: 0; z-index: -1;
-      background: radial-gradient(ellipse 70% 60% at 50% 100%, var(--accent-soft), transparent 70%);
-    }
-    .cta-section h2 { font-family: 'Inter Tight', sans-serif; font-size: clamp(34px, 5.5vw, 64px); font-weight: 700; letter-spacing: -0.04em; line-height: 1.02; margin-bottom: 22px; color: var(--ink); }
-    .cta-section h2 .highlight { font-family: 'Instrument Serif', serif; font-style: italic; font-weight: 400; color: var(--accent); }
-    .cta-section p { font-size: 17px; color: var(--muted); margin-bottom: 40px; }
-
-    footer {
-      border-top: 1px solid var(--border); padding: 32px clamp(20px,5vw,48px);
-      display: flex; justify-content: space-between; align-items: center; gap: 16px;
-      font-size: 13px; color: var(--muted);
-    }
-    footer .logo { font-size: 16px; }
-    footer a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
-    footer a:hover { color: var(--ink); }
-
-    /* ── SCROLL REVEAL ── */
-    .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s var(--ease), transform 0.7s var(--ease); }
-    .reveal.in { opacity: 1; transform: none; }
-
-    @media (prefers-reduced-motion: reduce) {
-      * { animation: none !important; }
-      .reveal { opacity: 1; transform: none; transition: none; }
-      html { scroll-behavior: auto; }
-    }
-
-    @media (max-width: 860px) { .steps, .features { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 768px) {
-      nav { padding: 12px 20px; }
-      .nav-links { display: none; }
-      .steps, .features { grid-template-columns: 1fr; }
-      .protection-wrap, .setup-grid { grid-template-columns: 1fr; }
-      .shield-visual { min-height: 160px; font-size: 64px; }
-      footer { flex-direction: column; text-align: center; }
-    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#f4f0e9;--bg2:#efe9df;--paper:#fbf9f4;--surface:#fff;--ink:#1c1a16;--muted:#6d685e;--faint:#a39d91;--border:rgba(28,26,22,.10);--border2:rgba(28,26,22,.16);--accent:#0d9488;--accent2:#0f766e;--soft:rgba(13,148,136,.10);--green:#1f7a52;--shadow:0 18px 40px -16px rgba(28,26,22,.18);--radius:18px;--nav:rgba(244,240,233,.82)}
+    [data-theme="dark"]{--bg:#16130f;--bg2:#1d1812;--paper:#211c15;--surface:#211c16;--ink:#f5efe6;--muted:#aaa294;--faint:#6f685c;--border:rgba(255,255,255,.09);--border2:rgba(255,255,255,.15);--accent:#14b8a6;--accent2:#0d9488;--soft:rgba(20,184,166,.14);--green:#34d399;--shadow:0 18px 40px -16px rgba(0,0,0,.6);--nav:rgba(22,19,15,.86)}
+    html{scroll-behavior:smooth}body{background:var(--bg);color:var(--ink);font-family:Inter,Segoe UI,system-ui,-apple-system,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(70% 50% at 50% -10%,rgba(13,148,136,.10),transparent 60%),radial-gradient(40% 35% at 90% 5%,rgba(13,148,136,.05),transparent 70%),var(--bg)}
+    .skip{position:fixed;left:14px;top:10px;z-index:1000;transform:translateY(-150%);background:var(--surface);color:var(--ink);border:1px solid var(--border2);padding:9px 13px;border-radius:10px;text-decoration:none}.skip:focus{transform:none}
+    nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:14px clamp(18px,5vw,48px);background:var(--nav);backdrop-filter:blur(18px);border-bottom:1px solid var(--border)}.logo{display:flex;align-items:center;gap:9px;color:var(--ink);font-weight:800;font-size:19px;text-decoration:none}.logo img{width:26px;height:26px;border-radius:7px}.nav-links{display:flex;gap:28px}.nav-links a{color:var(--muted);text-decoration:none;font-size:14px}.nav-right{display:flex;align-items:center;gap:10px}.theme-toggle,.nav-link-btn{border:1px solid var(--border2);background:var(--surface);color:var(--ink);border-radius:10px;padding:8px 11px;cursor:pointer}.nav-cta,.btn-primary{display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(150deg,var(--accent),var(--accent2));color:#fff;text-decoration:none;font-weight:700;border-radius:11px;padding:11px 18px}.nav-cta{font-size:13px}.btn-primary{padding:15px 28px}.btn-secondary{display:inline-flex;align-items:center;justify-content:center;background:var(--surface);color:var(--ink);border:1px solid var(--border2);text-decoration:none;font-weight:700;border-radius:11px;padding:15px 26px}
+    .hero{padding:150px 24px 72px;min-height:100vh;display:flex;flex-direction:column;justify-content:center}.hero-grid{width:min(1120px,100%);margin:auto;display:grid;grid-template-columns:1.02fr .98fr;gap:56px;align-items:center}.hero-brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:clamp(38px,6vw,68px);letter-spacing:-.045em;line-height:1}.hero-brand img{width:52px;height:52px;border-radius:14px;box-shadow:0 10px 28px rgba(13,148,136,.28)}h1{font-size:clamp(36px,5vw,62px);letter-spacing:-.045em;line-height:1.03;margin:22px 0 18px;max-width:700px}.highlight{font-family:Georgia,serif;font-style:italic;font-weight:400;color:var(--accent)}.hero-sub{font-size:clamp(16px,2vw,19px);color:var(--muted);max-width:590px}.hero-ctas{display:flex;gap:12px;flex-wrap:wrap;margin:30px 0 16px}.hero-trust{display:flex;gap:12px 18px;flex-wrap:wrap;color:var(--muted);font-size:12.5px}.download-note{width:100%;font-size:12px;color:var(--faint);margin-top:-4px}.campaign-stage{position:relative;min-height:500px}.campaign-card{position:absolute;inset:0;display:grid;place-items:center;opacity:0;animation:crossfade 12s ease-in-out infinite}.campaign-card:first-child{opacity:1}.campaign-card:nth-child(2){animation-delay:6s}.campaign-card img{width:min(100%,480px);height:auto;border-radius:24px;box-shadow:0 34px 80px rgba(28,26,22,.24);animation:kenburns 12s ease-in-out infinite}.campaign-card:nth-child(2) img{animation-delay:6s}.illus{position:absolute;right:8px;bottom:6px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}@keyframes crossfade{0%,42%{opacity:1}50%,92%{opacity:0}100%{opacity:1}}@keyframes kenburns{0%{transform:scale(1.02)}50%{transform:scale(1.07) translate(-1%,1%)}100%{transform:scale(1.02)}}
+    .practice-band{display:flex;justify-content:center;gap:clamp(20px,6vw,72px);padding:24px;border-block:1px solid var(--border);background:var(--surface);font-size:clamp(22px,3vw,36px);font-weight:800;letter-spacing:-.035em}.practice-band span:nth-child(2){color:var(--accent)}.section{max-width:1120px;margin:auto;padding:100px 24px}.section-tag{display:inline-block;color:var(--accent2);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-bottom:14px}.section h2{font-size:clamp(30px,4.3vw,52px);line-height:1.06;letter-spacing:-.04em;margin-bottom:18px}.section-p{color:var(--muted);font-size:17px;max-width:650px}.cards2,.cards3{display:grid;gap:16px;margin-top:36px}.cards2{grid-template-columns:repeat(2,1fr)}.cards3{grid-template-columns:repeat(3,1fr)}.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px;box-shadow:0 1px 2px rgba(0,0,0,.04)}.card h3{font-size:20px;margin-bottom:9px}.card p,.card li{color:var(--muted);font-size:14px}.card ul{padding-left:18px;margin-top:14px}.context{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}.context span{background:var(--soft);border:1px solid rgba(13,148,136,.18);color:var(--accent2);padding:9px 12px;border-radius:999px;font-size:13px;font-weight:700}
+    .explainer-grid{display:grid;grid-template-columns:1fr .68fr;gap:54px;align-items:center;margin-top:30px}.video-frame{width:min(360px,100%);justify-self:center;background:#0f0e13;border-radius:24px;overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--border2)}.video-frame video{display:block;width:100%;aspect-ratio:9/16;object-fit:cover}.media-links{margin-top:16px;color:var(--muted);font-size:13px}.media-links a{color:var(--accent2);font-weight:700}.code-sample{background:#121117;color:#ece8f3;border-radius:18px;padding:24px;box-shadow:var(--shadow)}.code-sample small{color:#62d7c7}.code-row{display:flex;justify-content:space-between;gap:20px;border-top:1px solid rgba(255,255,255,.08);padding:10px 0;font-size:12px}.code-row b{color:#8fe8dc}.code-row span{color:#b7b2c1;text-align:right}
+    .protection{background:linear-gradient(135deg,var(--paper),var(--bg2));border:1px solid var(--border2);border-radius:24px;padding:clamp(30px,5vw,54px);margin-top:36px}.protection ul{margin:18px 0 0 20px;color:var(--muted)}.comparison{width:100%;border-collapse:collapse;margin-top:30px;background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden}.comparison th,.comparison td{padding:13px 16px;border-bottom:1px solid var(--border);text-align:left;font-size:13px}.comparison th:not(:first-child),.comparison td:not(:first-child){text-align:center}.faq{display:flex;flex-direction:column;gap:12px;margin-top:26px}.faq details{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:17px 20px}.faq summary{cursor:pointer;font-weight:700}.faq p{color:var(--muted);font-size:14px;margin-top:9px}.cta{text-align:center;padding:110px 24px;border-top:1px solid var(--border)}.cta h2{font-size:clamp(36px,5vw,62px);letter-spacing:-.04em;line-height:1.03}.cta p{color:var(--muted);margin:18px 0 30px}.cta-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}footer{border-top:1px solid var(--border);padding:30px clamp(20px,5vw,48px);display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:13px}.mobile-cta{display:none;position:fixed;left:14px;right:14px;bottom:14px;z-index:120;background:linear-gradient(150deg,var(--accent),var(--accent2));color:#fff;text-decoration:none;text-align:center;padding:13px;border-radius:12px;font-weight:800;box-shadow:0 14px 40px rgba(13,148,136,.35)}
+    .js .reveal{opacity:0;transform:translateY(20px);transition:opacity .65s ease,transform .65s ease}.js .reveal.in{opacity:1;transform:none}.noscript-note{display:none}.au-avatar{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:var(--soft);color:var(--accent);font-weight:700}.au-avatar-sm{width:28px;height:28px;font-size:11px}.au-plan{font-size:10px;padding:1px 7px;border-radius:7px;background:var(--soft);color:var(--accent2)}.au-overlay{position:fixed;inset:0;background:rgba(0,0,0,.52);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:20px;z-index:1000}.au-card{position:relative;background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:32px;max-width:400px;width:100%;box-shadow:0 30px 70px -20px rgba(0,0,0,.5)}.au-input{width:100%;padding:11px 13px;margin-bottom:11px;background:var(--bg);border:1px solid var(--border2);border-radius:10px;color:var(--ink);font:inherit}.au-btn{width:100%;padding:11px;border:0;border-radius:10px;background:linear-gradient(150deg,var(--accent),var(--accent2));color:white;font-weight:700;cursor:pointer}.au-error{color:#dc2626;font-size:13px;min-height:20px}.au-close{position:absolute;right:15px;top:12px;border:0;background:none;color:var(--ink);font-size:22px;cursor:pointer}.au-link,.au-menu-item{border:0;background:none;color:var(--accent2);cursor:pointer;font:inherit}.au-switch{text-align:center;font-size:13px;color:var(--muted);margin-top:15px}.nav-user-menu{display:none;position:absolute;right:0;top:38px;background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:130px}
+    @media(max-width:900px){.hero-grid,.explainer-grid{grid-template-columns:1fr}.hero-grid{text-align:center}.hero-copy{display:flex;flex-direction:column;align-items:center}.hero-sub{margin:auto}.hero-ctas,.hero-trust{justify-content:center}.campaign-stage{min-height:430px}.cards3{grid-template-columns:1fr 1fr}.nav-links{display:none}}
+    @media(max-width:680px){.cards2,.cards3{grid-template-columns:1fr}.practice-band{gap:14px;font-size:20px}.mobile-cta{display:block}body{padding-bottom:72px}footer{flex-direction:column;gap:12px}.nav-right .nav-link-btn{display:none}}
+    @media(prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important}.js .reveal{opacity:1;transform:none;transition:none}.campaign-card:first-child{opacity:1}.campaign-card:nth-child(2){display:none}}
   </style>
 </head>
-<body>
-  <div class="bg-mesh"></div>
-  <div class="bg-grain"></div>
-
-  <nav id="nav">
-    <span class="logo"><span class="logo-mark">◆</span><span>MockMate</span></span>
-    <div class="nav-links">
-      <a href="#how">How it works</a>
-      <a href="#features">Features</a>
-      <a href="#setup">Setup</a>
-    </div>
+<body id="top">
+  <div class="bg"></div>
+  <a class="skip" href="#main">Skip to main content</a>
+  <nav>
+    <a class="logo" href="#top"><img src="/icon.png" width="26" height="26" alt="" /><span>MockMate</span></a>
+    <div class="nav-links"><a href="#modes">Solo + Live</a><a href="#how">How it works</a><a href="#privacy">Privacy</a><a href="#faq">FAQ</a></div>
     <div class="nav-right">
-      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">
-        <span class="moon">🌙</span><span class="sun">☀️</span>
-      </button>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">◐</button>
       <button class="nav-link-btn" id="nav-signin" type="button" style="display:none">Sign in</button>
-      <div id="nav-user" style="display:none;position:relative">
-        <button id="nav-user-btn" type="button" aria-label="Account menu" style="display:flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;font-family:inherit;color:var(--text);padding:0">
-          <span id="nav-avatar" class="au-avatar au-avatar-sm"></span>
-          <span id="nav-name" style="font-size:13px"></span>
-          <span id="nav-plan" class="au-plan"></span>
-        </button>
-        <div id="nav-menu" style="display:none;position:absolute;right:0;top:calc(100% + 8px);min-width:150px;background:var(--paper);border:1px solid var(--border);border-radius:12px;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,0.2);z-index:60">
-          <button class="au-menu-item" id="menu-account" type="button">Account</button>
-          <button class="au-menu-item" id="menu-signout" type="button">Sign out</button>
-        </div>
-      </div>
-      <a href="https://github.com/vsv2014/MockMate/releases/latest" class="nav-cta" id="nav-download" target="_blank">Download Free →</a>
+      <div id="nav-user" style="display:none;position:relative"><button id="nav-user-btn" type="button" aria-label="Account menu" style="display:flex;align-items:center;gap:7px;border:0;background:none;color:var(--ink);cursor:pointer"><span id="nav-avatar" class="au-avatar au-avatar-sm"></span><span id="nav-name"></span><span id="nav-plan" class="au-plan"></span></button><div id="nav-menu" class="nav-user-menu"><button class="au-menu-item" id="menu-account" type="button">Account</button><button class="au-menu-item" id="menu-signout" type="button">Sign out</button></div></div>
+      <a href="https://github.com/vsv2014/MockMate/releases/latest" class="nav-cta" id="nav-download" target="_blank" rel="noopener">Download for Windows →</a>
     </div>
   </nav>
 
-  <!-- HERO -->
-  <section class="hero">
-    <div class="hero-brand reveal" aria-label="MockMate">
-      <span class="mark" aria-hidden="true">◆</span>
-      <span>MockMate</span>
-    </div>
-    <h1 class="reveal">
-      Never get caught <span class="highlight">off-guard</span> again.
-    </h1>
-    <p class="hero-sub reveal">
-      Private AI for Live interviews and Solo practice — resume-grounded answers in about a second.
-    </p>
-    <div class="hero-ctas reveal">
-      <a href="https://github.com/vsv2014/MockMate/releases/latest" class="btn-hero" id="hero-download" target="_blank">
-        ↓ Download for Free
-      </a>
-      <a href="#how" class="btn-secondary">See how it works</a>
-    </div>
-    <div class="hero-trust reveal" id="hero-trust">
-      <span>✓ Free to start — no credit card</span>
-      <span>✓ BYOK keys stay on your machine (audio/text still goes to your AI providers)</span>
-      <span id="hero-stealth-chip">✓ Win/macOS: verify share preview before a real interview</span>
-    </div>
-
-    <!-- Live app mockup (dark — glance-first overlay) -->
-    <div class="mockup-wrap reveal">
-      <div class="mockup-glow"></div>
-      <div class="mockup">
-        <div class="mockup-titlebar">
-          <div class="m-dot m-r"></div>
-          <div class="m-dot m-y"></div>
-          <div class="m-dot m-g"></div>
-          <span class="m-title">MockMate</span>
-          <span class="m-live">● LIVE · 1:42</span>
+  <main id="main">
+    <section class="hero">
+      <div class="hero-grid">
+        <div class="hero-copy reveal">
+          <div class="hero-brand"><img src="/icon.png" width="52" height="52" alt="" /><span>MockMate</span></div>
+          <h1>Prepare better.<br><span class="highlight">Think faster when the interview gets real.</span></h1>
+          <p class="hero-sub">Practice realistic interviews before they happen, then stay grounded in live interviews with help based on your resume, job description, selected documents, playbook, and current conversation.</p>
+          <div class="hero-ctas"><a href="https://github.com/vsv2014/MockMate/releases/latest" class="btn-primary" id="hero-download" target="_blank" rel="noopener">↓ Download for Windows</a><a href="#explainer" class="btn-secondary">▶ Watch demo</a><div class="download-note" id="download-note">Windows 10/11 · pick the .exe on the Releases page</div></div>
+          <div class="hero-trust"><span>✓ Solo practice + Live companion</span><span>✓ Managed AI where configured · BYOK available</span><span id="hero-stealth-chip">✓ Win/macOS: always verify Zoom/Meet/Teams share preview</span></div>
         </div>
-        <div class="mockup-body">
-          <div class="m-q-label">QUESTION DETECTED</div>
-          <div class="m-q">Tell me about a time you solved a difficult technical problem.</div>
-          <div class="m-answer">
-            <div class="m-badges">
-              <span class="m-badge m-b-resume">🟢 YOUR RESUME</span>
-              <span class="m-badge m-b-type">🧩 Behavioral</span>
-            </div>
-            <div class="m-text" style="font-weight:600;margin-bottom:8px">
-              Yeah so at Kore we rebuilt scoring when the queue backed up<span class="m-cursor"></span>
-            </div>
-            <div class="m-text" style="opacity:.92;font-size:13px;line-height:1.55">
-              • Skill-weighted matching instead of FIFO<br />
-              • Cut wait times ~40% — ops noticed immediately<br />
-              • Say “I decided,” not “we decided”
-            </div>
-            <div class="m-watch" style="margin-top:10px;opacity:.75">Expand for full answer</div>
-          </div>
+        <div class="campaign-stage reveal" aria-label="Illustrative MockMate campaign visuals">
+          <div class="campaign-card"><img src="/media/card-solo-practice.png" width="1080" height="1080" fetchpriority="high" alt="Illustrative MockMate Solo Practice campaign card" /></div>
+          <div class="campaign-card"><img src="/media/card-live-mode.png" width="920" height="920" loading="lazy" alt="Illustrative MockMate Live mode campaign card" /></div>
+          <span class="illus">Illustrative campaign visuals</span>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div class="platforms reveal">
-      <p>Works alongside</p>
-      <div class="platform-list">
-        <span>Zoom</span>
-        <span>Google Meet</span>
-        <span>Microsoft Teams</span>
-        <span>HackerRank</span>
-        <span>LeetCode</span>
-        <span>Any platform</span>
+    <section class="practice-band" aria-label="Practice cycle"><span>Practice.</span><span>Reflect.</span><span>Improve.</span></section>
+
+    <section class="section" id="modes">
+      <span class="section-tag reveal">Two ways to use MockMate</span>
+      <h2 class="reveal">Practice before it matters.<br>Stay grounded when it does.</h2>
+      <p class="section-p reveal">MockMate is one interview companion with two clear modes: rehearse in Solo, or use Live when the real conversation starts.</p>
+      <div class="cards2">
+        <article class="card reveal"><h3>Solo Practice</h3><p>Build the answer before interview day with role-calibrated questions, realistic follow-ups, and feedback based on what you actually said.</p><ul><li>Resume + JD-aware practice</li><li>Behavioral, coding, and system-design rounds</li><li>Repeat weak areas with targeted follow-ups</li></ul></article>
+        <article class="card reveal"><h3>Live Companion</h3><p>Keep your context close during the real interview with compact assistance grounded in your experience and current conversation.</p><ul><li>System-audio question capture</li><li>Glance-first opener + key points</li><li>Coding and screenshot-question support</li></ul></article>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- HOW IT WORKS -->
-  <section class="section" id="how">
-    <span class="section-tag reveal">How it works</span>
-    <h2 class="section-h reveal">Three steps<br />to interview-ready.</h2>
-    <p class="section-p reveal">Practice as many rounds as you want — the AI adapts to your target role and grills you like a real panel.</p>
+    <section class="section" id="how" style="padding-top:0">
+      <span class="section-tag reveal">How it works</span><h2 class="reveal">Three steps to interview-ready.</h2>
+      <div class="cards3"><article class="card reveal"><h3>1 — Add your context</h3><p>Resume, job description, selected documents, role, and optional interview playbook.</p></article><article class="card reveal"><h3>2 — Practice or go Live</h3><p>Rehearse in Solo or let Live capture the interviewer’s question during the real conversation.</p></article><article class="card reveal"><h3>3 — Get grounded help</h3><p>Concise opener, key points, code, and follow-up context based on your own material.</p></article></div>
+    </section>
 
-    <div class="steps">
-      <div class="step reveal">
-        <div class="step-num">STEP 01</div>
-        <span class="step-icon">🎯</span>
-        <h3>Set your target</h3>
-        <p>Add your role, resume, and the company. The AI calibrates difficulty to exactly the level you're interviewing for.</p>
-      </div>
-      <div class="step reveal" style="transition-delay:.08s">
-        <div class="step-num">STEP 02</div>
-        <span class="step-icon">🎙️</span>
-        <h3>Get grilled</h3>
-        <p>A realistic AI interviewer asks one question at a time and probes with follow-ups — behavioral, system design, or coding.</p>
-      </div>
-      <div class="step reveal" style="transition-delay:.16s">
-        <div class="step-num">STEP 03</div>
-        <span class="step-icon">📊</span>
-        <h3>Get scored & coached</h3>
-        <p>Honest, specific feedback grounded in what you actually said — strengths, gaps, and the one thing to fix next.</p>
-      </div>
-    </div>
-  </section>
+    <section class="section" style="padding-top:0"><span class="section-tag reveal">Grounded answers</span><h2 class="reveal">Answers that know your story.</h2><p class="section-p reveal">Generic AI knows the question. MockMate can also know the experience, role, documents, playbook, and conversation behind your answer.</p><div class="context reveal"><span>✓ Resume</span><span>✓ Job description</span><span>✓ Selected docs</span><span>✓ Interview playbook</span><span>✓ Current conversation</span></div></section>
 
-  <!-- FEATURES -->
-  <section class="section" id="features" style="padding-top:0">
-    <span class="section-tag reveal">Features</span>
-    <h2 class="section-h reveal">Everything you need<br />from resume to offer.</h2>
+    <section class="section" id="explainer" style="padding-top:0"><span class="section-tag reveal">See MockMate in motion</span><div class="explainer-grid"><div class="reveal"><h2>Practice the first answer — and the follow-up.</h2><p class="section-p">A short narrated walkthrough of the practice flow. Playback uses your browser’s native controls, including volume, captions, and fullscreen.</p><p class="media-links"><a href="/media/mockmate-video-transcript.txt" target="_blank" rel="noopener">Read transcript</a> · <a href="/media/mockmate-voiceover.mp3" target="_blank" rel="noopener">Audio only</a></p></div><div class="video-frame reveal"><video controls playsinline preload="metadata" poster="/media/card-solo-practice.png"><source src="/media/mockmate-promotional-video.mp4" type="video/mp4" /><track kind="captions" srclang="en" label="English" src="/media/mockmate-video-captions.srt" default />Your browser does not support HTML video.</video></div></div></section>
 
-    <div class="features">
-      <div class="feat reveal">
-        <span class="feat-icon">📄</span>
-        <h3>Resume-grounded answers</h3>
-        <p>Paste your resume once. Every answer references your actual projects, companies, and achievements — never generic.</p>
-      </div>
-      <div class="feat reveal" style="transition-delay:.06s">
-        <span class="feat-icon">📸</span>
-        <h3>Screen analysis</h3>
-        <p>Press <strong>Ctrl+Shift+U</strong> to analyze coding problems, slides, or whiteboards on screen — powered by GPT-4o vision.</p>
-      </div>
-      <div class="feat reveal" style="transition-delay:.12s">
-        <span class="feat-icon">🔍</span>
-        <h3>Live web search</h3>
-        <p>When asked about the company or their products, MockMate searches the web and grounds the answer in real, current facts.</p>
-      </div>
-      <div class="feat reveal">
-        <span class="feat-icon">⚡</span>
-        <h3>DSA pattern detection</h3>
-        <p>Instantly identifies algorithm patterns — Sliding Window, BFS, Dynamic Programming — with time/space complexity.</p>
-      </div>
-      <div class="feat reveal" style="transition-delay:.06s">
-        <span class="feat-icon">🌐</span>
-        <h3>12 languages</h3>
-        <p>Conduct interviews in English, Spanish, Hindi, Japanese, Chinese, Korean, French, German, and more.</p>
-      </div>
-      <div class="feat reveal" style="transition-delay:.12s">
-        <span class="feat-icon">🤖</span>
-        <h3>Solo practice mode</h3>
-        <p>An AI interviewer asks questions calibrated to your role. Probes with follow-ups. Scores you at the end.</p>
-      </div>
-      <div class="feat reveal">
-        <span class="feat-icon">🎯</span>
-        <h3>ATS resume score</h3>
-        <p>Graded 0–100 the way ATS software and a recruiter would — 20+ checks across keywords, metrics, and parse-safety, with the exact fixes to get past the bots.</p>
-      </div>
-      <div class="feat reveal" style="transition-delay:.06s">
-        <span class="feat-icon">✏️</span>
-        <h3>Tailor &amp; referrals</h3>
-        <p>Rewrites your resume for each role — surfacing keywords you genuinely match, never fabricating — and drafts personalized referral messages from your background.</p>
-      </div>
-      <div class="feat reveal" style="transition-delay:.12s">
-        <span class="feat-icon">💼</span>
-        <h3>Matching jobs</h3>
-        <p>Live roles ranked against your resume with why-it-fits and skill gaps. Filter by location, sort by fit, and save the ones you want to a personal dashboard.</p>
-      </div>
-    </div>
+    <section class="section" style="padding-top:0"><span class="section-tag reveal">Coding + screen questions</span><div class="cards2"><div class="reveal"><h2>Stay in the interview flow.</h2><p class="section-p">Use F7 to analyze a coding prompt or technical screen and switch between the full answer, code, and steps without bouncing between tools.</p></div><div class="code-sample reveal"><small>F7 · SCREEN QUESTION</small><h3 style="margin:8px 0 14px">Implement an LRU cache</h3><div class="code-row"><b>Approach</b><span>Hash map + doubly linked list</span></div><div class="code-row"><b>Complexity</b><span>O(1) get / put</span></div><div class="code-row"><b>Watch out</b><span>Update recency on reads and writes</span></div></div></div></section>
 
-    <!-- Protection block -->
-    <div class="protection-wrap reveal">
-      <div class="protection-text">
-        <h3>Private to you,<br />distraction-free.</h3>
-        <p>Live coaching sits in a compact overlay. On Windows &amp; macOS, OS content protection can exclude it from common screen-share APIs — always confirm in Zoom/Meet/Teams share preview. Not supported on Linux. BYOK keys stay on your machine.</p>
-        <div class="protection-items">
-          <div class="pitem">Glance-first notes — opener + bullets, not a script</div>
-          <div class="pitem">Win/macOS: verify share preview before a real interview</div>
-          <div class="pitem">Linux: overlay is visible in screen share</div>
-          <div class="pitem">BYOK keys stay local; content goes only to providers you choose</div>
-        </div>
-      </div>
-      <div class="shield-visual">🛡️</div>
-    </div>
-  </section>
+    <section class="section" id="privacy" style="padding-top:0"><span class="section-tag reveal">Privacy + discreet workflow</span><h2 class="reveal">Designed to support you without overclaiming.</h2><div class="protection reveal"><p>On supported Windows and macOS environments, MockMate can apply OS-level content protection to its overlay. Capture behavior varies by meeting app and configuration, so always verify the actual Zoom/Meet/Teams share preview before relying on it. Linux content protection is not supported.</p><ul><li>BYOK credentials stay on your device; prompts, audio, screenshots, and other inputs still go to the providers you configure.</li><li>Managed AI/STT uses hosted MockMate services and plan quotas where configured.</li><li>No “undetectable” or guaranteed-hidden claims.</li></ul></div><div class="cards2" style="margin-top:16px"><article class="card reveal"><h3>Managed AI</h3><p>Sign in and use supported MockMate-hosted AI services where they are configured for your account/environment.</p></article><article class="card reveal"><h3>Bring your own key</h3><p>Use your own supported provider credentials from your device. Provider requests still go to the provider you choose.</p></article></div></section>
 
-  <!-- SETUP -->
-  <section class="section" id="setup" style="padding-top:0">
-    <span class="section-tag reveal">Setup</span>
-    <h2 class="section-h reveal">Running in minutes.</h2>
+    <section class="section" style="padding-top:0"><span class="section-tag reveal">More with MockMate</span><h2 class="reveal">More than interview answers.</h2><div class="cards3"><article class="card reveal"><h3>Resume Studio</h3><p>Advisory ATS matching, truthful tailoring, and referral-message drafting.</p></article><article class="card reveal"><h3>Jobs + Skills</h3><p>Live job sources ranked against your resume with skill-gap context.</p></article><article class="card reveal"><h3>History + Playbooks</h3><p>Review past sessions and reuse interview-specific voice, truth, and domain instructions.</p></article></div></section>
 
-    <div class="setup-grid">
-      <ol class="setup-steps reveal">
-        <li>
-          <div>
-            <h4>Download &amp; install</h4>
-            <p>Grab the installer for Windows, macOS, or Linux. No terminal, no Node.js — just run it.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h4>Add your API key</h4>
-            <p>Open <strong>Settings</strong> and paste your OpenAI, Claude, Gemini, or Deepgram key — no config files. Managed "no-key" AI is coming soon.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h4>Launch the overlay</h4>
-            <p>MockMate opens as a floating overlay — always on top, content-protected on Windows &amp; macOS (verify in your share preview).</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h4>Start your interview</h4>
-            <p>Open Zoom, Teams, or Meet. MockMate listens. Answers appear automatically.</p>
-          </div>
-        </li>
-      </ol>
+    <section class="section" style="padding-top:0"><span class="section-tag reveal">Why MockMate</span><h2 class="reveal">Built for interview context, not generic chat.</h2><table class="comparison reveal"><thead><tr><th></th><th>Generic AI chat</th><th>MockMate</th></tr></thead><tbody><tr><td>Resume/JD context</td><td>Manual</td><td>✓</td></tr><tr><td>Real-time interview flow</td><td>—</td><td>✓</td></tr><tr><td>Follow-up awareness</td><td>Limited</td><td>✓</td></tr><tr><td>Screenshot questions</td><td>Manual</td><td>✓</td></tr><tr><td>Solo practice</td><td>—</td><td>✓</td></tr><tr><td>Interview playbooks</td><td>—</td><td>✓</td></tr><tr><td>BYOK option</td><td>Depends</td><td>✓</td></tr></tbody></table></section>
 
-      <div class="code-box reveal">
-        <div class="c-comment"># No terminal required</div>
-        <div class="c-cmd">Download → install → open MockMate</div>
-        <br/>
-        <div class="c-comment"># Bring your own key (for now)</div>
-        <div class="c-cmd">Settings → API Keys → paste key</div>
-        <div style="color:#8a8378;font-size:11px">OpenAI · Claude · Gemini · Groq · Deepgram</div>
-        <br/>
-        <div class="c-comment"># Managed AI — coming soon</div>
-        <div class="c-cmd">Sign in and go — no keys needed</div>
-      </div>
-    </div>
-  </section>
+    <section class="section" id="faq" style="padding-top:0"><span class="section-tag reveal">FAQ</span><h2 class="reveal">Questions, answered.</h2><div class="faq reveal"><details><summary>How fast does an answer appear?</summary><p>Response time varies by provider, model, network, and request type. MockMate streams results as they arrive and uses fast-path routing where appropriate.</p></details><details><summary>Is the overlay hidden from screen sharing?</summary><p>Windows and macOS have a supported OS content-protection path, but capture behavior varies. Always verify the actual meeting-app share preview. Linux content protection is not supported.</p></details><details><summary>Is my data private?</summary><p>BYOK credentials stay on your device. Prompts, audio, screenshots, and other inputs may still be sent to the AI or transcription providers you configure. Managed services use the hosted MockMate backend where enabled.</p></details><details><summary>Do I need an API key?</summary><p>Managed services may be available when configured for your account/environment. BYOK is also supported with compatible providers.</p></details><details><summary>Does MockMate work with Zoom, Meet, and Teams?</summary><p>Live uses system audio, so it can work alongside common meeting platforms. Verify audio capture and share-preview behavior on your actual device before an important interview.</p></details><details><summary>Which platforms are publicly available?</summary><p>The current automated public v1.5.2 release artifact is Windows. macOS and Linux runtime/packaging code remain in the project, but this page does not advertise them as current v1.5.2 public downloads.</p></details></div></section>
+  </main>
 
-  <!-- API KEYS -->
-  <section class="section" style="padding-top:0">
-    <span class="section-tag reveal">API Keys</span>
-    <h2 class="section-h reveal">Bring your own key.</h2>
-    <p class="section-p reveal">Paste your keys in <strong>Settings</strong> — most providers have a generous free tier, so you can run MockMate at low or zero cost. Prefer zero setup? Managed AI (no keys, just sign in) is coming soon.</p>
+  <section class="cta"><h2 class="reveal">Ready for your<br><span class="highlight">next interview?</span></h2><p class="reveal">Practice with your own context, then carry that context into the real interview.</p><div class="cta-actions reveal"><a href="https://github.com/vsv2014/MockMate/releases/latest" class="btn-primary" id="cta-download" target="_blank" rel="noopener">↓ Download for Windows</a><a href="https://github.com/vsv2014/MockMate" class="btn-secondary" target="_blank" rel="noopener">★ Star on GitHub</a></div></section>
+  <footer><a class="logo" href="#top"><img src="/icon.png" width="26" height="26" alt="" />MockMate</a><span>© 2026 MockMate</span><span><a href="https://github.com/vsv2014/MockMate/issues" target="_blank" rel="noopener" style="color:inherit">Report issue</a></span></footer>
+  <a href="https://github.com/vsv2014/MockMate/releases/latest" class="mobile-cta" id="mobile-download" target="_blank" rel="noopener">Download for Windows</a>
+  <p class="noscript-note" style="text-align:center;padding:8px 20px;color:var(--muted)">JavaScript is disabled. Product information remains visible; theme, sign-in, and OS-aware download labels require JavaScript.</p>
 
-    <div class="keys-grid">
-      <div class="key-card reveal">
-        <code>OPENAI_API_KEY</code>
-        <p>GPT-4o for answers + vision analysis</p>
-        <a href="https://platform.openai.com/api-keys" target="_blank" style="font-size:11px;color:var(--accent-deep);text-decoration:none">platform.openai.com →</a>
-      </div>
-      <div class="key-card reveal" style="transition-delay:.05s">
-        <code>GROQ_API_KEY</code>
-        <p>Fast AI answers, generous free tier</p>
-        <span class="free-tag">FREE</span>
-      </div>
-      <div class="key-card reveal" style="transition-delay:.1s">
-        <code>GEMINI_API_KEY</code>
-        <p>Google Gemini 2.5 Flash alternative</p>
-        <span class="free-tag">FREE</span>
-      </div>
-      <div class="key-card reveal" style="transition-delay:.15s">
-        <code>DEEPGRAM_API_KEY</code>
-        <p>Live audio transcription (nova-2)</p>
-        <span class="free-tag">$200 credits</span>
-      </div>
-      <div class="key-card reveal" style="transition-delay:.2s">
-        <code>TAVILY_API_KEY</code>
-        <p>Web search for company questions</p>
-        <span class="free-tag">FREE</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- LANGUAGES -->
-  <section class="section" style="padding-top:0">
-    <span class="section-tag reveal">Languages</span>
-    <h2 class="section-h reveal">Interview in any language.</h2>
-    <p class="section-p reveal">Select once. All answers, hints, and feedback adapt automatically.</p>
-    <div class="lang-list reveal">
-      <span class="lang">🇺🇸 English</span>
-      <span class="lang">🇪🇸 Spanish</span>
-      <span class="lang">🇫🇷 French</span>
-      <span class="lang">🇩🇪 German</span>
-      <span class="lang">🇧🇷 Portuguese</span>
-      <span class="lang">🇮🇳 Hindi</span>
-      <span class="lang">🇯🇵 Japanese</span>
-      <span class="lang">🇨🇳 Chinese</span>
-      <span class="lang">🇰🇷 Korean</span>
-      <span class="lang">🇸🇦 Arabic</span>
-      <span class="lang">🇮🇹 Italian</span>
-      <span class="lang">🇳🇱 Dutch</span>
-    </div>
-  </section>
-
-  <!-- INDUSTRIES / ROLES -->
-  <section class="section" style="padding-top:0" id="roles">
-    <span class="section-tag reveal">Roles</span>
-    <h2 class="section-h reveal">Tuned to your role.</h2>
-    <p class="section-p reveal">MockMate adapts the question style, the follow-ups, and what a "good" answer looks like to the kind of interview you're actually in.</p>
-    <div class="lang-list reveal" style="margin-top:26px">
-      <span class="lang">💻 Software Engineering</span>
-      <span class="lang">🏗 System Design</span>
-      <span class="lang">📊 Data &amp; Analytics</span>
-      <span class="lang">📦 Product Management</span>
-      <span class="lang">🧩 Consulting / Case</span>
-      <span class="lang">💰 Finance</span>
-      <span class="lang">📣 Marketing</span>
-      <span class="lang">🎨 Design</span>
-      <span class="lang">🤝 Behavioral &amp; Leadership</span>
-    </div>
-  </section>
-
-  <!-- FAQ -->
-  <section class="section" style="padding-top:0" id="faq">
-    <span class="section-tag reveal">FAQ</span>
-    <h2 class="section-h reveal">Questions, answered.</h2>
-    <div class="reveal" style="display:flex;flex-direction:column;gap:12px;margin-top:26px;max-width:780px">
-      <div class="card">
-        <h3 style="font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px">How fast does an answer appear?</h3>
-        <p style="font-size:14px;color:var(--muted);line-height:1.6;margin:0">About a second after the interviewer finishes the question. The answer streams onto your screen word-by-word, so you can start speaking almost immediately.</p>
-      </div>
-      <div class="card">
-        <h3 style="font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px">Is it visible if I share my screen?</h3>
-        <p style="font-size:14px;color:var(--muted);line-height:1.6;margin:0">On Windows and macOS the overlay uses OS APIs that exclude it from common screen-capture paths (Zoom/Teams/Meet share). Always confirm in the share preview before a real interview. Not supported on Linux. Not a guarantee against every capture method (camera of the screen, some enterprise DLP, etc.).</p>
-      </div>
-      <div class="card">
-        <h3 style="font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px">Is my data private?</h3>
-        <p style="font-size:14px;color:var(--muted);line-height:1.6;margin:0">Yes. MockMate runs on your machine. Your resume and API keys are stored locally and never sent to us — the app talks directly to the AI provider you choose.</p>
-      </div>
-      <div class="card">
-        <h3 style="font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px">Is it really free to start?</h3>
-        <p style="font-size:14px;color:var(--muted);line-height:1.6;margin:0">Yes — add a free <strong>Groq</strong> or <strong>Gemini</strong> key (no credit card) and go. Bring a paid OpenAI or Anthropic key when you want the strongest models. Note: a ChatGPT Plus subscription is <strong>not</strong> an API key and won't work.</p>
-      </div>
-      <div class="card">
-        <h3 style="font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px">Which meeting platforms does it work with?</h3>
-        <p style="font-size:14px;color:var(--muted);line-height:1.6;margin:0">All of them — it listens to your system audio, so Zoom, Google Meet, Microsoft Teams, and any other platform work the same way.</p>
-      </div>
-      <div class="card">
-        <h3 style="font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px">Windows, Mac, or Linux?</h3>
-        <p style="font-size:14px;color:var(--muted);line-height:1.6;margin:0">All three. Windows and Linux update automatically; macOS is supported with a manual update for now.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- CTA -->
-  <section class="cta-section">
-    <h2 class="reveal">Ready for your<br /><span class="highlight">next interview?</span></h2>
-    <p class="reveal">Free to start — no credit card. Add a free Groq or Gemini key and run your first interview today.</p>
-    <div class="reveal" style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
-      <a href="https://github.com/vsv2014/MockMate/releases/latest" class="btn-hero" id="cta-download" target="_blank">↓ Download for Free</a>
-      <a href="https://github.com/vsv2014/MockMate" class="btn-secondary" target="_blank">★ Star on GitHub</a>
-    </div>
-  </section>
-
-  <footer>
-    <span class="logo"><span class="logo-mark">◆</span><span>MockMate</span></span>
-    <div style="display:flex;gap:24px">
-      <a href="https://github.com/vsv2014/MockMate" target="_blank">GitHub</a>
-      <a href="https://github.com/vsv2014/MockMate/issues" target="_blank">Report Issue</a>
-    </div>
-    <span>© 2026 MockMate</span>
-  </footer>
-
-  <script>
-    /* ── Theme toggle (persists choice; updates browser UI color) ── */
-    const themeColor = document.querySelector('meta[name="theme-color"]')
-    const toggle = document.getElementById('theme-toggle')
-    function syncMeta() {
-      const dark = document.documentElement.getAttribute('data-theme') === 'dark'
-      if (themeColor) themeColor.setAttribute('content', dark ? '#16130f' : '#f4f0e9')
-    }
-    syncMeta()
-    toggle.addEventListener('click', () => {
-      const dark = document.documentElement.getAttribute('data-theme') === 'dark'
-      if (dark) document.documentElement.removeAttribute('data-theme')
-      else document.documentElement.setAttribute('data-theme', 'dark')
-      try { localStorage.setItem('mm-theme', dark ? 'light' : 'dark') } catch (e) {}
-      syncMeta()
-    })
-
-    /* ── Nav shadow on scroll ── */
-    const navEl = document.getElementById('nav')
-    const onScroll = () => navEl.classList.toggle('scrolled', window.scrollY > 8)
-    onScroll(); window.addEventListener('scroll', onScroll, { passive: true })
-
-    /* ── Scroll reveal ── */
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (reduce) {
-      document.querySelectorAll('.reveal').forEach(el => el.classList.add('in'))
-    } else {
-      const io = new IntersectionObserver((entries) => {
-        entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target) } })
-      }, { rootMargin: '0px 0px -8% 0px', threshold: 0.05 })
-      document.querySelectorAll('.reveal').forEach(el => io.observe(el))
-      document.querySelectorAll('.hero .reveal').forEach(el => requestAnimationFrame(() => el.classList.add('in')))
-    }
-
-    /* ── Feature-card cursor glow ── */
-    if (!reduce) {
-      document.querySelectorAll('.feat').forEach(card => {
-        card.addEventListener('pointermove', e => {
-          const r = card.getBoundingClientRect()
-          card.style.setProperty('--mx', (e.clientX - r.left) + 'px')
-          card.style.setProperty('--my', (e.clientY - r.top) + 'px')
-        })
-      })
-    }
-
-    /* ── Platform-aware download buttons (unchanged behavior) ── */
-    const ua = navigator.userAgent
-    const isWindows = ua.includes('Windows')
-    const isMac = ua.includes('Macintosh') || ua.includes('Mac OS')
-    const isLinux = ua.includes('Linux') && !ua.includes('Android')
-
-    const REPO = 'https://github.com/vsv2014/MockMate'
-    const ALL_URL = REPO + '/releases/latest'
-    // All buttons open the latest-release page (always resolves, regardless of how the
-    // release assets are named). We only swap the LABEL to the detected OS — we do NOT
-    // deep-link to a specific asset, because asset filenames vary by version and a
-    // version-less direct link 404s until a release ships with matching names.
-    const ids = ['nav-download', 'hero-download', 'cta-download']
-    const setHref = url => ids.forEach(id => { const el = document.getElementById(id); if (el) el.href = url })
-
-    function addBadge(text) {
-      const ctas = document.querySelector('.hero-ctas')
-      if (!ctas) return
-      const badge = document.createElement('div')
-      badge.style.cssText = 'width:100%;text-align:center;font-size:12px;color:#a39d91;margin-top:-4px'
-      badge.textContent = text
-      ctas.appendChild(badge)
-    }
-
-    const stealthChip = document.getElementById('hero-stealth-chip')
-    if (isWindows) {
-      setHref(ALL_URL)
-      document.getElementById('hero-download').innerHTML = '↓ Download for Windows'
-      document.getElementById('nav-download').textContent = 'Download for Windows →'
-      document.getElementById('cta-download').innerHTML = '↓ Download for Windows'
-      addBadge('Windows 10/11 · pick the .exe on the releases page')
-      if (stealthChip) stealthChip.textContent = '✓ Content protection available — always verify Zoom/Meet/Teams share preview'
-    } else if (isLinux) {
-      setHref(ALL_URL)
-      document.getElementById('hero-download').innerHTML = '↓ Download for Linux'
-      document.getElementById('nav-download').textContent = 'Download for Linux →'
-      document.getElementById('cta-download').innerHTML = '↓ Download for Linux'
-      addBadge('Linux 64-bit · .AppImage · overlay is visible in screen share (stealth not supported)')
-      if (stealthChip) stealthChip.textContent = '⚠ Linux: overlay shows in screen share — use Solo, or Win/macOS for Live stealth'
-    } else if (isMac) {
-      setHref(ALL_URL)
-      document.getElementById('hero-download').innerHTML = '↓ Download for macOS'
-      document.getElementById('nav-download').textContent = 'Download for macOS →'
-      document.getElementById('cta-download').innerHTML = '↓ Download for macOS'
-      addBadge('macOS · arm64 (Apple Silicon) or x64 (Intel) .dmg · first run: right-click → Open')
-      if (stealthChip) stealthChip.textContent = '✓ Content protection available — always verify Zoom/Meet/Teams share preview'
-    }
-  </script>
-
-  <!-- ════════ WEB AUTH (same backend + JWT as the desktop app) ════════ -->
-  <style>
-    .nav-link-btn { background:none; border:none; color:var(--text); opacity:.72; font-family:inherit; font-size:14px; cursor:pointer; padding:0; transition:opacity .15s; }
-    .nav-link-btn:hover { opacity:1; }
-    .au-avatar { display:inline-flex; align-items:center; justify-content:center; border-radius:50%; background:var(--accent-soft); color:var(--accent); font-weight:600; flex-shrink:0; }
-    .au-avatar-sm { width:28px; height:28px; font-size:11px; }
-    .au-avatar-lg { width:44px; height:44px; font-size:16px; }
-    .au-plan { font-size:10px; font-weight:600; padding:1px 7px; border-radius:7px; background:var(--accent-soft); color:var(--accent-deep); }
-    .au-menu-item { display:block; width:100%; text-align:left; background:none; border:none; color:var(--text); font-family:inherit; font-size:13px; padding:8px 10px; border-radius:8px; cursor:pointer; }
-    .au-menu-item:hover { background:var(--accent-soft); }
-    .au-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); display:none; align-items:center; justify-content:center; padding:20px; z-index:1000; }
-    .au-card { position:relative; background:var(--paper); border:1px solid var(--border); border-radius:16px; padding:32px; max-width:400px; width:100%; box-shadow:0 30px 70px -20px rgba(0,0,0,0.5); }
-    .au-title { font-size:20px; font-weight:650; margin:0 0 18px; color:var(--text); }
-    .au-input { width:100%; box-sizing:border-box; padding:11px 13px; margin-bottom:11px; background:var(--bg); border:1px solid var(--border-2); border-radius:10px; color:var(--text); font-size:14px; font-family:inherit; outline:none; transition:border-color .15s; }
-    .au-input:focus { border-color:var(--accent); }
-    .au-input::placeholder { color:var(--text); opacity:.4; }
-    .au-btn { width:100%; padding:11px; margin-top:5px; border:none; border-radius:10px; background:linear-gradient(150deg, var(--accent), var(--accent-deep)); color:#fff; font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; transition:transform .15s, box-shadow .15s; }
-    .au-btn:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 12px 30px -10px rgba(13,148,136,0.6); }
-    .au-btn-secondary { display:block; width:100%; box-sizing:border-box; text-align:center; text-decoration:none; padding:10px; margin-top:9px; border:1px solid var(--border-2); border-radius:10px; background:transparent; color:var(--text); font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; }
-    .au-btn-secondary:hover { border-color:var(--accent); }
-    .au-link { background:none; border:none; color:var(--accent); font-family:inherit; font-size:13px; cursor:pointer; padding:0; font-weight:600; }
-    .au-switch { margin-top:16px; text-align:center; font-size:13px; color:var(--text); opacity:.75; }
-    .au-error { color:#dc2626; font-size:13px; min-height:18px; margin-bottom:4px; }
-    .au-signout { display:block; width:100%; text-align:center; background:none; border:none; color:#dc2626; font-family:inherit; font-size:13px; cursor:pointer; margin-top:14px; opacity:.85; }
-    .au-signout:hover { opacity:1; }
-    .au-close { position:absolute; top:14px; right:16px; background:none; border:none; color:var(--text); opacity:.45; font-size:22px; line-height:1; cursor:pointer; }
-    .au-close:hover { opacity:.9; }
-  </style>
-
-  <div class="au-overlay" id="au-overlay" role="dialog" aria-modal="true">
-    <div class="au-card">
-      <button class="au-close" id="au-close" type="button" aria-label="Close">×</button>
-
-      <div id="au-login">
-        <h3 class="au-title">Sign in to MockMate</h3>
-        <input class="au-input" id="li-email" type="email" placeholder="Email" autocomplete="email" />
-        <input class="au-input" id="li-pass" type="password" placeholder="Password" autocomplete="current-password" />
-        <div class="au-error" id="li-error"></div>
-        <button class="au-btn" id="li-submit" type="button">Sign in</button>
-        <div style="text-align:center;margin-top:11px"><button class="au-link" id="li-forgot" type="button" style="font-weight:500">Forgot password?</button></div>
-        <div class="au-switch">Don't have an account? <button class="au-link" id="to-signup" type="button">Sign up</button></div>
-      </div>
-
-      <div id="au-signup" style="display:none">
-        <h3 class="au-title">Create your account</h3>
-        <input class="au-input" id="su-name" type="text" placeholder="Full name" autocomplete="name" />
-        <input class="au-input" id="su-email" type="email" placeholder="Email" autocomplete="email" />
-        <input class="au-input" id="su-pass" type="password" placeholder="Password (8+ characters)" autocomplete="new-password" />
-        <div class="au-error" id="su-error"></div>
-        <button class="au-btn" id="su-submit" type="button">Create account</button>
-        <div class="au-switch">Already have an account? <button class="au-link" id="to-login" type="button">Sign in</button></div>
-      </div>
-
-    </div>
-  </div>
+  <div class="au-overlay" id="au-overlay" role="dialog" aria-modal="true" aria-labelledby="au-title"><div class="au-card"><button class="au-close" id="au-close" type="button" aria-label="Close">×</button><div id="au-login"><h3 id="au-title" style="margin-bottom:18px">Sign in to MockMate</h3><input class="au-input" id="li-email" aria-label="Email" type="email" placeholder="Email" autocomplete="email" /><input class="au-input" id="li-pass" aria-label="Password" type="password" placeholder="Password" autocomplete="current-password" /><div class="au-error" id="li-error"></div><button class="au-btn" id="li-submit" type="button">Sign in</button><div class="au-switch">Don’t have an account? <button class="au-link" id="to-signup" type="button">Sign up</button></div></div><div id="au-signup" style="display:none"><h3 style="margin-bottom:18px">Create your account</h3><input class="au-input" id="su-name" aria-label="Full name" type="text" placeholder="Full name" autocomplete="name" /><input class="au-input" id="su-email" aria-label="Email" type="email" placeholder="Email" autocomplete="email" /><input class="au-input" id="su-pass" aria-label="Password" type="password" placeholder="Password (8+ characters)" autocomplete="new-password" /><div class="au-error" id="su-error"></div><button class="au-btn" id="su-submit" type="button">Create account</button><div class="au-switch">Already have an account? <button class="au-link" id="to-login" type="button">Sign in</button></div></div></div></div>
 
   <script src="auth-web.js"></script>
   <script>
-  (function () {
-    // Shared web-auth helpers (API base, JWT storage, api() wrapper, initials/plan) live in auth-web.js.
-    var $ = function (id) { return document.getElementById(id); };
-    var api = MMAuth.api, token = MMAuth.token, setToken = MMAuth.setToken, clearToken = MMAuth.clearToken,
-        initials = MMAuth.initials, planLabel = MMAuth.planLabel;
-
-    // ── modal open/close + view switching ──
-    var overlay = $('au-overlay');
-    function open(view) { ['au-login', 'au-signup'].forEach(function (v) { $(v).style.display = v === view ? 'block' : 'none'; }); overlay.style.display = 'flex'; }
-    function close() { overlay.style.display = 'none'; }
-    function clearErr() { $('li-error').textContent = ''; $('su-error').textContent = ''; }
-    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
-    $('au-close').addEventListener('click', close);
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
-    $('to-signup').addEventListener('click', function () { clearErr(); open('au-signup'); });
-    $('to-login').addEventListener('click', function () { clearErr(); open('au-login'); });
-
-    // ── nav state ──
-    function renderLoggedOut() { $('nav-signin').style.display = ''; $('nav-user').style.display = 'none'; }
-    MMAuth.setUnauthorizedHandler(renderLoggedOut);   // shared api() runs this on a 401
-    function renderLoggedIn(me) {
-      var u = (me && me.user) || {};
-      var plan = (me && me.plan) || u.plan || 'free';
-      $('nav-signin').style.display = 'none';
-      $('nav-user').style.display = '';
-      $('nav-avatar').textContent = initials(u.name, u.email);
-      $('nav-name').textContent = (u.name || u.email || '').split(' ')[0];
-      $('nav-plan').textContent = planLabel(plan);
-    }
-
-    // ── nav interactions ──
-    $('nav-signin').addEventListener('click', function () { clearErr(); open('au-login'); });
-    $('nav-user-btn').addEventListener('click', function (e) {
-      e.stopPropagation();
-      var m = $('nav-menu'); m.style.display = (m.style.display === 'block') ? 'none' : 'block';
-    });
-    document.addEventListener('click', function () { $('nav-menu').style.display = 'none'; });
-    $('menu-account').addEventListener('click', function () { $('nav-menu').style.display = 'none'; location.href = 'dashboard.html'; });
-    $('menu-signout').addEventListener('click', function () { clearToken(); location.reload(); });
-
-    // ── login ──
-    $('li-submit').addEventListener('click', async function () {
-      clearErr();
-      var email = $('li-email').value.trim(), password = $('li-pass').value;
-      if (!email || !password) { $('li-error').textContent = 'Enter your email and password'; return; }
-      try {
-        var r = await api('/auth/login', { method: 'POST', body: { email: email, password: password } });
-        setToken(r.token); close();
-        renderLoggedIn(await api('/auth/me', { auth: true }));
-      } catch (e) {
-        $('li-error').textContent = e.network ? 'Can’t reach the server. Is it running?' : 'Incorrect email or password';
-      }
-    });
-
-    // ── forgot password ── (always generic; the backend never reveals if the email exists)
-    $('li-forgot').addEventListener('click', async function () {
-      var email = $('li-email').value.trim();
-      if (!email) { $('li-error').textContent = 'Enter your email above first.'; return; }
-      $('li-error').textContent = '';
-      try { await api('/auth/forgot-password', { method: 'POST', body: { email: email } }); } catch (e) {}
-      $('li-forgot').outerHTML = '<div style="text-align:center;margin-top:11px;font-size:12px;color:var(--text);opacity:.7;line-height:1.5">If an account exists for that email, a reset link is on its way.</div>';
-    });
-
-    // ── signup ──
-    $('su-submit').addEventListener('click', async function () {
-      clearErr();
-      var name = $('su-name').value.trim(), email = $('su-email').value.trim(), password = $('su-pass').value;
-      if (!name || !email || !password) { $('su-error').textContent = 'Please fill in all fields'; return; }
-      if (password.length < 8) { $('su-error').textContent = 'Password must be at least 8 characters'; return; }
-      try {
-        var r = await api('/auth/signup', { method: 'POST', body: { name: name, email: email, password: password } });
-        setToken(r.token); close();
-        renderLoggedIn(await api('/auth/me', { auth: true }));
-      } catch (e) {
-        $('su-error').textContent = e.network ? 'Can’t reach the server. Is it running?'
-          : (e.status === 409 ? 'Email already registered. Sign in instead.' : (e.message || 'Could not create account'));
-      }
-    });
-
-    // Enter submits
-    ['li-email', 'li-pass'].forEach(function (id) { $(id).addEventListener('keydown', function (e) { if (e.key === 'Enter') $('li-submit').click(); }); });
-    ['su-name', 'su-email', 'su-pass'].forEach(function (id) { $(id).addEventListener('keydown', function (e) { if (e.key === 'Enter') $('su-submit').click(); }); });
-
-    // ── on load: resume session if the stored JWT is still valid ──
-    (async function () {
-      if (!token()) { renderLoggedOut(); return; }
-      try { renderLoggedIn(await api('/auth/me', { auth: true })); }
-      catch (e) { renderLoggedOut(); }
+    (function(){
+      var themeColor=document.querySelector('meta[name="theme-color"]'),toggle=document.getElementById('theme-toggle');
+      function syncTheme(){var d=document.documentElement.getAttribute('data-theme')==='dark';if(themeColor)themeColor.content=d?'#16130f':'#f4f0e9'}syncTheme();toggle.addEventListener('click',function(){var d=document.documentElement.getAttribute('data-theme')==='dark';if(d)document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme','dark');try{localStorage.setItem('mm-theme',d?'light':'dark')}catch(e){}syncTheme()});
+      var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;if(reduce){document.querySelectorAll('.reveal').forEach(function(el){el.classList.add('in')})}else{var io=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{rootMargin:'0px 0px -8% 0px',threshold:.05});document.querySelectorAll('.reveal').forEach(function(el){io.observe(el)});document.querySelectorAll('.hero .reveal').forEach(function(el){requestAnimationFrame(function(){el.classList.add('in')})})}
+      var ua=navigator.userAgent||'',isMac=ua.indexOf('Macintosh')>=0||ua.indexOf('Mac OS')>=0,isLinux=ua.indexOf('Linux')>=0&&ua.indexOf('Android')<0,ids=['nav-download','hero-download','cta-download','mobile-download'],label='Download for Windows',note='Windows 10/11 · pick the .exe on the Releases page',stealth='✓ Content protection available — always verify Zoom/Meet/Teams share preview';if(isMac){label='View macOS releases';note='macOS runtime/packaging support exists; check Releases for an available artifact'}else if(isLinux){label='View Linux releases';note='Linux runtime/packaging support exists; overlay is visible in screen share';stealth='⚠ Linux: overlay shows in screen share — content protection is not supported'}ids.forEach(function(id){var el=document.getElementById(id);if(!el)return;el.href='https://github.com/vsv2014/MockMate/releases/latest';el.textContent=(id==='nav-download'?label+' →':id==='mobile-download'?label:'↓ '+label)});document.getElementById('download-note').textContent=note;document.getElementById('hero-stealth-chip').textContent=stealth;
+      var $=function(id){return document.getElementById(id)},api=MMAuth.api,token=MMAuth.token,setToken=MMAuth.setToken,clearToken=MMAuth.clearToken,overlay=$('au-overlay');function show(view){$('au-login').style.display=view==='au-login'?'block':'none';$('au-signup').style.display=view==='au-signup'?'block':'none';overlay.style.display='flex'}function close(){overlay.style.display='none'}function clearErr(){$('li-error').textContent='';$('su-error').textContent='';$('su-error').style.color=''}function loggedOut(){$('nav-signin').style.display='';$('nav-user').style.display='none'}function loggedIn(me){var u=(me&&me.user)||{},plan=(me&&me.plan)||u.plan||'free';$('nav-signin').style.display='none';$('nav-user').style.display='';$('nav-avatar').textContent=MMAuth.initials(u.name,u.email);$('nav-name').textContent=(u.name||u.email||'').split(' ')[0];$('nav-plan').textContent=MMAuth.planLabel(plan)}MMAuth.setUnauthorizedHandler(loggedOut);$('nav-signin').addEventListener('click',function(){clearErr();show('au-login')});$('nav-user-btn').addEventListener('click',function(e){e.stopPropagation();$('nav-menu').style.display=$('nav-menu').style.display==='block'?'none':'block'});document.addEventListener('click',function(){$('nav-menu').style.display='none'});$('menu-account').addEventListener('click',function(){location.href='dashboard.html'});$('menu-signout').addEventListener('click',function(){clearToken();location.reload()});$('au-close').addEventListener('click',close);overlay.addEventListener('click',function(e){if(e.target===overlay)close()});document.addEventListener('keydown',function(e){if(e.key==='Escape')close()});$('to-signup').addEventListener('click',function(){clearErr();show('au-signup')});$('to-login').addEventListener('click',function(){clearErr();show('au-login')});
+      $('li-submit').addEventListener('click',async function(){clearErr();var email=$('li-email').value.trim(),password=$('li-pass').value;if(!email||!password){$('li-error').textContent='Enter your email and password';return}try{var r=await api('/auth/login',{method:'POST',body:{email:email,password:password}});setToken(r.token);close();loggedIn(await api('/auth/me',{auth:true}))}catch(e){$('li-error').textContent=e.network?'Can’t reach the server. Is it running?':'Incorrect email or password'}});
+      $('su-submit').addEventListener('click',async function(){clearErr();var name=$('su-name').value.trim(),email=$('su-email').value.trim(),password=$('su-pass').value;if(!name||!email||!password){$('su-error').textContent='Please fill in all fields';return}if(password.length<8){$('su-error').textContent='Password must be at least 8 characters';return}try{var r=await api('/auth/signup',{method:'POST',body:{name:name,email:email,password:password}});if(r&&r.verificationRequired){clearToken();$('su-error').style.color='var(--green)';$('su-error').textContent='Check your email to verify your account, then sign in.';return}if(!r||!r.token)throw new Error('Signup completed without a session token.');setToken(r.token);close();loggedIn(await api('/auth/me',{auth:true}))}catch(e){$('su-error').textContent=e.network?'Can’t reach the server. Is it running?':e.status===409?'Email already registered. Sign in instead.':(e.message||'Could not create account')}});
+      ['li-email','li-pass'].forEach(function(id){$(id).addEventListener('keydown',function(e){if(e.key==='Enter')$('li-submit').click()})});['su-name','su-email','su-pass'].forEach(function(id){$(id).addEventListener('keydown',function(e){if(e.key==='Enter')$('su-submit').click()})});(async function(){if(!token()){loggedOut();return}try{loggedIn(await api('/auth/me',{auth:true}))}catch(e){loggedOut()}})();
     })();
-  })();
   </script>
 </body>
 </html>
