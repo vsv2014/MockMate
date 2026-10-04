@@ -2,9 +2,7 @@
   if (!/\/landing(?:\.html)?$/i.test(location.pathname)) return;
 
   function run() {
-    // Preserve the old page's OS-aware CTA contract after enhancement copy runs.
     var ua = navigator.userAgent || '';
-    var isWindows = ua.includes('Windows');
     var isMac = ua.includes('Macintosh') || ua.includes('Mac OS');
     var isLinux = ua.includes('Linux') && !ua.includes('Android');
     var label = 'Download for Windows';
@@ -25,12 +23,13 @@
       if (id === 'nav-download') el.textContent = label + ' →';
       else el.textContent = '↓ ' + label;
     });
+    var mobile = document.querySelector('.mm-mobile-cta');
+    if (mobile) mobile.textContent = label;
     var chip = document.getElementById('hero-stealth-chip');
     if (chip) chip.textContent = stealth;
     var existingBadge = document.querySelector('.hero-ctas + div[style*="width:100%"]');
     if (existingBadge) existingBadge.textContent = badge;
 
-    // Preserve accessibility quick wins even though the old markup is still canonical.
     if (!document.querySelector('.skip-link')) {
       var skip = document.createElement('a');
       skip.className = 'skip-link';
@@ -46,7 +45,6 @@
       if (el && !el.getAttribute('aria-label')) el.setAttribute('aria-label', pair[1]);
     });
 
-    // Keep native video controls intact. We never replace or overlay the <video> element.
     document.querySelectorAll('video').forEach(function (video) { video.controls = true; });
   }
 
