@@ -126,4 +126,4 @@ jobs:
             release/latest.yml
             release/validation-baseline.json
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 7
