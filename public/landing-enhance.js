@@ -59,6 +59,7 @@
       mockup.appendChild(note);
     }
 
+    // Extend the existing warm-paper landing instead of replacing it.
     var how = document.getElementById('how');
     if (how && !document.getElementById('core-modes')) {
       var narrative = document.createElement('div');
@@ -111,30 +112,21 @@
     }
 
     var replacements = [
-      ['Grab the installer for Windows, macOS, or Linux. No terminal, no Node.js — just run it.',
-       'Download the current public Windows installer. macOS and Linux runtime/packaging code remain in the project, but v1.5.2 public automation is Windows-first.'],
-      ['Open Settings and paste your OpenAI, Claude, Gemini, or Deepgram key — no config files. Managed "no-key" AI is coming soon.',
-       'Choose the setup available to you: Managed AI where the hosted service is configured, or bring your own supported provider key from Settings.'],
+      ['Grab the installer for Windows, macOS, or Linux. No terminal, no Node.js — just run it.', 'Download the current public Windows installer. macOS and Linux runtime/packaging code remain in the project, but v1.5.2 public automation is Windows-first.'],
+      ['Open Settings and paste your OpenAI, Claude, Gemini, or Deepgram key — no config files. Managed "no-key" AI is coming soon.', 'Choose the setup available to you: Managed AI where the hosted service is configured, or bring your own supported provider key from Settings.'],
       ['# Bring your own key (for now)', '# Bring your own key'],
       ['# Managed AI — coming soon', '# Managed AI'],
       ['Sign in and go — no keys needed', 'Sign in and use managed services where configured'],
       ['Bring your own key.', 'Choose managed AI or bring your own key.'],
-      ['Paste your keys in Settings — most providers have a generous free tier, so you can run MockMate at low or zero cost. Prefer zero setup? Managed AI (no keys, just sign in) is coming soon.',
-       'Use managed services where configured, or bring your own supported provider credentials. BYOK keys stay on your device, while prompts, audio, or other inputs still go to the providers you choose.'],
-      ['About a second after the interviewer finishes the question. The answer streams onto your screen word-by-word, so you can start speaking almost immediately.',
-       'Response time varies by provider, model, network and request type. MockMate streams results as they arrive and uses fast-path routing where appropriate.'],
-      ['Yes. MockMate runs on your machine. Your resume and API keys are stored locally and never sent to us — the app talks directly to the AI provider you choose.',
-       'BYOK credentials are stored on your device. Prompts, audio and other inputs may still be sent to the AI or transcription providers you configure. Managed services use the hosted MockMate backend where enabled.'],
-      ['Yes — add a free Groq or Gemini key (no credit card) and go. Bring a paid OpenAI or Anthropic key when you want the strongest models. Note: a ChatGPT Plus subscription is not an API key and won\'t work.',
-       'You can use BYOK with supported providers, and managed services may be available when configured for your account/environment. Provider pricing and quotas can change, so check the provider before relying on a “free” tier.'],
-      ['All three. Windows and Linux update automatically; macOS is supported with a manual update for now.',
-       'The current automated public v1.5.2 release artifact is Windows. macOS and Linux code remain in the project, but they are not being advertised here as current public v1.5.2 downloads.']
+      ['Paste your keys in Settings — most providers have a generous free tier, so you can run MockMate at low or zero cost. Prefer zero setup? Managed AI (no keys, just sign in) is coming soon.', 'Use managed services where configured, or bring your own supported provider credentials. BYOK keys stay on your device, while prompts, audio, or other inputs still go to the providers you choose.'],
+      ['About a second after the interviewer finishes the question. The answer streams onto your screen word-by-word, so you can start speaking almost immediately.', 'Response time varies by provider, model, network and request type. MockMate streams results as they arrive and uses fast-path routing where appropriate.'],
+      ['Yes. MockMate runs on your machine. Your resume and API keys are stored locally and never sent to us — the app talks directly to the AI provider you choose.', 'BYOK credentials are stored on your device. Prompts, audio and other inputs may still be sent to the AI or transcription providers you configure. Managed services use the hosted MockMate backend where enabled.'],
+      ['Yes — add a free Groq or Gemini key (no credit card) and go. Bring a paid OpenAI or Anthropic key when you want the strongest models. Note: a ChatGPT Plus subscription is not an API key and won\'t work.', 'You can use BYOK with supported providers, and managed services may be available when configured for your account/environment. Provider pricing and quotas can change, so check the provider before relying on a “free” tier.'],
+      ['All three. Windows and Linux update automatically; macOS is supported with a manual update for now.', 'The current automated public v1.5.2 release artifact is Windows. macOS and Linux code remain in the project, but they are not being advertised here as current public v1.5.2 downloads.']
     ];
     document.querySelectorAll('p,h2,h3,h4,.c-comment,.c-cmd').forEach(function (el) {
       var text = el.textContent.trim();
-      replacements.forEach(function (pair) {
-        if (text === pair[0]) el.textContent = pair[1];
-      });
+      replacements.forEach(function (pair) { if (text === pair[0]) el.textContent = pair[1]; });
     });
 
     var ctaP = document.querySelector('.cta-section p');
@@ -177,8 +169,7 @@
           location.href = 'dashboard.html';
         } catch (e) {
           err.style.color = '';
-          err.textContent = e.network ? 'Can’t reach the server. Is it running?'
-            : (e.status === 409 ? 'Email already registered. Sign in instead.' : (e.message || 'Could not create account'));
+          err.textContent = e.network ? 'Can’t reach the server. Is it running?' : (e.status === 409 ? 'Email already registered. Sign in instead.' : (e.message || 'Could not create account'));
         }
       }, true);
     }
