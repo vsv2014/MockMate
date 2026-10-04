@@ -42,12 +42,12 @@ jobs:
           grep -Fxq '/backend/server-entry.cjs' /tmp/mockmate-asar.txt
           grep -Fxq '/api/_lib/core.js' /tmp/mockmate-asar.txt
 
-  # Windows must validate the runtime we actually ship, not only source-level tests.
+  # Windows validates both the runtime directory and the NSIS package we actually ship.
   # The unpacked executable is launched and both local services are probed so ASAR,
   # cwd, process-spawn and packaged-path regressions fail before merge/release.
   windows-tests:
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
@@ -58,10 +58,28 @@ jobs:
       - run: npm test
       - run: npm run smoke:api
       - run: npm run build
-      - name: Package Windows runtime directory
-        run: npx electron-builder --win --dir --publish never
+      - name: Build Windows validation installer
+        run: npx electron-builder --win --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
       - name: Smoke packaged Windows runtime
         shell: pwsh
         run: ./scripts/windows-packaged-smoke.ps1
+      - name: Verify Windows validation artifacts
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem release -Filter *.exe | Select-Object -First 1
+          $yml = Get-ChildItem release -Filter latest.yml | Select-Object -First 1
+          $blockmap = Get-ChildItem release -Filter *.blockmap | Select-Object -First 1
+          if (-not $exe) { throw 'Windows validation installer missing' }
+          if (-not $yml) { throw 'Windows validation latest.yml missing' }
+          if (-not $blockmap) { throw 'Windows validation blockmap missing' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mockmate-windows-pr-${{ github.event.pull_request.number || github.run_number }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+          if-no-files-found: error
+          retention-days: 3
