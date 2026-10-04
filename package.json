@@ -21,6 +21,7 @@
     "smoke:api": "node scripts/api-smoke.mjs",
     "doctor": "node scripts/doctor.mjs",
     "verify": "node scripts/doctor.mjs && vite build && vitest run",
+    "verify:platform": "node scripts/verify-platform-versions.mjs",
     "vite": "vite",
     "test": "vitest run",
     "test:watch": "vitest",
