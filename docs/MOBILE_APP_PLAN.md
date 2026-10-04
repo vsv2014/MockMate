@@ -2,66 +2,46 @@
 
 ## Product position
 
-The mobile app is the everyday preparation and second-device surface for MockMate. It is not a
-smaller desktop overlay and it does not promise capabilities the operating system cannot support.
+The mobile app is the preparation, practice and second-device surface for MockMate. It is not a smaller desktop overlay and it does not promise desktop-style Stealth or universal same-device meeting-audio capture.
 
-Core loop:
+## Current v1.5.2 private-beta state
 
-1. **Prepare** a job goal from company, role, objective, resume/JD and preferences.
-2. **Practice** with short voice, behavioral, coding-explanation and system-design drills.
-3. **Companion** pairs with desktop for visible transcript, answers and safe remote controls.
-4. **Review** converts sessions into evidence-backed weak areas and the next drill.
+Implemented:
 
-## Reference-screen findings
+- Expo/React Native client for iOS and Android.
+- Hosted signup/login with OS-protected token storage.
+- Prepare / History / Duo / Account navigation.
+- Company/role/objective and Interview Playbook setup.
+- Hosted text-document selection and question-relevant grounding.
+- Text mock / Answer Assist flows with synced transcripts.
+- Microphone recording with explicit consent/recording state.
+- Authenticated upload transcription through `/transcribe`, including language selection and typed-input fallback handling.
+- Shared session/history/account/usage contracts with the backend.
 
-Five competitor screenshots supplied on 2026-09-11 were reviewed as product research. Patterns
-worth adopting in MockMate's own design language:
+Still gated / incomplete:
 
-- A persistent four-item bottom navigation.
-- Live, Mock and Coding as clear session intents.
-- Company, role and objective visible before advanced settings.
-- History cards that show mode, role/company and date at a glance.
-- Duo pairing through both a shareable link and short code.
-- Account identity and plan usage in one compact destination.
-
-Patterns to improve rather than copy:
-
-- Require a meaningful session title instead of producing repeated “Untitled session” history.
-- Keep advanced setup progressive, but show a concise preflight summary before starting.
-- Separate screen-view consent from remote-control consent.
-- Never expose internal user IDs as a primary pairing experience.
-- Present real caps/usage; do not label access “Unlimited” unless the enforced backend entitlement is
-  genuinely unlimited.
-- Keep custom instructions structured and validate them rather than relying on one huge prompt.
-
-The screenshots are research inputs only and are intentionally not committed because they contain
-third-party visual assets and personal account information.
-
-## Initial information architecture
-
-| Destination | V0 foundation | M1 |
-|---|---|---|
-| Prepare | Live/Mock/Coding setup | Resume/JD, audio permission, session preflight |
-| History | Synced session cards and empty/error states | Reports, weakness tags, replay |
-| Duo | Link/code shell and native sharing | QR pairing, notifications, transcript and controls |
-| Account | Identity, plan, usage and sign-out | Billing, privacy, export/delete and devices |
+- PDF/DOCX extraction on mobile; current hosted document flow is text-first.
+- Real Duo pairing/remote companion controls.
+- Physical-device certification across iPhone and materially different Android devices.
+- App Store / Play Store distribution, privacy-label review and interruption/background soak.
+- Same-device meeting capture guarantees.
 
 ## Technical direction
 
 - Expo SDK 57 / React Native with TypeScript.
-- Hosted HTTPS API only; `EXPO_PUBLIC_API_BASE` must fail closed when absent in non-demo flows.
-- Tokens stored in `expo-secure-store`; never AsyncStorage or source-controlled configuration.
-- The backend remains authoritative for plan limits, usage and cross-device history.
-- Mobile-specific audio/capture code stays behind capability interfaces so iOS and Android behavior
-  can diverge safely.
-- Shared domain fixtures must prove mobile and desktop use the same question/answer contracts before
-  the audio pipeline is enabled.
+- Hosted HTTPS API only for beta/production; `EXPO_PUBLIC_API_BASE` fails closed when invalid.
+- Tokens stay in `expo-secure-store`.
+- Backend remains authoritative for auth, plans, quotas, sessions and hosted documents.
+- Mobile voice uses the authenticated `/transcribe` route. Server-side duration probing and atomic STT reservation prevent provider spend from exceeding the plan cap.
+- Platform-specific audio behavior stays isolated behind mobile capability boundaries.
 
-## Definition of the first usable build
+## Next milestones
 
-- Starts on iOS and Android development clients.
-- A user can sign up/sign in against staging, see account usage, create a session goal, see synced
-  history, share a Duo invitation and sign out.
-- Network and authentication failures are actionable and never masquerade as wrong credentials.
-- No audio, screen-capture or remote-control capability is advertised before it exists and passes a
-  physical-device test.
+1. Ten-minute voice mock and interruption/recovery soak on real devices.
+2. PDF/DOCX picking + secure server-side extraction.
+3. Real desktop↔mobile pairing with explicit consent and revocable controls.
+4. Offline-safe cached profile/history with visible sync state.
+5. Push reminders and drill scheduling.
+6. Store-readiness validation: account deletion, token expiry, billing entitlements, privacy labels and physical-device coverage.
+
+See `docs/MOBILE_BETA.md` for the exact shipped/private-beta boundary and `docs/ROADMAP.md` for sequencing.
