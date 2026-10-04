@@ -14,15 +14,17 @@ describe('v1.5.4 Windows packaged child-process guard', () => {
     expect(pkg.build?.nsis?.runAfterFinish).toBe(false)
   })
 
-  it('normalizes MockMate service forks to a real userData cwd before bootstrap', () => {
+  it('normalizes MockMate service forks to a dedicated real runtime cwd before bootstrap', () => {
     const guardAt = gate.indexOf('installRealServiceForkCwd()')
     const bootstrapAt = gate.indexOf("require('./bootstrap.cjs')")
     expect(guardAt).toBeGreaterThan(-1)
     expect(bootstrapAt).toBeGreaterThan(guardAt)
     expect(gate).toContain('server-entry\\.cjs')
-    expect(gate).toContain("app.getPath('userData')")
+    expect(gate).toContain("path.join(app.getPath('userData'), 'runtime')")
     expect(gate).toContain('fs.mkdirSync(cwd, { recursive: true })')
+    expect(gate).toContain('fs.statSync(cwd).isDirectory()')
     expect(gate).toContain('{ ...(options || {}), cwd }')
+    expect(gate).not.toContain("const cwd = app.getAppPath()")
   })
 
   it('disables updater auto-relaunch before loading the existing bootstrap', () => {
