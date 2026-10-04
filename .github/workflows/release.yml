@@ -23,15 +23,13 @@ jobs:
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Verify release source and version
         id: meta
         shell: bash
         env:
-          # Version-generic (BR-15 fix): the tag must match package.json — verified
-          # below — so this workflow never hardcodes a release version.
           RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
@@ -54,8 +52,8 @@ jobs:
     needs: provenance
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -114,6 +112,10 @@ jobs:
           npx electron-builder --win --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Smoke packaged Windows runtime before publication
+        shell: pwsh
+        run: ./scripts/windows-packaged-smoke.ps1
 
       - name: Verify Windows release artifacts
         shell: pwsh
