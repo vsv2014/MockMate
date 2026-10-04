@@ -71,10 +71,16 @@
   try {
     if (!/\/landing(?:\.html)?$/i.test(window.location.pathname)) return;
     if (document.querySelector('script[data-mm-landing-enhance]')) return;
-    var script = document.createElement('script');
-    script.src = '/landing-enhance.js';
-    script.defer = true;
-    script.dataset.mmLandingEnhance = '1';
-    document.head.appendChild(script);
+    var enhance = document.createElement('script');
+    enhance.src = '/landing-enhance.js';
+    enhance.dataset.mmLandingEnhance = '1';
+    enhance.onload = function () {
+      if (document.querySelector('script[data-mm-landing-guardrails]')) return;
+      var guards = document.createElement('script');
+      guards.src = '/landing-guardrails.js';
+      guards.dataset.mmLandingGuardrails = '1';
+      document.head.appendChild(guards);
+    };
+    document.head.appendChild(enhance);
   } catch (e) {}
 })();
