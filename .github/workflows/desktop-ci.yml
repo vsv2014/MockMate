@@ -88,12 +88,12 @@ jobs:
           $latestText = Get-Content $yml.FullName -Raw
           $releaseSha512 = if ($latestText -match '(?m)^sha512:\s*(\S+)') { $Matches[1] } else { '' }
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
-          $lock = Get-Content package-lock.json -Raw | ConvertFrom-Json
+          $lock = Get-Content package-lock.json -Raw | ConvertFrom-Json -AsHashtable
           $manifest = [ordered]@{
             appVersion = $pkg.version
-            electron = $lock.packages.'node_modules/electron'.version
-            electronBuilder = $lock.packages.'node_modules/electron-builder'.version
-            electronUpdater = $lock.packages.'node_modules/electron-updater'.version
+            electron = $lock['packages']['node_modules/electron']['version']
+            electronBuilder = $lock['packages']['node_modules/electron-builder']['version']
+            electronUpdater = $lock['packages']['node_modules/electron-updater']['version']
             node = (node --version)
             installer = [ordered]@{
               name = $exe.Name
