@@ -70,6 +70,7 @@ jobs:
           fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n')
           NODE
 
+      - run: npm run verify:platform
       - run: npm ci
       - run: npm --prefix backend ci
 
