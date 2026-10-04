@@ -66,22 +66,26 @@
 })(window);
 
 // Keep public/landing.html as the canonical, established landing surface. Landing-only
-// conversion/accuracy enhancements are layered on top so we preserve its visual system,
-// native player controls, CTA IDs, theme behavior, and existing auth DOM contract.
+// enhancements are loaded in order so the Arena handoff can extend the old page without
+// replacing auth/theme/download contracts or the native media controls.
 (function () {
   try {
     if (!/\/landing(?:\.html)?$/i.test(window.location.pathname)) return;
     if (document.querySelector('script[data-mm-landing-enhance]')) return;
-    var enhance = document.createElement('script');
-    enhance.src = '/landing-enhance.js';
-    enhance.dataset.mmLandingEnhance = '1';
-    enhance.onload = function () {
-      if (document.querySelector('script[data-mm-landing-guardrails]')) return;
-      var guards = document.createElement('script');
-      guards.src = '/landing-guardrails.js';
-      guards.dataset.mmLandingGuardrails = '1';
-      document.head.appendChild(guards);
-    };
-    document.head.appendChild(enhance);
+
+    function add(src, attr, onload) {
+      if (document.querySelector('script[' + attr + ']')) { if (onload) onload(); return; }
+      var s = document.createElement('script');
+      s.src = src;
+      s.setAttribute(attr, '1');
+      if (onload) s.onload = onload;
+      document.head.appendChild(s);
+    }
+
+    add('/landing-enhance.js', 'data-mm-landing-enhance', function () {
+      add('/landing-arena.js', 'data-mm-landing-arena', function () {
+        add('/landing-guardrails.js', 'data-mm-landing-guardrails');
+      });
+    });
   } catch (e) {}
 })();
