@@ -1,29 +1,22 @@
 1
 00:00:00,000 --> 00:00:03,500
-Sometimes the real interview question comes
+And this is Live.
 
 2
-00:00:03,500 --> 00:00:06,400
-after your first answer: What did you try next?
+00:00:03,500 --> 00:00:09,500
+When the real interview starts, MockMate keeps your resume,
+job description, selected documents, playbook, and conversation close.
 
 3
-00:00:06,400 --> 00:00:10,700
-MockMate Solo Practice helps you rehearse that moment
+00:00:09,500 --> 00:00:16,500
+It can help with follow-up questions, coding prompts,
+and screen questions while you stay focused on the conversation.
 
 4
-00:00:10,700 --> 00:00:15,500
-with questions tailored to your role,
-realistic follow-ups,
+00:00:16,500 --> 00:00:24,500
+On Windows and macOS, content protection is available,
+but always verify the actual Zoom, Meet, or Teams share preview.
 
 5
-00:00:15,500 --> 00:00:18,400
-and feedback based on what you actually said.
-
-6
-00:00:18,400 --> 00:00:22,000
-Practice your own stories, notice what to improve,
-and try again.
-
-7
-00:00:22,000 --> 00:00:23,810
-Explore MockMate on our website.
+00:00:24,500 --> 00:00:28,500
+Linux content protection is not supported.
