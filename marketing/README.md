@@ -21,7 +21,7 @@ The repeatable media workflow and compliance contract are in [`docs/MEDIA_PRODUC
 
 ## Generated outputs
 
-Promo renders and downloadable bundles are generated into `artifacts/marketing/` and are intentionally not committed. Generate fresh artifacts from the canonical `public/media/` inputs rather than storing snapshots in Git.
+Promo renders and downloadable bundles belong under `artifacts/marketing/`, which is gitignored. Generate fresh artifacts from the canonical `public/media/` inputs rather than storing snapshots in Git.
 
 ## Publishing notes
 
