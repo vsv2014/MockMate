@@ -1,68 +1,64 @@
-# Audit Remediation Status — 2026-10-03
+# Audit Remediation Status — v1.5.2 final sync
 
-Comprehensive code-vs-audit reconciliation for `docs/audit-remediation.md` (198 findings: `AUD-001`..`AUD-198`).
+This file summarizes the automated/code-review state after PR #45 and the Vercel Hobby deployment hotfix (PR #46). It does **not** replace packaged release evidence.
 
-## Verification gates run
+## Current verification baseline
 
-- `npm test` — **56 files, 400 tests passing**
-- `npm run smoke:api` — **passing**
-- `npm run build` — **passing** (Vite code-split production build)
-- `npx vitest run mobile/src/domain/session.test.ts` — **7 mobile domain tests passing**
+- `npm test` — **66 suites / 478 tests passing**, exit 0, zero unhandled errors.
+- `npm run smoke:api` — passing.
+- `npm run build` — passing.
+- Desktop CI — Ubuntu + Windows green on the reviewed v1.5.2 branch.
+- Mobile secret-free verification is PR-gated; production/store builds remain separately gated.
 
-## Final tally
+## High-impact remediation status
 
-| Status | Count | Notes |
-| --- | ---: | --- |
-| **FIXED + verified** | **195** | Desktop/Electron, Live, Solo, Duo, Skills/Career, Job Matching, local Express, hosted backend, billing/quota lifecycle, OAuth/email verification, and mobile (`mobile/`) fixes present in code and covered by unit/smoke tests. |
-| **INTENTIONALLY DEFERRED (Testing / Local BYOK Keys)** | **3** | `AUD-016`, `AUD-074`, `AUD-090` — preserved intentionally so local development, Windows BYOK key testing, and local key proxy workflows continue to work without friction. |
-| **BROKEN / regressed** | **0** | None found in automated verification. |
-| **Total** | **198** | Complete accounting of `AUD-001`..`AUD-198`. |
+### Auth
+- Hosted email-verification signup contract is explicit: verification-required responses contain no session token, and desktop/mobile do not persist one until verification succeeds.
+- Hosted verification refuses to boot without required mail-delivery prerequisites.
+- Desktop token-persistence failures are surfaced rather than interpreted as successful login.
 
-## Newly closed 35 previously-deferred items
+### Billing / metering
+- Managed LLM usage uses atomic reserve-before-spend accounting.
+- Streaming STT grants atomically reserve a conservative lease before minting provider access and release it on mint failure.
+- Managed upload transcription server-probes media duration and atomically reserves before Deepgram spend; failure/abort releases the lease and success reconciles actual usage.
+- Mongo LLM/STT releases clamp at zero.
 
-### 1. Billing, Plan & Managed-Usage Lifecycle (11/11 FIXED)
-- `AUD-017` — Bounded upstream provider failover (`maxProviderAttempts: 2`) enforced in `backend/src/middleware/meter.js` (`enforceManagedModelPolicy`).
-- `AUD-018` — Input-size-weighted LLM unit metering (`measureInputChars`, `estimateLlmUnits`, `maxInputChars` 413 guard, and multi-unit reservation/release) in `backend/src/plans.js`, `backend/src/middleware/meter.js`, and `backend/src/store.js`.
-- `AUD-066` — Stripe env template names aligned in `backend/.env.example` (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`, `BILLING_SUCCESS_URL`, `BILLING_CANCEL_URL`).
-- `AUD-067` — Checkout completion verifies authoritative Stripe subscription status (`s.subscriptions.retrieve` + `entitled(sub)`) in `backend/src/routes/billing.js`.
-- `AUD-068` — Webhook entitlement updates reconcile all customer subscriptions (`reconcileCustomerPlan`) in `backend/src/routes/billing.js`, making them event-order safe.
-- `AUD-069` — Subscription deletion checks remaining active subscriptions via `reconcileCustomerPlan` before downgrading to Free.
-- `AUD-070` — Authoritative Stripe reconciliation endpoint `POST /billing/reconcile` (+ automatic reconciliation on `/billing/portal`) in `backend/src/routes/billing.js` and `src/auth/api.js`.
-- `AUD-071` — Partial/broken Stripe or Google OAuth env configuration fails `validateHostedConfig()` in `backend/src/hostedConfig.js`.
-- `AUD-096` — `planExpiry` enforced in `effectivePlan(user, now)` (`backend/src/plans.js`).
-- `AUD-097` — Max-plan users (`plan === 'max'`) render accurately as `Max` / `Max plan` in `src/Account.jsx` and `src/Dashboard.jsx`.
-- `AUD-098` — Orphan Stripe customer cleanup (`s.customers.del(customerId)`) on user update failure in `backend/src/routes/billing.js`.
+### RAG / privacy lifecycle
+- Account-scoped local artifacts are purged on account deletion.
+- Deleted/replaced documents invalidate in-flight indexing work so stale embed completions cannot resurrect private text.
+- Persistent RAG cache is byte-budgeted and embedding-provider/model-bound.
 
-### 2. Hosted Account & OAuth Lifecycle (2/2 FIXED)
-- `AUD-031` — Email verification token lifecycle (`POST /auth/verify-email`, `POST /auth/resend-verification`, `sendVerificationEmail` in `backend/src/mailer.js`, and opt-in `REQUIRE_EMAIL_VERIFICATION=1` guard so local dev is never blocked) in `backend/src/routes/auth.js`.
-- `AUD-193` — Desktop/Web Google OAuth redirect token handoff (`consumeOAuthRedirectToken()` + `startGoogleAuth()`) integrated into `src/auth/api.js` and `src/auth/AuthGate.jsx`.
+### Electron / Live
+- Overlay shortcuts are mode-scoped.
+- Turn-1 system-audio boost is restricted to valid opener patterns and covered by negative controls.
+- PiP/content-protection confirmation reports the actually protected window.
+- External navigation uses one validated policy for OAuth/job URLs.
 
-### 3. Mobile (`mobile/`) (22/22 FIXED)
-- `AUD-019` — Mobile transcription timeout set to `45_000ms` (`mobile/src/api.ts`).
-- `AUD-050` — Provider STT fallback (`result.fallback === 'typed-input'`) surfaces a clear unavailability message (`mobile/src/components/InterviewSession.tsx`).
-- `AUD-051` — Account/interview language mapped via `sttLanguage()` and passed to `api.transcribe` (`mobile/src/domain/session.ts`, `InterviewSession.tsx`).
-- `AUD-052` — Mobile `DuoScreen` shares and launches live `?room=` / `?duo=` WebRTC rooms honestly via `Linking.openURL` and `Share.share` (`mobile/App.tsx`).
-- `AUD-053` — Mobile and desktop room/pairing codes unified (`mock-[a-f0-9]{32,64}` + 6–8 char codes) in `mobile/src/domain/session.ts` and `src/Duo.jsx`.
-- `AUD-077` — EAS CLI pinned to `16.0.0` in `.github/workflows/mobile-beta.yml`.
-- `AUD-084` — `setUnauthorizedHandler` in `mobile/src/api.ts` immediately transitions `mobile/App.tsx` out of authenticated UI when a `401` clears the token.
-- `AUD-085` — `relayAbort` in `mobile/src/api.ts` preserves caller `AbortSignal` cancellation.
-- `AUD-106` — `End` button disabled and guarded while recording or transcribing (`mobile/src/components/InterviewSession.tsx`).
-- `AUD-107` — Audio recorder stop/prepare promises wrapped in `try/catch` (`mobile/src/components/InterviewSession.tsx`).
-- `AUD-108` — Selected document grounding failures surface explicitly instead of silently answering ungrounded (`mobile/src/components/InterviewSession.tsx`).
-- `AUD-109` — `submitMockAnswer` rolls back optimistic transcript state and restores user input if `nextQuestion()` fails (`mobile/src/components/InterviewSession.tsx`).
-- `AUD-110` — Stale onboarding subtitle in `PrepareScreen` updated to reflect live voice + text practice (`mobile/App.tsx`).
-- `AUD-116` — Mobile document picker supports PDF, DOCX, plain text, and Markdown (`mobile/src/components/DocumentSetup.tsx`).
-- `AUD-139` — Mobile unit test suite expanded (`mobile/src/domain/session.test.ts`).
-- `AUD-167` — `DocumentSetup` uses functional state updaters (`onSelectedIds(current => ...)`) to eliminate async stale-state races (`mobile/src/components/DocumentSetup.tsx`).
-- `AUD-168` — `PATCH /me` merges incoming `preferences` with existing user preferences (`backend/src/routes/me.js` + `mergePreferences` in `mobile/App.tsx`).
-- `AUD-169` — `PrepareScreen` resyncs `playbook` and `responseStyle` when `account` refreshes (`mobile/App.tsx`).
-- `AUD-170` — `saveAuth` surfaces local `SecureStore` persistence failures after signup/login (`mobile/src/api.ts`).
-- `AUD-171` — `deleteAccount` ignores local `SecureStore` cleanup errors after authoritative server deletion (`mobile/src/api.ts`).
-- `AUD-172` — Boot network outage (`status !== 401` while token exists) renders a retryable connection screen instead of logging the user out (`mobile/App.tsx`).
-- `AUD-173` — Production/beta mobile build validates HTTPS `EXPO_PUBLIC_API_BASE` (`mobile/scripts/validate-build-env.mjs`, `.github/workflows/mobile-beta.yml`).
+### CI / release
+- Mobile verification is PR-gated.
+- Windows tests run in CI.
+- Release workflow is version-generic and enforces tag ↔ `package.json` consistency plus main ancestry.
+- Vercel Hobby deployment was reduced from 15 to **12 Serverless Functions** without changing the four affected public career/resume URLs.
 
-## Remaining 3 Intentionally Deferred Items (Local / Windows Key Testing)
+## Product-truth corrections
 
-- `AUD-016` — Deepgram local key fallback when temporary grant minting is unavailable (preserved so standard non-Owner Deepgram keys work in local/Windows testing).
-- `AUD-074` — Root `.env` / developer key workflow documentation (preserved for local developer key convenience).
-- `AUD-090` — Unauthenticated loopback BYOK API on `127.0.0.1:3002` (preserved so local desktop/web BYOK testing works without requiring hosted auth tokens).
+- ARCH is a policy plane plus partial execution plane; not every capability runs through one executor.
+- Product Intelligence is **local/runtime adaptive telemetry**, not hosted closed-loop analytics.
+- v1.5.2 automated public artifact scope is Windows NSIS; macOS/Linux are not claimed as automated public artifacts for this release.
+- Mobile microphone recording/transcription is implemented in private beta, but store readiness is not claimed.
+
+## Remaining release evidence
+
+The following are **not** considered PASS from code review alone:
+
+- packaged Windows clean-install and end-to-end smoke;
+- Live mic/system first question;
+- `Alt+T → drag → Alt+T` teleprompter behavior;
+- `F7` repeat/display memory;
+- Zoom/Meet/Teams share-preview confirmation;
+- one clean hosted deployment on final public head;
+- v1.5.1 → v1.5.2 updater path;
+- diagnostics export/redaction click-through;
+- long-duration soak.
+
+See `docs/evidence/VALIDATION_STATUS.md` for the release-gate ledger and `docs/BLAST_RADIUS_REVIEW.md` for the branch review summary.

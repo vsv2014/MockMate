@@ -1,32 +1,92 @@
-# MockMate v1.5.2 Release Notes (2026-10-03)
+# MockMate v1.5.2 Release Notes
 
-## 1. Windows Multi-Monitor, 760×240 Teleprompter HUD & Bounded `F7` Capture
+## Release scope
 
-- **Multi-Monitor Display Preservation (`electron/main.cjs`):** Switching between `'overlay'`, `'teleprompter'`, `'pill'`, and `'app'` now resolves the active monitor via `screen.getDisplayMatching(mainWindow.getBounds())` and preserves user-resized overlay dimensions (`lastOverlaySize`).
-- **Top-Center Camera-Anchored Teleprompter (`Alt+T` / `⌖ Cam`):** Docks the Live HUD at top-center (`760×240`, clamped to `area.width - 40`) directly beneath the webcam with larger teleprompter typography (`15.5px` opener, `14px` key-point bullets, and a compact single-line `Q:` header).
-- **Hands-Free Overlay Shortcuts (`Alt+T`, `Alt+Up`, `Alt+Down`, `Alt+R`, `F7`):** Scoped strictly to active `'overlay'` and `'teleprompter'` window modes, with `lastWindowMode` preserved across manual drag/resize and pill expand. `Alt+R` triggers an immediate answer for the active question candidate (`resolveAnswerNowCandidate`).
-- **Bounded Windows `F7` Screen Capture:** Captures at `1440×810 @ JPEG Q76` with an automatic `210 KB` byte-budget step-down (`1280×720 @ Q70`) so LeetCode/SQL text stays crisp while vision upload latency remains bounded.
-- **Public Build Safety Gate Preserved (`src/live/liveGate.js`):** Production desktop builds strictly enforce Electron + OS capture-protection (`protectionTest === 'passed'`) + `shareVerified` (or `linuxAck`); local dev bypass is restricted to `import.meta.env.DEV` on `localhost`/`127.0.0.1`.
+v1.5.2 is a **Windows-first public desktop release**. The current release workflow publishes the Windows NSIS installer. macOS/Linux source support remains, but this release does not claim automated public DMG/AppImage artifacts.
 
-## 2. Turn-1 System Audio & `{ Artemis }` Hybrid RAG Pipeline
+Validation baseline before tagging: **66 test suites / 478 tests**, exit 0, zero unhandled errors; `npm run build`, `npm run smoke:api`, Ubuntu CI and Windows CI are green. Packaged-Windows behavior and real meeting share-preview validation remain mandatory release gates.
 
-- **Turn-1 System Audio Question Classification (`shared/questionCapture.js`, `src/useSystemAudio.js`):** System/loopback capture forces `speakerRole: 'interviewer'` (no diarization warm-up), adds a `+25` confidence boost on Turn 1 when `source === 'system'` (relaxing the word/completeness gates for short opener prompts), and sends a Deepgram `Finalize` control frame after a 900 ms speech pause — scoped to system/loopback capture only and permanently disabled after the first question commits (session-authoritative: survives STT retries, reconnects, and source switches), so microphone Live keeps Deepgram's native endpointing.
-- **Layout-Aware PDF Extraction (`src/pdf.js`):** Reconstructs lines and tables using `transform[4]`/`transform[5]` coordinates and font-height ratios (`reconstructPageText`) so multi-column resumes and technical PDFs retain headings and bullets.
-- **Header-Inherited Semantic Chunking & Diversity Re-Ranking (`shared/retrieval.js`):** Prefixes chunks with `[Section: ...]`, extracts metric/entity signals, and applies diversity-aware hybrid vector + lexical retrieval (`topK`, `lexicalTopK`).
-- **`embeddingModel`-Bound Persistent Vector Cache (`api/_lib/core.js`, `api/_lib/apiRoutes.js`, `api/embed.js`, `src/lib/docs.js`):** Persists `embeddingModel` (`provider:model`) alongside `sig` and `dimensions` in `mm-docs-index-v1` and invalidates/re-embeds automatically if the embedding provider or model changes—even when vector dimensions match.
-- **Debounced Speculative RAG Pre-Warm (`src/LiveCompanion.jsx`, `src/lib/docs.js`):** Pre-warms RAG during question stabilization (`320ms` debounce, `AbortController` cancellation, and `canReuseSpeculativeRag` token-overlap reuse).
-- **Prompt Priority, Spoken Guardrail & Context Audit Trail (`api/_lib/interview.js`, `shared/hintLayers.js`):** Elevates `<retrieved_documents>` alongside `<candidate_resume>`, strips markdown formatting from spoken layers (`stripSpokenFormatting`), and renders source attribution pills (`✓ RESUME`, `📄 Doc · §Section`, `🖥 SCREEN`, `🌐 WEB`).
+## Windows overlay and capture
 
-## 3. UI/UX Overhaul, `CustomPromptStudio` & Brand Icon
+- Multi-monitor display preservation across app / overlay / teleprompter / pill modes.
+- Camera-anchored `760×240` Teleprompter (`Alt+T`) with renderer/main-process mode sync.
+- Overlay shortcuts (`Alt+T`, `Alt+R`, `Alt+Up`, `Alt+Down`) register only while overlay/teleprompter mode owns them.
+- `F7` / `Ctrl+Shift+U` captures the selected display with bounded JPEG dimensions/size and remembers the selected display.
+- OS content protection remains a **partial** protection mechanism on Windows/macOS and must be verified in the actual Zoom/Meet/Teams share preview. Linux Stealth is not supported.
 
-- **3-Tier Typography & WCAG AA Contrast (`src/auth/tokens.js`, `src/styles.css`):** Pairs `Kanit` (`T.fontDisplay`) for headings with `Inter` / `Segoe UI Variable Text` (`T.font`) for body/teleprompter reading and `Cascadia Code` / `JetBrains Mono` (`T.fontMono`, `tabular-nums`) for code/timers. Lifts `T.text3` contrast to `#8690A2`, harmonizes slate-teal answer cards (`T.answerBg`), and enforces keyboard `:focus-visible` rings across all inputs.
-- **Zero-Nested-Scroll `F7` Coding View Switcher (`src/App.jsx`):** Adds `[All | Code | Steps]` tabs to `ScreenAnalysisPanel` that reset to `All` on each new capture.
-- **`CustomPromptStudio` (`src/components/CustomPromptStudio.jsx`):** Adds 5 one-click role playbooks (`SWE / Coding`, `System Design`, `AI / LLM / RAG`, `Data / SQL`, `Behavioral STAR`), 6 modular `+ Add block` chips, account-scoped saved playbook presets (`mm-saved-playbooks-v1`), and a live `Compiled (always · auto-routed)` module inspector across Live and Solo setups.
-- **Solo Selected Document Gate (`src/Solo.jsx`):** Validates `getSelectedDocIds().length > 0` via `onLibraryChange` so deselected library documents do not count as active context.
-- **Supersampled 512×512 MockMate Icon (`public/icon.svg`, `public/icon.png`, `assets/icon.png`):** Upgrades the app, window, and tray icon to a 4×4-supersampled obsidian-teal squircle with the 5-bar acoustic-wave `M` monogram and live pulse dot.
+## First-turn system audio
 
-## 4. `ARCH` Runtime Intelligence & Local Product Intelligence
+- System/loopback Turn 1 is handled explicitly as interviewer speech.
+- Short imperative openers receive the Turn-1 boost; generic greetings/pleasantries do not.
+- Finalize-on-pause is scoped to the first system-audio question and stays disabled after the first committed question across reconnects/source changes.
 
-- **Declarative `ABL` Funnels & Adaptive Policies (`arch/mockmate.abl.json`, `backend/src/abl.js`, `backend/src/arch.js`):** Compiles `live_interview`, `solo_practice`, and `screen_solve` funnels plus latency thresholds (`ttftFastLaneThresholdMs: 3200ms`) directly from `arch/mockmate.abl.json`.
-- **Zero-PII Behavioral Synthesis (`shared/productIntelligence.js`, `src/lib/productIntelligence.js`, `src/components/ProductIntelligencePanel.jsx`):** Captures redacted flow steps, rage clicks, and sequence correlations (such as `overlay_resize → teleprompter_toggle` and preflight drop-off) while stripping resumes, transcripts, prompts, API keys, passwords, screenshots, and audio. Positioned honestly: local/runtime adaptive telemetry — not hosted closed-loop analytics.
-- **Operation-Scoped Lane Promotion (`backend/src/arch.js`, `api/_lib/apiRoutes.js`):** Latency is recorded as `turn_latency_ms:<operation>` at every route; `reasoningPolicy(op, { adaptive: true })` promotes `'balanced'` operations to the `'fast'` lane only when THAT operation's own `p95` breaches the `ABL` threshold (TTFT feeds the streaming-hint domain only) — a slow vision/career call can never demote a healthy interview. See `docs/ARCHITECTURE.md` §10 for the policy-plane vs execution-plane split and what ARCH does not yet control.
+## Hybrid RAG and document grounding
+
+- Layout-aware PDF extraction for multi-column resumes/technical documents.
+- Section-inherited semantic chunks and hybrid lexical/vector retrieval.
+- Persistent embedding cache stores provider + model identity and is invalidated on provider/model changes.
+- Speculative RAG pre-warm is debounced/cancellable.
+- Stale in-flight indexing cannot resurrect deleted/replaced private document text.
+- Account deletion purges account-scoped local artifacts.
+- Context Audit Trail badges surface which sources grounded an answer.
+
+## Interview Playbook and UI
+
+- `CustomPromptStudio` role playbooks and modular behavior blocks across Live and Solo.
+- Account-scoped saved presets.
+- Improved typography, focus-visible accessibility, coding view tabs, and refreshed brand icon.
+
+## ARCH and Product Intelligence
+
+ARCH is a **policy plane plus partial execution plane**. Transcription currently uses the ARCH fallback executor; LLM/embedding/vision pipelines still use their existing resilient adapters.
+
+Product Intelligence in v1.5.2 is **local/runtime adaptive telemetry** with privacy-safe structural behavioral signals. It is **not hosted closed-loop analytics** and does not have production tenant-scoped persistence.
+
+Adaptive lane promotion is operation-scoped, so slow vision/career/evaluate calls cannot contaminate a healthy interview lane.
+
+## Managed auth, billing and STT hardening
+
+- Hosted email-verification signup has an explicit verification-required response; desktop/mobile do not store a token until verification completes.
+- Hosted verification refuses to boot without required mail-delivery configuration.
+- Managed LLM usage is atomically reserved before provider spend.
+- Streaming STT reserves a conservative ≤300s lease **before** minting the Deepgram grant and releases it if minting fails.
+- Uploaded transcription server-probes MP4/M4A/WAV duration, reserves that duration + safety margin before Deepgram spend, releases on provider failure/abort, and reconciles unused/extra duration atomically.
+- Mongo release counters clamp at zero to prevent negative usage balances.
+
+## Vercel Hobby deployment
+
+The original v1.5.2 API shape exceeded Vercel Hobby's 12-function limit. PR #46 consolidated four tiny career/resume wrappers into one `api/career.js` function and preserved the existing public URLs with rewrites:
+
+- `/api/ats-score`
+- `/api/referral`
+- `/api/resume-latex`
+- `/api/tailor-resume`
+
+The deployable serverless count is now **12**. Public Vercel AI routes remain default-deny unless explicitly enabled.
+
+## Mobile private beta
+
+The Expo/React Native foundation now includes hosted auth, account/history surfaces, selected hosted text sources, text Mock/Answer Assist flows, transcript sync, and **microphone recording + authenticated `/transcribe` upload**.
+
+It is still a private beta, not a store-ready claim. Physical-device interruption/background/network-loss testing, privacy labels, store certification, and real Duo pairing remain future gates.
+
+## Release workflow
+
+The Windows release workflow is version-generic:
+
+- tag push `v*.*.*` or explicit workflow dispatch,
+- dispatch tag is required with no stale default,
+- tag must equal `package.json.version`,
+- release source must be current/ancestral to `main`.
+
+## Still required before public tag
+
+- Packaged Windows clean-install smoke.
+- `Alt+T → drag → Alt+T` behavioral check.
+- Mic/system first-question check.
+- `F7` repeat/display-memory check.
+- Real meeting share-preview confirmation.
+- One clean hosted deployment on the final public head.
+- v1.5.1 → v1.5.2 updater validation.
+
+See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
