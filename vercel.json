@@ -7,7 +7,11 @@
     "api/*.js": { "maxDuration": 30 }
   },
   "rewrites": [
-    { "source": "/api/models", "destination": "/api/providers?only=models" }
+    { "source": "/api/models", "destination": "/api/providers?only=models" },
+    { "source": "/api/ats-score", "destination": "/api/career?route=ats-score" },
+    { "source": "/api/referral", "destination": "/api/career?route=referral" },
+    { "source": "/api/resume-latex", "destination": "/api/career?route=resume-latex" },
+    { "source": "/api/tailor-resume", "destination": "/api/career?route=tailor-resume" }
   ],
   "env": {
     "ELECTRON_SKIP_BINARY_DOWNLOAD": "1"
