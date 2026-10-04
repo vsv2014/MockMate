@@ -19,6 +19,9 @@ logs/
 *.log
 npm-debug.log*
 
+# Generated marketing deliverables (kept out of application source)
+/marketing-output/
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db
