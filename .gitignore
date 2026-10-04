@@ -22,3 +22,7 @@ npm-debug.log*
 # OS / editor cruft
 .DS_Store
 Thumbs.db
+
+# Interview transcript evidence corpus — owner-local, never in git (contains
+# interviewer names and candidate-persona details; see docs/evidence/lockedin/README.md)
+docs/evidence/

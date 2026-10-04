@@ -4,6 +4,9 @@
 //
 // Security: unauthenticated Vercel deploys with real provider keys = public LLM proxy.
 // Refuse by default on Vercel unless MOCKMATE_ALLOW_PUBLIC_API=1 (escape hatch only).
+import { applyArchReasoningPolicy, isProviderFailureError, OPERATION_BY_PATH } from './_lib/apiRoutes.js'
+import { recordArchMetric } from '../backend/src/arch.js'
+
 export function postHandler(fn, key) {
   return async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
@@ -12,11 +15,16 @@ export function postHandler(fn, key) {
         error: 'Public API deploy disabled. Use the managed auth backend, or set MOCKMATE_ALLOW_PUBLIC_API=1 (not recommended).',
       })
     }
+    const startedAt = Date.now()
+    const routePath = String(req.url || '').split('?')[0] || '/api/default'
     try {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
+      const rawBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
+      const body = applyArchReasoningPolicy(routePath, rawBody)
       const out = await fn(body)
+      recordArchMetric(`turn_latency_ms:${OPERATION_BY_PATH[routePath] || 'default'}`, Date.now() - startedAt)
       res.status(200).json(key ? { [key]: out } : out)
     } catch (e) {
+      if (isProviderFailureError(e)) recordArchMetric('provider_failure_count', 1)
       res.status(e.status || 500).json({ error: e.message })
     }
   }

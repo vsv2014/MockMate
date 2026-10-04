@@ -1,6 +1,13 @@
 name: Mobile beta builds
 
 on:
+  # Blast-radius review fix: mobile changes get an automatic PR verification gate
+  # (the `verify` job below is secret-free and PR-safe; the `build` job still runs
+  # only on workflow_dispatch with the mobile-beta environment).
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-beta.yml'
   workflow_dispatch:
     inputs:
       platform:
@@ -38,6 +45,7 @@ jobs:
 
   build:
     needs: verify
+    if: github.event_name == 'workflow_dispatch'   # PRs run verification only
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: mobile-beta

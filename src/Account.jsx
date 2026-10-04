@@ -5,13 +5,14 @@ import { T } from './auth/tokens'
 const FALLBACK = {
   free: { llmCalls: 40, sttSeconds: 30 * 60 },
   pro: { llmCalls: 100000, sttSeconds: 30000 * 60 },
+  max: { llmCalls: 100000, sttSeconds: 30000 * 60 },
 }
 
 export default function Account({ auth, onManageKeys }) {
   const user = auth?.user || {}
   const isGuest = !!auth?.guest
-  const plan = auth?.plan === 'pro' ? 'pro' : 'free'
-  const planLabel = isGuest ? 'Guest' : (plan === 'pro' ? 'Pro' : 'Free')
+  const plan = auth?.plan === 'max' ? 'max' : auth?.plan === 'pro' ? 'pro' : 'free'
+  const planLabel = isGuest ? 'Guest' : (plan === 'max' ? 'Max' : plan === 'pro' ? 'Pro' : 'Free')
   const limits = auth?.limits || FALLBACK[plan]
   const usage = auth?.usage || { llmCalls: 0, sttSeconds: 0 }
   const sttMinutes = Math.round((usage.sttSeconds || 0) / 60)
@@ -19,7 +20,7 @@ export default function Account({ auth, onManageKeys }) {
 
   const name = (user.name || '').trim()
   const initials = (name || user.email || (isGuest ? 'G' : '?')).split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase()).join('') || '?'
-  const isPro = !isGuest && plan === 'pro'
+  const isPro = !isGuest && (plan === 'pro' || plan === 'max')
 
   const [signingOut, setSigningOut] = useState(false)
   const [deleting, setDeleting] = useState(false)

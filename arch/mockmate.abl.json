@@ -42,7 +42,59 @@
         "turn_latency_ms",
         "fallback_count",
         "provider_failure_count"
-      ]
+      ],
+      "productIntelligence": {
+        "mode": "structured_redacted",
+        "optInReplayDefault": false,
+        "flows": ["live_interview", "solo_practice", "screen_solve"],
+        "funnels": {
+          "live_interview": {
+            "id": "live_interview",
+            "label": "Live Interview Funnel",
+            "steps": [
+              { "id": "login", "label": "Login / Auth" },
+              { "id": "live_setup", "label": "Live Setup" },
+              { "id": "preflight_verified", "label": "Preflight Verified" },
+              { "id": "live_started", "label": "Live Started" },
+              { "id": "first_hint_rendered", "label": "First Answer Rendered" },
+              { "id": "live_ended", "label": "Live Completed" }
+            ]
+          },
+          "solo_practice": {
+            "id": "solo_practice",
+            "label": "Solo Practice Funnel",
+            "steps": [
+              { "id": "login", "label": "Login / Auth" },
+              { "id": "solo_setup", "label": "Solo Setup" },
+              { "id": "solo_started", "label": "Solo Started" },
+              { "id": "solo_evaluated", "label": "Report Evaluated" }
+            ]
+          },
+          "screen_solve": {
+            "id": "screen_solve",
+            "label": "F7 Screen Solve Funnel",
+            "steps": [
+              { "id": "f7_captured", "label": "F7 Captured" },
+              { "id": "screen_analyzed", "label": "Screen Analyzed" },
+              { "id": "coding_tab_used", "label": "Code/Steps Tab Used" }
+            ]
+          }
+        },
+        "adaptivePolicies": {
+          "ttftFastLaneThresholdMs": 3200,
+          "turnLatencyFastLaneThresholdMs": 6000,
+          "earlyAbandonWindowMs": 90000
+        },
+        "excludedData": [
+          "resumes",
+          "interview_transcripts",
+          "prompts",
+          "api_keys",
+          "passwords",
+          "screenshots",
+          "raw_meeting_audio"
+        ]
+      }
     }
   },
   "routing": {

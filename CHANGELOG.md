@@ -1,15 +1,35 @@
 # Changelog
 
-## Unreleased
+## v1.5.2 — 2026-10-03
+
+Desktop-first Windows & multi-monitor HUD upgrade, `{ Artemis }` hybrid RAG & PDF extraction pipeline, `CustomPromptStudio` playbook builder, UI/UX overhaul, and closed-loop `ARCH · Product Intelligence`.
 
 ### Added
-- Added the initial Expo/React Native iOS and Android foundation under `mobile/`, including hosted
-  authentication, secure token storage, Prepare/History/Duo/Account navigation, session-goal
-  validation, native Duo sharing and account usage.
-- Added mobile product/release gates and the longer-term Interview Intelligence Graph, MockMate Code
-  Arena and Placement OS tracks to the roadmap.
-- Extended hosted session records with title, company, role, objective, source and mobile Mock/Coding
-  modes while preserving the older desktop Live/Solo sync contract.
+- **Camera-Anchored Teleprompter Mode (`Alt+T` / `⌖ Cam`):** Docks the Live overlay at top-center (`760×240`, clamped to display width) directly below the webcam with larger teleprompter typography (`15.5px` opener, `14px` key-point bullets, and a compact single-line `Q:` header).
+- **Hands-Free Overlay Shortcuts (`Alt+T`, `Alt+Up`, `Alt+Down`, `Alt+R`, `F7`):** Scoped strictly to active `'overlay'` and `'teleprompter'` window modes so shortcuts never steal keys inside the main dashboard or external apps; `lastWindowMode` is preserved across manual drag/resize and pill expand.
+- **Custom Prompt Studio (`src/components/CustomPromptStudio.jsx`):** Added 5 one-click Role Playbook templates (`⚡ SWE / Coding`, `🏗 System Design / Staff`, `🤖 AI / LLM / RAG`, `📊 Data / SQL`, `🎯 Behavioral STAR`), 6 modular `+ Add block` rule chips, account-scoped saved playbook presets (`mm-saved-playbooks-v1`), and a live compiler inspector (`● ALWAYS` core rules vs `⚡ AUTO-ROUTED` domain sections) across Live and Solo setups.
+- **Artemis-Inspired Hybrid RAG & Layout-Aware PDF Extraction (`src/pdf.js`, `shared/retrieval.js`, `src/lib/docs.js`):**
+  - Reconstructs PDF lines and tables using `transform[4]`/`transform[5]` coordinates and font-height ratios (`reconstructPageText`).
+  - Prefixes chunks with inherited section headers (`[Section: ...]`), extracts metric/entity signals, and applies diversity-aware hybrid vector + lexical re-ranking (`topK`, `lexicalTopK`).
+  - Persists document vectors in `mm-docs-index-v1` bound to `sig`, `dimensions`, and `embeddingModel` (`provider:model`) so provider/model switches or failovers never serve stale embeddings.
+  - Pre-warms RAG speculatively during question stabilization (`320ms` debounce with `AbortController` cancellation and token-overlap reuse) and surfaces Context Audit Trail badges (`✓ RESUME`, `📄 Doc · §Section`, `🖥 SCREEN`, `🌐 WEB`).
+- **Closed-Loop `ARCH · Product Intelligence` (`arch/mockmate.abl.json`, `shared/productIntelligence.js`, `src/components/ProductIntelligencePanel.jsx`):**
+  - Declarative `ABL` funnels (`live_interview`, `solo_practice`, `screen_solve`) and adaptive latency policies (`ttftFastLaneThresholdMs: 3200ms`).
+  - Privacy-first interaction sanitizer (`redactInteractionEvent`) that strips resumes, transcripts, prompts, API keys, passwords, screenshots, and audio while detecting funnel drop-offs, `overlay_resize → teleprompter_toggle` sequences, and rage clicks.
+  - Closed-loop `reasoningPolicy(op, { adaptive: true })` automatically promotes `'balanced'` operations to the `'fast'` lane when `p95` TTFT breaches thresholds.
+- **Zero-Nested-Scroll `F7` Coding View Switcher (`src/App.jsx`):** Added `[All | Code | Steps]` segmented tabs to `ScreenAnalysisPanel` (auto-resetting to `All` on each new capture).
+- **Refined 512×512 MockMate Icon (`public/icon.svg`, `public/icon.png`, `assets/icon.png`):** Upgraded the app, window, and tray icon to a 4×4-supersampled obsidian-teal squircle with the 5-bar acoustic-wave `M` monogram.
+- **Mobile Foundation (`mobile/`):** Added the initial Expo/React Native iOS and Android private-beta foundation under `mobile/`.
+
+### Fixed
+- **Turn-1 System Audio Question Classification (`shared/questionCapture.js`, `src/useSystemAudio.js`):** System/loopback capture forces `speakerRole: 'interviewer'` (no diarization warm-up), adds a `+25` confidence boost on Turn 1 when `source === 'system'` (relaxing the word/completeness gates for short opener prompts like "Introduce yourself."), and sends a Deepgram `Finalize` control frame after a 900 ms speech pause — scoped to system/loopback capture only (never microphone) and permanently disabled after the first question commits — the disable is session-level and survives mid-session STT retries, reconnects, and source switches — so microphone Live keeps Deepgram's native endpointing. Covered by Turn-1 tests in `shared/questionCapture.test.js`.
+- **ARCH adaptive routing is operation-scoped:** latency metrics are recorded as `turn_latency_ms:<operation>` and `reasoningPolicy` only consumes the metric for the operation it is routing — a slow vision/career/evaluate call can no longer demote a healthy interview to the fast lane (review fix).
+- **Teleprompter mode sync:** dragging out of the camera dock now exits teleprompter mode AND notifies the renderer in the same transition; resizing the teleprompter keeps teleprompter mode — Electron and React can no longer disagree about the mode.
+- **Multi-Monitor Display Preservation (`electron/main.cjs`):** Uses `screen.getDisplayMatching(mainWindow.getBounds())` and preserves user-resized overlay dimensions (`lastOverlaySize`) across `'overlay'`, `'teleprompter'`, `'pill'`, and `'app'` transitions.
+- **Bounded Windows `F7` Screen Capture (`electron/main.cjs`):** Captures at `1440×810 @ JPEG Q76` with an automatic `210 KB` byte-budget step-down (`1280×720 @ Q70`) to keep dense code readable while protecting vision TTFT.
+- **Solo Setup Selected Document Gate (`src/Solo.jsx`):** Checks `getSelectedDocIds().length > 0` (synced via `onLibraryChange`) rather than `hasDocs()` so deselected library documents cannot satisfy the Solo context requirement.
+- **Spoken Output Guardrail (`shared/hintLayers.js`, `api/_lib/interview.js`):** Strips markdown bolding, headings, and robotic prefixes via `stripSpokenFormatting` and elevates `<retrieved_documents>` alongside `<candidate_resume>`.
+- **3-Tier Typography, WCAG AA Contrast & `:focus-visible` Rings (`src/auth/tokens.js`, `src/styles.css`):** Paired `Kanit` (`T.fontDisplay`), `Inter` / `Segoe UI Variable Text` (`T.font`), and `Cascadia Code` / `JetBrains Mono` (`T.fontMono`), lifted `T.text3` to `#8690A2`, and removed inline `outline: 'none'` overrides so keyboard `:focus-visible` rings render consistently.
 
 ## v1.4.11 — 2026-08-20
 

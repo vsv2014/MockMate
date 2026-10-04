@@ -80,6 +80,24 @@ export function setScopedItem(base, value) {
   try { localStorage.setItem(scopedKey(base), String(value)); return true } catch { return false }
 }
 
+/**
+ * Delete Account support (blast-radius review fix): purge EVERY localStorage key
+ * belonging to the given (or active) account scope — documents, vector cache,
+ * PI events, playbooks, jobs preferences, duo history. Returns keys removed.
+ */
+export function purgeScopedStorage(scope = activeAccountScope()) {
+  try {
+    const marker = `::${cleanScope(scope)}`
+    const doomed = []
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i)
+      if (key && key.endsWith(marker)) doomed.push(key)
+    }
+    for (const key of doomed) localStorage.removeItem(key)
+    return doomed.length
+  } catch { return 0 }
+}
+
 export function removeScopedItem(base) {
   try { localStorage.removeItem(scopedKey(base)); return true } catch { return false }
 }

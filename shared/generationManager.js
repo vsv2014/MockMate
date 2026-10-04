@@ -2,9 +2,11 @@
  * Generation lifecycle for Live answers.
  * Only the authoritative current pending/generating generation may mutate UI/state.
  */
+import { nid as makeId } from './id.js'
+
 export const GENERATION_MANAGER_VERSION = 'generation_manager_v2'
 
-function nid() { return `g_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}` }
+function nid() { return makeId('g', 6) }
 
 export function createGenerationManager() {
   let current = null

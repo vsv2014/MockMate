@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react'
 import { apiFetch } from './lib/apiClient'
-import Solo from './Solo'
 import LiveCompanion from './LiveCompanion'
-import Duo from './Duo'
-import Jobs from './Jobs'
-import Career from './Career'
-import Account from './Account'
 import AuthGate from './auth/AuthGate'
+
+const Solo = lazy(() => import('./Solo'))
+const Duo = lazy(() => import('./Duo'))
+const Jobs = lazy(() => import('./Jobs'))
+const Career = lazy(() => import('./Career'))
+const Account = lazy(() => import('./Account'))
 import { T } from './auth/tokens'
 import { AppShell, DashboardHome, SessionsTable } from './Dashboard'
 import SoloFeedback from './SoloFeedback'
@@ -24,8 +25,11 @@ import {
   interviewSeedConfirmMessage,
 } from './lib/interviewJobSeed'
 import { copyText } from './lib/clipboard'
+import { startWindowDrag } from './lib/windowDrag'
 import { canRunLanguage, runJavaScriptIsolated } from './lib/codeRunner'
 import { diagnostic } from './lib/diagnostics'
+import { trackProductEvent, attachRageClickObserver } from './lib/productIntelligence'
+import ProductIntelligencePanel from './components/ProductIntelligencePanel'
 import {
   createScreenContextRecord,
   previousScreenForContinuation,
@@ -33,7 +37,13 @@ import {
   screenFingerprint,
 } from '../shared/screenContext.js'
 
-const inElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
+const isLocalDevApp = Boolean(import.meta.env?.DEV)
+  && typeof window !== 'undefined'
+  && /^(localhost|127\.0\.0\.1)$/i.test(window.location?.hostname || '')
+const inElectron = typeof window !== 'undefined' && (
+  !!window.electronAPI?.isElectron
+  || isLocalDevApp
+)
 const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
 
 // Views that render in the full windowed app shell (large window + sidebar). Solo runs
@@ -252,6 +262,11 @@ function ElectronShell({ auth }) {
   })
 
   useEffect(() => {
+    trackProductEvent('login')
+    return attachRageClickObserver()
+  }, [])
+
+  useEffect(() => {
     const refreshDisplays = () => window.electronAPI?.listScreenDisplays?.().then(r => {
       if (r?.displays?.length) {
         setCaptureDisplays(r.displays)
@@ -396,6 +411,10 @@ function ElectronShell({ auth }) {
             requestId, continuation: !!analysis.isContinuation,
             captureCount: analysis._captureCount || 1, language: language || analysis.language || 'auto',
           })
+          trackProductEvent('screen_analyzed', {
+            continuation: !!analysis.isContinuation,
+            captureCount: analysis._captureCount || 1,
+          })
           setScreenFlowStatus(analysis.isContinuation
             ? `Combined ${analysis._captureCount} screenshots — one answer updated`
             : 'Captured as a new question')
@@ -504,6 +523,7 @@ function ElectronShell({ auth }) {
         }
         shot.previousShot = lastShotRef.current
         lastShotRef.current = shot
+        trackProductEvent('f7_captured', { mode: shot.continuationMode || 'auto' })
         await runAnalysis(shot)
       }).finally(() => {
         queuedCaptureCountRef.current = Math.max(0, queuedCaptureCountRef.current - 1)
@@ -601,26 +621,11 @@ function ElectronShell({ auth }) {
     setMinimized(true)
   }
 
-  function startDrag(e) {
-    if (e.button !== 0) return
-    if (!inElectron || !window.electronAPI?.windowDrag) return
-    e.preventDefault()
-    let lastX = e.screenX, lastY = e.screenY
-    const onMove = ev => {
-      const dx = ev.screenX - lastX, dy = ev.screenY - lastY
-      lastX = ev.screenX; lastY = ev.screenY
-      window.electronAPI.windowDrag(dx, dy)
-    }
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-  }
+  const startDrag = startWindowDrag
 
   function startResize(e, edge = 'se') {
     resizing.current = true
+    trackProductEvent('overlay_resize', { edge })
     resizeStart.current = {
       x: e.screenX, y: e.screenY,
       w: panelSize.w, h: panelSize.h,
@@ -787,6 +792,7 @@ function ElectronShell({ auth }) {
           <button onClick={() => window.electronAPI?.checkForUpdates?.()}
             style={{ height: 36, padding: '0 16px', background: 'transparent', color: T.text1, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Check for updates</button>
         </div>
+        <ProductIntelligencePanel />
         <div style={{ marginTop: 12, padding: '14px 16px', background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ flex: 1 }}>
@@ -831,7 +837,9 @@ function ElectronShell({ auth }) {
             stealth={stealth} onStealth={requestStealthToggle}
             onMinimize={collapseToPill} onClose={() => window.close?.()}>
             <WhatsNew openSignal={whatsNewSignal} />
-            {content}
+            <Suspense fallback={<div style={{ color: T.text3, fontSize: 12.5, padding: '24px 4px', fontFamily: T.font }}>Loading workspace…</div>}>
+              {content}
+            </Suspense>
           </AppShell>
         </div>
       </>
@@ -933,15 +941,15 @@ export function CodeBlock({ code, runnableCode, language }) {
         </button>}
       </div>
       <pre style={{ margin: 0, padding: '10px 12px', overflowX: 'auto', maxHeight: 260 }}>
-        <code style={{ fontFamily: "'Menlo','Consolas',monospace", fontSize: 12, lineHeight: 1.6, color: '#e6edf3', whiteSpace: 'pre' }}>{highlightCode(code || '')}</code>
+        <code style={{ fontFamily: T.fontMono, fontSize: 12, lineHeight: 1.6, color: '#e6edf3', whiteSpace: 'pre' }}>{highlightCode(code || '')}</code>
       </pre>
       {hasSeparateRunnable && <details style={{ borderTop: '1px solid #1f2733' }}>
         <summary style={{ padding: '6px 10px', cursor: 'pointer', color: '#7d8590', fontSize: 10 }}>Runnable version · online compiler</summary>
         <pre style={{ margin: 0, padding: '10px 12px', overflowX: 'auto', maxHeight: 220, borderTop: '1px solid #1f2733' }}>
-          <code style={{ fontFamily: "'Menlo','Consolas',monospace", fontSize: 12, lineHeight: 1.6, color: '#e6edf3', whiteSpace: 'pre' }}>{highlightCode(runnableCode)}</code>
+          <code style={{ fontFamily: T.fontMono, fontSize: 12, lineHeight: 1.6, color: '#e6edf3', whiteSpace: 'pre' }}>{highlightCode(runnableCode)}</code>
         </pre>
       </details>}
-      {runState && !runState.running && <div role="status" style={{ padding: '6px 10px', borderTop: '1px solid #1f2733', fontFamily: 'monospace', whiteSpace: 'pre-wrap', fontSize: 10, color: runState.ok ? '#86efac' : '#fca5a5', maxHeight: 100, overflow: 'auto' }}>
+      {runState && !runState.running && <div role="status" style={{ padding: '6px 10px', borderTop: '1px solid #1f2733', fontFamily: T.fontMono, whiteSpace: 'pre-wrap', fontSize: 10, color: runState.ok ? '#86efac' : '#fca5a5', maxHeight: 100, overflow: 'auto' }}>
         {runState.ok
           ? ([...(runState.logs || []), runState.result].filter(x => x != null && x !== '').join('\n') || '✓ JavaScript loaded successfully. Add a function call or console.log to see output.')
           : `✗ ${runState.error || 'Execution failed'}`}
@@ -953,15 +961,19 @@ export function CodeBlock({ code, runnableCode, language }) {
 // ── Screen Analysis Panel — shown when Ctrl+Shift+U is pressed ───────────────
 export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss, onReanalyze, onRecapture, onContinueCapture, onNewCapture, onUndoMerge, captureDisplays, captureDisplayId, onCaptureDisplayId, liveAttachHint }) {
   const [requestedLanguage, setRequestedLanguage] = useState('')
+  const [codingTab, setCodingTab] = useState('all') // 'all' | 'code' | 'approach'
   useEffect(() => { if (!analyzing) setRequestedLanguage('') }, [analyzing, analysis])
+  useEffect(() => { setCodingTab('all') }, [analysis])
   if (!analyzing && !analysis) return null
   // Supports wrapped screen-context records { analysis, status, error } and legacy flat analysis.
   const record = analysis?.analysis || analysis
   const status = analysis?.status
   const err = analysis?.error || record?.error
   const isCoding = (record?.contentType === 'coding') || (record?.screenFamily === 'screen_code')
-  const accent = isCoding ? 'rgba(34,197,94,0.25)' : 'rgba(234,179,8,0.25)'
-  const accentBg = isCoding ? 'rgba(34,197,94,0.06)' : 'rgba(234,179,8,0.08)'
+  const hasCodingTabs = Boolean(record?.code && Array.isArray(record?.approach) && record.approach.length > 0)
+  const activeCodingTab = hasCodingTabs ? codingTab : 'all'
+  const accent = isCoding ? 'rgba(34,197,94,0.28)' : 'rgba(234,179,8,0.28)'
+  const accentBg = isCoding ? 'rgba(12, 28, 22, 0.88)' : 'rgba(28, 23, 12, 0.88)'
   const statusLabel = analyzing ? 'Analyzing…'
     : status === 'not_captured' ? 'SCREEN NOT CAPTURED'
     : status === 'unsupported' ? 'CAPTURE UNSUPPORTED'
@@ -971,10 +983,10 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
     : liveAttachHint === 'irrelevant' ? 'SCREEN SOLVED INDEPENDENTLY'
     : 'SCREEN ANALYZED'
   return (
-    <div style={{ background: accentBg, border: `1px solid ${accent}`, borderRadius: 10, padding: '12px', marginBottom: 10 }}>
+    <div style={{ background: accentBg, border: `1px solid ${accent}`, borderRadius: 10, padding: '12px', marginBottom: 10, boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.08)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: isCoding ? '#4ade80' : '#fbbf24' }}>{isCoding ? 'Coding Solution' : 'Screen Analysis'}</span>
-        <span style={{ fontSize: 9, color: T.text3, background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 8 }}>F7 / Ctrl+Shift+U</span>
+        <span style={{ fontSize: 9, color: T.text3, background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 8, fontFamily: T.fontMono }}>F7 / Ctrl+Shift+U</span>
         <span style={{ fontSize: 9, color: err ? '#f87171' : T.text3, marginLeft: 4 }}>{statusLabel}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           {onRecapture && <button onClick={onRecapture} title="Re-capture the screen" style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 13 }}>↻</button>}
@@ -1009,15 +1021,25 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
         ? <div style={{ fontSize: 12, color: '#fbbf24' }}>{requestedLanguage ? `Rewriting complete solution in ${requestedLanguage}…` : 'Analyzing screen…'}</div>
         : err
           ? <div style={{ fontSize: 12, color: '#f87171' }}>⚠ {err}</div>
-          : isCoding
+            : isCoding
             ? (
               <>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
                   {record.pattern && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(20,184,166,0.3)', color: '#99f6e4', borderRadius: 10, fontWeight: 700 }}>{record.pattern}</span>}
-                  {record.complexity && <span style={{ fontSize: 9, padding: '2px 8px', background: '#0d1117', color: '#7ee787', borderRadius: 10, fontFamily: 'monospace' }}>{record.complexity}</span>}
+                  {record.complexity && <span style={{ fontSize: 9, padding: '2px 8px', background: '#0d1117', color: '#7ee787', borderRadius: 10, fontFamily: T.fontMono }}>{record.complexity}</span>}
                   {record.language && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(255,255,255,0.06)', color: T.text2, borderRadius: 10 }}>{record.language}</span>}
+                  {record.code && Array.isArray(record.approach) && record.approach.length > 0 && (
+                    <div style={{ marginLeft: 'auto', display: 'inline-flex', background: 'rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 7, padding: 2, gap: 2 }}>
+                      {[['all', 'All'], ['code', 'Code'], ['approach', 'Steps']].map(([id, lbl]) => (
+                        <button key={id} type="button" onClick={() => { setCodingTab(id); if (id !== 'all') trackProductEvent('coding_tab_used', { tab: id }) }}
+                          style={{ fontSize: 9.5, fontWeight: 600, padding: '2px 7px', borderRadius: 5, border: 'none', cursor: 'pointer',
+                            background: codingTab === id ? 'rgba(20,184,166,0.28)' : 'transparent',
+                            color: codingTab === id ? '#5eead4' : T.text3 }}>{lbl}</button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {record.detectedText && <div style={{ fontSize: 11, color: T.text2, fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(34,197,94,0.3)', paddingLeft: 7 }}>{record.detectedText}</div>}
+                {record.detectedText && <div style={{ fontSize: 11, color: T.text2, marginBottom: 8, borderLeft: '2px solid rgba(34,197,94,0.35)', paddingLeft: 7 }}>{record.detectedText}</div>}
                 {onReanalyze && (
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
                     {CODING_LANGUAGES.map(lang => {
@@ -1030,22 +1052,22 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
                     })}
                   </div>
                 )}
-                {Array.isArray(record.approach) && record.approach.length > 0 && (
+                {activeCodingTab !== 'code' && Array.isArray(record.approach) && record.approach.length > 0 && (
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>APPROACH</div>
                     {record.approach.map((step, i) => (
                       <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 3, fontSize: 12, color: T.text1 }}>
-                        <span style={{ color: '#4ade80', flexShrink: 0 }}>{i + 1}.</span><span>{step}</span>
+                        <span style={{ color: '#4ade80', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{i + 1}.</span><span>{step}</span>
                       </div>
                     ))}
                   </div>
                 )}
-                {record.code && <CodeBlock code={record.code} runnableCode={record.runnableCode} language={record.language} />}
-                {Array.isArray(record.testCases) && record.testCases.length > 0 && (
+                {activeCodingTab !== 'approach' && record.code && <CodeBlock code={record.code} runnableCode={record.runnableCode} language={record.language} />}
+                {activeCodingTab !== 'code' && Array.isArray(record.testCases) && record.testCases.length > 0 && (
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>SAMPLE TESTS</div>
                     {record.testCases.slice(0, 4).map((test, i) => (
-                      <div key={i} style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '5px 7px', marginBottom: 4, fontFamily: 'monospace', fontSize: 10, color: T.text2 }}>
+                      <div key={i} style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '5px 7px', marginBottom: 4, fontFamily: T.fontMono, fontSize: 10, color: T.text2 }}>
                         <div><span style={{ color: T.text3 }}>input:</span> {String(test?.input ?? '')}</div>
                         <div><span style={{ color: T.text3 }}>expected:</span> {String(test?.expectedOutput ?? '')}</div>
                         <div style={{ color: test?.source === 'question' ? '#86efac' : '#fbbf24', marginTop: 2, fontFamily: T.font }}>
@@ -1055,7 +1077,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
                     ))}
                   </div>
                 )}
-                {Array.isArray(record.edgeCases) && record.edgeCases.length > 0 && (
+                {activeCodingTab !== 'code' && Array.isArray(record.edgeCases) && record.edgeCases.length > 0 && (
                   <div style={{ marginBottom: 6 }}>
                     <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>EDGE CASES</div>
                     {record.edgeCases.map((ec, i) => (
@@ -1111,6 +1133,8 @@ function Glyph({ name }) {
     case 'stop':     return <svg {...p}><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
     case 'close':    return <svg {...p}><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
     case 'shield':   return <svg {...p}><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" /></svg>
+    case 'pin':      return <svg {...p}><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z" /></svg>
+    case 'cursor':   return <svg {...p}><path d="M4 4l7.07 17 2.51-7.39L21 11.07z" /><path d="M13.5 13.5L19 19" /></svg>
     default:         return <span style={{ fontSize: 14 }}>{name}</span>
   }
 }
@@ -1364,19 +1388,19 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         // Browser: keep the floating CSS panel size.
         width: inElectron ? '100%' : panelSize.w,
         height: (minimized || autoHeight) ? 'auto' : (inElectron ? '100%' : panelSize.h),
-        background: 'rgba(8,9,14,0.88)',
-        border: '1px solid rgba(255,255,255,0.10)',
+        background: 'rgba(9, 12, 17, 0.91)',
+        border: '1px solid rgba(255,255,255,0.11)',
         borderRadius: 12,
-        boxShadow: '0 10px 36px rgba(0,0,0,0.55)',
-        backdropFilter: 'blur(24px)',
-        WebkitBackdropFilter: 'blur(24px)',
+        boxShadow: T.overlayShadow,
+        backdropFilter: 'blur(24px) saturate(140%)',
+        WebkitBackdropFilter: 'blur(24px) saturate(140%)',
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
         opacity,
         transition: 'opacity 0.1s',
         // Always 'all' — click-through is handled by Electron setIgnoreMouseEvents + region hover.
         pointerEvents: 'all',
-        fontFamily: 'system-ui, sans-serif',
+        fontFamily: T.font,
         color: T.text1,
         userSelect: 'none',
         boxSizing: 'border-box',
@@ -1384,20 +1408,20 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         {/* Header — drag handle (above resize hit-zones so Live overlay stays movable) */}
         <div onMouseDown={onDrag} data-mm-hit="1" style={{
           display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px 7px 12px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-          background: 'rgba(0,0,0,0.25)', cursor: 'grab', flexShrink: 0,
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.28) 100%)', cursor: 'grab', flexShrink: 0,
           position: 'relative', zIndex: 20,
         }}>
           {extra
             ? <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>{extra}</div>
-            : <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.88)', fontWeight: 600, fontFamily: T.font }}>{title || 'MockMate'}</span>}
+            : <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.88)', fontWeight: 600, fontFamily: T.fontDisplay }}>{title || 'MockMate'}</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }} onMouseDown={e => e.stopPropagation()} data-mm-hit="1">
             {actions}
             {inElectron && typeof onStealth === 'function' && (
               <button onClick={onStealth} onMouseDown={e => e.stopPropagation()}
                 title={stealth ? 'Stealth ON — capture protection enabled. Verify the meeting share preview.' : 'Stealth OFF — overlay may appear in capture. Click to enable protection.'}
                 aria-label={stealth ? 'Disable stealth capture protection' : 'Enable stealth capture protection'} aria-pressed={!!stealth}
-                style={{ height: 28, minWidth: 28, padding: '0 7px', display: 'grid', placeItems: 'center', background: stealth ? 'rgba(13,148,136,0.42)' : 'transparent', color: stealth ? '#5eead4' : 'rgba(255,255,255,0.55)', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13 }}>🛡️</button>
+                style={{ height: 28, minWidth: 28, padding: '0 7px', display: 'grid', placeItems: 'center', background: stealth ? 'rgba(13,148,136,0.36)' : 'transparent', color: stealth ? '#5eead4' : 'rgba(255,255,255,0.55)', border: stealth ? '1px solid rgba(94,234,212,0.35)' : '1px solid transparent', borderRadius: 7, cursor: 'pointer', fontSize: 13 }}><Glyph name="shield" /></button>
             )}
             {typeof onOpacity === 'function' && (
               <label title="Transparency (like LockedIn) — lower = more see-through"
@@ -1414,13 +1438,13 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
               <button onClick={togglePin} onMouseDown={e => e.stopPropagation()}
                 title={pinned ? 'Pinned — stays open when you switch to Zoom/Meet. Click to unpin.' : 'Unpinned — collapses to the pill icon when you switch apps (never vanishes). Click to pin.'}
                 aria-label={pinned ? 'Unpin — collapse to pill when switching windows' : 'Pin — keep overlay when switching windows'} aria-pressed={pinned}
-                style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: pinned ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, opacity: pinned ? 1 : 0.6 }}>📌</button>
+                style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: pinned ? 'rgba(13,148,136,0.30)' : 'transparent', color: pinned ? '#5eead4' : 'rgba(255,255,255,0.55)', border: pinned ? '1px solid rgba(94,234,212,0.30)' : '1px solid transparent', borderRadius: 7, cursor: 'pointer', fontSize: 13 }}><Glyph name="pin" /></button>
             )}
             {inElectron && onClickThrough && (
               <button onClick={toggleClickThrough} onMouseDown={e => e.stopPropagation()}
                 title={clickThrough ? 'Click-through ON — mouse clicks go through to Zoom/Meet. Hover the toolbar to use MockMate (Alt+C off).' : 'Click-through — let clicks pass through the overlay into the meeting (different from collapse)'}
                 aria-label={clickThrough ? 'Disable click-through' : 'Enable click-through'} aria-pressed={!!clickThrough}
-                style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: clickThrough ? 'rgba(13,148,136,0.35)' : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 12, opacity: clickThrough ? 1 : 0.6, fontWeight: 700 }}>🖱️</button>
+                style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: clickThrough ? 'rgba(13,148,136,0.30)' : 'transparent', color: clickThrough ? '#5eead4' : 'rgba(255,255,255,0.55)', border: clickThrough ? '1px solid rgba(94,234,212,0.30)' : '1px solid transparent', borderRadius: 7, cursor: 'pointer', fontSize: 12 }}><Glyph name="cursor" /></button>
             )}
             {/* Single collapse control — eye + minimize were duplicates of the same pill action */}
             <IconBtn icon={minimized ? 'expand' : 'minimize'} onClick={onMinimize || onStealth}

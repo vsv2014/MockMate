@@ -12,7 +12,7 @@ import { configuredProviderNames } from './lib/modelPicker'
 const inp = {
   width: '100%', boxSizing: 'border-box', padding: '9px 11px',
   background: T.surface2, border: `1px solid ${T.border}`,
-  borderRadius: T.rCtrl, color: T.text1, fontSize: 12, outline: 'none',
+  borderRadius: T.rCtrl, color: T.text1, fontSize: 12,
   fontFamily: T.font,
 }
 

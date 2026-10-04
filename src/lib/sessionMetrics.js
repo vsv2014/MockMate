@@ -1,6 +1,7 @@
 // Local Live-session metrics (Phase 6). No transcript / resume / answer text — timings,
 // counters, and opaque error codes only. Persisted via Electron IPC → userData JSONL.
 import { diagnostic, setDiagnosticContext, clearDiagnosticContext } from './diagnostics'
+import { trackProductEvent } from './productIntelligence'
 const SENSITIVE = /resume|transcript|answer|question|prompt|sample|fullAnswer|text|content|say/i
 
 export function sanitizeMetric(obj = {}) {
@@ -40,6 +41,9 @@ export function createSessionMetrics(kind = 'live') {
     if (!hintState || hintState.firstTokenAt != null) return
     hintState.firstTokenAt = performance.now()
     const ms = Math.round(hintState.firstTokenAt - hintState.t0)
+    if (counters.ttftMs.length === 0 && kind === 'live') {
+      trackProductEvent('first_hint_rendered', { ttftMs: ms })
+    }
     counters.ttftMs.push(ms); counters.hints += 1; event('ttft', { ms })
   }
 
@@ -108,10 +112,12 @@ export function createSessionMetrics(kind = 'live') {
     const row = { ...summary(), ...sanitizeMetric(extra), type: 'session_end' }
     try { window.electronAPI?.appendSessionMetrics?.(row) } catch {}
     diagnostic('session', 'session_end', row)
+    trackProductEvent(kind === 'solo' ? 'solo_ended' : 'live_ended', { durationMs: row.durationMs })
     clearDiagnosticContext('sessionId', 'sessionKind')
     return row
   }
 
   event('session_start')
+  trackProductEvent(kind === 'solo' ? 'solo_started' : 'live_started', { mode: kind })
   return { sessionId, startHint, markFirstToken, markFallback, markIncomplete, markSkip, markError, markSttReconnect, markSttFinal, markQuestionCapture, markQuestionReject, markGenerationCancelled, markProviderEvent, summary, end, event }
 }

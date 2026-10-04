@@ -1,7 +1,7 @@
 // Single API wrapper for the auth/SaaS backend. Every authenticated call goes
 // through here — token attachment, JSON handling, and 401 handling live in ONE place.
 import { diagnostic, createDiagnosticRequestId } from '../lib/diagnostics'
-import { setActiveAccountScope, clearActiveAccountScope } from '../lib/accountScope'
+import { setActiveAccountScope, clearActiveAccountScope, purgeScopedStorage } from '../lib/accountScope'
 
 const electronAuth = typeof window !== 'undefined' ? window.electronAPI?.auth : null
 const API_BASE =
@@ -18,11 +18,19 @@ export async function getToken() {
 }
 export async function setToken(token) {
   if (electronAuth) {
-    try { await electronAuth.setToken(token); return }
+    let result
+    try { result = await electronAuth.setToken(token) }
     catch (error) {
       diagnostic('auth', 'token_store_failed', { errorName: error?.name || 'Error' }, 'error')
       throw new ApiError('MockMate could not securely save your session. Restart the app and try again.', 0)
     }
+    // Blast-radius review fix: the IPC handler RESOLVES with {ok:false} on disk/keychain
+    // failure — a rejected promise is not the only failure shape. Never treat it as success.
+    if (result && result.ok === false) {
+      diagnostic('auth', 'token_store_failed', { reason: result.error || 'unknown' }, 'error')
+      throw new ApiError('MockMate could not securely save your session. Restart the app and try again.', 0)
+    }
+    return
   }
   memToken = token
 }
@@ -94,15 +102,35 @@ export class ApiError extends Error {
 function rememberUser(user) { if (user?.id) setActiveAccountScope(user.id); return user }
 
 export async function forgotPassword(email) { return request('/auth/forgot-password', { method: 'POST', body: { email } }) }
+/**
+ * Signup response is an EXPLICIT UNION (round-5 review P1):
+ *   { verificationRequired: true, user }              — no token until verified
+ *   { verificationRequired: false, user }             — authenticated (token stored)
+ * Callers must branch on verificationRequired and must NEVER proceed into an
+ * authenticated session on the verification branch.
+ */
 export async function signup({ name, email, password }) {
-  const { token, user } = await request('/auth/signup', { method: 'POST', body: { name, email, password } })
-  await setToken(token)
-  return rememberUser(user)
+  const data = await request('/auth/signup', { method: 'POST', body: { name, email, password } })
+  if (data?.verificationRequired || !data?.token) {
+    if (!data?.verificationRequired) diagnostic('auth', 'signup_no_token_no_verification', {}, 'warn')
+    return { verificationRequired: true, user: data?.user || null }
+  }
+  await setToken(data.token)
+  return { verificationRequired: false, user: rememberUser(data.user) }
+}
+export async function resendVerification(email) {
+  return request('/auth/resend-verification', { method: 'POST', body: { email } })
+}
+export async function completeEmailVerification(token) {
+  const data = await request('/auth/verify-email', { method: 'POST', body: { token } })
+  if (data?.token) await setToken(data.token)
+  return rememberUser(data?.user)
 }
 export async function login({ email, password }) {
-  const { token, user } = await request('/auth/login', { method: 'POST', body: { email, password } })
-  await setToken(token)
-  return rememberUser(user)
+  const data = await request('/auth/login', { method: 'POST', body: { email, password } })
+  if (!data?.token) throw new ApiError('Sign-in did not return a session. Please try again.', 0)
+  await setToken(data.token)
+  return rememberUser(data.user)
 }
 export async function fetchMe() {
   const payload = await request('/auth/me', { auth: true })
@@ -117,6 +145,10 @@ export async function logout() {
 }
 export async function deleteAccount() {
   await request('/me', { method: 'DELETE', auth: true, timeoutMs: 30000 })
+  // Blast-radius review fix: purge ALL account-scoped local data (documents,
+  // persisted vector cache with original text, PI events, playbooks, …) BEFORE
+  // dropping the scope identity.
+  try { purgeScopedStorage() } catch {}
   await clearToken()
   clearActiveAccountScope()
   try { onUnauthorized() } catch {}
@@ -134,3 +166,20 @@ function openUrl(url) {
 }
 export async function startCheckout() { const { url } = await request('/billing/checkout', { method: 'POST', auth: true }); if (url) openUrl(url); return url }
 export async function openBillingPortal() { const { url } = await request('/billing/portal', { method: 'POST', auth: true }); if (url) openUrl(url); return url }
+export async function reconcileBilling() { return request('/billing/reconcile', { method: 'POST', auth: true }) }
+export function startGoogleAuth() { openUrl(`${API_BASE}/auth/google`) }
+export async function consumeOAuthRedirectToken() {
+  if (typeof window === 'undefined' || !window.location?.search) return null
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const token = params.get('token') || params.get('oauth_token')
+    if (!token) return null
+    await setToken(token)
+    params.delete('token')
+    params.delete('oauth_token')
+    const query = params.toString()
+    const cleanUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash || ''}`
+    window.history?.replaceState?.({}, '', cleanUrl)
+    return token
+  } catch { return null }
+}

@@ -15,6 +15,7 @@ export function toSafeUser(u) {
   if (!u) return null
   return {
     id: String(u.id || u._id), email: u.email, name: u.name || '', plan: u.plan || 'free',
+    emailVerified: Boolean(u.emailVerified ?? Boolean(u.googleId)),
     targetRole: u.targetRole || '', yearsExp: u.yearsExp || '', currentRole: u.currentRole || '',
     language: u.language || 'English', hasResume: !!u.resume,
     preferences: u.preferences && typeof u.preferences === 'object' ? u.preferences : {}, createdAt: u.createdAt,
@@ -67,6 +68,7 @@ function makeFileBackend() {
     async findUserById(id) { return db.users.find(u => String(u.id) === String(id)) || null },
     async findUserByGoogleId(googleId) { return db.users.find(u => u.googleId === googleId) || null },
     async findUserByResetToken(hash) { return db.users.find(u => u.resetTokenHash && u.resetTokenHash === hash) || null },
+    async findUserByVerifyToken(hash) { return db.users.find(u => u.verifyTokenHash && u.verifyTokenHash === hash) || null },
     async findUserByStripeCustomerId(cid) { return db.users.find(u => u.stripeCustomerId && u.stripeCustomerId === cid) || null },
     async createUser(doc) {
       const email = (doc.email || '').toLowerCase()
@@ -79,6 +81,8 @@ function makeFileBackend() {
         googleId: doc.googleId || null, name: doc.name || '', plan: 'free', currentRole: doc.currentRole || '',
         targetRole: doc.targetRole || '', yearsExp: doc.yearsExp || '', language: doc.language || 'English',
         resume: doc.resume || '', preferences: doc.preferences || {}, stripeCustomerId: null, planExpiry: null,
+        emailVerified: Boolean(doc.emailVerified ?? Boolean(doc.googleId)),
+        verifyTokenHash: doc.verifyTokenHash || null, verifyTokenExp: doc.verifyTokenExp || null,
         resetTokenHash: null, resetTokenExp: null, tokenVersion: 0, createdAt: now, lastLogin: doc.lastLogin || null,
       }
       db.users.push(user)
@@ -105,8 +109,42 @@ function makeFileBackend() {
       r.llmCalls += llmCalls; r.sttSeconds += sttSeconds
       try { await persist(); return r } catch (error) { r.llmCalls = before.llmCalls; r.sttSeconds = before.sttSeconds; throw error }
     },
-    async reserveLlmUsage() { return true },
-    async releaseLlmUsage() { return true },
+    async reserveLlmUsage(userId, period, limit, units = 1) {
+      const delta = Math.max(1, Number(units) || 1)
+      let r = db.usage.find(x => String(x.userId) === String(userId) && x.period === period)
+      if (!r) { r = { userId: String(userId), period, llmCalls: 0, sttSeconds: 0 }; db.usage.push(r) }
+      if (Number.isFinite(limit) && r.llmCalls + delta > limit) return false
+      r.llmCalls += delta
+      try { await persist(); return true } catch { r.llmCalls = Math.max(0, r.llmCalls - delta); return false }
+    },
+    async releaseLlmUsage(userId, period, units = 1) {
+      const delta = Math.max(1, Number(units) || 1)
+      const r = db.usage.find(x => String(x.userId) === String(userId) && x.period === period)
+      if (!r) return true
+      r.llmCalls = Math.max(0, r.llmCalls - delta)
+      try { await persist() } catch {}
+      return true
+    },
+    // STT mirrors the LLM reserve/release pattern (round-6 review): streaming grants
+    // must be atomically reserved BEFORE the Deepgram grant is returned, otherwise
+    // concurrent requests can all pass a read-only remaining-check and overrun the
+    // allowance, and a usage-write failure would hand out an unmetered grant.
+    async reserveSttUsage(userId, period, limit, seconds = 0) {
+      const delta = Math.max(1, Math.floor(Number(seconds) || 0))
+      let r = db.usage.find(x => String(x.userId) === String(userId) && x.period === period)
+      if (!r) { r = { userId: String(userId), period, llmCalls: 0, sttSeconds: 0 }; db.usage.push(r) }
+      if (Number.isFinite(limit) && r.sttSeconds + delta > limit) return false
+      r.sttSeconds += delta
+      try { await persist(); return true } catch { r.sttSeconds = Math.max(0, r.sttSeconds - delta); return false }
+    },
+    async releaseSttUsage(userId, period, seconds = 0) {
+      const delta = Math.max(1, Math.floor(Number(seconds) || 0))
+      const r = db.usage.find(x => String(x.userId) === String(userId) && x.period === period)
+      if (!r) return true
+      r.sttSeconds = Math.max(0, r.sttSeconds - delta)
+      try { await persist() } catch {}
+      return true
+    },
   }
 }
 
@@ -118,6 +156,8 @@ async function makeMongoBackend() {
     currentRole: { type: String, default: '' }, targetRole: { type: String, default: '' }, yearsExp: { type: String, default: '' },
     language: { type: String, default: 'English' }, resume: { type: String, default: '' }, preferences: { type: Object, default: {} },
     stripeCustomerId: { type: String, default: null }, planExpiry: { type: Date, default: null },
+    emailVerified: { type: Boolean, default: false },
+    verifyTokenHash: { type: String, default: null, index: true }, verifyTokenExp: { type: Number, default: null },
     resetTokenHash: { type: String, default: null, index: true }, resetTokenExp: { type: Number, default: null },
     tokenVersion: { type: Number, default: 0 }, lastLogin: { type: Date },
   }, { timestamps: true })
@@ -137,6 +177,7 @@ async function makeMongoBackend() {
     async findUserById(id) { try { return lean(await User.findById(id)) } catch { return null } },
     async findUserByGoogleId(googleId) { return lean(await User.findOne({ googleId })) },
     async findUserByResetToken(hash) { return lean(await User.findOne({ resetTokenHash: hash })) },
+    async findUserByVerifyToken(hash) { return lean(await User.findOne({ verifyTokenHash: hash })) },
     async findUserByStripeCustomerId(cid) { return lean(await User.findOne({ stripeCustomerId: cid })) },
     async createUser(doc) {
       try { return lean(await User.create({ ...doc, email: (doc.email || '').toLowerCase() })) }
@@ -152,13 +193,45 @@ async function makeMongoBackend() {
     },
     async getUsage(userId, period) { return (await Usage.findOne({ userId, period })) || { userId: String(userId), period, llmCalls: 0, sttSeconds: 0 } },
     async addUsage(userId, period, { llmCalls = 0, sttSeconds = 0 }) { return await Usage.findOneAndUpdate({ userId, period }, { $inc: { llmCalls, sttSeconds } }, { new: true, upsert: true }) },
-    async reserveLlmUsage(userId, period, limit) {
+    async reserveLlmUsage(userId, period, limit, units = 1) {
+      const delta = Math.max(1, Number(units) || 1)
       try { await Usage.updateOne({ userId, period }, { $setOnInsert: { llmCalls: 0, sttSeconds: 0 } }, { upsert: true }) }
       catch (e) { if (e?.code !== 11000) throw e }
-      const reserved = await Usage.findOneAndUpdate({ userId, period, llmCalls: { $lt: limit } }, { $inc: { llmCalls: 1 } }, { new: true })
+      const reserved = await Usage.findOneAndUpdate({ userId, period, llmCalls: { $lte: limit - delta } }, { $inc: { llmCalls: delta } }, { new: true })
       return !!reserved
     },
-    async releaseLlmUsage(userId, period) { await Usage.updateOne({ userId, period, llmCalls: { $gt: 0 } }, { $inc: { llmCalls: -1 } }); return true },
+    async releaseLlmUsage(userId, period, units = 1) {
+      const delta = Math.max(1, Number(units) || 1)
+      // Clamped at zero atomically (BR-15 follow-up): full decrement only when
+      // there is room, otherwise snap a positive balance below delta to 0 —
+      // $gt:0 + $inc could drive the counter negative.
+      const decremented = await Usage.updateOne({ userId, period, llmCalls: { $gte: delta } }, { $inc: { llmCalls: -delta } })
+      if (!decremented?.modifiedCount) {
+        await Usage.updateOne({ userId, period, llmCalls: { $gt: 0, $lt: delta } }, { $set: { llmCalls: 0 } })
+      }
+      return true
+    },
+    // Atomic capped reservation (round-6 review): ONE conditional update — the $lte
+    // predicate means concurrent grants cannot both pass; exactly one increments.
+    async reserveSttUsage(userId, period, limit, seconds = 0) {
+      const delta = Math.max(1, Math.floor(Number(seconds) || 0))
+      try { await Usage.updateOne({ userId, period }, { $setOnInsert: { llmCalls: 0, sttSeconds: 0 } }, { upsert: true }) }
+      catch (e) { if (e?.code !== 11000) throw e }
+      const reserved = await Usage.findOneAndUpdate({ userId, period, sttSeconds: { $lte: limit - delta } }, { $inc: { sttSeconds: delta } }, { new: true })
+      return !!reserved
+    },
+    async releaseSttUsage(userId, period, seconds = 0) {
+      const delta = Math.max(1, Math.floor(Number(seconds) || 0))
+      // Clamped at zero atomically (parity with the file store): full decrement
+      // only when there is room, otherwise snap a positive balance below delta
+      // to 0 — the old $gt:0 + $inc could drive sttSeconds negative, which would
+      // silently grant free quota.
+      const decremented = await Usage.updateOne({ userId, period, sttSeconds: { $gte: delta } }, { $inc: { sttSeconds: -delta } })
+      if (!decremented?.modifiedCount) {
+        await Usage.updateOne({ userId, period, sttSeconds: { $gt: 0, $lt: delta } }, { $set: { sttSeconds: 0 } })
+      }
+      return true
+    },
   }
 }
 

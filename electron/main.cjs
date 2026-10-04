@@ -35,6 +35,15 @@ function suppressBlurHide(ms = 1200) { suppressBlurUntil = Date.now() + ms }
 let lastWindowMode = null
 // Remember Live HUD size so set-window-mode('overlay') never resets a user resize to 300×360.
 let lastOverlaySize = { w: 300, h: 360 }
+// PR #45 review fix: Alt+T/R/Up/Down are registered ONLY while the window is in
+// overlay/teleprompter mode (syncOverlayShortcuts). A permanently registered
+// globalShortcut makes the OS reserve the accelerator for MockMate even when the
+// callback no-ops — that would hijack those keys from other applications.
+let overlayShortcutsRegistered = false
+let syncOverlayShortcuts = () => {}
+// F7 display memory: last display the user explicitly captured / selected via the
+// display picker, so F7 re-captures the interview screen instead of MockMate's monitor.
+let lastChosenDisplayId = null
 let copilotWindow = null
 
 function isOwnWindowFocused() {
@@ -48,13 +57,24 @@ function isOwnWindowFocused() {
   } catch { return false }
 }
 
+function activeDisplayWorkArea(win = mainWindow) {
+  try {
+    if (win && !win.isDestroyed()) {
+      const match = screen.getDisplayMatching(win.getBounds())
+      if (match?.workArea) return match.workArea
+    }
+  } catch {}
+  const primary = screen.getPrimaryDisplay()
+  return primary?.workArea || { x: 0, y: 0, width: primary?.workAreaSize?.width || 1280, height: primary?.workAreaSize?.height || 720 }
+}
+
 function applyPillGeometry() {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  const { width } = screen.getPrimaryDisplay().workAreaSize
+  const area = activeDisplayWorkArea(mainWindow)
   const s = 72
   try { mainWindow.setIgnoreMouseEvents(false) } catch {}
   mainWindow.setSize(s, s)
-  mainWindow.setPosition(Math.max(0, width - s - 16), 16)
+  mainWindow.setPosition(Math.max(area.x, area.x + area.width - s - 16), area.y + 16)
   if (!mainWindow.isVisible()) {
     try { mainWindow.showInactive() } catch { mainWindow.show() }
   }
@@ -62,6 +82,21 @@ function applyPillGeometry() {
     try { mainWindow.setAlwaysOnTop(true) } catch {}
   }
   lastWindowMode = 'pill'
+  syncOverlayShortcuts()
+}
+
+function applyTeleprompterGeometry() {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  const area = activeDisplayWorkArea(mainWindow)
+  const w = Math.min(760, Math.max(360, area.width - 40))
+  const h = Math.min(240, Math.max(180, area.height - 40))
+  const x = area.x + Math.max(0, Math.round((area.width - w) / 2))
+  const y = area.y + 8
+  mainWindow.setBounds({ x, y, width: w, height: h })
+  try { mainWindow.setAlwaysOnTop(true, 'screen-saver') } catch {}
+  lastWindowMode = 'teleprompter'
+  syncOverlayShortcuts()
+  try { mainWindow.webContents.send('overlay-command', { type: 'teleprompter', active: true, width: w, height: h }) } catch {}
 }
 
 // Auth/SaaS backend. Base URL is env-configurable so we can point the app at a
@@ -462,12 +497,52 @@ function launchTrayAndShortcuts() {
   // Screen solve: Ctrl+Shift+U (avoids Zoom/browser stealing lone F-keys) + F7 alias.
   globalShortcut.register('CommandOrControl+Shift+U', captureScreen)
   try { globalShortcut.register('F7', captureScreen) } catch {}
+
+  // Zero-mouse overlay navigation & Top-Center Camera Anchor (Teleprompter) mode.
+  // PR #45 review fix: mode-scoped registration. The shortcuts are registered when the
+  // window ENTERS overlay/teleprompter mode and unregistered when it leaves, so the OS
+  // never reserves Alt+T/R/Up/Down for MockMate while the dashboard is open or the user
+  // is in another application. (Returning early from a permanently-registered callback
+  // does NOT give the key back to the foreground app — registration lifetime is what
+  // controls that.)
+  syncOverlayShortcuts = () => {
+    const active = mainWindow && !mainWindow.isDestroyed() && (lastWindowMode === 'overlay' || lastWindowMode === 'teleprompter')
+    if (active && !overlayShortcutsRegistered) {
+      try {
+        globalShortcut.register('Alt+T', () => {
+          if (lastWindowMode === 'teleprompter') {
+            lastWindowMode = null
+            ipcMain.emit('set-window-mode', null, 'overlay')
+            try { mainWindow.webContents.send('overlay-command', { type: 'teleprompter', active: false, width: lastOverlaySize.w, height: lastOverlaySize.h }) } catch {}
+          } else {
+            applyTeleprompterGeometry()
+          }
+        })
+        globalShortcut.register('Alt+Up', () => {
+          try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-up' }) } catch {}
+        })
+        globalShortcut.register('Alt+Down', () => {
+          try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-down' }) } catch {}
+        })
+        globalShortcut.register('Alt+R', () => {
+          try { mainWindow?.webContents?.send('overlay-command', { type: 'answer-now' }) } catch {}
+        })
+        overlayShortcutsRegistered = true
+      } catch {}
+    } else if (!active && overlayShortcutsRegistered) {
+      for (const acc of ['Alt+T', 'Alt+R', 'Alt+Up', 'Alt+Down']) {
+        try { globalShortcut.unregister(acc) } catch {}
+      }
+      overlayShortcutsRegistered = false
+    }
+  }
+  syncOverlayShortcuts()
 }
 
-// Capture the primary screen and hand a compressed JPEG to the renderer for vision analysis.
+// Capture the active/selected screen and hand a crisp compressed JPEG to the renderer for vision analysis.
 // Called by the Ctrl+Shift+U shortcut AND by the in-app "Solve it" button (ipc).
-// Keep resolution/quality modest: full 1920×1080 PNGs routinely trip vision 429s ("busy")
-// and slow TTFT; 1280-wide JPEG is enough for code/diagrams and fails over far more reliably.
+// 1920×1080 JPEG @ quality 82 keeps dense LeetCode/SQL fonts sharp on Windows 1080p/1440p/4K monitors
+// while staying compact enough for fast vision TTFT.
 async function captureScreen(opts = {}) {
   const publish = payload => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('screen-captured', payload)
@@ -482,31 +557,52 @@ async function captureScreen(opts = {}) {
   }
   suppressBlurHide(2500)
   try {
-    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1280, height: 720 } })
+    const MAX_SCREEN_JPEG_BYTES = 210 * 1024
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1440, height: 810 } })
     if (!sources.length) return publish({ error: 'no_sources' })
-    const primaryId = String(screen.getPrimaryDisplay().id)
+    const activeDisplay = (() => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) return screen.getDisplayMatching(mainWindow.getBounds())
+      } catch {}
+      return screen.getPrimaryDisplay()
+    })()
+    const primaryId = String((activeDisplay || screen.getPrimaryDisplay()).id)
     const preferredId = opts.displayId != null ? String(opts.displayId) : null
-    // Prefer explicit display → primary → first. display_id is Electron's link to Display.id when available.
-    const chosen = (preferredId && sources.find(s => String(s.display_id) === preferredId || s.id === preferredId))
+    // Display selection precedence (PR #45 review fix):
+    //   1. explicit displayId from the display picker ("Solve it" UI),
+    //   2. the display last captured/selected on this run (F7 repeatability on the
+    //      interview monitor even though MockMate lives on another monitor),
+    //   3. the display containing the MockMate window, 4. first source.
+    // Note: without 1–2 the default is the monitor containing MockMate — NOT
+    // foreground-window detection (which is not portable across Win/macOS).
+    const findSource = id => id != null && sources.find(s => String(s.display_id) === String(id) || s.id === String(id))
+    const chosen = findSource(preferredId)
+      || findSource(lastChosenDisplayId)
       || sources.find(s => String(s.display_id) === primaryId)
       || sources[0]
+    lastChosenDisplayId = chosen.display_id || chosen.id || lastChosenDisplayId
     let payload
     try {
-      const img = chosen.thumbnail.resize({ width: 1280, quality: 'better' })
-      const size = img.getSize?.() || { width: 1280, height: 720 }
-      const jpeg = img.toJPEG(72)
+      let img = chosen.thumbnail.resize({ width: 1440, quality: 'better' })
+      let size = img.getSize?.() || { width: 1440, height: 810 }
+      let jpeg = img.toJPEG(76)
+      if (jpeg.length > MAX_SCREEN_JPEG_BYTES) {
+        img = chosen.thumbnail.resize({ width: 1280, quality: 'better' })
+        size = img.getSize?.() || { width: 1280, height: 720 }
+        jpeg = img.toJPEG(70)
+      }
       payload = {
         mime: 'image/jpeg',
         base64: jpeg.toString('base64'),
-        width: size.width || 1280,
-        height: size.height || 720,
+        width: size.width || 1440,
+        height: size.height || 810,
         bytes: jpeg.length,
         displayId: chosen.display_id || chosen.id || null,
         displayName: chosen.name || null,
       }
     } catch {
       const png = chosen.thumbnail.toPNG()
-      const size = chosen.thumbnail.getSize?.() || { width: 1280, height: 720 }
+      const size = chosen.thumbnail.getSize?.() || { width: 1440, height: 810 }
       payload = {
         mime: 'image/png',
         base64: png.toString('base64'),
@@ -779,16 +875,12 @@ ipcMain.handle('set-content-protection', (_e, on) => {
     return { ok: true, enabled: !!on }
   } catch (e) { return { ok: false, error: e.message } }
 })
-ipcMain.handle('exclude-from-capture', e => {
-  if (process.platform === 'linux') return { ok: false, unsupported: true }
-  try {
-    // Document PiP is normally the focused top-level window even though the IPC
-    // bridge belongs to the opener's webContents.
-    const owner = BrowserWindow.getFocusedWindow() || BrowserWindow.fromWebContents(e.sender)
-    owner?.setContentProtection(true)
-    return { ok: true, id: owner?.id || 'window' }
-  } catch (err) { return { ok: false, error: err.message } }
-})
+// NOTE: 'exclude-from-capture' is intentionally NOT registered here. The hardened
+// ipcMain.handle() wrapper in bootstrap.cjs intercepts this channel before any
+// handler registered here could run, so a duplicate registration was dead code
+// that diverged from the real implementation (round-5 review). The live
+// implementation — focused-window-first policy + both window ids in the reply —
+// lives in bootstrap.cjs.
 ipcMain.on('get-userdata-path', e => { e.returnValue = app.getPath('userData') })
 
 // ── Duo co-pilot window (Phase 3) ───────────────────────────────────────────
@@ -914,7 +1006,17 @@ ipcMain.on('set-ignore-mouse-events', (_, { ignore, forward } = {}) => {
 ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const [x, y] = mainWindow.getPosition(); mainWindow.setPosition(x + dx, y + dy)
-  lastWindowMode = null   // geometry changed manually — let the next set-window-mode re-apply
+  // Dragging out of the top-center teleprompter dock exits teleprompter mode.
+  // IMPORTANT (PR review fix): notify the renderer in the same transition — otherwise
+  // Electron thinks 'overlay' while React still renders teleprompter typography/state,
+  // and Alt+T / the Cam control desynchronize.
+  if (lastWindowMode === 'teleprompter') {
+    lastWindowMode = 'overlay'
+    try { mainWindow.webContents.send('overlay-command', { type: 'teleprompter', active: false, width: lastOverlaySize.w, height: lastOverlaySize.h }) } catch {}
+  } else if (lastWindowMode !== 'overlay') {
+    if (lastWindowMode === 'pill' || lastWindowMode == null) lastWindowMode = 'overlay'
+  }
+  syncOverlayShortcuts()
 })
 ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
@@ -928,31 +1030,43 @@ ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
       mainWindow.setSize(nw, nh)
     }
   } catch {}
-  // Persist HUD size whenever the user resizes (overlay or restoring from pill).
-  if (lastWindowMode === 'overlay' || lastWindowMode === 'pill' || lastWindowMode == null) {
-    if (nw < 900 && nh < 900) lastOverlaySize = { w: nw, h: nh }
+  // Persist HUD size whenever the user resizes (overlay or restoring from pill) and keep
+  // lastWindowMode = 'overlay' so Alt+T / Alt+R / Alt+Up / Alt+Down continue working after resize.
+  if (lastWindowMode === 'overlay' || lastWindowMode === 'teleprompter' || lastWindowMode === 'pill' || lastWindowMode == null) {
+    if (nw < 900 && nh < 900) {
+      lastOverlaySize = { w: nw, h: nh }
+      // Resizing the teleprompter KEEPS teleprompter mode (React already agrees, so
+      // both sides stay in sync); other modes normalize to 'overlay'.
+      if (lastWindowMode !== 'app' && lastWindowMode !== 'teleprompter') lastWindowMode = 'overlay'
+    }
   }
-  lastWindowMode = null
+  syncOverlayShortcuts()
 })
-// Switch between the full windowed dashboard ('app') and the compact overlay ('overlay').
+// Switch between the full windowed dashboard ('app'), compact overlay ('overlay'),
+// top-center camera anchor ('teleprompter'), and minimized badge ('pill').
 ipcMain.on('set-window-mode', (_, mode) => {
-  if (!mainWindow || mainWindow.isDestroyed() || mode === lastWindowMode) return
+  if (!mainWindow || mainWindow.isDestroyed() || (mode === lastWindowMode && mode === 'app')) return
   suppressBlurHide(900)
   lastWindowMode = mode
+  syncOverlayShortcuts()
   try {
-    const { width, height } = screen.getPrimaryDisplay().workAreaSize
+    const area = activeDisplayWorkArea(mainWindow)
     if (mode === 'pill') {
       applyPillGeometry()
+    } else if (mode === 'teleprompter') {
+      applyTeleprompterGeometry()
     } else if (mode === 'app') {
-      const w = Math.min(1200, width - 80), h = Math.min(760, height - 80)
-      mainWindow.setSize(w, h); mainWindow.center()
+      const w = Math.min(1200, area.width - 80), h = Math.min(760, area.height - 80)
+      const x = area.x + Math.max(0, Math.round((area.width - w) / 2))
+      const y = area.y + Math.max(0, Math.round((area.height - h) / 2))
+      mainWindow.setBounds({ x, y, width: w, height: h })
     } else {
-      // Restore the user's last HUD size — never hard-reset to 300×360 after a resize.
-      const w = Math.min(Math.max(240, lastOverlaySize.w || 300), width - 40)
-      const h = Math.min(Math.max(180, lastOverlaySize.h || 360), height - 40)
+      // Restore the user's last HUD size on the current display — never hard-reset to primary monitor.
+      const w = Math.min(Math.max(240, lastOverlaySize.w || 300), area.width - 40)
+      const h = Math.min(Math.max(180, lastOverlaySize.h || 360), area.height - 40)
       const [cx, cy] = mainWindow.getPosition()
-      const x = Math.min(Math.max(0, cx), Math.max(0, width - w))
-      const y = Math.min(Math.max(0, cy), Math.max(0, height - h))
+      const x = Math.min(Math.max(area.x, cx), Math.max(area.x, area.x + area.width - w))
+      const y = Math.min(Math.max(area.y, cy), Math.max(area.y, area.y + area.height - h))
       mainWindow.setBounds({ x, y, width: w, height: h })
     }
   } catch {}
@@ -1102,7 +1216,13 @@ ipcMain.handle('relaunch-app', () => { app.relaunch(); app.exit(0) })
 // Open a billing URL in the user's default browser. Scoped to HTTPS Stripe hosts only — the URL
 // comes from the backend, so an allowlist prevents a spoofed/compromised backend from launching an
 // arbitrary link. Allowlisted destinations: Stripe (billing) + GitHub (manual update download).
-const ALLOWED_EXTERNAL = /^https:\/\/([a-z0-9-]+\.)*(stripe\.com|github\.com)\//i
-ipcMain.handle('open-external', (_e, url) => { if (typeof url === 'string' && ALLOWED_EXTERNAL.test(url)) shell.openExternal(url); return { ok: true } })
+// Strict URL validation lives in bootstrap.cjs (the process-wide navigation policy);
+// same rule as the shell.openExternal guard so IPC and navigation can never diverge.
+const { externalNavigationAllowed } = require('./bootstrap.cjs')
+ipcMain.handle('open-external', (_e, url) => {
+  if (typeof url !== 'string' || !externalNavigationAllowed(url)) return { ok: false }
+  shell.openExternal(url)
+  return { ok: true }
+})
 // Open the API-key setup window on demand (e.g. "Add API keys" from the overlay).
 ipcMain.handle('open-key-setup', () => { if (!setupWindow) createSetupWindow(); else setupWindow.focus(); return { ok: true } })

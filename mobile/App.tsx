@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   RefreshControl,
@@ -15,13 +16,16 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { api, apiConfigured, type Account, type SyncedSession } from './src/api'
+import { ApiError, api, apiConfigured, setUnauthorizedHandler, type Account, type SyncedSession } from './src/api'
 import { DocumentSetup } from './src/components/DocumentSetup'
 import { InterviewSession } from './src/components/InterviewSession'
 import {
   PLAYBOOK_LIMIT,
   RESPONSE_STYLES,
   STARTER_PLAYBOOK,
+  duoInviteUrl,
+  isValidPairCode,
+  mergePreferences,
   normalizePairCode,
   sessionTitle,
   validateSessionDraft,
@@ -43,22 +47,50 @@ const tabs: { key: Tab; icon: string; label: string }[] = [
 export default function App() {
   const [booting, setBooting] = useState(true)
   const [authenticated, setAuthenticated] = useState(false)
+  const [bootError, setBootError] = useState('')
   const [account, setAccount] = useState<Account | null>(null)
 
   const loadAccount = useCallback(async () => {
+    setBootError('')
     if (!await api.hasToken()) return setAuthenticated(false)
     try {
       const next = await api.account()
       setAccount(next)
       setAuthenticated(true)
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setAuthenticated(false)
+        return
+      }
+      if (await api.hasToken()) {
+        setBootError(error instanceof Error ? error.message : 'Could not reach MockMate. Check your connection and retry.')
+        return
+      }
       setAuthenticated(false)
     }
+  }, [])
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setBootError('')
+      setAccount(null)
+      setAuthenticated(false)
+    })
+    return () => setUnauthorizedHandler(null)
   }, [])
 
   useEffect(() => { loadAccount().finally(() => setBooting(false)) }, [loadAccount])
 
   if (booting) return <Centered><ActivityIndicator color={T.accent} /></Centered>
+  if (bootError && !authenticated) return <SafeAreaView style={styles.safe}>
+    <StatusBar style="light" />
+    <View style={styles.authWrap}>
+      <Text style={styles.brand}>Connection interrupted</Text>
+      <Text style={styles.tagline}>{bootError}</Text>
+      <PrimaryButton label="Retry connection" onPress={() => { setBooting(true); loadAccount().finally(() => setBooting(false)) }} />
+      <PrimaryButton variant="secondary" label="Sign out on this device" onPress={async () => { await api.logout(); setBootError(''); setAuthenticated(false) }} />
+    </View>
+  </SafeAreaView>
   if (!authenticated) return <AuthScreen onAuthenticated={async () => { await loadAccount() }} />
   return <MainApp account={account} onAccount={setAccount} onSignedOut={() => setAuthenticated(false)} />
 }
@@ -146,10 +178,16 @@ function PrepareScreen({ account, onAccount, onCreated }: { account: Account | n
   const [error, setError] = useState('')
   const validation = useMemo(() => validateSessionDraft({ mode, company, role, objective, customInstructions: playbook, responseStyle, selectedDocumentIds }), [mode, company, role, objective, playbook, responseStyle, selectedDocumentIds])
 
+  useEffect(() => {
+    if (editingPlaybook) return
+    setPlaybook(account?.user.preferences?.mobilePlaybook || '')
+    setResponseStyle(account?.user.preferences?.mobileResponseStyle || 'concise')
+  }, [account?.user.preferences?.mobilePlaybook, account?.user.preferences?.mobileResponseStyle, editingPlaybook])
+
   const saveDefault = async () => {
     setBusy(true); setError(''); setSavedDefault(false)
     try {
-      const preferences = { ...(account?.user.preferences || {}), mobilePlaybook: playbook.trim(), mobileResponseStyle: responseStyle }
+      const preferences = mergePreferences(account?.user.preferences, { mobilePlaybook: playbook.trim(), mobileResponseStyle: responseStyle })
       const { user } = await api.updatePreferences(preferences)
       if (account) onAccount({ ...account, user })
       setSavedDefault(true)
@@ -168,7 +206,7 @@ function PrepareScreen({ account, onAccount, onCreated }: { account: Account | n
   }
 
   return <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-    <Header eyebrow="MOBILE COMPANION" title="Prepare your next round" subtitle="Set the goal now. Voice practice and desktop pairing arrive in the next milestone." />
+    <Header eyebrow="MOBILE COMPANION" title="Prepare your next round" subtitle="Set the goal, select your evidence, and practice by voice or text." />
     <View style={styles.segment}>{(['live', 'mock', 'coding'] as Mode[]).map(value => <Pressable key={value} onPress={() => { setMode(value); setError('') }} style={[styles.segmentItem, mode === value && styles.segmentSelected]}>
       <Text style={[styles.segmentText, mode === value && styles.segmentTextSelected]}>{value === 'coding' ? '</> Coding' : value === 'live' ? '◉ Live' : '▣ Mock'}</Text>
     </Pressable>)}</View>
@@ -233,14 +271,26 @@ function HistoryScreen({ sessions, loading, error, onRefresh }: { sessions: Sync
 function DuoScreen() {
   const [pairCode, setPairCode] = useState('')
   const [message, setMessage] = useState('')
-  const invite = 'https://app.mockmate.ai/duo'
+  const invite = duoInviteUrl(pairCode)
+  const openDuoWebRoom = async () => {
+    if (!isValidPairCode(pairCode)) {
+      setMessage('Enter a 6 to 8 character room code from MockMate Duo on desktop.')
+      return
+    }
+    try {
+      await Linking.openURL(invite)
+      setMessage(`Opened Duo room ${pairCode} in your browser.`)
+    } catch {
+      setMessage(`Share or open ${invite} in a WebRTC-capable browser to join room ${pairCode}.`)
+    }
+  }
   return <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-    <Header eyebrow="SECOND DEVICE" title="MockMate Duo" subtitle="Pair a trusted helper or your own phone with a desktop session." />
-    <View style={styles.card}><Text style={styles.step}>1  Start MockMate on desktop</Text><Text style={styles.step}>2  Generate a short-lived pairing link</Text><Text style={styles.step}>3  Review and grant each permission</Text></View>
-    <View style={styles.consentCard}><Text style={styles.cardTitle}>Permission model</Text><SettingRow title="View transcript & screen" value="Separate consent" /><SettingRow title="Send hints" value="Separate consent" /><SettingRow title="Remote control" value="Off by default" last /></View>
+    <Header eyebrow="SECOND DEVICE" title="MockMate Duo" subtitle="Share a room link with a helper or launch a desktop Duo room in your mobile browser." />
+    <View style={styles.card}><Text style={styles.step}>1  Open Duo on MockMate desktop and create a room</Text><Text style={styles.step}>2  Enter the 6-character room code below</Text><Text style={styles.step}>3  Share the invite link or open the browser room</Text></View>
+    <View style={styles.consentCard}><Text style={styles.cardTitle}>Room capabilities</Text><SettingRow title="Live transcript & audio" value="Via browser WebRTC" /><SettingRow title="Private AI co-pilot" value="Candidate only" /><SettingRow title="Screen share" value="Explicit opt-in" last /></View>
+    <Field label="Enter a Duo room code" value={pairCode} onChangeText={v => { setPairCode(normalizePairCode(v)); setMessage('') }} placeholder="AB12CD" autoCapitalize="characters" />
     <PrimaryButton label="Share Duo invitation" onPress={async () => { await Share.share({ title: 'Join my MockMate Duo session', message: `Join my MockMate Duo session: ${invite}` }) }} />
-    <Field label="Or enter a pairing code" value={pairCode} onChangeText={v => { setPairCode(normalizePairCode(v)); setMessage('') }} placeholder="AB12CD34" autoCapitalize="characters" />
-    <PrimaryButton variant="secondary" label="Join paired session" disabled={pairCode.length < 6} onPress={() => setMessage('Pairing transport is planned for M2; the input contract is ready.')} />
+    <PrimaryButton variant="secondary" label="Open Duo room in browser" disabled={!isValidPairCode(pairCode)} onPress={openDuoWebRoom} />
     {!!message && <Banner text={message} />}
   </ScrollView>
 }

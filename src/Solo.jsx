@@ -14,7 +14,9 @@ import { createSessionId, createGeneration, hasEnoughAnswerLength } from './lib/
 import { retrieveContext, warmDocs, addDoc, getSelectedDocIds } from './lib/docs'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import Documents from './Documents'
+import CustomPromptStudio from './components/CustomPromptStudio'
 import { extractPdfText } from './pdf'
+import { trackProductEvent } from './lib/productIntelligence'
 
 function speak(text, on, onDone, lang = 'en-US') {
   // onDone fires when speech finishes (or immediately if TTS is off/unsupported) so the
@@ -58,7 +60,7 @@ function Chips({ options, value, onChange }) {
     </div>
   )
 }
-const textInput = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: 13, outline: 'none', fontFamily: T.font }
+const textInput = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: 13, fontFamily: T.font }
 
 // Honest listening indicator — soft pulse when active, static dim when not. No fake dancing bars.
 function Waveform({ active }) {
@@ -125,6 +127,7 @@ export default function Solo({ onHome, noProviders }) {
     }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { persistModelSelection(provider) }, [provider])
+  useEffect(() => { trackProductEvent('solo_setup') }, [])
 
   const [transcript, setTranscript] = useState([])
   const [answer, setAnswer] = useState('')
@@ -323,8 +326,12 @@ export default function Solo({ onHome, noProviders }) {
   function saveProfile(p) { setProfile(p); persistProfile(p) }
   function patchProfile(patch) { saveProfile({ ...profile, ...patch }) }
 
-  const hasContext = !!(String(profile.resume || '').trim().length > 40 || String(profile.jobDescription || '').trim().length > 40)
-  const canStartSolo = !noProviders && hasContext
+  const [selectedDocIds, setSelectedDocIds] = useState(() => getSelectedDocIds())
+  const isDevLocal = Boolean(import.meta.env?.DEV)
+    && typeof window !== 'undefined'
+    && /^(localhost|127\.0\.0\.1)$/i.test(window.location?.hostname || '')
+  const hasContext = !!(String(profile.resume || '').trim().length > 40 || String(profile.jobDescription || '').trim().length > 40 || selectedDocIds.length > 0)
+  const canStartSolo = !noProviders && (hasContext || isDevLocal)
 
   async function requestTurn(current, attempt = 0, gen = null) {
     const turnG = attempt === 0 ? turnGen.current.bump() : gen
@@ -475,6 +482,7 @@ export default function Solo({ onHome, noProviders }) {
     setPhase('live')
     phaseRef.current = 'live'
     startedAt.current = Date.now()
+    trackProductEvent('solo_started', { mode: 'solo' })
     const result = await requestTurn([])
     if (!result) startLockRef.current = false
   }
@@ -603,6 +611,7 @@ export default function Solo({ onHome, noProviders }) {
     clearSoloDraft()
     setResumeDraft(null)
     setEvaluating(false)
+    trackProductEvent('solo_evaluated', { ok: true })
   }
 
   function practiceAgain() {
@@ -715,30 +724,18 @@ export default function Solo({ onHome, noProviders }) {
         )}
         <div>
           <Label>Knowledge & notes (optional)</Label>
-          <Documents hideBioTypes />
+          <Documents hideBioTypes onLibraryChange={() => setSelectedDocIds(getSelectedDocIds())} />
         </div>
       </Section>
 
-      <Section title="Interview Playbook" hint="Recommended — controls how the interviewer and feedback behave for this practice session.">
+      <Section title="Interview Playbook" hint="Recommended — 1-click role templates, saved presets & auto-routed rules for Solo and Live.">
         <div style={{ fontSize: 11.5, color: T.text2, lineHeight: 1.5 }}>
-          Add interview-specific rules for tone, truth boundaries, answer depth, SQL/coding style and project context. The same playbook is visible in Live—never applied as a hidden setting.
+          Pick a role playbook or insert modular rule blocks (`VOICE:`, `TRUTH:`, `CODING/DSA:`, `SYSTEM DESIGN:`, `SQL/DATABASE:`). The same playbook carries into Live Interview.
         </div>
-        <textarea
-          aria-label="Interview Playbook"
-          rows={7}
-          maxLength={CUSTOM_INSTRUCTIONS_STORE_MAX}
-          style={{ ...textInput, resize: 'vertical', minHeight: 130, borderColor: profile.customPrompt?.trim() ? 'rgba(34,211,238,0.7)' : T.border }}
+        <CustomPromptStudio
           value={profile.customPrompt || ''}
-          placeholder={'Example:\nVOICE: Keep answers confident and concise.\nTRUTH: Never invent experience or ownership.\nSQL SUPPORT: Give simple correct SQL first.\nCODING/DSA: Approach → code → complexity → edge cases.'}
-          onChange={e => patchProfile({ customPrompt: e.target.value.slice(0, CUSTOM_INSTRUCTIONS_STORE_MAX) })}
+          onChange={nextPrompt => patchProfile({ customPrompt: String(nextPrompt || '').slice(0, CUSTOM_INSTRUCTIONS_STORE_MAX) })}
         />
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 10.5, color: T.text3 }}>
-          <span>{profile.customPrompt?.trim() ? '✓ Active for this practice interview' : 'Optional, but recommended for role-specific behavior'}</span>
-          <span>{(profile.customPrompt || '').length.toLocaleString()} / {CUSTOM_INSTRUCTIONS_STORE_MAX.toLocaleString()}</span>
-        </div>
-        <div style={{ fontSize: 10.5, color: '#67e8f9', lineHeight: 1.4 }}>
-          Routes core + question-relevant sections up to {CUSTOM_INSTRUCTIONS_PACK_MAX.toLocaleString()} characters. Truthfulness protections cannot be overridden.
-        </div>
       </Section>
 
       <Section title="Interview">

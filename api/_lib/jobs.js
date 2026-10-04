@@ -1,5 +1,8 @@
 import { completeJSON, availableProviders } from './core.js'
 import { fetchWithTimeout as fetchT } from './http.js'
+import { fetchCompanyBoard } from '../../shared/companyBoards.js'
+import { fetchYcJobs } from '../../shared/ycJobs.js'
+import { resumeFacts, bandForYears, titleBand, parseYearsExpInput } from '../../shared/resumeFacts.js'
 
 // ── Agentic job matching ─────────────────────────────────────────────────────
 // Upload a resume → we fetch live job postings and rank them for relevance to
@@ -127,6 +130,14 @@ export function countryFor(loc = '') {
   return null
 }
 
+// City-level hint for Adzuna's `where` param. Country-level strings ("India")
+// make Adzuna return almost nothing — same class of bug as showing Sydney jobs
+// to a Hyderabad user. When no city is present, search the whole country.
+export function cityFor(loc = '') {
+  const m = String(loc).match(/\b(hyderabad|secunderabad|bengaluru|bangalore|mumbai|new delhi|delhi|chennai|pune|kolkata|noida|gurgaon|gurugram|toronto|vancouver|montreal|london|manchester|berlin|munich|paris|amsterdam|dublin|madrid|barcelona|rome|milan|warsaw|sydney|melbourne|brisbane|auckland|singapore|tokyo|seoul|austin|seattle|new york|boston|chicago|san francisco|denver|atlanta|portland)\b/i)
+  return m ? m[1].toLowerCase() : ''
+}
+
 async function fetchAdzuna({ what, where, country }, limit = 50) {
   const params = new URLSearchParams({
     app_id: process.env.ADZUNA_APP_ID, app_key: process.env.ADZUNA_APP_KEY,
@@ -158,12 +169,13 @@ async function fetchAdzuna({ what, where, country }, limit = 50) {
 // Keyword-overlap fallback (used when no LLM provider is configured). The pool is
 // already topically relevant (fetched by category), so reward overlap generously
 // and always return the best available rather than filtering down to nothing.
-function rankHeuristic(jobs, resume, targetRole, max, tokens) {
+export function rankHeuristic(jobs, resume, targetRole, max, tokens, candBand = null) {
   const profileKw = [...new Set(keywords(`${targetRole} ${resume}`, 25))]
   // Use the first MEANINGFUL role word (skip generic seniority terms) so "Senior Test
   // Engineer" matches on "test", not "senior" (which falsely matched unrelated roles).
   const SENIORITY = new Set(['senior', 'junior', 'sr', 'jr', 'lead', 'principal', 'staff', 'mid', 'associate', 'entry', 'chief', 'head'])
   const roleWord = (targetRole || '').toLowerCase().split(/\s+/).filter(w => w && !SENIORITY.has(w))[0]
+  const roleTokens = (targetRole || '').toLowerCase().split(/[^a-z+#]+/).filter(w => w.length > 2 && !SENIORITY.has(w))
   const scored = jobs.map(j => {
     const title = (j.title || '').toLowerCase()
     const tagStr = j.tags.join(' ').toLowerCase()
@@ -174,11 +186,28 @@ function rankHeuristic(jobs, resume, targetRole, max, tokens) {
     const snipHits = profileKw.filter(k => !title.includes(k) && !tagStr.includes(k) && snip.includes(k))
     const titleMatch = roleWord && roleWord.length > 2 && title.includes(roleWord)
     let score = Math.min(96, titleTagHits.length * 14 + snipHits.length * 3 + (titleMatch ? 18 : 0))
+    // Target-role token overlap in the title (stronger than a single role word).
+    score = Math.min(97, score + Math.min(18, roleTokens.filter(t => title.includes(t)).length * 7))
+    // Company-board postings are the candidate's explicitly tracked targets — boost them.
+    if (j.source === 'company') score = Math.min(97, score + 10)
+    // Seniority fit: honest band distance (0 junior · 1 mid · 2 senior · 3 staff).
+    let seniorityGap = ''
+    if (candBand != null) {
+      const d = Math.abs(titleBand(j.title) - candBand)
+      if (d >= 2) { score = Math.max(5, score - 25); seniorityGap = 'Seniority mismatch' }
+      else if (d === 1) score = Math.max(5, score - 8)
+    }
+    // Recency: fresh postings outrank stale ones at equal overlap.
+    const age = j.postedTs ? Date.now() - j.postedTs : 0
+    if (j.postedTs && age < 14 * 86400000) score = Math.min(97, score + 4)
+    else if (j.postedTs && age < 45 * 86400000) score = Math.min(97, score + 2)
     // Push region-locked-elsewhere postings down so local/worldwide rises to the top.
-    const locOk = locationOk(j.location, tokens)
+    // Company-board roles are exempt: the user tracks that employer on purpose.
+    const locOk = j.source === 'company' ? true : locationOk(j.location, tokens)
     if (!locOk) score = Math.max(5, score - 30)
     const allHits = [...new Set([...titleTagHits, ...snipHits])]
-    return { ...j, score, reason: allHits.length ? `Overlaps on: ${allHits.slice(0, 6).join(', ')}` : 'Same field as your resume', gaps: locOk ? '' : 'May be region-locked outside your location' }
+    const gaps = [locOk ? '' : 'May be region-locked outside your location', seniorityGap].filter(Boolean).join('; ')
+    return { ...j, score, reason: allHits.length ? `Overlaps on: ${allHits.slice(0, 6).join(', ')}` : 'Same field as your resume', gaps }
   }).sort((a, b) => b.score - a.score)
   // Prefer ≥30 matches; if too few clear that bar, still show the top of the pool.
   const strong = scored.filter(j => j.score >= 30)
@@ -218,7 +247,7 @@ async function rankWithLLM(jobs, resume, targetRole, location, provider, max, ye
     .slice(0, max)
 }
 
-export async function findJobs({ resume = '', targetRole = '', query = '', location = '', yearsExp = '', max = 40 } = {}) {
+export async function findJobs({ resume = '', targetRole = '', query = '', location = '', yearsExp = '', max = 40, companyUrl = '' } = {}) {
   if (!resume.trim() && !targetRole.trim() && !query.trim()) {
     const e = new Error('Add your resume (or a target role) first — Solo Practice → setup is where you paste it.')
     e.status = 400; throw e
@@ -230,25 +259,37 @@ export async function findJobs({ resume = '', targetRole = '', query = '', locat
   const queryText = (roleText || keywords(resume, 4).join(' ') || 'software engineer').trim()
   const loc = location.trim()
   const country = loc ? countryFor(loc) : null
+  // Structured resume facts → seniority-aware ranking on BOTH ranker paths,
+  // and an auto-filled experience hint when the user left the field empty.
+  const facts = resume.trim() ? resumeFacts(resume) : null
+  const effYears = yearsExp.trim() || (facts?.years ? `${facts.years} years` : '')
+  const candBand = facts?.band ?? bandForYears(parseYearsExpInput(yearsExp))
   const localEnabled = adzunaConfigured()
   const search = `${category} · ${queryText}${loc ? ` · ${loc}` : ''}`
 
-  // Fetch LOCAL on-site jobs (Adzuna, city-targeted) and REMOTE jobs (Remotive) IN PARALLEL —
-  // they're independent network calls; running them concurrently roughly halves search latency.
+  // Fetch COMPANY-BOARD jobs (public Greenhouse/Lever APIs), LOCAL on-site jobs
+  // (Adzuna, city-targeted) and REMOTE jobs (Remotive) IN PARALLEL — independent
+  // network calls; concurrency roughly halves search latency.
   let remoteErr = null
-  let [local, remote] = await Promise.all([
+  let [company, local, remote, yc] = await Promise.all([
+    companyUrl
+      ? fetchCompanyBoard(companyUrl, (u, o) => fetchT(u, o)).catch(() => [])       // non-fatal
+      : Promise.resolve([]),
     (localEnabled && country)
-      ? fetchAdzuna({ what: queryText, where: loc, country }, 50).catch(() => [])   // non-fatal
+      ? fetchAdzuna({ what: queryText, where: cityFor(loc) || undefined, country }, 50).catch(() => [])   // non-fatal
       : Promise.resolve([]),
     fetchJobs({ category, query: queryText }, 100)
       .then(js => js.map(j => ({ ...j, source: 'remote' })))
-      .catch(e => { remoteErr = e; return [] })
+      .catch(e => { remoteErr = e; return [] }),
+    fetchYcJobs((u, o) => fetchT(u, o)).catch(() => [])                                  // non-fatal
   ])
-  if (!remote.length && !local.length && remoteErr) throw remoteErr   // only hard-fail if we have nothing at all
+  if (!remote.length && !local.length && !company.length && !yc.length && remoteErr) throw remoteErr   // only hard-fail if we have nothing at all
 
   let tokens = null, note = ''
   if (loc) {
     tokens = userRegionTokens(loc)
+    // YC/HN postings are bonus discovery — keep only region-compatible ones.
+    if (yc.length) yc = yc.filter(j => locationOk(j.location, tokens))
     const okRemote = remote.filter(j => locationOk(j.location, tokens))
     // If we already have local jobs, only keep region-compatible remote ones. Otherwise
     // keep the broader remote pool (ranker pushes region-mismatched down) so it's not empty.
@@ -260,21 +301,24 @@ export async function findJobs({ resume = '', targetRole = '', query = '', locat
     }
   }
 
-  // Merge local-first + remote, de-duplicate by title+company.
+  // Merge company-board first (most intentional source), then local on-site,
+  // then YC startup discovery, then broad remote; de-duplicate by title+company.
   const seen = new Set()
-  let jobs = [...local, ...remote].filter(j => {
+  let jobs = [...company, ...local, ...yc, ...remote].filter(j => {
     const k = `${(j.title || '').toLowerCase()}|${(j.company || '').toLowerCase()}`
     if (seen.has(k)) return false; seen.add(k); return true
   })
   if (!jobs.length) return { search, jobs: [], note: note || 'No live postings available right now. Try again shortly.', localEnabled }
 
   const pool = jobs.slice(0, 50)   // cap the pool sent to the ranker (cost/latency)
+  const companyCount = pool.filter(j => j.source === 'company').length
+  const companyNote = companyCount ? ` • ${companyCount} role${companyCount === 1 ? '' : 's'} pulled live from the tracked company career page.` : ''
   const providers = availableProviders()
   if (providers.length) {
     try {
-      const ranked = await rankWithLLM(pool, resume, targetRole, location, providers[0].id, max, yearsExp)
-      if (ranked.length) return { search, jobs: ranked, ranker: 'ai', note, localEnabled }
+      const ranked = await rankWithLLM(pool, resume, targetRole, location, providers[0].id, max, effYears)
+      if (ranked.length) return { search, jobs: ranked, ranker: 'ai', note: (note || '') + companyNote, localEnabled, companyCount }
     } catch { /* fall through to heuristic so the feature never hard-fails */ }
   }
-  return { search, jobs: rankHeuristic(pool, resume, targetRole, max, tokens), ranker: 'keyword', note, localEnabled }
+  return { search, jobs: rankHeuristic(pool, resume, targetRole, max, tokens, candBand), ranker: 'keyword', note: (note || '') + companyNote, localEnabled, companyCount }
 }

@@ -119,15 +119,15 @@ answer matches it.
 ## Modes
 
 ### 🎯 Live Interview Companion
-- Floats over **Zoom / Google Meet / Microsoft Teams** — always on top
+- Floats over **Zoom / Google Meet / Microsoft Teams** — always on top, preserving the active monitor on multi-display setups
+- **Camera-anchored Teleprompter mode (`Alt+T` / `⌖ Cam`)** — docks at top-center (`760×240`) right beneath your webcam with larger teleprompter typography
 - Captures **system audio** and transcribes the interviewer in real time via **Deepgram** (Voice)
-- Streams a natural, **resume-grounded** answer — references your actual projects, never generic
-- **Custom voice prompt** — set your persona/tone/seniority once; it shapes every answer
+- Streams a natural, **resume-grounded** answer — references your actual projects, never generic, with **Context Audit Trail** source badges (`✓ RESUME`, `📄 Doc · §Section`, `🖥 SCREEN`, `🌐 WEB`)
+- **Interview Playbook Studio (`CustomPromptStudio`)** — 1-click role playbooks (`SWE / Coding`, `System Design`, `AI / LLM / RAG`, `Data / SQL`, `Behavioral STAR`), modular `+ Add block` rule chips, saved presets, and live `● ALWAYS` vs `⚡ AUTO-ROUTED` compiler badges
 - Auto-detects coding platforms (LeetCode, HackerRank, CoderPad…) → one-tap **Coding mode**
 - **Live web search** auto-triggers for company/product questions
 - **Mid-session context field** to steer answers ("focus on Python", "system design round")
-- **Documents (RAG)** — upload your resume / JD / notes; they're chunked + embedded and the most
-  relevant parts are retrieved *per question* (no more truncated-resume stuffing)
+- **Documents (Hybrid RAG)** — upload your resume / JD / notes (including layout-aware PDF extraction); chunks inherit section headers (`[Section: ...]`), persist vectors in `mm-docs-index-v1` bound to `embeddingModel` (`provider:model`), and pre-warm speculatively during question stabilization
 - **Answer controls** — Concise / Balanced / Detailed length, Answer vs Coach mode, Auto-skip noise
 - **Minimize to a pill** — collapses to a small logo; content protection still applies where the OS allows — **verify share preview**
 - Post-session AI notes (not a fake live score)
@@ -140,11 +140,13 @@ answer matches it.
 
 ### 🤖 Solo Practice
 - AI interviewer asks role-calibrated questions, probes with follow-ups
+- Shares the same **Interview Playbook Studio** and selected-document grounding as Live
 - End-of-session scorecard: technical knowledge, communication, problem-solving, delivery
 
 ### 💻 Coding Mode
-- Press **`Ctrl+Shift+U`** (or tap the auto-detected "Solve it" prompt) on a coding question
-- GPT-4o vision reads the screen → **working code + approach + complexity + edge cases**
+- Press **`F7`** (or `Ctrl+Shift+U` / tap the auto-detected "Solve it" prompt) on a coding question
+- Bounded high-DPI capture (`1440×810 @ JPEG Q76`, with automatic `210 KB` step-down) → **working code + approach + complexity + sample tests + edge cases**
+- **`[All | Code | Steps]` view switcher** — toggle between full view, code-only, or approach steps without nested scrollbars
 - **Language switcher** — re-solve the same problem in Python/Java/C++/JS/Go/TS instantly
 - Syntax-highlighted, one-tap **copy** (same content-protection caveats as Live — verify share preview)
 
@@ -230,9 +232,13 @@ hard questions escalate to a strong model. **Maximum quality** routes every answ
 | Shortcut | Action |
 |---|---|
 | `Alt+H` / `Ctrl+Shift+H` | Hide / restore the overlay completely |
-| `Ctrl+Shift+U` | Capture the screen → instant coding/vision analysis |
+| `F7` / `Ctrl+Shift+U` | Capture the screen → instant coding/vision analysis |
+| `Alt+T` | Toggle camera-anchored Teleprompter mode (`760×240` top-center) during Live |
+| `Alt+R` | Answer Now — commit and answer the active question immediately during Live |
+| `Alt+Up` / `Alt+Down` | Hands-free scroll up / down inside the Live overlay |
+| `Alt+C` | Toggle click-through on the Live overlay |
 | Drag title bar | Move the overlay anywhere |
-| ◢ corner | Resize the overlay |
+| ◢ border / corner | Resize the overlay (preserved across mode switches) |
 
 ---
 
@@ -318,6 +324,13 @@ BYOK keys stay encrypted on the user's machine.
 ---
 
 ## Roadmap
+
+**Done (1.5.2)**
+- ✅ **Windows Multi-Monitor & 760×240 Teleprompter HUD (`Alt+T` / `⌖ Cam`)** — docks the Live overlay at top-center beneath the webcam, preserves active monitor and user-resized dimensions (`lastOverlaySize`), and scopes `Alt+T`, `Alt+R`, and `Alt+Up/Down` to active overlay/teleprompter modes.
+- ✅ **Turn-1 System Audio & `{ Artemis }` Hybrid RAG** — `+25` Turn-1 system-audio confidence boost, Deepgram `Finalize` pause flush, layout-aware PDF extraction (`src/pdf.js`), header-inherited semantic chunking, `embeddingModel`-bound persistent vector cache (`mm-docs-index-v1`), speculative RAG pre-warm, and Context Audit Trail badges.
+- ✅ **`CustomPromptStudio` Playbook Builder** — 1-click role playbooks (`SWE / Coding`, `System Design`, `AI / LLM / RAG`, `Data / SQL`, `Behavioral STAR`), modular `+ Add block` chips, saved presets, and live `● ALWAYS` vs `⚡ AUTO-ROUTED` compiler badges across Live and Solo.
+- ✅ **UI/UX Overhaul & `[All | Code | Steps]` Switcher** — 3-tier typography (`Kanit` + `Inter` + `Cascadia Code`/`JetBrains Mono`), WCAG AA contrast (`T.text3 = #8690A2`), `:focus-visible` keyboard rings, zero-nested-scroll `F7` coding tabs, and 4×4-supersampled `512×512` app icon.
+- ✅ **Closed-Loop `ARCH · Product Intelligence`** — declarative `ABL` funnels (`arch/mockmate.abl.json`), privacy-first interaction redaction (`shared/productIntelligence.js`), Settings insights inspector (`ProductIntelligencePanel.jsx`), and automatic `balanced → fast` lane promotion when `p95` TTFT breaches thresholds.
 
 **Done (1.4.11)**
 - ✅ **Visible Interview Playbook** — highlighted before Start Live; long custom rules are routed by question type instead of prefix-truncated, with immutable source-mode and résumé-truth boundaries.

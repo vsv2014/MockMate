@@ -5,8 +5,9 @@ import SoloFeedback from './SoloFeedback'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { getAutoSkip, getAnswerStyle, setAnswerStyle as persistAnswerStyle } from './lib/aiSettings'
-import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, listDocs } from './lib/docs'
+import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, listDocs, canReuseSpeculativeRag } from './lib/docs'
 import Documents from './Documents'
+import CustomPromptStudio from './components/CustomPromptStudio'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import { OverlayPanel, ScreenAnalysisPanel, IconBtn, CodeBlock } from './App'
 import ApiKeysPanel from './ApiKeys'
@@ -29,12 +30,15 @@ import { createGenerationManager } from '../shared/generationManager.js'
 import { resolveContextSources, formatInterviewDevTrace } from '../shared/contextSelection.js'
 import { createTranscriptBuffer } from '../shared/transcriptBuffer.js'
 import { createQuestionCaptureController, formatCaptureDebugLine } from '../shared/questionCapture.js'
-import { streamLiveHint, fetchLiveHintFallback } from './live/hintTransport.js'
+import { createLiveSessionController } from './live/LiveSessionController.js'
+import { computeLiveCanStart, resolveAnswerNowCandidate } from './live/liveGate.js'
 import { copyText } from './lib/clipboard'
+import { trackProductEvent } from './lib/productIntelligence'
+import { nid } from '../shared/id.js'
 import { curateModelOptions, configuredProviderNames, curateProviderFallbacks, loadModelSelection, persistModelSelection } from './lib/modelPicker'
 
 function newQuestionId() {
-  return `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+  return nid('q', 6)
 }
 
 /** RAG options for this turn — session document selection is the only hard gate. */
@@ -188,35 +192,51 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
   function patch(p) { const next = { ...profile, ...p }; setProfile(next); saveProfile(next) }
   const managed = isManaged()   // managed → hide model picker, let the server auto-route
   const [pdfMsg, setPdfMsg] = useState('')
-  const [linuxAck, setLinuxAck] = useState(false)
-  const [shareVerified, setShareVerified] = useState(false)
-  const [protectionTest, setProtectionTest] = useState({ status: 'idle', message: '' })
-  const [meetingContext, setMeetingContext] = useState({ active: false, app: null, label: null })
-  const [shareMode, setShareMode] = useState('entire-screen')
   const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
   const inElectron = typeof window !== 'undefined' && !!window.electronAPI
+  const isDevLocal = Boolean(import.meta.env?.DEV)
+    && typeof window !== 'undefined'
+    && /^(localhost|127\.0\.0\.1)$/i.test(window.location?.hostname || '')
+  const [linuxAck, setLinuxAck] = useState(isDevLocal)
+  const [shareVerified, setShareVerified] = useState(isDevLocal)
+  const [protectionTest, setProtectionTest] = useState(
+    isDevLocal
+      ? { status: 'passed', message: 'Dev mode: local preflight unlocked for testing.' }
+      : { status: 'idle', message: '' },
+  )
+  const [meetingContext, setMeetingContext] = useState({ active: false, app: null, label: null })
+  const [shareMode, setShareMode] = useState('entire-screen')
   // BYOK with no LLM configured → hints would error on every question mid-call. Block Start and say why.
-  // Mode selection is not capability. Managed/BYOK both need at least one provider
-  // reported by the active API service; otherwise the first hint would fail.
+  // Public builds enforce the full Electron + OS protection + share-preview safety gate;
+  // frictionless bypass is strictly restricted to local dev mode.
   const noLLM = providers.length === 0 && models.length === 0
-  const canStart = dgAvailable && !noLLM && !!inElectron && (isLinux ? linuxAck : (protectionTest.status === 'passed' && shareVerified))
+  const canStart = computeLiveCanStart({
+    dgAvailable,
+    noLLM,
+    inElectron: !!inElectron,
+    isLinux: !!isLinux,
+    linuxAck,
+    protectionStatus: protectionTest.status,
+    shareVerified,
+    isDevLocal,
+  })
   // Mic preflight is amber (may hear you); SysAudio on Win/mac is green.
   const micMode = sourceId === 'microphone'
   const audioPreflightColor = micMode ? '#fbbf24' : (isLinux ? '#fbbf24' : '#4ade80')
   const selectedExtraCount = documentMeta.filter(d => d.type !== 'resume' && d.type !== 'jd' && d.selected !== false).length
   const contextSourceCount = Number(!!profile.resume?.trim()) + Number(!!profile.jobDescription?.trim()) + selectedExtraCount
 
-  const inp = { width: '100%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text1, padding: '10px 12px', borderRadius: T.rCtrl, fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: T.font }
+  const inp = { width: '100%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text1, padding: '10px 12px', borderRadius: T.rCtrl, fontSize: 13, boxSizing: 'border-box', fontFamily: T.font }
   const preflightOk = (ok) => ok ? '#4ade80' : '#f87171'
 
   useEffect(() => {
     window.electronAPI?.getMeetingContext?.().then(ctx => setMeetingContext(ctx || { active: false })).catch(() => {})
     const off = window.electronAPI?.onMeetingDetected?.(ctx => {
       setMeetingContext(typeof ctx === 'object' ? ctx : { active: !!ctx, app: null, label: null })
-      setShareVerified(false) // a meeting/config change invalidates the prior preview assertion
+      if (!isDevLocal) setShareVerified(false) // a meeting/config change invalidates the prior preview assertion
     })
     return () => { try { off?.() } catch {} }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function testCaptureProtection() {
     setProtectionTest({ status: 'testing', message: 'Applying OS capture protection…' })
@@ -233,9 +253,14 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
         message: 'OS protection applied. This does not prove your meeting share mode—verify the preview below.',
       })
     } catch {
+      trackProductEvent('preflight_failed', { reason: 'protection_test_failed' })
       setProtectionTest({ status: 'failed', message: 'OS capture-protection test failed.' })
     }
   }
+
+  useEffect(() => {
+    trackProductEvent('live_setup')
+  }, [])
 
   return (
     <OverlayPanel
@@ -256,7 +281,7 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
 
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 4 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>Live Interview</div>
+            <div style={{ fontSize: 22, fontWeight: 600, color: T.text1, fontFamily: T.fontDisplay, letterSpacing: '-0.01em' }}>Live Interview</div>
             <div style={{ fontSize: 13, color: T.text2, marginTop: 3 }}>Verify share preview, then start. The overlay stays glanceable over your call.</div>
           </div>
           <button onClick={onHome} style={{ height: 38, padding: '0 16px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 13, cursor: 'pointer', fontFamily: T.font }}>← Back</button>
@@ -280,12 +305,14 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
                 ? '⚠ Overlay stealth NOT supported on Linux — visible in screen share'
                 : inElectron
                   ? '✓ Content protection available (Win/macOS) — still verify share preview'
-                  : '⚠ Browser/dev mode — Live Start blocked (no screen-capture protection)'}
+                  : isDevLocal
+                    ? '⚠ Local dev browser mode — preflight unlocked for local testing (no screen-capture protection)'
+                    : '⚠ Browser/dev mode — Live Start blocked (no screen-capture protection)'}
             </div>
           </div>
         </div>
 
-        {!inElectron && (
+        {!inElectron && !isDevLocal && (
           <div role="alert" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fca5a5' }}>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>Live Start blocked</div>
             <div>Live Interview needs the desktop app (Electron) for system audio + content protection. Open MockMate from the installed app, not a browser tab.</div>
@@ -315,7 +342,7 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
             </div>
             <div style={{ marginBottom: 8, lineHeight: 1.45 }}>Before a real interview: open your meeting share preview and confirm the MockMate overlay does <strong style={{ color: T.text1 }}>not</strong> appear in what others see.</div>
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
-              <input type="checkbox" checked={shareVerified} disabled={protectionTest.status !== 'passed'} onChange={e => setShareVerified(e.target.checked)} style={{ marginTop: 2 }} />
+              <input type="checkbox" checked={shareVerified} disabled={protectionTest.status !== 'passed'} onChange={e => { setShareVerified(e.target.checked); if (e.target.checked) trackProductEvent('preflight_verified') }} style={{ marginTop: 2 }} />
               <span>I verified the <strong>{shareMode.replace('-', ' ')}</strong> preview{meetingContext.label ? ` in ${meetingContext.label}` : ''} — MockMate did not appear.</span>
             </label>
           </div>
@@ -371,29 +398,17 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
         <Section
           n={2}
           title="Interview Playbook"
-          subtitle="Recommended · controls how every answer behaves"
+          subtitle="Recommended · 1-click role templates, saved presets & auto-routed rules"
           defaultOpen
           highlight
         >
           <div style={{ fontSize: 11.5, color: T.text2, lineHeight: 1.5 }}>
-            Paste your interview-specific rules here: tone, truth boundaries, answer depth, SQL/coding approach and project instructions. MockMate keeps core rules and automatically routes the relevant section for each question.
+            Pick a role playbook below or write your own rules (`VOICE:`, `TRUTH:`, `CODING/DSA:`, `SYSTEM DESIGN:`, `SQL/DATABASE:`). MockMate always retains your core rules and dynamically routes matching sections for each question.
           </div>
-          <textarea
-            aria-label="Interview Playbook"
-            rows={6}
-            maxLength={CUSTOM_INSTRUCTIONS_STORE_MAX}
-            style={{ ...inp, resize: 'vertical', minHeight: 118, borderColor: profile.customPrompt?.trim() ? 'rgba(34,211,238,0.7)' : T.border }}
+          <CustomPromptStudio
             value={profile.customPrompt || ''}
-            placeholder={'Example:\nVOICE: Keep answers confident and concise.\nTRUTH: Never invent experience or ownership.\nSQL SUPPORT: Give simple correct SQL first.\nCODING/DSA: Approach → code → complexity → edge cases.'}
-            onChange={e => patch({ customPrompt: e.target.value.slice(0, CUSTOM_INSTRUCTIONS_STORE_MAX) })}
+            onChange={nextPrompt => patch({ customPrompt: String(nextPrompt || '').slice(0, CUSTOM_INSTRUCTIONS_STORE_MAX) })}
           />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 10, color: T.text3 }}>
-            <span>{profile.customPrompt?.trim() ? '✓ Active for this interview' : 'Optional, but recommended for role-specific behavior'}</span>
-            <span>{(profile.customPrompt || '').length.toLocaleString()} / {CUSTOM_INSTRUCTIONS_STORE_MAX.toLocaleString()}</span>
-          </div>
-          <div style={{ fontSize: 10.5, color: '#67e8f9', lineHeight: 1.4 }}>
-            Routes core + question-relevant sections up to {CUSTOM_INSTRUCTIONS_PACK_MAX.toLocaleString()} characters. Truthfulness protections cannot be overridden.
-          </div>
         </Section>
 
         <Section n={3} title="Interview Documents" subtitle={`${contextSourceCount} source${contextSourceCount === 1 ? '' : 's'} ready · choose exactly what AI may use`} defaultOpen={false}>
@@ -576,7 +591,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const [copiedKey, setCopiedKey] = useState('')
   const extraContextRef = useRef('')
   const [verifyTip, setVerifyTip] = useState(false)
+  const [teleprompter, setTeleprompter] = useState(false)
   const inElectronLive = typeof window !== 'undefined' && !!window.electronAPI
+
+  function toggleTeleprompter() {
+    const next = !teleprompter
+    setTeleprompter(next)
+    trackProductEvent('teleprompter_toggle', { teleprompter: next, source: 'toolbar' })
+    window.electronAPI?.setWindowMode?.(next ? 'teleprompter' : 'overlay')
+  }
 
   const sessionIdRef = useRef(createSessionId())
   const interviewStateRef = useRef(null)
@@ -615,13 +638,64 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const programmaticScrollRef = useRef(false)
   const programmaticScrollTimerRef = useRef(null)
   const [showJumpLatest, setShowJumpLatest] = useState(false)
-  const ragSpec = useRef({ q: '', p: null })
+  const ragSpec = useRef({ q: '', p: null, ac: null, timer: null })
+  const liveCaptureTextRef = useRef('')
+  const manualQRef = useRef('')
+  const generateHintRef = useRef(null)
   const metricsRef = useRef(null)
   const hintTimingRef = useRef(null)
   const captureRef = useRef(null)
   const handleCommittedRef = useRef(null)
   const handleRevisionRef = useRef(null)
   const handleRefinementRef = useRef(null)
+  // One-shot guard: Turn-1 Finalize-on-pause is disabled after the first committed question.
+  const finalizeOffOnceRef = useRef(false)
+
+  const cancelSpeculativeRag = useCallback(({ keepComplete = false } = {}) => {
+    clearTimeout(ragSpec.current?.timer)
+    if (ragSpec.current) ragSpec.current.timer = null
+    if (!keepComplete) {
+      try { ragSpec.current?.ac?.abort() } catch {}
+      ragSpec.current = { q: '', p: null, ac: null, timer: null }
+    }
+  }, [])
+
+  const startSpeculativeRag = useCallback((rawText, { immediate = false } = {}) => {
+    const text = String(rawText || '').trim()
+    clearTimeout(ragSpec.current?.timer)
+    if (ragSpec.current) ragSpec.current.timer = null
+    if (!text) return
+    // Reuse existing speculative request if it already covers the same question/prefix
+    if (ragSpec.current?.p && canReuseSpeculativeRag(ragSpec.current.q, text)) return
+
+    const launch = () => {
+      if (!sessionActiveRef.current) return
+      if (ragSpec.current?.p && canReuseSpeculativeRag(ragSpec.current.q, text)) return
+      const peek = classifyTurn({
+        question: text,
+        profile: profileRef.current,
+        conversationHistory: interviewStateRef.current?.getLlmHistory?.({ includeLastAnswer: false }) || [],
+        lastClassification: lastClassificationRef.current,
+        recentScreen: recentScreenRef.current,
+      })
+      if (!shouldRetrieveDocs(peek)) return
+      try { ragSpec.current?.ac?.abort() } catch {}
+      const ac = new AbortController()
+      const opts = { ...liveRagOpts(peek, interviewConfigRef.current, 600), signal: ac.signal }
+      ragSpec.current = {
+        q: text,
+        ac,
+        timer: null,
+        p: retrieveContext(text, opts).catch(() => ''),
+      }
+    }
+
+    if (immediate) {
+      launch()
+    } else {
+      ragSpec.current.timer = setTimeout(launch, 320)
+    }
+  }, [])
 
   // M2 question capture pipeline — commit BEFORE generate.
   if (!captureRef.current) {
@@ -637,7 +711,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         const hist = snap?.questionHistory || []
         return hist[hist.length - 1]?.text || lastHintText.current || ''
       },
+      // System/loopback capture is meeting audio by construction → Turn-1 commit boost.
+      getAudioSource: () => (liveSourceIdRef.current && liveSourceIdRef.current !== 'microphone' ? 'system' : 'microphone'),
       onLive: ({ text, status, reason }) => {
+        liveCaptureTextRef.current = text || ''
         setLiveCaptureText(text || '')
         setCaptureStatus(status || 'listening')
         interviewStateRef.current?.setLiveCapture?.({ text, status, reason })
@@ -652,6 +729,11 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           revisionCount: c.revisionCount,
           source: 'stt',
         })
+        // Debounced, single-flight speculative RAG pre-warm DURING the stabilization window.
+        const candText = String(c?.text || '').trim()
+        if (candText && candText.split(/\s+/).length >= 5) {
+          startSpeculativeRag(candText, { immediate: false })
+        }
       },
       onCommitted: (c) => { handleCommittedRef.current?.(c) },
       onRevision: (evt) => { handleRevisionRef.current?.(evt) },
@@ -668,6 +750,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   useEffect(() => { extraContextRef.current = extraContext }, [extraContext])
   useEffect(() => { coachModeRef.current = coachMode }, [coachMode])   // so generateHint (a [] useCallback closure) reads the live value
+  useEffect(() => { liveCaptureTextRef.current = liveCaptureText }, [liveCaptureText])
+  useEffect(() => { manualQRef.current = manualQ }, [manualQ])
   useEffect(() => {
     interviewStateRef.current?.setProfile?.(profile)
     profileRef.current = profile
@@ -734,6 +818,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     sessionActiveRef.current = true
     return () => {
       sessionActiveRef.current = false
+      cancelSpeculativeRag()
       try { genManagerRef.current?.cancelCurrent?.('unmount') } catch {}
       try { captureRef.current?.reset?.() } catch {}
       bcRef.current?.close()
@@ -762,9 +847,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       if (window.electronAPI?.excludeFromCapture) {
         await new Promise(r => setTimeout(r, 100))  // let the OS register the window
         const result = await window.electronAPI.excludeFromCapture()
-        if (!result?.ok) {
+        // Honest confirmation (round-5 review): the handler returns the id of the
+        // window it actually protected AND the sender's id. If they match, only
+        // the opener was protected — do not claim PiP confirmation (the
+        // browser-window-created listener still auto-protects new windows, but
+        // we surface the warning rather than a false positive).
+        const pipConfirmed = Boolean(result?.ok) && result.senderId != null && result.id !== result.senderId
+        if (!result?.ok || !pipConfirmed) {
           setPipProtected(false)
-          console.warn('[MockMate] Screen protection failed for PiP window:', result?.error)
+          console.warn('[MockMate] Screen protection not confirmed for PiP window:', result?.error || `protected window ${result?.id} is the opener (${result?.senderId})`)
         } else {
           setPipProtected(true)
           console.log('[MockMate] Screen protection confirmed on hints window', result.id)
@@ -1100,14 +1191,18 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     logTrace('generating')
 
     let ragContext = ''
+    cancelSpeculativeRag({ keepComplete: true })
     if (shouldRetrieveDocs(classification)) {
       const spec = ragSpec.current
       const opts = liveRagOpts(classification, interviewConfigRef.current, 600)
-      ragContext = (spec.q === question && spec.p)
-        ? await spec.p.catch(() => '')
-        : await retrieveContext(question, opts).catch(() => '')
+      if (spec?.p && canReuseSpeculativeRag(spec.q, question)) {
+        ragContext = await spec.p.catch(() => '')
+      } else {
+        try { spec?.ac?.abort() } catch {}
+        ragContext = await retrieveContext(question, opts).catch(() => '')
+      }
     }
-    if (ragSpec.current?.q === question) ragSpec.current = { q: '', p: null }
+    ragSpec.current = { q: '', p: null, ac: null, timer: null }
     if (!isCurrent()) return
     const mergedContext = () => [extraContextRef.current, ragContext].filter(Boolean).join('\n\n') || undefined
 
@@ -1121,119 +1216,107 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       recentScreen: attachScreen ? selectedScreen : null,
     })
 
-    // SAFETY NET — proven non-streaming endpoint (must pass mode + style).
-    const runFallback = async () => {
-      if (!isCurrent()) return
-      const d = await fetchLiveHintFallback({
-        body: hintBody(),
-        signal: gen.signal,
-        isCurrent,
-      })
-      if (!d || !isCurrent()) return
-      const h = d.hint
-      if (!h || h.skip) { metricsRef.current?.markSkip?.(); resetSkip(); return }
-      metricsRef.current?.markFirstToken?.(hintTimingRef.current)
-      gotToken = true
-      finalize(h.fullAnswer || h.sampleAnswer || '', h)
-    }
-
     hintTimingRef.current = metricsRef.current?.startHint?.() || null
-    try {
-      let rawAnswer = '', answer = '', hintObj = null
-      const mode = await streamLiveHint({
-        body: hintBody(),
-        signal: gen.signal,
-        isCurrent,
-        onFallback: async () => {
-          metricsRef.current?.markFallback?.()
-          await runFallback()
-        },
-        onEvent: async ({ event: ev, data }) => {
-          if (ev === 'meta') {
+    let rawAnswer = '', answer = '', hintObj = null
+    const controller = createLiveSessionController({
+      isCurrent,
+      getSignal: () => gen.signal,
+      getHintBody: hintBody,
+      onMarkFallback: () => { metricsRef.current?.markFallback?.() },
+      onSkip: () => { metricsRef.current?.markSkip?.(); resetSkip() },
+      onFallbackHint: h => {
+        metricsRef.current?.markFirstToken?.(hintTimingRef.current)
+        gotToken = true
+        finalize(h.fullAnswer || h.sampleAnswer || '', h)
+      },
+      onStreamEvent: async ({ event: ev, data }) => {
+        if (ev === 'meta') {
+          hintObj = {
+            confidence: data?.confidence === 'resume' ? 'resume' : 'general',
+            questionType: data?.type, pattern: data?.pattern || null,
+            complexity: data?.complexity || null, watchOut: data?.watch || null,
+            _searchSources: data?.searchSources,
+            _routing: data?._routing || null,
+            fullAnswer: '', sampleAnswer: ''
+          }
+          lastHintObj = hintObj
+          if (data?._routing) {
+            lastClassificationRef.current = {
+              ...classification,
+              playbookKey: data._routing.playbook || classification.playbookKey,
+              parentTopic: classification.parentTopic || qText,
+              question: qText,
+            }
+          }
+          if (isCurrent()) {
+            setHint(hintObj); setHintLoading(false); setStreaming(true)
+            upsert({ isQuestion: true, answer: '', hint: hintObj })
+            armPostMetaWatchdog()
+          }
+        } else if (ev === 'token') {
+          if (!rawAnswer) metricsRef.current?.markFirstToken?.(hintTimingRef.current)
+          gotToken = true
+          clearTimeout(postMetaTimerRef.current)
+          rawAnswer += typeof data === 'string' ? data : ''
+          const cleaned = stripHintMeta(rawAnswer)
+          if (Object.keys(cleaned.meta).length) {
             hintObj = {
-              confidence: data?.confidence === 'resume' ? 'resume' : 'general',
-              questionType: data?.type, pattern: data?.pattern || null,
-              complexity: data?.complexity || null, watchOut: data?.watch || null,
-              _searchSources: data?.searchSources,
-              _routing: data?._routing || null,
-              fullAnswer: '', sampleAnswer: ''
+              ...(hintObj || { confidence: 'general' }),
+              confidence: cleaned.meta.confidence === 'resume' ? 'resume' : (hintObj?.confidence || 'general'),
+              questionType: cleaned.meta.type || hintObj?.questionType,
+              pattern: cleaned.meta.pattern ?? hintObj?.pattern ?? null,
+              complexity: cleaned.meta.complexity ?? hintObj?.complexity ?? null,
+              watchOut: cleaned.meta.watch || cleaned.meta.watchOut || hintObj?.watchOut || null,
             }
             lastHintObj = hintObj
-            if (data?._routing) {
-              lastClassificationRef.current = {
-                ...classification,
-                playbookKey: data._routing.playbook || classification.playbookKey,
-                parentTopic: classification.parentTopic || qText,
-                question: qText,
-              }
-            }
-            if (isCurrent()) {
-              setHint(hintObj); setHintLoading(false); setStreaming(true)
-              upsert({ isQuestion: true, answer: '', hint: hintObj })
-              armPostMetaWatchdog()
-            }
-          } else if (ev === 'token') {
-            if (!rawAnswer) metricsRef.current?.markFirstToken?.(hintTimingRef.current)
-            gotToken = true
-            clearTimeout(postMetaTimerRef.current)
-            rawAnswer += typeof data === 'string' ? data : ''
-            const cleaned = stripHintMeta(rawAnswer)
-            if (Object.keys(cleaned.meta).length) {
-              hintObj = {
-                ...(hintObj || { confidence: 'general' }),
-                confidence: cleaned.meta.confidence === 'resume' ? 'resume' : (hintObj?.confidence || 'general'),
-                questionType: cleaned.meta.type || hintObj?.questionType,
-                pattern: cleaned.meta.pattern ?? hintObj?.pattern ?? null,
-                complexity: cleaned.meta.complexity ?? hintObj?.complexity ?? null,
-                watchOut: cleaned.meta.watch || cleaned.meta.watchOut || hintObj?.watchOut || null,
-              }
-              lastHintObj = hintObj
-            }
-            answer = cleaned.pending ? '' : cleaned.prose
-            const formattedAnswer = ensureCodingCodeBlock(answer, hintObj?.questionType || classification.questionType)
-            if (formattedAnswer.includes('```') && !autoExpandedCodeRef.current.has(questionId)) {
-              autoExpandedCodeRef.current.add(questionId)
-              setExpandedAnswers(prev => new Set(prev).add(qText))
-            }
-            lastAnswer = formattedAnswer
-            const layers = glanceLayers(formattedAnswer, hintObj || {})
-            const liveHint = {
-              ...(hintObj || { confidence: 'general' }),
-              opener: layers.opener,
-              keyPoints: layers.keyPoints,
-              fullAnswer: layers.fullAnswer || formattedAnswer,
-              watchOut: layers.watchOut || hintObj?.watchOut || null,
-            }
-            upsert({ answer: layers.fullAnswer || formattedAnswer, hint: liveHint })
-            setHint(liveHint)
-          } else if (ev === 'usage') {
-            const u = data || {}
-            setUsage(s => ({ tokens: s.tokens + (u.input || 0) + (u.output || 0), cost: s.cost + estimateCost(u.model, u.input || 0, u.output || 0) }))
-          } else if (ev === 'provider') {
-            metricsRef.current?.markProviderEvent?.(data || {})
-          } else if (ev === 'skip') {
-            metricsRef.current?.markSkip?.()
-            resetSkip()
-            return 'stop'
-          } else if (ev === 'error') {
-            if (answer.trim()) {
-              incomplete = true
-              hintIncompleteRef.current = true
-              metricsRef.current?.markIncomplete?.()
-              if (isCurrent()) {
-                const layers = glanceLayers(answer, hintObj || {})
-                upsert({
-                  answer: answer.trimEnd() + '\n\n[incomplete — connection/provider error]',
-                  hint: { ...(hintObj || { confidence: 'general' }), opener: layers.opener, keyPoints: layers.keyPoints, fullAnswer: answer, incomplete: true },
-                })
-                setHint(h => h ? { ...h, incomplete: true } : { confidence: 'general', incomplete: true })
-                gen.fail('sse_error')
-              }
-            }
-            return 'stop'
           }
-        },
-      })
+          answer = cleaned.pending ? '' : cleaned.prose
+          const formattedAnswer = ensureCodingCodeBlock(answer, hintObj?.questionType || classification.questionType)
+          if (formattedAnswer.includes('```') && !autoExpandedCodeRef.current.has(questionId)) {
+            autoExpandedCodeRef.current.add(questionId)
+            setExpandedAnswers(prev => new Set(prev).add(qText))
+          }
+          lastAnswer = formattedAnswer
+          const layers = glanceLayers(formattedAnswer, hintObj || {})
+          const liveHint = {
+            ...(hintObj || { confidence: 'general' }),
+            opener: layers.opener,
+            keyPoints: layers.keyPoints,
+            fullAnswer: layers.fullAnswer || formattedAnswer,
+            watchOut: layers.watchOut || hintObj?.watchOut || null,
+          }
+          upsert({ answer: layers.fullAnswer || formattedAnswer, hint: liveHint })
+          setHint(liveHint)
+        } else if (ev === 'usage') {
+          const u = data || {}
+          setUsage(s => ({ tokens: s.tokens + (u.input || 0) + (u.output || 0), cost: s.cost + estimateCost(u.model, u.input || 0, u.output || 0) }))
+        } else if (ev === 'provider') {
+          metricsRef.current?.markProviderEvent?.(data || {})
+        } else if (ev === 'skip') {
+          metricsRef.current?.markSkip?.()
+          resetSkip()
+          return 'stop'
+        } else if (ev === 'error') {
+          if (answer.trim()) {
+            incomplete = true
+            hintIncompleteRef.current = true
+            metricsRef.current?.markIncomplete?.()
+            if (isCurrent()) {
+              const layers = glanceLayers(answer, hintObj || {})
+              upsert({
+                answer: answer.trimEnd() + '\n\n[incomplete — connection/provider error]',
+                hint: { ...(hintObj || { confidence: 'general' }), opener: layers.opener, keyPoints: layers.keyPoints, fullAnswer: answer, incomplete: true },
+              })
+              setHint(h => h ? { ...h, incomplete: true } : { confidence: 'general', incomplete: true })
+              gen.fail('sse_error')
+            }
+          }
+          return 'stop'
+        }
+      },
+    })
+    try {
+      const mode = await controller.generateViaTransport()
 
       if (!isCurrent()) return
       if (mode === 'aborted' || mode === 'fallback' || mode === 'stopped') return
@@ -1245,7 +1328,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         clearTimers()
         return
       }
-      if (!answer.trim()) { metricsRef.current?.markFallback?.(); await runFallback(); return }
+      if (!answer.trim()) { metricsRef.current?.markFallback?.(); await controller.runFallback(); return }
       finalize(answer, hintObj)
     } catch (e) {
       if (e.name === 'AbortError') {
@@ -1256,7 +1339,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         }
         return
       }
-      try { await runFallback() }
+      try { await controller.runFallback() }
       catch (e2) {
         if (e2.name === 'AbortError') return
         if (!isCurrent()) return
@@ -1281,6 +1364,13 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   // Durable commit handler — question visible before any generation.
   handleCommittedRef.current = (captured) => {
     if (!sessionActiveRef.current || !captured?.text) return
+    // Turn-1 opener fix: once the first question commits, the Finalize-on-pause
+    // heuristic has served its purpose — hand utterance timing back to Deepgram's
+    // own endpointing for the rest of the session.
+    if (!finalizeOffOnceRef.current) {
+      finalizeOffOnceRef.current = true
+      try { audio.setFinalizeOnPause?.(false) } catch {}
+    }
     const state = interviewStateRef.current
     const q = state.commitQuestion(captured.text, null, {
       questionId: captured.id || newQuestionId(),
@@ -1307,33 +1397,23 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         status: 'committed',
       }]
     })
+    liveCaptureTextRef.current = ''
     setLiveCaptureText('')
     setCaptureStatus('committed')
     lastHintText.current = q.text
 
-    // Speculative RAG after commit — same classify inputs as generateHint (incl. screen).
-    const peek = classifyTurn({
-      question: q.text,
-      profile: profileRef.current,
-      conversationHistory: state.getLlmHistory({ includeLastAnswer: false }),
-      lastClassification: lastClassificationRef.current,
-      recentScreen: recentScreenRef.current,
-    })
-    if (shouldRetrieveDocs(peek)) {
-      ragSpec.current = {
-        q: q.text,
-        p: retrieveContext(q.text, liveRagOpts(peek, interviewConfigRef.current, 600)).catch(() => ''),
-      }
-    }
-
     const isMic = liveSourceIdRef.current === 'microphone'
     if (isMic && !(diarizationLockedRef.current && !degradedRef.current)) {
+      // Pre-warm RAG once while waiting for manual confirmation / speaker lock
+      startSpeculativeRag(q.text, { immediate: true })
       pendingManualQ.current = { text: q.text, questionId: q.id }
+      manualQRef.current = q.text
       setManualQ(q.text)
       return
     }
     generateHint(q.text, { force: true, questionId: q.id })
   }
+  generateHintRef.current = generateHint
 
   // A clear interviewer correction invalidates the answer currently being generated.
   // Keep the old card as an explicit superseded record instead of a mysterious blank.
@@ -1386,14 +1466,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       })
       return
     }
+    const isSysAudio = Boolean(liveSourceIdRef.current && liveSourceIdRef.current !== 'microphone')
     captureRef.current?.ingest?.({
       text: trimmed,
       isFinal: false,
       meta: {
         isCandidate: false,
         speaker: meta?.speaker,
-        speakerRole: diarizationLockedRef.current ? 'interviewer' : 'unknown',
-        diarizationLocked: diarizationLockedRef.current,
+        speakerRole: (isSysAudio || diarizationLockedRef.current) ? 'interviewer' : 'unknown',
+        diarizationLocked: isSysAudio || diarizationLockedRef.current,
       },
     })
     if (!hintInFlight.current && trimmed.split(/\s+/).length >= 4) {
@@ -1424,6 +1505,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       return
     }
 
+    const isSysAudio = Boolean(liveSourceIdRef.current && liveSourceIdRef.current !== 'microphone')
     captureRef.current?.ingest?.({
       text: trimmed,
       isFinal: true,
@@ -1431,10 +1513,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       meta: {
         isCandidate: false,
         speaker: meta?.speaker,
-        speakerRole: diarizationLockedRef.current
+        speakerRole: (isSysAudio || diarizationLockedRef.current)
           ? 'interviewer'
-          : (liveSourceIdRef.current === 'system' ? 'interviewer' : 'unknown'),
-        diarizationLocked: diarizationLockedRef.current,
+          : 'unknown',
+        diarizationLocked: isSysAudio || diarizationLockedRef.current,
         degraded: degradedRef.current,
       },
     })
@@ -1468,7 +1550,12 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   function retryTranscription() {
     setError('')
-    audio.restart(liveSourceId, audioOpts()).catch(e => setError(`Could not restart transcription: ${e.message || e}`))
+    // Session-level state stays authoritative: do NOT reset finalizeOffOnceRef here —
+    // a mid-session STT retry must not re-arm the Turn-1 Finalize heuristic.
+    // Re-assert the current state defensively once the socket is back up.
+    audio.restart(liveSourceId, audioOpts())
+      .then(() => { try { audio.setFinalizeOnPause(!finalizeOffOnceRef.current) } catch {} })
+      .catch(e => setError(`Could not restart transcription: ${e.message || e}`))
   }
 
   async function switchAudioSource() {
@@ -1492,6 +1579,9 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     setLiveSourceId(id === 'microphone' ? 'microphone' : id)
     try {
       await audio.restart(id, audioOpts())
+      // Source switching is still the SAME Live session — keep the Turn-1 Finalize
+      // decision authoritative (disabled once the first question committed).
+      try { audio.setFinalizeOnPause(!finalizeOffOnceRef.current) } catch {}
     } catch (e) {
       setError(`Could not switch audio: ${e.message || e}`)
     } finally {
@@ -1514,6 +1604,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   }, [transcript, hint, hintLoading, buyTimePhrase, pipWindow, audio.active, streaming]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    finalizeOffOnceRef.current = false
     audio.start(liveSourceId, audioOpts())
     warmDocs(interviewConfigRef.current?.selectedDocumentIds)   // pre-embed selected docs only
     metricsRef.current = createSessionMetrics('live')
@@ -1529,9 +1620,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       if (window.electronAPI?.excludeFromCapture) {
         setTimeout(async () => {
           const result = await window.electronAPI.excludeFromCapture()
-          if (!result?.ok) {
+          const pipConfirmed = Boolean(result?.ok) && result.senderId != null && result.id !== result.senderId
+          if (!result?.ok || !pipConfirmed) {
             setPipProtected(false)
-            console.warn('[MockMate] Screen protection failed for pre-opened PiP:', result?.error)
+            console.warn('[MockMate] Screen protection not confirmed for pre-opened PiP:', result?.error || `protected window ${result?.id} is the opener (${result?.senderId})`)
           } else {
             setPipProtected(true)
             console.log('[MockMate] Screen protection confirmed on hints window', result.id)
@@ -1539,6 +1631,28 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         }, 100)
       }
     }
+    const offCmd = window.electronAPI?.onOverlayCommand?.(cmd => {
+      if (!cmd || typeof cmd !== 'object') return
+      if (cmd.type === 'teleprompter') {
+        setTeleprompter(!!cmd.active)
+        trackProductEvent('teleprompter_toggle', { teleprompter: !!cmd.active, source: 'hotkey' })
+      } else if (cmd.type === 'scroll-up') {
+        followLatestRef.current = false
+        feedRef.current?.scrollBy?.({ top: -140, behavior: 'smooth' })
+      } else if (cmd.type === 'scroll-down') {
+        feedRef.current?.scrollBy?.({ top: 140, behavior: 'smooth' })
+      } else if (cmd.type === 'answer-now') {
+        trackProductEvent('alt_r_answer_now')
+        const candidateNow = resolveAnswerNowCandidate({
+          liveCaptureText: liveCaptureTextRef.current,
+          manualQ: manualQRef.current,
+          pendingManualText: pendingManualQ.current?.text,
+          lastHintText: lastHintText.current,
+        })
+        if (candidateNow) generateHintRef.current?.(candidateNow, { force: true })
+      }
+    })
+    return () => { try { offCmd?.() } catch {} }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [ending, setEnding] = useState(false)
@@ -1602,8 +1716,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     }
     setEnding(false)
   }
-  const badge = (bg, color) => ({ fontSize: 9, padding: '1px 7px', background: bg, color, borderRadius: 10, fontWeight: 700, whiteSpace: 'nowrap' })
-  const btn = (bg, color) => ({ fontSize: 10, padding: '2px 9px', background: bg, color, border: 'none', borderRadius: 4, cursor: 'pointer' })
+  const badge = (bg, color) => ({ fontSize: 9.5, padding: '2px 7px', background: bg, color, borderRadius: 10, fontWeight: 600, whiteSpace: 'nowrap', letterSpacing: '0.01em' })
+  const btn = (bg, color) => ({ fontSize: 10.5, padding: '3px 9px', minHeight: 22, background: bg, color, border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: T.font })
 
   // Clean status pill (left of header): one dot + one word + the timer. Nothing else.
   const isLinuxLive = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
@@ -1613,14 +1727,22 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
       <span style={{ width: 7, height: 7, borderRadius: '50%', background: statusColor, boxShadow: `0 0 6px ${statusColor}`, animation: audio.active && !switchingAudio ? 'pulse 1.6s ease-in-out infinite' : 'none' }} />
       <span style={{ fontSize: 11, fontWeight: 600, color: statusColor }}>{statusLabel}</span>
-      <span style={{ fontSize: 11, color: T.text3, fontFamily: 'monospace' }}>{fmtClock(clock)}</span>
+      <span style={{ fontSize: 11, color: T.text3, fontFamily: T.fontMono, fontVariantNumeric: 'tabular-nums' }}>{fmtClock(clock)}</span>
       {/* Hide Sys↔Mic switch on Linux (System Audio unavailable). */}
       {!isLinuxLive && (
         <button type="button" onClick={switchAudioSource} disabled={switchingAudio}
           onMouseDown={e => e.stopPropagation()}
           title="Switch audio source mid-session (System Audio ↔ Microphone)"
-          style={{ fontSize: 10, padding: '2px 7px', background: 'rgba(255,255,255,0.06)', color: T.text2, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, cursor: switchingAudio ? 'default' : 'pointer', opacity: switchingAudio ? 0.6 : 1 }}>
+          style={{ fontSize: 10.5, padding: '3px 8px', minHeight: 22, background: 'rgba(255,255,255,0.06)', color: T.text2, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 5, cursor: switchingAudio ? 'default' : 'pointer', opacity: switchingAudio ? 0.6 : 1, fontFamily: T.font }}>
           {liveSourceId === 'microphone' ? '🎤 Mic' : '🖥️ Sys'}
+        </button>
+      )}
+      {inElectronLive && (
+        <button type="button" onClick={toggleTeleprompter}
+          onMouseDown={e => e.stopPropagation()}
+          title="Dock at top-center under webcam (Alt+T)"
+          style={{ fontSize: 10.5, padding: '3px 8px', minHeight: 22, background: teleprompter ? 'rgba(20,184,166,0.22)' : 'rgba(255,255,255,0.06)', color: teleprompter ? '#5eead4' : T.text2, border: `1px solid ${teleprompter ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.12)'}`, borderRadius: 5, cursor: 'pointer', fontFamily: T.font }}>
+          ⌖ Cam
         </button>
       )}
     </div>
@@ -1806,7 +1928,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                 ['Type + Enter', 'Submit a question when mic/STT fails'],
               ].map(([key, desc]) => (
                 <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 10, color: '#2dd4bf', background: 'rgba(13,148,136,0.15)', padding: '2px 7px', borderRadius: 5, fontFamily: 'monospace', fontWeight: 600, minWidth: 92, textAlign: 'center' }}>{key}</span>
+                  <span style={{ fontSize: 10, color: '#2dd4bf', background: 'rgba(13,148,136,0.15)', padding: '2px 7px', borderRadius: 5, fontFamily: T.fontMono, fontWeight: 600, minWidth: 92, textAlign: 'center' }}>{key}</span>
                   <span style={{ fontSize: 11, color: T.text3 }}>{desc}</span>
                 </div>
               ))}
@@ -1816,7 +1938,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
         {/* STATE A — live transcript fragments (not yet committed) */}
         {!!liveCaptureText && !hintLoading && (
-          <div style={{ fontSize: 11, color: T.text3, fontStyle: 'italic', marginBottom: 8, paddingLeft: 4, opacity: 0.85 }}>
+          <div style={{ fontSize: 11, color: T.text3, marginBottom: 8, paddingLeft: 4, opacity: 0.88 }}>
             {captureStatus === 'unclear' ? 'Question unclear — listening…' : 'Listening…'} {liveCaptureText}
           </div>
         )}
@@ -1848,7 +1970,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           </div>
         )}
 
-        {audio.interim && !liveCaptureText && <div style={{ fontSize: 11, color: T.text3, fontStyle: 'italic', marginBottom: 8, paddingLeft: 4 }}>… {audio.interim}</div>}
+        {audio.interim && !liveCaptureText && <div style={{ fontSize: 11, color: T.text3, marginBottom: 8, paddingLeft: 4 }}>… {audio.interim}</div>}
 
         {[...transcript].filter(s => s.isQuestion).reverse().map((s, i) => {
           const isLatest = i === 0
@@ -1856,15 +1978,30 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           <div
             key={s.questionId || s.ts || s.text}
             ref={isLatest ? latestQuestionRef : null}
-            style={{ marginBottom: 14, opacity: isLatest ? 1 : 0.72, scrollMarginTop: 10 }}
+            style={{ marginBottom: teleprompter ? 10 : 14, opacity: isLatest ? 1 : (teleprompter ? 0.55 : 0.72), scrollMarginTop: 10 }}
           >
-            {/* Q bubble — never replaced by Thinking… */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: isLatest ? 13 : 12, color: T.text1, background: 'rgba(255,255,255,0.06)', borderRadius: '0 8px 8px 8px', padding: '7px 8px 7px 11px', marginBottom: 6, lineHeight: 1.5, fontWeight: isLatest ? 600 : 400, userSelect: 'text', WebkitUserSelect: 'text' }}>
-              <span style={{ flex: 1, minWidth: 0 }}>❓ {s.text}</span>
+            {/* Q bubble — never replaced by Thinking…; in Teleprompter mode, compress to a single-line context bar so spoken cues dominate */}
+            <div style={{
+              display: 'flex', alignItems: teleprompter ? 'center' : 'flex-start', gap: 6,
+              fontSize: teleprompter ? 11.5 : (isLatest ? 13 : 12),
+              color: teleprompter ? T.text2 : T.text1,
+              background: 'rgba(255,255,255,0.055)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '0 8px 8px 8px',
+              padding: teleprompter ? '4px 8px 4px 10px' : '7px 8px 7px 11px',
+              marginBottom: teleprompter ? 5 : 6,
+              lineHeight: 1.45,
+              fontWeight: isLatest ? 600 : 400,
+              userSelect: 'text', WebkitUserSelect: 'text',
+            }}>
+              <span style={{
+                flex: 1, minWidth: 0,
+                ...(teleprompter ? { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : {}),
+              }}>Q: {s.text}</span>
               <button type="button" onMouseDown={e => e.stopPropagation()}
                 onClick={() => copyFeedText(`q:${s.questionId || s.ts}`, s.text)}
-                style={btn('rgba(255,255,255,0.04)', T.text3)} title="Copy question" aria-label="Copy question">
-                {copiedKey === `q:${s.questionId || s.ts}` ? '✓' : '📋'}
+                style={btn('rgba(255,255,255,0.05)', T.text3)} title="Copy question" aria-label="Copy question">
+                {copiedKey === `q:${s.questionId || s.ts}` ? '✓' : 'Copy'}
               </button>
             </div>
             {!s.answer && !s.hint && ['superseded', 'cancelled', 'failed'].includes(s.status) && (
@@ -1878,21 +2015,41 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             )}
             {/* A bubble (or incomplete stub with Retry) */}
             {s.hint && (s.answer !== undefined || s.hint.incomplete) && (
-              <div ref={isLatest ? latestAnswerRef : null} style={{ marginLeft: 10, scrollMarginTop: 8 }}>
+              <div ref={isLatest ? latestAnswerRef : null} style={{ marginLeft: teleprompter ? 4 : 10, scrollMarginTop: 8 }}>
                 <div style={{ display: 'flex', gap: 4, marginBottom: 5, flexWrap: 'wrap', alignItems: 'center' }}>
                   {s.hint.incomplete && <span style={badge('rgba(251,191,36,0.2)', '#fbbf24')}>⚠ INCOMPLETE</span>}
+                  {s.hint.confidence === 'resume' && (
+                    <span style={badge('rgba(34,197,94,0.16)', '#86efac')} title="Grounded in your verified resume experience">✓ RESUME</span>
+                  )}
+                  {Array.isArray(s.hint._routing?.ragSources) && s.hint._routing.ragSources.slice(0, 2).map((src, si) => {
+                    const label = [src.doc?.replace(/\.(pdf|docx|txt|md)$/i, ''), src.section ? `§${src.section.slice(0, 22)}` : null].filter(Boolean).join(' · ')
+                    return (
+                      <span key={si} style={badge('rgba(56,189,248,0.14)', '#7dd3fc')} title={`Retrieved from ${src.doc}${src.section ? ` (${src.section})` : ''}`}>
+                        📄 {label}
+                      </span>
+                    )
+                  })}
+                  {s.hint._routing?.screenAttached && (
+                    <span style={badge('rgba(168,85,247,0.16)', '#d8b4fe')} title="Grounded in active screen capture">🖥 SCREEN</span>
+                  )}
+                  {Array.isArray(s.hint._searchSources) && s.hint._searchSources.length > 0 && (
+                    <span style={badge('rgba(45,212,191,0.14)', '#5eead4')} title="Grounded in live web search">🌐 WEB</span>
+                  )}
+                  {s.hint.complexity && (
+                    <span style={{ ...badge('rgba(255,255,255,0.06)', T.text2), fontFamily: T.fontMono }}>{s.hint.complexity}</span>
+                  )}
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
                     {s.hint.incomplete && (
                       <button type="button" onClick={() => generateHint(s.text, { force: true, questionId: s.questionId })} style={btn('rgba(251,191,36,0.15)', '#fbbf24')}>Retry</button>
                     )}
                     <button type="button" onMouseDown={e => e.stopPropagation()}
                       onClick={() => copyFeedText(`a:${s.questionId || s.ts}`, s.hint.fullAnswer || s.hint.sampleAnswer || s.answer || '')}
-                      style={btn('rgba(255,255,255,0.04)', T.text3)} title="Copy answer" aria-label="Copy answer">
-                      {copiedKey === `a:${s.questionId || s.ts}` ? '✓' : '📋'}
+                      style={btn('rgba(255,255,255,0.05)', T.text3)} title="Copy answer" aria-label="Copy answer">
+                      {copiedKey === `a:${s.questionId || s.ts}` ? '✓' : 'Copy'}
                     </button>
                   </div>
                 </div>
-                {s.hint.resumeStory && <div style={{ borderLeft: '2px solid #4ade80', paddingLeft: 7, fontSize: 10, color: '#86efac', marginBottom: 6, fontStyle: 'italic' }}>{s.hint.resumeStory}</div>}
+                {s.hint.resumeStory && <div style={{ borderLeft: '2px solid #4ade80', paddingLeft: 7, fontSize: 10.5, color: '#86efac', marginBottom: 6 }}>{s.hint.resumeStory}</div>}
                 {(() => {
                   const streamingThis = streaming && s.text === lastHintText.current
                   const layers = glanceLayers(s.answer || '', s.hint || {})
@@ -1901,21 +2058,33 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                   const showBullets = !expanded && layers.keyPoints.length > 0
                   const watch = s.hint.watchOut || layers.watchOut
                   const hasMore = !streamingThis && ((layers.fullAnswer || '').length > (layers.opener || '').length + 40)
+                  const isResumeCard = s.hint.confidence === 'resume'
                   return (
-                    <div role="log" aria-live="polite" aria-label="Suggested answer" style={{ fontSize: 13, color: s.hint.confidence === 'resume' ? '#dcfce7' : '#e8eaf0', background: s.hint.confidence === 'resume' ? 'rgba(6,30,18,0.96)' : 'rgba(20,18,32,0.96)', border: `1px solid ${s.hint.confidence === 'resume' ? 'rgba(34,197,94,0.3)' : 'rgba(13,148,136,0.32)'}`, borderRadius: '8px 8px 8px 0', padding: '10px 12px', lineHeight: 1.55, userSelect: 'text', WebkitUserSelect: 'text' }}>
+                    <div role="log" aria-live="polite" aria-label="Suggested answer" style={{
+                      fontSize: teleprompter ? 15.5 : 13.5,
+                      color: isResumeCard ? '#dcfce7' : T.text1,
+                      background: isResumeCard ? T.resumeAnswerBg : T.answerBg,
+                      border: `1px solid ${isResumeCard ? T.resumeAnswerBorder : T.answerBorder}`,
+                      boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.07)',
+                      borderRadius: '8px 8px 8px 0',
+                      padding: teleprompter ? '11px 14px' : '10px 12px',
+                      lineHeight: teleprompter ? 1.5 : 1.55,
+                      letterSpacing: teleprompter ? '-0.008em' : 'normal',
+                      userSelect: 'text', WebkitUserSelect: 'text',
+                    }}>
                       {/* Glance OR full — never both (was repeating the same answer twice). */}
                       {expanded && hasMore ? (
-                        <div style={{ lineHeight: 1.7 }}>{renderMd(layers.fullAnswer || s.answer || '')}</div>
+                        <div style={{ lineHeight: 1.68, fontSize: teleprompter ? 14.5 : 13 }}>{renderMd(layers.fullAnswer || s.answer || '')}</div>
                       ) : (
                         <>
-                          <div style={{ fontWeight: 600, marginBottom: showBullets ? 8 : 0, lineHeight: 1.45 }}>
+                          <div style={{ fontWeight: 600, marginBottom: showBullets ? 8 : 0, lineHeight: teleprompter ? 1.48 : 1.45 }}>
                             {layers.opener || (streamingThis ? '…' : '…')}
                             {streamingThis && <span style={{ display: 'inline-block', width: 2, height: '0.9em', background: T.accentFrom, marginLeft: 2, verticalAlign: 'text-bottom', animation: 'blink 0.7s step-end infinite' }} />}
                           </div>
                           {showBullets && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 4 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: teleprompter ? 6 : 4, marginBottom: 4 }}>
                               {layers.keyPoints.map((pt, bi) => (
-                                <div key={bi} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 12.5, color: s.hint.confidence === 'resume' ? '#bbf7d0' : T.text1 }}>
+                                <div key={bi} style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: teleprompter ? 14 : 12.5, lineHeight: teleprompter ? 1.45 : 1.4, color: isResumeCard ? '#bbf7d0' : '#E2E8F0' }}>
                                   <span style={{ color: T.accentFrom, flexShrink: 0, marginTop: 2, fontSize: 10 }}>▸</span>
                                   <span>{pt}</span>
                                 </div>
@@ -1967,7 +2136,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             aria-label="Type interview question"
             style={{
               flex: 1, height: 34, padding: '0 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)',
-              background: 'rgba(0,0,0,0.35)', color: T.text1, fontSize: 12, fontFamily: T.font, outline: 'none',
+              background: 'rgba(0,0,0,0.35)', color: T.text1, fontSize: 12, fontFamily: T.font,
             }}
           />
           <button
@@ -2006,14 +2175,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
               </button>
               {usage.tokens > 0 && (
                 <span title={`This session: ${usage.tokens.toLocaleString()} tokens · est. $${usage.cost.toFixed(3)}`}
-                  style={{ fontSize: 10, color: T.text3, fontFamily: 'monospace', marginLeft: 'auto' }}>
+                  style={{ fontSize: 10, color: T.text3, fontFamily: T.fontMono, fontVariantNumeric: 'tabular-nums', marginLeft: 'auto' }}>
                   {(usage.tokens / 1000).toFixed(1)}k tok · ~${usage.cost.toFixed(2)}
                 </span>
               )}
             </div>
             <textarea value={extraContext} onChange={e => setExtraContext(e.target.value)}
               placeholder="Extra context — e.g. 'Focus on Python' · 'System design round'"
-              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(20,184,166,0.25)', borderRadius: 5, color: T.text1, fontSize: 10, padding: '5px 7px', resize: 'vertical', minHeight: 44, outline: 'none', fontFamily: T.font, lineHeight: 1.5, boxSizing: 'border-box' }} rows={2} />
+              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(20,184,166,0.25)', borderRadius: 5, color: T.text1, fontSize: 10, padding: '5px 7px', resize: 'vertical', minHeight: 44, fontFamily: T.font, lineHeight: 1.5, boxSizing: 'border-box' }} rows={2} />
           </div>
         </details>
       </div>

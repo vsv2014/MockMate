@@ -97,6 +97,7 @@ router.post('/portal', requireAuth, async (req, res) => {
   try {
     const user = await store().findUserById(req.userId)
     if (!user?.stripeCustomerId) return res.status(400).json({ error: 'No subscription yet.' })
+    await reconcileCustomerPlan(s, user.stripeCustomerId).catch(() => null)
     const session = await s.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
       return_url: process.env.BILLING_CANCEL_URL || 'https://mockmate.app/account',
@@ -105,6 +106,20 @@ router.post('/portal', requireAuth, async (req, res) => {
   } catch (e) {
     console.error('[billing] portal:', e.message)
     res.status(500).json({ error: 'Could not open billing portal.' })
+  }
+})
+
+router.post('/reconcile', requireAuth, async (req, res) => {
+  const s = await stripe(); if (!s) return notConfigured(res)
+  try {
+    const user = await store().findUserById(req.userId)
+    if (!user) return res.status(401).json({ error: 'Account not found' })
+    if (!user.stripeCustomerId) return res.json({ reconciled: true, plan: effectivePlan(user) })
+    const updated = await reconcileCustomerPlan(s, user.stripeCustomerId)
+    res.json({ reconciled: true, plan: effectivePlan(updated || user) })
+  } catch (e) {
+    console.error('[billing] reconcile:', e.message)
+    res.status(500).json({ error: 'Could not reconcile billing status.' })
   }
 })
 

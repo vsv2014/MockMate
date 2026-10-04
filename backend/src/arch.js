@@ -1,4 +1,5 @@
 import { compileAblRuntime } from './abl.js'
+import { redactInteractionEvent, summarizeProductIntelligence } from '../../shared/productIntelligence.js'
 
 const LLM_PROVIDERS = [
   ['openai', 'OPENAI_API_KEY'], ['anthropic', 'ANTHROPIC_API_KEY'], ['gemini', 'GEMINI_API_KEY'],
@@ -6,7 +7,14 @@ const LLM_PROVIDERS = [
 ]
 const circuits = new Map()
 const DEFAULT_COOLDOWN_MS = 30_000
+// NOTE (PR #45 review): `perf` and `productEvents` are deliberately process-local today.
+// Adaptive lane promotion driven by these maps is therefore process-wide, not per-user;
+// acceptable for the current single-digit-user deployment, must be scoped
+// (provider+operation+deployment → account/session) before hosted scale-out. See
+// docs/ARCHITECTURE.md §2.3 (PI-6).
 const perf = new Map()
+const productEvents = []
+const MAX_PRODUCT_EVENTS = 1000
 
 function runtimePlan() { return compileAblRuntime() }
 function configured(name) { return Boolean(String(process.env[name] || '').trim()) }
@@ -17,6 +25,31 @@ function circuitOpen(key, now = Date.now()) { const until = circuits.get(key) ||
 function openCircuit(key, cooldownMs = DEFAULT_COOLDOWN_MS) { circuits.set(key, Date.now() + cooldownMs) }
 export function resetArchCircuits() { circuits.clear() }
 export function resetArchPerformance() { perf.clear() }
+export function resetArchProductIntelligence() { productEvents.length = 0 }
+
+export function recordArchProductEvent(event) {
+  const clean = redactInteractionEvent(event)
+  if (!clean) return null
+  productEvents.push(clean)
+  if (productEvents.length > MAX_PRODUCT_EVENTS) {
+    productEvents.splice(0, productEvents.length - MAX_PRODUCT_EVENTS)
+  }
+  return clean
+}
+
+export function archProductIntelligenceSnapshot(options = {}) {
+  const plan = runtimePlan()
+  const piSpec = plan.productIntelligence || {}
+  return {
+    policy: piSpec,
+    ...summarizeProductIntelligence(productEvents, {
+      optInReplay: options.optInReplay ?? piSpec.optInReplayDefault ?? false,
+      funnels: piSpec.funnels,
+      adaptivePolicies: piSpec.adaptivePolicies,
+      runtimePerformance: performanceSnapshot(),
+    }),
+  }
+}
 
 export function reasoningLane(operation = 'interview') {
   const plan = runtimePlan()
@@ -25,7 +58,10 @@ export function reasoningLane(operation = 'interview') {
 
 export function recordArchMetric(name, valueMs) {
   const plan = runtimePlan()
-  if (plan.telemetry.length && !plan.telemetry.includes(name) && !name.endsWith('_provider_ms')) return
+  // Support operation-scoped metric names like `turn_latency_ms:interview` —
+  // the ABL allowlist applies to the base metric name.
+  const base = String(name).split(':')[0]
+  if (plan.telemetry.length && !plan.telemetry.includes(base) && !base.endsWith('_provider_ms')) return
   const value = Number(valueMs)
   if (!Number.isFinite(value) || value < 0) return
   const values = perf.get(name) || []
@@ -145,9 +181,35 @@ export async function executeWithFallback({
   return { ok: false, degraded: true, provider: null, failures }
 }
 
-export function reasoningPolicy(operation) {
+export function reasoningPolicy(operation, { adaptive = false } = {}) {
   const plan = runtimePlan()
-  return { lane: reasoningLane(operation), executionAdapter: plan.reasoning.executionAdapter, noDoubleRetry: plan.reasoning.noDoubleRetry }
+  const baseLane = reasoningLane(operation)
+  if (!adaptive) {
+    return { lane: baseLane, executionAdapter: plan.reasoning.executionAdapter, noDoubleRetry: plan.reasoning.noDoubleRetry }
+  }
+  const snap = performanceSnapshot()
+  const policies = plan.productIntelligence?.adaptivePolicies || {}
+  const ttftThreshold = Number(policies.ttftFastLaneThresholdMs) || 3200
+  const turnThreshold = Number(policies.turnLatencyFastLaneThresholdMs) || 6000
+  // Operation-scoped promotion (PR review fix): adaptive routing may only react to
+  // latency measured ON THE OPERATION BEING ROUTED. A slow vision/evaluate/career
+  // call must not push a healthy interview onto the fast lane. TTFT only feeds the
+  // streaming hint domain.
+  const turnP95 = Number(snap?.[`turn_latency_ms:${operation}`]?.p95) || 0
+  const ttftP95 = operation === 'hint' || operation === 'live_hint'
+    ? (Number(snap?.llm_ttft_ms?.p95) || 0)
+    : 0
+  const shouldPromoteToFast =
+    baseLane === 'balanced' &&
+    (ttftP95 >= ttftThreshold || turnP95 >= turnThreshold)
+
+  return {
+    lane: shouldPromoteToFast ? 'fast' : baseLane,
+    baseLane,
+    adaptivePromotion: shouldPromoteToFast ? 'high_latency_guardrail' : null,
+    executionAdapter: plan.reasoning.executionAdapter,
+    noDoubleRetry: plan.reasoning.noDoubleRetry,
+  }
 }
 
 function sttRetryable(error) {
@@ -174,3 +236,18 @@ export async function executeTranscription(options) {
 }
 
 export function publicCapabilityStatus(options) { return resolveCapabilities(options) }
+
+export function archRuntimeSummary(options = {}) {
+  const plan = runtimePlan()
+  const hosted = options?.hosted ?? hostedMode()
+  const includePerformance = options?.includePerformance ?? !hosted
+  const includeProductIntelligence = options?.includeProductIntelligence ?? !hosted
+  return {
+    ...resolveCapabilities({ ...options, hosted }),
+    persona: plan.persona,
+    designGoals: plan.designGoals,
+    routing: plan.reasoning.routing,
+    ...(includePerformance ? { performance: performanceSnapshot() } : {}),
+    ...(includeProductIntelligence ? { productIntelligence: archProductIntelligenceSnapshot() } : {}),
+  }
+}

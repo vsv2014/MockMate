@@ -72,30 +72,53 @@ safeStorage.decryptString = function decryptWithBackup(buffer) {
   }
 }
 
-// ── External navigation allowlist ────────────────────────────────────────────
-// main.cjs and renderer helpers all eventually call shell.openExternal. Enforce one policy here
-// so a permissive <a>, window.open, or future IPC handler cannot bypass the approved destinations.
-const EXTERNAL_HOSTS = [
+// ── External navigation policy (blast-radius review fix) ────────────────────
+// main.cjs and renderer helpers all eventually call shell.openExternal. Policy is
+// purpose-specific instead of one static business allowlist:
+//   • KNOWN_SAFE_HOSTS — audited provider consoles / billing / updates.
+//   • Any other VALIDATED URL (https; http only on loopback for local dev OAuth;
+//     no embedded credentials; sane hostname and length) — covers user-initiated
+//     destinations like the configured OAuth API base and job listing links
+//     (Greenhouse, Lever, Workday, company ATS domains, …), which can never be
+//     enumerated statically.
+// Everything else is blocked. main.cjs reuses externalNavigationAllowed().
+const KNOWN_SAFE_HOSTS = [
   'github.com', 'stripe.com', 'openai.com', 'platform.openai.com', 'anthropic.com',
   'console.anthropic.com', 'groq.com', 'console.groq.com', 'google.com', 'ai.google.dev',
   'aistudio.google.com', 'cerebras.ai', 'cloud.cerebras.ai', 'deepgram.com', 'console.deepgram.com',
 ]
-function externalAllowed(raw) {
+function isLoopbackHost(host) { return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' }
+function externalNavigationAllowed(raw) {
   try {
-    const u = new URL(String(raw))
+    const s = String(raw || '')
+    if (!s || s.length > 2048) return false
+    const u = new URL(s)
+    if (u.username || u.password) return false
+    const host = u.hostname.toLowerCase().replace(/\.$/, '')
+    if (!host) return false
+    if (u.protocol === 'http:') return isLoopbackHost(host)
     if (u.protocol !== 'https:') return false
-    const host = u.hostname.toLowerCase()
-    return EXTERNAL_HOSTS.some(root => host === root || host.endsWith(`.${root}`))
+    return true
+  } catch { return false }
+}
+function externalKnownSafe(raw) {
+  try {
+    const host = new URL(String(raw)).hostname.toLowerCase().replace(/\.$/, '')
+    return KNOWN_SAFE_HOSTS.some(root => host === root || host.endsWith(`.${root}`))
   } catch { return false }
 }
 const originalOpenExternal = shell.openExternal.bind(shell)
 shell.openExternal = function guardedOpenExternal(url, options) {
-  if (!externalAllowed(url)) {
+  if (!externalNavigationAllowed(url)) {
     console.warn('[bootstrap] blocked external navigation:', String(url).slice(0, 180))
     return Promise.resolve(false)
   }
+  if (!externalKnownSafe(url)) {
+    console.info('[bootstrap] external navigation to non-audited host:', String(url).slice(0, 120))
+  }
   return originalOpenExternal(url, options)
 }
+module.exports = { externalNavigationAllowed }
 
 // ── Exact renderer configuration surface ────────────────────────────────────
 const ENV_KEYS = new Set([
@@ -125,13 +148,23 @@ ipcMain.handle = function hardenedHandle(channel, handler) {
     return originalHandle(channel, (event, content) => handler(event, sanitizeEnvText(content)))
   }
   if (channel === 'exclude-from-capture') {
+    // Round-5 review fix: this hardened handler intercepts the channel BEFORE any
+    // later ipcMain.handle() call, so it must itself implement the PiP-aware
+    // policy — a sender-only version here silently replaced the focused-window
+    // logic in main.cjs and confirmed protection on the WRONG window. Document
+    // PiP is normally the focused top-level window even though the IPC bridge
+    // belongs to the opener's webContents, so protect the focused window first.
+    // The response reports BOTH window ids so the renderer can verify the PiP
+    // itself (not just the opener) was protected — no false-positive confirms.
     return originalHandle(channel, event => {
       if (process.platform === 'linux') return { ok: false, unsupported: true }
       try {
-        const owner = BrowserWindow.fromWebContents(event.sender)
+        const sender = BrowserWindow.fromWebContents(event.sender)
+        const focused = BrowserWindow.getFocusedWindow()
+        const owner = (focused && !focused.isDestroyed()) ? focused : sender
         if (!owner || owner.isDestroyed()) return { ok: false, error: 'Window owner unavailable' }
         owner.setContentProtection(true)
-        return { ok: true, id: owner.id }
+        return { ok: true, id: owner.id, senderId: sender && !sender.isDestroyed() ? sender.id : null }
       } catch (error) { return { ok: false, error: error?.message || 'Capture protection failed' } }
     })
   }

@@ -13,7 +13,7 @@ const TYPES: { value: HostedDocument['type']; label: string }[] = [
 
 export function DocumentSetup({ selectedIds, onSelectedIds, onError }: {
   selectedIds: string[]
-  onSelectedIds: (ids: string[]) => void
+  onSelectedIds: React.Dispatch<React.SetStateAction<string[]>>
   onError: (message: string) => void
 }) {
   const [documents, setDocuments] = useState<HostedDocument[]>([])
@@ -29,7 +29,7 @@ export function DocumentSetup({ selectedIds, onSelectedIds, onError }: {
     try {
       const next = (await api.documents()).documents
       setDocuments(next)
-      onSelectedIds(selectedIds.filter(id => next.some(document => document.id === id)))
+      onSelectedIds(current => current.filter(id => next.some(document => document.id === id)))
     } catch (error) { onError(error instanceof Error ? error.message : 'Could not load documents.') }
     finally { setLoading(false) }
   }
@@ -37,7 +37,7 @@ export function DocumentSetup({ selectedIds, onSelectedIds, onError }: {
   useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (id: string) => {
-    onSelectedIds(selectedIds.includes(id) ? selectedIds.filter(value => value !== id) : [...selectedIds, id])
+    onSelectedIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
   }
 
   const save = async () => {
@@ -46,7 +46,7 @@ export function DocumentSetup({ selectedIds, onSelectedIds, onError }: {
     try {
       const document = (await api.addDocument({ name: name.trim(), type, text: text.trim() })).document
       setDocuments(current => [document, ...current])
-      onSelectedIds([...selectedIds, document.id])
+      onSelectedIds(current => current.includes(document.id) ? current : [...current, document.id])
       setName(''); setText(''); setType('supporting'); setAdding(false)
     } catch (error) { onError(error instanceof Error ? error.message : 'Could not save the document.') }
     finally { setSaving(false) }
@@ -64,7 +64,7 @@ export function DocumentSetup({ selectedIds, onSelectedIds, onError }: {
     try {
       const document = (await api.uploadDocument({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType }, type)).document
       setDocuments(current => [document, ...current])
-      onSelectedIds([...selectedIds, document.id])
+      onSelectedIds(current => current.includes(document.id) ? current : [...current, document.id])
       setAdding(false)
     } catch (error) { onError(error instanceof Error ? error.message : 'Could not upload the document.') }
     finally { setSaving(false) }
@@ -79,7 +79,7 @@ export function DocumentSetup({ selectedIds, onSelectedIds, onError }: {
         try {
           await api.deleteDocument(document.id)
           setDocuments(current => current.filter(item => item.id !== document.id))
-          onSelectedIds(selectedIds.filter(id => id !== document.id))
+          onSelectedIds(current => current.filter(id => id !== document.id))
         } catch (error) { onError(error instanceof Error ? error.message : 'Could not remove the document.') }
       } },
     ],

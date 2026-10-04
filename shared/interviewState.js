@@ -10,13 +10,7 @@ import { inferRoleFamily } from './interviewClassify.js'
 
 export const INTERVIEW_STATE_VERSION = 'interview_state_v2'
 
-function createSessionId() {
-  return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
-}
-
-function nid(prefix) {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
-}
+import { nid, createSessionId } from './id.js'
 
 /**
  * @typedef {'candidate'|'stabilizing'|'committed'|'answered'|'failed'|'cancelled'|'superseded'|'pending'} QuestionStatus

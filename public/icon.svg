@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="256" y1="40" x2="256" y2="486" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0A1A20"/>
+      <stop offset="0.5" stop-color="#050D12"/>
+      <stop offset="1" stop-color="#02070B"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="60" y1="40" x2="452" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8FFCEF"/>
+      <stop offset="0.5" stop-color="#2BE0CC"/>
+      <stop offset="1" stop-color="#12B9A6"/>
+    </linearGradient>
+    <linearGradient id="barLight" x1="0" y1="120" x2="0" y2="380" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.55" stop-color="#EAFDFA"/>
+      <stop offset="1" stop-color="#2BE0D0"/>
+    </linearGradient>
+    <linearGradient id="barTeal" x1="0" y1="145" x2="0" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8FF7E7"/>
+      <stop offset="1" stop-color="#14C7B2"/>
+    </linearGradient>
+    <radialGradient id="amb" cx="256" cy="150" r="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#19E3CE" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#19E3CE" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="rimGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <filter id="barGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#1FE0CC" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <rect x="25" y="25" width="462" height="462" rx="112" fill="url(#bg)"/>
+  <rect x="25" y="25" width="462" height="462" rx="112" fill="url(#amb)"/>
+  <rect x="27" y="27" width="458" height="458" rx="110" stroke="url(#rim)" stroke-width="7" filter="url(#rimGlow)" opacity="0.9"/>
+  <rect x="27" y="27" width="458" height="458" rx="110" stroke="url(#rim)" stroke-width="4.5"/>
+
+  <g filter="url(#barGlow)">
+    <rect x="119" y="125" width="42" height="244" rx="21" fill="url(#barLight)"/>
+    <rect x="178" y="150" width="40" height="122" rx="20" fill="url(#barTeal)"/>
+    <rect x="237" y="171" width="38" height="142" rx="19" fill="url(#barLight)"/>
+    <rect x="293" y="150" width="40" height="122" rx="20" fill="url(#barTeal)"/>
+    <rect x="351" y="125" width="42" height="244" rx="21" fill="url(#barLight)"/>
+    <circle cx="256" cy="350" r="15" fill="#2BE0D0"/>
+  </g>
+</svg>

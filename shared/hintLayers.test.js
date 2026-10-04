@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { stripHintMeta, glanceLayers, isHintMetaObject, ensureCodingCodeBlock } from './hintLayers.js'
+import { stripHintMeta, glanceLayers, isHintMetaObject, ensureCodingCodeBlock, sanitizeSpokenProse } from './hintLayers.js'
 
 describe('stripHintMeta', () => {
   it('strips META: line + keeps prose', () => {
@@ -62,5 +62,45 @@ describe('ensureCodingCodeBlock', () => {
 
   it('does not format ordinary technical prose as code', () => {
     expect(ensureCodingCodeBlock('JWT is a signed token.', 'technical')).toBe('JWT is a signed token.')
+  })
+})
+
+describe('sanitizeSpokenProse (Artemis-style streaming output guardrail)', () => {
+  it('strips robotic AI preambles and rewrites banned AI-tell words in spoken prose', () => {
+    const raw = "Sure! Here's how I would answer that: We utilized Redis streams to delve into backpressure issues."
+    const out = sanitizeSpokenProse(raw)
+    expect(out).toBe('We used Redis streams to dig into backpressure issues.')
+    const layers = glanceLayers(raw)
+    expect(layers.opener).toBe('We used Redis streams to dig into backpressure issues.')
+  })
+
+  it('never alters identifiers inside fenced code blocks', () => {
+    const raw = 'Certainly! Use a helper.\n\n```js\nfunction utilizeCache() { return true }\n```'
+    const out = sanitizeSpokenProse(raw)
+    expect(out).toMatch(/^Use a helper\./)
+    expect(out).toContain('function utilizeCache()')
+  })
+
+  it('LP-20: strips bracketed placeholders like "[X] years" from spoken prose', () => {
+    const raw = "I've had my current vehicle for about [X] years, so roughly [Y] years now."
+    const out = sanitizeSpokenProse(raw)
+    expect(out).not.toContain('[')
+    expect(out).not.toContain(']')
+    expect(out).toBe("I've had my current vehicle for about years, so roughly years now.")
+  })
+
+  it('LP-20: strips coach prefixes (SAY:/THINK:/IF HE GOES DEEPER:) from spoken prose', () => {
+    const raw = 'SAY: Yes, I would bucket by language first.\nTHINK: He may push on sorting.\nIF HE GOES DEEPER: mention bucket counts.'
+    const out = sanitizeSpokenProse(raw)
+    expect(out).not.toMatch(/SAY:/i)
+    expect(out).not.toMatch(/THINK:/i)
+    expect(out).not.toMatch(/IF HE GOES DEEPER:/i)
+    expect(out).toContain('bucket by language first')
+  })
+
+  it('LP-20: preserves brackets inside fenced code blocks', () => {
+    const raw = 'Here is the sort.\n\n```ts\nconst a: string[] = [x];\n```'
+    const out = sanitizeSpokenProse(raw)
+    expect(out).toContain('const a: string[] = [x];')
   })
 })

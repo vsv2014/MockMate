@@ -1,87 +1,77 @@
-/* Base reset + globals only. Component styling lives in the token system (src/auth/tokens.js +
-   inline styles). The legacy component classes (card, btn, room, dim, chip, etc.) were removed
-   when the dual-paradigm debt was retired — every screen now uses tokens. */
-
-:root {
-  --bg: #0f1117; --text: #e6e8ee;
+*, *::before, *::after {
+  box-sizing: border-box;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.55; }
 
-/* Thin, themed scrollbars everywhere — the default OS scrollbar is chunky and bright on
-   Linux/Windows and looked out of place inside the dark overlay. */
-* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.18) transparent; }
-::-webkit-scrollbar { width: 7px; height: 7px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
-::-webkit-scrollbar-corner { background: transparent; }
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
 
-button { font-family: inherit; cursor: pointer; }
-input, select, textarea { font-family: inherit; }
+/* Global ultra-slim dark scrollbars — preserves horizontal width in compact overlays */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
 
-/*
- * Frameless Electron window movement
- * ---------------------------------
- * Let the OS own full-window dragging instead of replaying mouse dx/dy over IPC.
- * Native draggable regions are smoother, move freely on both axes, behave correctly
- * across DPI/multi-monitor boundaries, and retain normal Windows/macOS snapping.
- *
- * Auth: WindowControls is the first direct div under #mm-auth.
- * App: the top bar is the first direct div-of-type under .mm-shell (a <style> precedes it).
- * Live overlay: panel header is the first direct div inside the panel container.
- *
- * The collapsed pill intentionally stays JS-dragged because the same surface is also
- * a click-to-expand button and needs its drag-distance suppression logic.
- */
-#mm-auth > div:first-child,
-.mm-shell > div:nth-of-type(1),
-#mockmate-overlay > div > div:first-child {
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Suppress default mouse-click focus ring; restore high-contrast teal ring on keyboard navigation (:focus-visible) */
+button,
+input,
+select,
+textarea,
+summary {
+  outline: none;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible,
+[role="radio"]:focus-visible {
+  outline: 2px solid rgba(20, 184, 166, 0.72) !important;
+  outline-offset: 2px !important;
+}
+
+/* Frameless Electron window: header is draggable, controls inside it stay clickable */
+.mm-drag {
   -webkit-app-region: drag;
-  cursor: grab !important;
-  user-select: none;
-  -webkit-user-select: none;
 }
-
-/* Keep every actual control interactive inside a draggable title/header region. */
-#mm-auth > div:first-child button,
-#mm-auth > div:first-child input,
-#mm-auth > div:first-child select,
-#mm-auth > div:first-child textarea,
-#mm-auth > div:first-child a,
-#mm-auth > div:first-child label,
-.mm-shell > div:nth-of-type(1) button,
-.mm-shell > div:nth-of-type(1) input,
-.mm-shell > div:nth-of-type(1) select,
-.mm-shell > div:nth-of-type(1) textarea,
-.mm-shell > div:nth-of-type(1) a,
-.mm-shell > div:nth-of-type(1) label,
-#mockmate-overlay > div > div:first-child button,
-#mockmate-overlay > div > div:first-child input,
-#mockmate-overlay > div > div:first-child select,
-#mockmate-overlay > div > div:first-child textarea,
-#mockmate-overlay > div > div:first-child a,
-#mockmate-overlay > div > div:first-child label,
-#mockmate-overlay > div > div:first-child [role='button'] {
+.mm-nodrag,
+.mm-drag button,
+.mm-drag a,
+.mm-drag input,
+.mm-drag select,
+.mm-drag textarea,
+.mm-drag label,
+.mm-drag [role="button"] {
   -webkit-app-region: no-drag;
-}
-
-/* A subtle grip makes the draggable affordance discoverable even before the grab cursor appears. */
-#mm-auth > div:first-child::before,
-.mm-shell > div:nth-of-type(1)::before,
-#mockmate-overlay > div > div:first-child::before {
-  content: '···';
-  color: rgba(255,255,255,0.26);
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  line-height: 1;
-  margin-right: 2px;
-  pointer-events: none;
-  -webkit-app-region: drag;
-}
-
-/* Keyboard focus visibility (a11y) — visible ring only for keyboard users, not mouse clicks. */
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
-  outline: 2px solid #14b8a6; outline-offset: 2px;
 }

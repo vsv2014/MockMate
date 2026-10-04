@@ -1,7 +1,8 @@
 /** Session / generation identity helpers — stale async callbacks must not mutate state. */
+import { createSessionId as makeSessionId } from '../../shared/id.js'
 
-export function createSessionId() {
-  return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+export function createSessionId(prefix = 's') {
+  return makeSessionId(prefix)
 }
 
 /** Mutable generation counter: bump to invalidate all prior async work for that lane. */

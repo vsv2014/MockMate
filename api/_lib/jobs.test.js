@@ -10,7 +10,7 @@ vi.mock('./core.js', () => ({
 
 import { fetchWithTimeout } from './http.js'
 import { availableProviders, completeJSON } from './core.js'
-import { categoryFor, countryFor, userRegionTokens, locationOk, findJobs, adzunaConfigured } from './jobs.js'
+import { categoryFor, countryFor, cityFor, userRegionTokens, locationOk, findJobs, adzunaConfigured, rankHeuristic } from './jobs.js'
 
 describe('categoryFor', () => {
   it('maps roles to Remotive categories', () => {
@@ -180,5 +180,39 @@ describe('findJobs provider/contract', () => {
     process.env.ADZUNA_APP_ID = 'id'
     process.env.ADZUNA_APP_KEY = 'key'
     expect(adzunaConfigured()).toBe(true)
+  })
+})
+
+describe('cityFor', () => {
+  it('extracts a city for Adzuna where-param', () => {
+    expect(cityFor('Hyderabad, India')).toBe('hyderabad')
+    expect(cityFor('Bengaluru')).toBe('bengaluru')
+    expect(cityFor('New York, USA')).toBe('new york')
+  })
+  it('returns empty for country-level locations so the whole country is searched', () => {
+    expect(cityFor('India')).toBe('')
+    expect(cityFor('')).toBe('')
+  })
+})
+
+describe('rankHeuristic seniority & recency', () => {
+  const resume = 'selenium qa automation python api testing'
+  it('penalizes large seniority band distance and labels the gap', () => {
+    const jobs = [
+      { id: 'a', title: 'QA Intern', tags: ['selenium', 'qa'], snippet: 'automation python api testing', location: 'Remote', postedTs: 0, source: 'remote' },
+      { id: 'b', title: 'Staff QA Engineer', tags: ['selenium', 'qa'], snippet: 'automation python api testing', location: 'Remote', postedTs: 0, source: 'remote' },
+    ]
+    const out = rankHeuristic(jobs, resume, 'QA Engineer', 10, null, 3)
+    expect(out[0].id).toBe('b')
+    expect(out.find(j => j.id === 'a').gaps).toContain('Seniority mismatch')
+  })
+  it('fresh postings outrank stale ones at equal overlap', () => {
+    const now = Date.now()
+    const jobs = [
+      { id: 'old', title: 'QA Engineer', tags: ['selenium'], snippet: 'qa automation', location: 'Remote', postedTs: now - 200 * 86400000, source: 'remote' },
+      { id: 'new', title: 'QA Engineer', tags: ['selenium'], snippet: 'qa automation', location: 'Remote', postedTs: now - 2 * 86400000, source: 'remote' },
+    ]
+    const out = rankHeuristic(jobs, resume, 'QA Engineer', 10, null, 2)
+    expect(out[0].id).toBe('new')
   })
 })

@@ -1,37 +1,22 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { loadProfile, saveProfile, applyTailorToResume, applyTailorWithBackup, restoreResumeBackup } from './lib/profile'
 import { loadCareerDraft, saveCareerDraft } from './lib/careerDraft'
 import { copyText, downloadTextFile } from './lib/clipboard'
 import { downloadTailoredResumePdf } from './lib/resumePdf'
 import { scoreColor } from './lib/ui'
+import { analyzeSkillsGap } from '../shared/skillsMatrix.js'
 import { T } from './auth/tokens'
-import { S, tabStyle, NoKeysBanner, ResumeMaterials } from './lib/secondaryUi'
+import { S, tabStyle, NoKeysBanner, ResumeMaterials, CopyBtn } from './lib/secondaryUi'
 
-// Resume Studio — ATS score, tailor, referral DM.
+// Resume Studio — Skills Matrix, ATS score, tailor, referral DM.
 
 const TABS = [
+  ['skills', 'Skills Matrix'],
   ['ats', 'AI Match Estimate'],
   ['tailor', 'Tailor Resume'],
   ['referral', 'Referral DM'],
 ]
-
-function CopyBtn({ text, label = 'Copy' }) {
-  const [done, setDone] = useState(false)
-  const [failed, setFailed] = useState(false)
-  if (!text) return null
-  return (
-    <button type="button"
-      onClick={async () => {
-        const ok = await copyText(text)
-        if (ok) { setDone(true); setFailed(false); setTimeout(() => setDone(false), 1500) }
-        else { setFailed(true); setTimeout(() => setFailed(false), 2000) }
-      }}
-      style={{ ...S.chip, cursor: 'pointer', border: 'none', color: failed ? '#fca5a5' : (done ? T.success : T.accentFrom), fontFamily: T.font }}>
-      {failed ? 'Copy failed' : done ? 'Copied' : label}
-    </button>
-  )
-}
 
 export default function Career({
   onHome, noProviders, onSettings, embedded,
@@ -41,7 +26,7 @@ export default function Career({
   const draft0 = loadCareerDraft()
   const [profile, setProfile] = useState(() => loadProfile())
   const [tab, setTab] = useState(() => (
-    ['ats', 'tailor', 'referral'].includes(initialTab) ? initialTab
+    ['skills', 'ats', 'tailor', 'referral'].includes(initialTab) ? initialTab
       : (draft0.tab || 'ats')
   ))
   const [loading, setLoading] = useState(false)
@@ -82,7 +67,7 @@ export default function Career({
       saveCareerDraft({ jd: initialJd, limitedJd: !!limitedJd, tab: initialTab || 'ats' })
     }
     if (limitedJd) setSeedNote(true)
-    if (['ats', 'tailor', 'referral'].includes(initialTab)) {
+    if (['skills', 'ats', 'tailor', 'referral'].includes(initialTab)) {
       setTab(initialTab)
       setResult(null)
       setError('')
@@ -188,6 +173,20 @@ export default function Career({
 
   const base = { resume: profile.resume || '', targetRole: profile.targetRole || '', jobDescription: jd }
   const canRun = hasResume && !noProviders && !loading
+  const skillsReport = useMemo(
+    () => analyzeSkillsGap(profile.resume || '', jd, profile.targetRole || ''),
+    [profile.resume, jd, profile.targetRole],
+  )
+
+  function injectSkillsIntoPlaybook() {
+    if (!skillsReport.playbookPatch) return
+    const currentPrompt = String(profile.customInstructions || '').trim()
+    const cleaned = currentPrompt.replace(/\[Skills Focus & Gap Strategy\][\s\S]*?(?=\n\[|$)/g, '').trim()
+    const nextInstructions = [cleaned, skillsReport.playbookPatch].filter(Boolean).join('\n\n')
+    patch({ customInstructions: nextInstructions })
+    setApplyMsg('Injected Skills Focus & Gap Strategy into your Interview Playbook (used in Solo, Live & Duo).')
+  }
+
   const primaryLabel = loading
     ? 'Working…'
     : tab === 'ats' ? 'Score my resume'
@@ -264,21 +263,23 @@ export default function Career({
         )}
       </div>
 
-      <button
-        type="button"
-        disabled={!canRun}
-        style={{
-          ...S.btnPrimary,
-          opacity: canRun ? 1 : 0.55,
-          cursor: canRun ? 'pointer' : 'default',
-          marginBottom: 12,
-        }}
-        onClick={() => tab === 'ats' ? run('/api/ats-score', base)
-          : tab === 'tailor' ? run('/api/tailor-resume', base)
-          : run('/api/referral', { resume: base.resume, targetRole: base.targetRole, company, person })}
-      >
-        {primaryLabel}
-      </button>
+      {tab !== 'skills' && (
+        <button
+          type="button"
+          disabled={!canRun}
+          style={{
+            ...S.btnPrimary,
+            opacity: canRun ? 1 : 0.55,
+            cursor: canRun ? 'pointer' : 'default',
+            marginBottom: 12,
+          }}
+          onClick={() => tab === 'ats' ? run('/api/ats-score', base)
+            : tab === 'tailor' ? run('/api/tailor-resume', base)
+            : run('/api/referral', { resume: base.resume, targetRole: base.targetRole, company, person })}
+        >
+          {primaryLabel}
+        </button>
+      )}
       {onUseForInterview && tab !== 'referral' && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           <button
@@ -342,7 +343,23 @@ export default function Career({
         </div>
       )}
 
-      {result && tab === 'ats' && <AtsResult r={result} />}
+      {tab === 'skills' && hasResume && (
+        <SkillsMatrixResult
+          report={skillsReport}
+          hasJd={Boolean(String(jd || '').trim())}
+          targetRole={profile.targetRole || ''}
+          onInjectPlaybook={injectSkillsIntoPlaybook}
+          onSwitchTab={setTabReset}
+          onDrillSkill={skill => onUseForInterview?.({
+            jd: `${jd ? jd + '\n\n' : ''}Focus Interview Area: ${skill.skill} (${skill.category}). Sample question: ${skill.practiceQuestion}`,
+            role: profile.targetRole || 'Software Engineer',
+            company: company || profile.targetCompany || '',
+            source: 'career',
+          }, 'solo')}
+        />
+      )}
+
+      {result && tab === 'ats' && <AtsResult r={result} onSwitchTab={setTabReset} />}
       {result && tab === 'tailor' && (
         <TailorResult
           r={result}
@@ -355,12 +372,129 @@ export default function Career({
           canLatex={hasResume && !noProviders}
         />
       )}
-      {result && tab === 'referral' && <ReferralResult r={result} />}
+      {result && tab === 'referral' && <ReferralResult r={result} company={company} role={profile.targetRole} />}
     </div>
   )
 }
 
-function AtsResult({ r }) {
+function SkillsMatrixResult({ report, hasJd, targetRole, onInjectPlaybook, onSwitchTab, onDrillSkill }) {
+  const pct = report.readinessScore || 0
+  return (
+    <div style={{ marginTop: 4 }} aria-live="polite">
+      <div style={{ ...S.card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ textAlign: 'center', flexShrink: 0 }}>
+            <div style={{ fontSize: 32, fontWeight: 700, color: scoreColor(pct), lineHeight: 1 }}>{pct}</div>
+            <div style={{ fontSize: 11, color: T.text3, marginTop: 4 }}>Skill readiness /100</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: T.text1 }}>
+              {report.matched.length} matched · {report.missing.length} gap{report.missing.length === 1 ? '' : 's'} · {report.bonus.length} differentiator{report.bonus.length === 1 ? '' : 's'}
+            </div>
+            <div style={{ fontSize: 12, color: T.text3, marginTop: 3, lineHeight: 1.45 }}>
+              {hasJd
+                ? 'Compared your resume directly against the pasted Job Description across 5 technical & leadership dimensions.'
+                : `Compared your resume against baseline expectations for ${targetRole || 'your target role'}. Paste a specific JD above for exact role matching.`}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {report.playbookPatch && (
+            <button
+              type="button"
+              onClick={onInjectPlaybook}
+              style={{
+                fontSize: 12, fontWeight: 600, padding: '7px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
+                background: 'rgba(20,184,166,0.15)', border: '1px solid rgba(20,184,166,0.4)', color: T.accentFrom,
+              }}>
+              ⚡ Inject Gap Strategy into Playbook
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onSwitchTab('tailor')}
+            style={{
+              fontSize: 12, fontWeight: 600, padding: '7px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
+              background: T.surface2, border: `1px solid ${T.border}`, color: T.text1,
+            }}>
+            ✎ Tailor Missing Skills
+          </button>
+        </div>
+      </div>
+
+      <div style={S.card}>
+        <div style={S.sectionLbl}>5-Dimension Skill Breakdown</div>
+        {report.categories.map(cat => {
+          const activeSkills = cat.matched.length + cat.missing.length + cat.bonus.length
+          if (activeSkills === 0) return null
+          return (
+            <div key={cat.id} style={{ marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid ${T.border}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5, marginBottom: 5 }}>
+                <span style={{ fontWeight: 600, color: T.text1 }}>{cat.label}</span>
+                <span style={{ fontSize: 11.5, color: cat.totalTarget > 0 ? scoreColor(cat.coveragePct) : T.text3 }}>
+                  {cat.totalTarget > 0 ? `${cat.matched.length}/${cat.totalTarget} target skills (${cat.coveragePct}%)` : `${cat.bonus.length} resume strength${cat.bonus.length === 1 ? '' : 's'}`}
+                </span>
+              </div>
+              {cat.totalTarget > 0 && (
+                <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, marginBottom: 8 }}>
+                  <div style={{ height: '100%', width: `${cat.coveragePct}%`, background: scoreColor(cat.coveragePct), borderRadius: 2 }} />
+                </div>
+              )}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {cat.matched.map(s => (
+                  <span key={s} style={{ ...S.chip, background: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.35)', color: '#6ee7b7' }}>
+                    ✓ {s}
+                  </span>
+                ))}
+                {cat.missing.map(s => (
+                  <span key={s} style={{ ...S.chip, background: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.35)', color: '#fcd34d' }}>
+                    ⚠ {s} (gap)
+                  </span>
+                ))}
+                {cat.bonus.map(s => (
+                  <span key={s} style={{ ...S.chip, background: 'rgba(56,189,248,0.10)', borderColor: 'rgba(56,189,248,0.28)', color: '#7dd3fc' }}>
+                    ★ {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {report.gapBridges.length > 0 && (
+        <div style={S.card}>
+          <div style={S.sectionLbl}>How to Bridge Missing Skills in Interviews ({report.gapBridges.length})</div>
+          <div style={{ fontSize: 12, color: T.text3, marginBottom: 10, lineHeight: 1.45 }}>
+            Never fabricate direct ownership of a missing tool. Use these honest pivot strategies or drill them in Solo Practice:
+          </div>
+          {report.gapBridges.map((g, i) => (
+            <div key={i} style={{ padding: '10px 12px', borderRadius: T.rCtrl, background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.border}`, marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#fcd34d' }}>⚠ {g.skill} <span style={{ fontSize: 11, fontWeight: 400, color: T.text3 }}>· {g.category}</span></span>
+                {onDrillSkill && (
+                  <button
+                    type="button"
+                    onClick={() => onDrillSkill(g)}
+                    style={{
+                      fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
+                      background: 'rgba(20,184,166,0.14)', border: '1px solid rgba(20,184,166,0.35)', color: T.accentFrom,
+                    }}>
+                    Drill in Solo →
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: 12.5, color: T.text2, lineHeight: 1.5 }}>{g.bridgeTip}</div>
+              <div style={{ fontSize: 11.5, color: T.text3, marginTop: 4, fontStyle: 'italic' }}> Likely question: “{g.practiceQuestion}”</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AtsResult({ r, onSwitchTab }) {
   const pct = Math.max(0, Math.min(100, r.overallScore ?? 0))
   return (
     <div style={{ marginTop: 4 }} aria-live="polite">
@@ -459,11 +593,25 @@ function TailorResult({ r, onApply, onDownloadPdf, onDownloadTxt, onDownloadLate
   )
 }
 
-function ReferralResult({ r }) {
+function ReferralResult({ r, company, role }) {
+  const followUpText = r.followUp || `Hi again — just floating this to the top of your inbox in case you had 2 minutes to glance at my note about the ${role || 'engineering'} role${company ? ` at ${company}` : ''}. Totally understand if your week is packed, and appreciate your time either way!`
   return (
     <div style={{ marginTop: 4 }} aria-live="polite">
-      {r.short && <Block title="Connection note (short)"><div style={para}>{r.short}</div><div style={{ marginTop: 8 }}><CopyBtn text={r.short} label="Copy note" /></div></Block>}
+      {r.short && <Block title="Connection note (≤300 chars)"><div style={para}>{r.short}</div><div style={{ marginTop: 8 }}><CopyBtn text={r.short} label="Copy note" /></div></Block>}
       {r.message && <Block title="Full referral message"><div style={{ ...para, whiteSpace: 'pre-wrap' }}>{r.message}</div><div style={{ marginTop: 8 }}><CopyBtn text={r.message} label="Copy to paste" /></div></Block>}
+      <Block title="Day-4 gentle follow-up nudge">
+        <div style={{ ...para, whiteSpace: 'pre-wrap' }}>{followUpText}</div>
+        <div style={{ marginTop: 8 }}><CopyBtn text={followUpText} label="Copy follow-up" /></div>
+      </Block>
+      <div style={S.card}>
+        <div style={S.sectionLbl}>Outreach & Referral Checklist</div>
+        <ul style={{ margin: 0, paddingLeft: 18 }}>
+          <li style={li}>Include the exact job requisition ID or link so your contact doesn't have to search for it.</li>
+          <li style={li}>Attach your tailored 1–2 page PDF resume from the <strong>Tailor Resume</strong> tab.</li>
+          <li style={li}>Save the role in <strong>Job Matching → Saved</strong> and set status to <em>Applied / Outreach</em>.</li>
+          <li style={li}>Wait 4 business days before sending the single follow-up nudge above.</li>
+        </ul>
+      </div>
       {r.why && <div style={{ fontSize: 12, color: T.accentFrom, marginTop: 4 }}>✓ {r.why}</div>}
     </div>
   )

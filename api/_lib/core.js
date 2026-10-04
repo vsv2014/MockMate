@@ -291,18 +291,6 @@ export async function listModels() {
   return out
 }
 
-// Vision-capable provider — GPT-4o preferred, Gemini as fallback.
-export function resolveVisionProvider() {
-  if (process.env.OPENAI_API_KEY) {
-    return { key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' }
-  }
-  if (process.env.GEMINI_API_KEY) {
-    const g = CATALOG.gemini
-    return { key: process.env.GEMINI_API_KEY, baseURL: g.baseURL, model: g.model() }
-  }
-  throw aiError('vision_none', 400)
-}
-
 // A provider id may be a plain CATALOG key ('openai') OR an encoded dynamic-model pick
 // ('openai::gpt-5.1' = that provider's key/endpoint + an exact model chosen from /api/models).
 // baseOf() returns the CATALOG key so failover/ban logic keeps working on the provider level.
@@ -1098,6 +1086,11 @@ export async function embed(input) {
     try {
       const r = await llm.embeddings.create({ model: prov.model, input: list.map(t => String(t).slice(0, 8000)) })
       const vectors = r.data.map(d => d.embedding)
+      Object.defineProperties(vectors, {
+        provider: { value: provider, enumerable: false },
+        model: { value: prov.model, enumerable: false },
+        embeddingModel: { value: `${provider}:${prov.model}`, enumerable: false },
+      })
       providerDiagnostic('embedding_succeeded', { attemptId, provider, model: prov.model, inputCount: list.length, vectorCount: vectors.length, dimensions: vectors[0]?.length || 0, durationMs: Date.now() - startedAt })
       return vectors
     } catch (e) {

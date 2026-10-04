@@ -13,7 +13,7 @@ import { usesDeviceLocalAccounts } from './api'
 //   onSubmit({ email, password })  async — resolves on success, throws Error(msg)
 //   onSwitchToSignup()             go to the Signup screen
 //   onForgot()                     "Forgot password?" (Phase 2; may be undefined)
-export default function Login({ onSubmit, onSwitchToSignup, onForgot, onGuest }) {
+export default function Login({ onSubmit, onSwitchToSignup, onForgot, onGuest, onResendVerification }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [show, setShow] = useState(false)
@@ -21,6 +21,9 @@ export default function Login({ onSubmit, onSwitchToSignup, onForgot, onGuest })
   const [error, setError] = useState(null)
   const [forgotSent, setForgotSent] = useState(false)   // shows the generic "reset link sent" notice
   const [forgotBusy, setForgotBusy] = useState(false)
+  const [verifyResent, setVerifyResent] = useState(false)
+  // Backend signals an unverified account with this message (403 email_unverified).
+  const unverified = Boolean(error && /verify your email/i.test(String(error)))
 
   const canSubmit = email.trim() && password && !busy
 
@@ -69,6 +72,15 @@ export default function Login({ onSubmit, onSwitchToSignup, onForgot, onGuest })
         />
 
         <FormError>{error}</FormError>
+        {unverified && onResendVerification && (
+          <div style={{ textAlign: 'center', marginBottom: 6 }}>
+            {verifyResent
+              ? <span style={{ fontSize: 12, color: T.text2 }}>Verification email sent again — check your inbox.</span>
+              : <TextLink onClick={async () => {
+                  try { await onResendVerification(email.trim()); setVerifyResent(true) } catch {}
+                }}>Resend verification email</TextLink>}
+          </div>
+        )}
 
         <div style={{ marginTop: 18 }}>
           <PrimaryButton busy={busy} busyLabel="Signing in…" disabled={!canSubmit}>Sign in</PrimaryButton>

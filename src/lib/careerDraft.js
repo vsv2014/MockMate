@@ -12,10 +12,10 @@ export function loadCareerDraft() {
       jd: typeof raw.jd === 'string' ? raw.jd : '',
       person: typeof raw.person === 'string' ? raw.person : '',
       company: typeof raw.company === 'string' ? raw.company : '',
-      tab: ['ats', 'tailor', 'referral'].includes(raw.tab) ? raw.tab : undefined,
+      tab: ['ats', 'tailor', 'referral', 'skills'].includes(raw.tab) ? raw.tab : undefined,
       limitedJd: !!raw.limitedJd,
       result: raw.result && typeof raw.result === 'object' ? raw.result : null,
-      resultTab: ['ats', 'tailor', 'referral'].includes(raw.resultTab) ? raw.resultTab : null,
+      resultTab: ['ats', 'tailor', 'referral', 'skills'].includes(raw.resultTab) ? raw.resultTab : null,
     }
   } catch {
     return {}

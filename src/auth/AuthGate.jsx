@@ -5,8 +5,9 @@ import Welcome from './Welcome'
 import Login from './Login'
 import Signup from './Signup'
 import Onboarding from './Onboarding'
-import { WindowControls } from './AuthShell'
-import { login, signup, fetchMe, logout as apiLogout, updateProfile, forgotPassword, getToken, setUnauthorizedHandler, refreshSession, usesDeviceLocalAccounts } from './api'
+import { WindowControls, AuthShell, brandMark } from './AuthShell'
+import { PrimaryButton, TextLink } from './ui'
+import { login, signup, fetchMe, logout as apiLogout, updateProfile, forgotPassword, getToken, setUnauthorizedHandler, refreshSession, usesDeviceLocalAccounts, consumeOAuthRedirectToken, resendVerification } from './api'
 import { loadProfile, saveProfile } from '../lib/profile'
 import { getAiMode, setAiMode, setGuestMode } from '../lib/aiMode'
 import { setActiveAccountScope, clearActiveAccountScope } from '../lib/accountScope'
@@ -22,6 +23,7 @@ export default function AuthGate({ children }) {
   const [status, setStatus] = useState('loading')
   const [view, setView] = useState('welcome')
   const [session, setSession] = useState(null)
+  const [pendingEmail, setPendingEmail] = useState('')
 
   const loadSession = useCallback(async () => {
     const me = await fetchMe()
@@ -40,6 +42,7 @@ export default function AuthGate({ children }) {
     })
     let alive = true
     ;(async () => {
+      await consumeOAuthRedirectToken()
       const token = await getToken()
       if (!token) { if (alive) { clearActiveAccountScope(); setView(seenWelcome() ? 'login' : 'welcome'); setStatus('auth') } return }
       try {
@@ -63,12 +66,25 @@ export default function AuthGate({ children }) {
   }, [loadSession])
 
   const handleSignup = useCallback(async (form) => {
-    await signup(form)
+    const result = await signup(form)
     markSeenWelcome()
+    // Explicit union branch (round-5 review P1): when the backend requires email
+    // verification it returns NO token. Never call loadSession() here — render the
+    // "check your email" state instead.
+    if (result?.verificationRequired) {
+      setPendingEmail(form?.email || result?.user?.email || '')
+      setView('verify-email')
+      setStatus('auth')
+      return
+    }
     await loadSession()
     setView('onboarding')
     setStatus('auth')
   }, [loadSession])
+
+  const handleResendVerification = useCallback(async (email) => {
+    await resendVerification(email)
+  }, [])
 
   const handleOnboarding = useCallback(async ({ currentRole, targetRole, yearsExp, resumeText }) => {
     const prof = loadProfile()
@@ -181,8 +197,50 @@ export default function AuthGate({ children }) {
   }
   if (view === 'signup') return <Signup onSubmit={handleSignup} onSwitchToLogin={() => setView('login')} />
   if (view === 'onboarding') return <Onboarding onComplete={handleOnboarding} />
+  if (view === 'verify-email') return <VerifyEmailSent
+    email={pendingEmail}
+    onResend={handleResendVerification}
+    onBackToLogin={() => { setPendingEmail(''); setView('login') }}
+  />
   return <Login onSubmit={handleLogin} onSwitchToSignup={() => setView('signup')}
-    onForgot={usesDeviceLocalAccounts ? undefined : forgotPassword} onGuest={enterGuest} />
+    onForgot={usesDeviceLocalAccounts ? undefined : forgotPassword} onGuest={enterGuest}
+    onResendVerification={usesDeviceLocalAccounts ? undefined : handleResendVerification} />
+}
+
+// ── VerifyEmailSent ───────────────────────────────────────────────────────────
+// Shown after a signup that requires email verification: the backend created the
+// account but issued NO token, so this is a waiting state — not a session.
+function VerifyEmailSent({ email, onResend, onBackToLogin }) {
+  const [resendState, setResendState] = useState('idle') // idle | busy | sent | error
+  return (
+    <AuthShell>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24 }}>
+        {brandMark(40)}
+        <h1 style={{
+          marginTop: 14, fontSize: 22, fontWeight: 600, letterSpacing: '0.2px',
+          background: T.chrome, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent',
+        }}>Check your email</h1>
+        <p style={{ marginTop: 8, fontSize: 13, fontWeight: 400, color: T.text2, textAlign: 'center', lineHeight: 1.6, maxWidth: 340 }}>
+          We created your MockMate account{email ? <> for <strong style={{ color: T.text }}>{email}</strong></> : ''}, but you
+          need to verify that email before signing in. Click the link in the message we just sent
+          (valid for 24 hours), then come back and sign in.
+        </p>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <PrimaryButton onClick={onBackToLogin}>I’ve verified — sign in</PrimaryButton>
+        <div style={{ textAlign: 'center' }}>
+          {resendState === 'sent'
+            ? <span style={{ fontSize: 12, color: T.text2 }}>Verification email sent again. Check your inbox (and spam).</span>
+            : <TextLink onClick={async () => {
+                if (resendState === 'busy') return
+                setResendState('busy')
+                try { await onResend(email); setResendState('sent') }
+                catch { setResendState('error') }
+              }}>{resendState === 'busy' ? 'Sending…' : resendState === 'error' ? 'Couldn’t resend — try again' : 'Resend verification email'}</TextLink>}
+        </div>
+      </div>
+    </AuthShell>
+  )
 }
 
 function LoadingScreen() {

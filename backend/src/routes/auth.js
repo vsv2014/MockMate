@@ -5,14 +5,16 @@ import rateLimit from 'express-rate-limit'
 import { store, toSafeUser, currentPeriod } from '../store.js'
 import { effectivePlan, limitFor } from '../plans.js'
 import { signToken, requireAuth } from '../middleware/auth.js'
-import { sendResetEmail } from '../mailer.js'
+import { sendResetEmail, sendVerificationEmail } from '../mailer.js'
 
 const router = Router()
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const RESET_TTL_MS = 30 * 60 * 1000
+const VERIFY_TTL_MS = 24 * 60 * 60 * 1000
 const GOOGLE_STATE_TTL_MS = 10 * 60 * 1000
 const PASSWORD_MAX_BYTES = 72
 const sha256 = s => crypto.createHash('sha256').update(String(s)).digest('hex')
+const requireEmailVerification = () => ['1', 'true', 'yes', 'on'].includes(String(process.env.REQUIRE_EMAIL_VERIFICATION || '').trim().toLowerCase())
 const passwordError = password => {
   if (!password || password.length < 8) return 'Password must be at least 8 characters'
   if (Buffer.byteLength(String(password), 'utf8') > PASSWORD_MAX_BYTES) return 'Password is too long. Use 72 UTF-8 bytes or fewer.'
@@ -35,7 +37,22 @@ router.post('/signup', signupLimiter, async (req, res) => {
     const exists = await store().findUserByEmail(email)
     if (exists) return res.status(409).json({ error: 'An account with this email already exists' })
     const passwordHash = await bcrypt.hash(password, 12)
-    const user = await store().createUser({ email, passwordHash, name: name || '', lastLogin: new Date().toISOString() })
+    const verifyRequired = requireEmailVerification()
+    const rawVerify = crypto.randomBytes(32).toString('hex')
+    const user = await store().createUser({
+      email,
+      passwordHash,
+      name: name || '',
+      emailVerified: !verifyRequired,
+      verifyTokenHash: verifyRequired ? sha256(rawVerify) : null,
+      verifyTokenExp: verifyRequired ? Date.now() + VERIFY_TTL_MS : null,
+      lastLogin: new Date().toISOString(),
+    })
+    if (verifyRequired) {
+      const base = process.env.VERIFY_URL_BASE || process.env.RESET_URL_BASE || 'http://localhost:5174/verify.html'
+      await sendVerificationEmail(user.email, `${base}?verify_token=${rawVerify}`).catch(() => {})
+      return res.status(201).json({ verificationRequired: true, user: toSafeUser(user) })
+    }
     res.status(201).json({ token: signToken(user.id, user.tokenVersion || 0), user: toSafeUser(user) })
   } catch (error) {
     if (error?.status === 409 || error?.code === 11000 || error?.code === 'USER_EXISTS') return res.status(409).json({ error: 'An account with this email already exists' })
@@ -50,9 +67,44 @@ router.post('/login', loginLimiter, async (req, res) => {
     if (!user || !user.passwordHash) return res.status(401).json({ error: 'Incorrect email or password' })
     const ok = await bcrypt.compare(password || '', user.passwordHash)
     if (!ok) return res.status(401).json({ error: 'Incorrect email or password' })
+    if (requireEmailVerification() && !user.emailVerified && !user.googleId) {
+      return res.status(403).json({ error: 'Please verify your email address before signing in.', code: 'email_unverified' })
+    }
     const updated = await store().updateUser(user.id, { lastLogin: new Date().toISOString() })
     res.json({ token: signToken(user.id, user.tokenVersion || 0), user: toSafeUser(updated || user) })
   } catch { res.status(500).json({ error: 'Something went wrong. Please try again.' }) }
+})
+
+router.post('/verify-email', recoveryLimiter, async (req, res) => {
+  try {
+    const { token } = req.body || {}
+    if (!token) return res.status(400).json({ error: 'This verification link is invalid or has expired.' })
+    const user = await store().findUserByVerifyToken?.(sha256(token))
+    if (!user || !user.verifyTokenExp || user.verifyTokenExp < Date.now()) {
+      return res.status(400).json({ error: 'This verification link is invalid or has expired.' })
+    }
+    const updated = await store().updateUser(user.id, {
+      emailVerified: true,
+      verifyTokenHash: null,
+      verifyTokenExp: null,
+      lastLogin: new Date().toISOString(),
+    })
+    res.json({ ok: true, token: signToken(user.id, user.tokenVersion || 0), user: toSafeUser(updated || user) })
+  } catch { res.status(500).json({ error: 'Could not verify your email. Please try again.' }) }
+})
+
+router.post('/resend-verification', recoveryLimiter, async (req, res) => {
+  try {
+    const { email } = req.body || {}
+    const user = email ? await store().findUserByEmail(email) : null
+    if (user && !user.emailVerified) {
+      const rawVerify = crypto.randomBytes(32).toString('hex')
+      await store().updateUser(user.id, { verifyTokenHash: sha256(rawVerify), verifyTokenExp: Date.now() + VERIFY_TTL_MS })
+      const base = process.env.VERIFY_URL_BASE || process.env.RESET_URL_BASE || 'http://localhost:5174/verify.html'
+      await sendVerificationEmail(user.email, `${base}?verify_token=${rawVerify}`).catch(() => {})
+    }
+    res.json({ ok: true })
+  } catch { res.json({ ok: true }) }
 })
 
 router.get('/me', requireAuth, async (req, res) => {

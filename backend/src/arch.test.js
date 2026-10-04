@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { executeWithFallback, performanceSnapshot, reasoningPolicy, recordArchMetric, resetArchCircuits, resetArchPerformance, resolveCapabilities } from './arch.js'
+import { archProductIntelligenceSnapshot, archRuntimeSummary, executeWithFallback, performanceSnapshot, reasoningPolicy, recordArchMetric, recordArchProductEvent, resetArchCircuits, resetArchPerformance, resetArchProductIntelligence, resolveCapabilities } from './arch.js'
 
 const KEYS = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'CEREBRAS_API_KEY', 'LLM_API_KEY', 'DEEPGRAM_API_KEY', 'MONGO_URI']
 const original = Object.fromEntries(KEYS.map(key => [key, process.env[key]]))
-afterEach(() => { resetArchCircuits(); resetArchPerformance(); vi.restoreAllMocks(); for (const key of KEYS) { if (original[key] == null) delete process.env[key]; else process.env[key] = original[key] } })
+afterEach(() => { resetArchCircuits(); resetArchPerformance(); resetArchProductIntelligence(); vi.restoreAllMocks(); for (const key of KEYS) { if (original[key] == null) delete process.env[key]; else process.env[key] = original[key] } })
 
 describe('ARCH capability resolver', () => {
   it('declares typed-input/client-local fallbacks without inventing client capabilities', () => {
@@ -34,6 +34,35 @@ describe('ARCH reasoning policy', () => {
     expect(reasoningPolicy('interview').lane).toBe('balanced')
     expect(reasoningPolicy('evaluate').lane).toBe('strong')
     expect(reasoningPolicy('screen').lane).toBe('vision')
+  })
+
+  it('closes the loop by promoting a balanced operation when ITS OWN p95 turn latency breaches the ABL threshold', () => {
+    for (const ms of [7000, 7500, 8200]) recordArchMetric('turn_latency_ms:interview', ms)
+    const adaptive = reasoningPolicy('interview', { adaptive: true })
+    expect(adaptive.baseLane).toBe('balanced')
+    expect(adaptive.lane).toBe('fast')
+    expect(adaptive.adaptivePromotion).toBe('high_latency_guardrail')
+
+    // Strong/vision lanes remain preserved for deep evaluation and screen analysis
+    expect(reasoningPolicy('evaluate', { adaptive: true }).lane).toBe('strong')
+  })
+
+  it('adaptive promotion is operation-scoped — slow other operations must not contaminate interview routing', () => {
+    resetArchPerformance()
+    // Slow vision/career episodes on their own operations...
+    for (const ms of [9000, 9500, 12000]) {
+      recordArchMetric('turn_latency_ms:screen', ms)
+      recordArchMetric('turn_latency_ms:career', ms)
+    }
+    // ...and slow streaming TTFT (hint domain) must NOT downgrade a healthy interview.
+    for (const ms of [5000, 5400, 6000]) recordArchMetric('llm_ttft_ms', ms)
+    const adaptive = reasoningPolicy('interview', { adaptive: true })
+    expect(adaptive.baseLane).toBe('balanced')
+    expect(adaptive.lane).toBe('balanced')
+    expect(adaptive.adaptivePromotion).toBeNull()
+    // Interview stays balanced while only its own latency is high afterwards
+    for (const ms of [7000, 7200]) recordArchMetric('turn_latency_ms:interview', ms)
+    expect(reasoningPolicy('interview', { adaptive: true }).lane).toBe('fast')
   })
 })
 
@@ -80,8 +109,30 @@ describe('ARCH runtime fallback', () => {
 })
 
 describe('ARCH performance telemetry', () => {
-  it('reports bounded p50/p95 stage metrics', () => {
+  it('reports bounded p50/p95 stage metrics Locally and omits process-global performance on hosted mode', () => {
     for (const value of [100, 120, 140, 500]) recordArchMetric('stt_final_ms', value)
     expect(performanceSnapshot().stt_final_ms).toEqual({ count: 4, p50: 120, p95: 500 })
+    const summary = archRuntimeSummary({ hosted: false })
+    expect(summary.routing.hint).toBe('fast')
+    expect(summary.performance.stt_final_ms).toEqual({ count: 4, p50: 120, p95: 500 })
+
+    const hostedSummary = archRuntimeSummary({ hosted: true })
+    expect(hostedSummary.performance).toBeUndefined()
+  })
+
+  it('tracks redacted Product Intelligence events inside ARCH without leaking PII or secrets', () => {
+    recordArchProductEvent({
+      sessionId: 's1',
+      ts: 1000,
+      action: 'live_setup',
+      resume: 'Staff Engineer at SecretCorp',
+      apiKey: 'sk-secret-key-9999999999',
+    })
+    recordArchProductEvent({ sessionId: 's1', ts: 2000, action: 'preflight_failed', reason: 'share_unverified' })
+    const snap = archProductIntelligenceSnapshot()
+    expect(snap.totalEvents).toBe(2)
+    expect(snap.policy.mode).toBe('structured_redacted')
+    expect(snap.headlineInsights[0].text).toMatch(/100% of Live setup attempts stall or fail at Live preflight/i)
+    expect(JSON.stringify(snap)).not.toMatch(/SecretCorp|sk-secret/i)
   })
 })

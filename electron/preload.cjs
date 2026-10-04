@@ -96,4 +96,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('display-changed', h)
     return () => ipcRenderer.removeListener('display-changed', h)
   },
+  onOverlayCommand: cb => {
+    const h = (_, payload) => cb(payload)
+    ipcRenderer.on('overlay-command', h)
+    return () => ipcRenderer.removeListener('overlay-command', h)
+  },
 })

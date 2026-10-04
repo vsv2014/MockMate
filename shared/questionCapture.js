@@ -17,6 +17,11 @@ const REFINEMENT_SIGNAL = /^(?:so\s+)?(?:(?:can|could|would) you\s+)?(?:please\s
 
 const INTERROGATIVE = /\b(tell me|describe|explain|how would|how do|how does|what is|what are|what was|what were|what about|how about|walk me|can you|could you|would you|why did|why do|why is|why are|why use|have you|give me|when did|where did|design (?:a|an|the)|given an?)\b/i
 
+// Turn-1 system-audio openers (blast-radius review fix): relax the gates ONLY for
+// imperative interview openers. Greetings ("Good morning."), interviewer
+// self-introductions, agenda-setting, and pleasantries must NEVER commit as questions.
+const SYSTEM_TURN1_OPENERS = /^(?:[\s,.!]*(?:so|okay|ok|alright|right|great|sure|now|first|then|please)[\s,.!]+)*(?:introduce yourself|tell (?:me|us) about|walk (?:me|us) through|describe yourself|give (?:me|us) (?:a |your |an )?(?:brief |quick )?(?:introduction|overview|background|summary)|start (?:by|with)|i(?:'d| would) love to hear about|share (?:a bit|some|a little) about|can i (?:get|have) (?:you to introduce yourself|an introduction|a brief introduction))\b/i
+
 /**
  * Measured stabilization windows (ms) — not a blind 2–3s everywhere.
  * Tuned for: fast commit on complete ? ; accumulate on incomplete openers.
@@ -47,11 +52,20 @@ export function assessQuestionBoundary({
   speakerRole = 'unknown',
   hadPriorQuestion = false,
   laneAgeMs = 0,
+  source = null,
 } = {}) {
   const q = String(text || '').trim()
   if (!q) {
     return { action: 'reject', reason: 'empty', waitMs: 0, confidence: 0, completeness: 'incomplete' }
   }
+
+  // Turn-1 system-audio boost (blast-radius review hardened): system/loopback capture
+  // is, by construction, the meeting audio — no candidate mic, no diarization wait.
+  // The FIRST interviewer prompt is frequently a short imperative ("Introduce
+  // yourself.") that generic gates would reject or stall on. Relaxation applies ONLY
+  // to known imperative openers (SYSTEM_TURN1_OPENERS) — greetings, interviewer
+  // self-introductions, agenda-setting and pleasantries keep the strict gates.
+  const systemTurn1 = source === 'system' && !hadPriorQuestion && SYSTEM_TURN1_OPENERS.test(q)
 
   if (isLogisticalCheck(q)) {
     return { action: 'reject', reason: 'logistical_check', waitMs: 0, confidence: 1, completeness: 'complete' }
@@ -71,6 +85,7 @@ export function assessQuestionBoundary({
   if (!incomplete && (hasQ || (interrogative && words >= 6) || shortFollowUp)) completeness = 'complete'
   else if (!incomplete && interrogative && words >= 4) completeness = 'likely'
   else if (!incomplete && words >= 10 && interrogative) completeness = 'likely'
+  else if (systemTurn1 && !incomplete && words >= 2) completeness = 'likely'
 
   if (speakerRole === 'unknown') {
     // Never confidently treat unknown as interviewer on weak evidence.
@@ -112,7 +127,7 @@ export function assessQuestionBoundary({
     }
   }
 
-  if (!interrogative && !shortFollowUp && words < 8) {
+  if (!interrogative && !shortFollowUp && words < 8 && !(systemTurn1 && words >= 2)) {
     return { action: 'reject', reason: 'low_confidence', waitMs: 0, confidence: 0.2, completeness }
   }
 
@@ -138,7 +153,7 @@ export function assessQuestionBoundary({
     action: 'commit',
     reason: hasQ ? 'terminal_question' : (shortFollowUp ? 'short_follow_up' : 'semantic_complete'),
     waitMs: 0,
-    confidence: completeness === 'complete' ? 0.92 : 0.75,
+    confidence: Math.min(0.99, (completeness === 'complete' ? 0.92 : 0.75) + (systemTurn1 ? 0.25 : 0)),
     completeness,
   }
 }
@@ -204,6 +219,7 @@ export function createQuestionCaptureController(opts = {}) {
     onRefinement = () => {},
     getHadPriorQuestion = () => false,
     getLastCommittedText = () => '',
+    getAudioSource = () => null,
   } = opts
 
   let stabilizeTimer = null
@@ -330,6 +346,7 @@ export function createQuestionCaptureController(opts = {}) {
       speakerRole: lane.speaker,
       hadPriorQuestion: getHadPriorQuestion(),
       laneAgeMs: now() - lane.startedAt,
+      source: getAudioSource(),
     })
 
     debug('BOUNDARY', { ...assessment, text: lane.text, speaker: lane.speaker, silenceMs })
@@ -420,6 +437,7 @@ export function createQuestionCaptureController(opts = {}) {
         speakerRole: result.flushed.speaker,
         hadPriorQuestion: getHadPriorQuestion(),
         laneAgeMs: STABILIZE_MS.maxAccumulate,
+        source: getAudioSource(),
       })
       if (flushedAssessment.action === 'commit' || flushedAssessment.completeness !== 'incomplete') {
         // Restore candidate to flushed text and commit

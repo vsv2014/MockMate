@@ -40,3 +40,21 @@ jobs:
           grep -Fxq '/server-entry.cjs' /tmp/mockmate-asar.txt
           grep -Fxq '/backend/server-entry.cjs' /tmp/mockmate-asar.txt
           grep -Fxq '/api/_lib/core.js' /tmp/mockmate-asar.txt
+
+  # Blast-radius review fix: this PR's largest user-facing changes are Windows
+  # behavior; run the full unit suite on windows-latest for every PR so
+  # platform-dependent code paths at least execute on Windows. (Full Windows
+  # packaging remains in the release workflow; the packaged-Windows manual smoke
+  # stays the pre-tag gate.)
+  windows-tests:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm --prefix backend ci
+      - run: npm test
+      - run: npm run smoke:api
