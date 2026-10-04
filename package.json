@@ -23,6 +23,7 @@
     "verify": "node scripts/doctor.mjs && vite build && vitest run",
     "verify:platform": "node scripts/verify-platform-versions.mjs",
     "verify:vite-output": "node scripts/verify-vite-output.mjs",
+    "verify:react19": "node scripts/verify-react19.mjs",
     "vite": "vite",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -121,8 +122,8 @@
     "mongoose": "^8.9.0",
     "openai": "^6.25.0",
     "pdfjs-dist": "^4.10.38",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "stripe": "^17.5.0"
   },
   "devDependencies": {
