@@ -64,28 +64,3 @@
     initials: initials, planLabel: planLabel, greeting: greeting,
   };
 })(window);
-
-// Keep public/landing.html as the canonical, established landing surface. Landing-only
-// enhancements are loaded in order so the Arena handoff can extend the old page without
-// replacing auth/theme/download contracts or the native media controls.
-(function () {
-  try {
-    if (!/\/landing(?:\.html)?$/i.test(window.location.pathname)) return;
-    if (document.querySelector('script[data-mm-landing-enhance]')) return;
-
-    function add(src, attr, onload) {
-      if (document.querySelector('script[' + attr + ']')) { if (onload) onload(); return; }
-      var s = document.createElement('script');
-      s.src = src;
-      s.setAttribute(attr, '1');
-      if (onload) s.onload = onload;
-      document.head.appendChild(s);
-    }
-
-    add('/landing-enhance.js', 'data-mm-landing-enhance', function () {
-      add('/landing-arena.js', 'data-mm-landing-arena', function () {
-        add('/landing-guardrails.js', 'data-mm-landing-guardrails');
-      });
-    });
-  } catch (e) {}
-})();
