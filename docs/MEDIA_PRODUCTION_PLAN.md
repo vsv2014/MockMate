@@ -2,27 +2,34 @@
 
 This document defines the repeatable production path for MockMate landing and campaign media.
 
+## Single source of truth
+
+`public/media/` is the canonical source-controlled media tree for both the landing page and promo rendering. Do not keep binary/media copies under `marketing/`.
+
+Canonical assets:
+
+- `public/media/card-solo-practice.png`
+- `public/media/card-live-mode.png`
+- `public/media/mockmate-promotional-video.mp4`
+- `public/media/mockmate-voiceover.mp3`
+- `public/media/mockmate-video-captions.srt`
+- `public/media/mockmate-video-transcript.txt`
+- `public/media/live-voiceover.txt`
+- `public/media/live-captions.srt`
+
+`marketing/` is for campaign copy and publishing notes only. Generated renders and bundles go under `artifacts/marketing/` and are not committed.
+
+The closed Arena session's original Live brand-voice MP3 did not survive the handoff. Do not substitute the Solo MP3 under a Live filename. Live rendering synthesizes deterministic narration from `public/media/live-voiceover.txt`; its captions are distinct and match the Live script. A future brand-voice recording may replace that generated narration after audio/caption QA.
+
 ## Goals
 
+- Keep one source-controlled copy of each media asset wherever possible.
 - Keep landing media reproducible from repository assets.
 - Use truthful product language: no undetectable/guaranteed capture claims.
 - Keep Win/macOS share-preview verification and Linux content-protection limitations visible.
 - Label campaign visuals as illustrative when they are not literal application screenshots.
 - Prefer native browser video controls for accessible playback.
 - Keep landing copy and SEO metadata static in `public/landing.html`; do not rely on client-side copy replacement for public claims.
-
-## Batch 1 assets
-
-- `marketing/card-solo-practice.png`
-- `marketing/card-live-mode.png`
-- `marketing/voiceover-solo.mp3`
-- `marketing/voiceover-live.txt`
-- `marketing/captions-solo.srt`
-- `marketing/captions-live.srt`
-
-The closed Arena session's original Live brand-voice MP3 did not survive the handoff. Do not substitute the Solo MP3 under a Live filename. Live rendering therefore synthesizes a deterministic narration from `voiceover-live.txt`; its captions are distinct and match the Live script. A future brand-voice recording may replace that generated narration after audio/caption QA.
-
-Landing-serving copies live under `public/media/`; landing HTML must reference `/media/...`, never repository-only `marketing/` paths or raw-GitHub hotlinks.
 
 ## Render pipeline
 
@@ -33,9 +40,9 @@ bash scripts/render-promo-video.sh solo
 bash scripts/render-promo-video.sh live
 ```
 
-The script uses ffmpeg to combine a campaign card, narration, and captions with a restrained Ken Burns treatment. Solo uses the committed voice MP3. Live synthesizes its distinct narration from the committed text source before rendering. Output is written under `marketing/rendered/` and is not required for local application builds.
+The renderer consumes only `public/media/` inputs. Solo uses the committed narration MP3 and captions. Live synthesizes its distinct narration from the committed text source before rendering. Generated videos are written to `artifacts/marketing/`.
 
-The manual `.github/workflows/render-promo.yml` workflow verifies the runner's ffmpeg and installs `espeak` only when a Live render needs it.
+The manual `.github/workflows/render-promo.yml` workflow verifies ffmpeg and installs `espeak` only when a Live render needs it.
 
 ## Landing usage
 
