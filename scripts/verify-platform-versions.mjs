@@ -8,7 +8,7 @@ const lock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'u
 
 const expected = {
   electron: '44.5.1',
-  'electron-builder': '26.5.0',
+  'electron-builder': '26.15.3',
   'electron-updater': '6.8.10',
 }
 
