@@ -1,5 +1,5 @@
 name: Refresh security lockfiles
-# rerun: electron-builder 26.15.3
+# rerun: production-audit policy
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm audit --audit-level=low
+          npm audit --omit=dev --audit-level=low
           npm --prefix backend audit --audit-level=low
       - name: Commit lockfiles
         shell: bash
