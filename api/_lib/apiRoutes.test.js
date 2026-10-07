@@ -9,7 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 function registeredRoutes(app) {
   const out = []
-  for (const layer of app._router?.stack || []) {
+  for (const layer of app.router?.stack || app._router?.stack || []) {
     if (!layer.route) continue
     const methods = Object.keys(layer.route.methods).filter(m => layer.route.methods[m])
     for (const method of methods) out.push({ method: method.toUpperCase(), path: layer.route.path })

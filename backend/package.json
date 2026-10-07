@@ -15,7 +15,7 @@
     "bcryptjs": "3.0.3",
     "cors": "^2.8.5",
     "dotenv": "18.0.5",
-    "express": "^4.22.3",
+    "express": "5.2.1",
     "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.2",
     "mammoth": "^1.13.0",

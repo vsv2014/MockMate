@@ -75,6 +75,7 @@ jobs:
       - run: npm run verify:vitest5
       - run: npm run verify:dev-tooling
       - run: npm run verify:auth-config
+      - run: npm run verify:express5
       - run: npm ci
       - run: npm --prefix backend ci
       - name: Require zero production dependency advisories before publication
