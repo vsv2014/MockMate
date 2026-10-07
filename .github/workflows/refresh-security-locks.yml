@@ -1,5 +1,5 @@
 name: Refresh security lockfiles
-# rerun: production-audit policy
+# rerun: patched Mammoth CLI parser
 
 on:
   push:
