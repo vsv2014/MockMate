@@ -37,7 +37,8 @@
     "mobile:verify": "npm --prefix mobile run typecheck && npm --prefix mobile test",
     "verify:vitest5": "node scripts/verify-vitest5.mjs",
     "verify:dev-tooling": "node scripts/verify-dev-tooling.mjs",
-    "verify:auth-config": "node scripts/verify-auth-config-majors.mjs"
+    "verify:auth-config": "node scripts/verify-auth-config-majors.mjs",
+    "verify:express5": "node scripts/verify-express5.mjs"
   },
   "build": {
     "appId": "com.mockmate.app",
@@ -163,7 +164,7 @@
     "cors": "^2.8.5",
     "dotenv": "18.0.5",
     "electron-updater": "6.8.10",
-    "express": "^4.22.3",
+    "express": "5.2.1",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
