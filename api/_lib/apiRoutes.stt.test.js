@@ -96,3 +96,43 @@ describe('/api/deepgram-token STT lease enforcement (round-5/6)', () => {
     expect(releases).toEqual([])
   })
 })
+
+describe('/api/deepgram-token managed gateway identity and spend boundaries', () => {
+  it('mints a short-lived server-only gateway ticket, never a Deepgram grant', async () => {
+    const guard = vi.fn((_req, _res, next) => next())
+    const issuer = vi.fn(req => {
+      expect(req.userId).toBe('u1')
+      return { gateway: true, gateway_ticket: 'one-use', expires_in: 30 }
+    })
+    const app = buildApp({
+      authLight: [(req, _res, next) => { req.userId = 'u1'; next() }],
+      sttGuard: [guard],
+      issueManagedSttTicket: issuer,
+    })
+    await withServer(app, async base => {
+      const r = await fetch(base + '/api/deepgram-token', { method: 'POST' })
+      expect(r.status).toBe(200)
+      expect(await r.json()).toEqual({ gateway: true, gateway_ticket: 'one-use', expires_in: 30 })
+    })
+    expect(guard).not.toHaveBeenCalled()
+    expect(deepgramTokenMock).not.toHaveBeenCalled()
+    expect(issuer).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails closed on a hosted deployment missing its gateway', async () => {
+    const prev = process.env.MOCKMATE_HOSTED
+    process.env.MOCKMATE_HOSTED = '1'
+    try {
+      const app = buildApp({ authLight: [(_req, _res, next) => next()] })
+      await withServer(app, async base => {
+        const r = await fetch(base + '/api/deepgram-token', { method: 'POST' })
+        expect(r.status).toBe(503)
+        expect((await r.json()).code).toBe('managed_stt_gateway_required')
+      })
+      expect(deepgramTokenMock).not.toHaveBeenCalled()
+    } finally {
+      if (prev === undefined) delete process.env.MOCKMATE_HOSTED
+      else process.env.MOCKMATE_HOSTED = prev
+    }
+  })
+})
