@@ -100,6 +100,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const userStop = useRef(false)
   const connectGen = useRef(0)
   const restartGen = useRef(0)
+  const acquiringGen = useRef(null)
   const activeSocketRef = useRef(null)
   const connecting = useRef(false)
   const suspendPaused = useRef(false)
@@ -415,6 +416,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const start = useCallback(async (sourceId = 'microphone', opts = {}) => {
     if (ws.current || stream.current) return
     const startGen = connectGen.current
+    if (acquiringGen.current === startGen) return // one capture request per generation
+    acquiringGen.current = startGen
     userStop.current = false
     suspendPaused.current = false
     reconnectAttempts.current = 0
@@ -450,6 +453,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       await connectSocket()
     } catch (e) {
       if (!userStop.current && !suspendPaused.current && startGen === connectGen.current) fail(e.message)
+    } finally {
+      if (acquiringGen.current === startGen) acquiringGen.current = null
     }
   }, [buildAudioGraph, connectSocket, fail, teardown])
 
