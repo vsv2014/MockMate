@@ -218,6 +218,7 @@ export function makeManagedSttGateway({
     let audioSent = 0
     let pendingBytes = 0
     let pending = []
+    let pendingFinalize = false
     let leaseTimer = null
     let connectTimer = null
 
@@ -247,6 +248,7 @@ export function makeManagedSttGateway({
       if (count <= 1) activePerUser.delete(userId)
       else activePerUser.set(userId, count - 1)
       pending = []
+      pendingFinalize = false
       pendingBytes = 0
       try { provider?.close() } catch {}
       if (reserved && !settled) {
@@ -296,6 +298,12 @@ export function makeManagedSttGateway({
         return close(1008, 'Unsupported audio control')
       }
       if (parsed.type === 'CloseStream') return close(1000)
+      if (!providerReady) {
+        // A first-turn Finalize can arrive before Deepgram's upstream socket
+        // connects. Replay it after buffered PCM instead of losing the turn.
+        if (parsed.type === 'Finalize') pendingFinalize = true
+        return
+      }
       if (providerReady && provider.bufferedAmount < MAX_BACKPRESSURE) {
         try { provider.send(JSON.stringify({ type: parsed.type })) } catch { close(1011) }
       }
@@ -343,6 +351,11 @@ export function makeManagedSttGateway({
           }
           pending = []
           pendingBytes = 0
+          if (pendingFinalize) {
+            pendingFinalize = false
+            try { upstream.send(JSON.stringify({ type: 'Finalize' })) }
+            catch { close(1011, 'STT provider disconnected') }
+          }
         })
         upstream.addEventListener('message', ev => {
           if (closed) return
