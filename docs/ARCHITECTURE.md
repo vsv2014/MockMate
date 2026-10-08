@@ -38,7 +38,11 @@ Turn-1 system-audio handling, duplicate suppression, corrections, answer-now beh
 
 ### STT quota model
 
-Managed streaming grants reserve STT quota atomically **before** minting a Deepgram grant. Failed grant minting releases the reservation.
+Managed Live STT uses an **authenticated WebSocket gateway hosted by the Express backend**, never a browser-reusable Deepgram project key or an unbounded JWT grant. The authenticated /api/deepgram-token response issues a random, 30-second, single-use ticket. The client supplies it as the second WebSocket subprotocol on wss://<host>/api/stt-stream. The backend accepts only a fixed Deepgram host, validates model/PCM parameters, atomically reserves up to 300 seconds of a user's allowance, and enforces **both** 300 seconds wall time and 9.6 MiB of 16 kHz/16-bit mono PCM per connection. The upstream Deepgram socket is owned by the backend, so a client's expired provider credential cannot bypass the budget. Every reconnect requires a fresh ticket and capped reservation. Error 4008 indicates exhausted quota; 4009 is normal segment rollover/reconnect.
+
+The gateway refunds unused reserved time using observed server-side PCM and connected duration. It is conservative rather than claiming exact Deepgram provider invoice reconciliation. Backend process crashes may leave an outstanding reservation; before fully launching managed billing, add durable lease-recovery accounting and validate against provider usage reports. Multi-instance deployments must provide sticky routing or a shared one-time ticket registry: the in-memory ticket registry is process-local. The deployment must support WebSocket upgrades and reverse-proxy wss:// with correct Origin forwarding. Deploy the managed backend and renderer **together** for this protocol change; earlier renderer versions expect direct grants.
+
+The local BYOK path still connects directly to Deepgram using the user's local credentials and consumes no MockMate-managed STT allowance.
 
 Managed upload transcription parses supported audio duration server-side, reserves quota before Deepgram processing, then settles/reconciles the reservation against provider duration. Client-supplied duration is not trusted for billing.
 
