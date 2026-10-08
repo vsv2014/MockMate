@@ -211,6 +211,7 @@ export function makeManagedSttGateway({
     let reserved = false
     let settled = false
     let period = null
+    let reservedSeconds = maxSeconds
     let provider = null
     let providerReady = false
     let connectedAt = null
@@ -254,8 +255,8 @@ export function makeManagedSttGateway({
       if (reserved && !settled) {
         settled = true
         const elapsed = connectedAt == null ? 0 : Math.max(0, (now() - connectedAt) / 1000)
-        const seconds = Math.min(maxSeconds, Math.ceil(Math.max(elapsed, audioSent / STT_PCM_BYTES_PER_SECOND)))
-        const refund = maxSeconds - seconds
+        const seconds = Math.min(reservedSeconds, Math.ceil(Math.max(elapsed, audioSent / STT_PCM_BYTES_PER_SECOND)))
+        const refund = reservedSeconds - seconds
         if (refund > 0) {
           Promise.resolve().then(() => getStore().releaseSttUsage(userId, period, refund))
             .catch(err => console.error('[stt-gateway] usage settlement failed:', err?.message))
@@ -269,7 +270,7 @@ export function makeManagedSttGateway({
       // discarding the interviewer's first words.
       if (closed) return
       audioBytes += bytes.length
-      if (audioBytes > maxSeconds * STT_PCM_BYTES_PER_SECOND) {
+      if (audioBytes > reservedSeconds * STT_PCM_BYTES_PER_SECOND) {
         return close(4009, 'STT segment elapsed: reconnect to continue')
       }
       if (!reserved || !providerReady) {
@@ -327,16 +328,26 @@ export function makeManagedSttGateway({
         const limit = getLimit(getPlan(identity)).sttSeconds
         period = getPeriod()
         reserved = Boolean(await getStore().reserveSttUsage(userId, period, limit, maxSeconds))
+        if (!reserved) {
+          // Preserve remaining monthly quota even when below a full segment.
+          // The smaller retry is still an atomic, capped reservation.
+          const usage = await getStore().getUsage(userId, period)
+          const remaining = Math.max(0, Math.floor(limit - Number(usage?.sttSeconds || 0)))
+          if (remaining > 0 && remaining < maxSeconds) {
+            reserved = Boolean(await getStore().reserveSttUsage(userId, period, limit, remaining))
+            if (reserved) reservedSeconds = remaining
+          }
+        }
         if (!reserved) return close(4008, 'STT allowance exhausted')
         if (closed) {
           // A disconnect may race with the database reservation. A completed
           // reservation must be refunded even when cleanup ran earlier.
           settled = true
-          await getStore().releaseSttUsage(userId, period, maxSeconds)
+          await getStore().releaseSttUsage(userId, period, reservedSeconds)
           return
         }
         connectedAt = now()
-        leaseTimer = setTimeout(() => close(4009, 'STT segment elapsed: reconnect to continue'), maxSeconds * 1000)
+        leaseTimer = setTimeout(() => close(4009, 'STT segment elapsed: reconnect to continue'), reservedSeconds * 1000)
         const upstream = connectProvider(upstreamUrl, getProviderKey())
         provider = upstream
         connectTimer = setTimeout(() => close(1013, 'STT provider connection timeout'), 15_000)
