@@ -5,7 +5,7 @@
 // This script only connects to the temporary loopback DevTools endpoint that
 // windows-packaged-smoke.ps1 enables for the CI validation process.
 const debuggerUrl = process.env.MOCKMATE_SMOKE_CDP_URL || 'http://127.0.0.1:9228'
-const rendererOrigin = 'http://127.0.0.1:3002'
+const rendererOrigins = new Set(['http://localhost:3002', 'http://127.0.0.1:3002'])
 const deadline = Date.now() + 30_000
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -16,7 +16,7 @@ async function getRendererTarget() {
   const targets = await res.json()
   return targets.find(t => (
     t.type === 'page' && typeof t.webSocketDebuggerUrl === 'string'
-    && (t.url === rendererOrigin + '/' || t.url === rendererOrigin)
+    && rendererOrigins.has((() => { try { return new URL(t.url).origin } catch { return '' } })())
   ))
 }
 
@@ -64,7 +64,7 @@ let mostRecent = 'renderer not discovered'
 while (Date.now() < deadline) {
   try {
     const target = await getRendererTarget()
-    if (!target) throw new Error('No main app renderer target at ' + rendererOrigin)
+    if (!target) throw new Error('No main app renderer target at ' + [...rendererOrigins].join(' or '))
     const state = await evaluate(target, `(() => {
       const root = document.getElementById('root')
       const visibleText = (root?.innerText || '').trim()
