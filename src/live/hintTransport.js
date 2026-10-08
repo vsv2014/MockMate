@@ -6,11 +6,14 @@ import { apiFetch } from '../lib/apiClient.js'
 
 export function splitSseBuffer(buf = '') {
   const events = []
-  // Preserve a trailing CR: the next network chunk may begin with LF.
+  // A trailing CR may be the first half of a CRLF split across reads.
+  // Preserve it only when it does not already complete an empty SSE line.
+  // A complete CR-only frame (...\\r\\r) must dispatch immediately.
   const source = String(buf)
-  const trailingCR = source.endsWith('\r')
   let rest = source.replace(/\r\n|\r|\n/g, '\n')
-  if (trailingCR) rest = rest.slice(0, -1)
+  if (source.endsWith('\r') && !rest.endsWith('\n\n')) {
+    rest = rest.slice(0, -1) + '\r'
+  }
   let nn
   while ((nn = rest.indexOf('\n\n')) !== -1) {
     const raw = rest.slice(0, nn)
@@ -20,7 +23,7 @@ export function splitSseBuffer(buf = '') {
     try { data = JSON.parse(raw.match(/^data: ([\s\S]*)$/m)?.[1] ?? 'null') } catch { data = null }
     events.push({ event: ev, data, raw })
   }
-  return { events, rest: rest + (trailingCR ? '\r' : '') }
+  return { events, rest }
 }
 
 function httpError(status, data) {
