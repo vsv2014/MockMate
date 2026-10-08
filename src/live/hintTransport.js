@@ -64,12 +64,14 @@ export async function streamLiveHint({ body, signal, isCurrent = () => true, onE
   }
 
   if (!res.body) {
-    if (onFallback) await onFallback()
-    else {
-      const fb = await fetchLiveHintFallback({ body, signal, isCurrent })
-      if (fb && isCurrent()) await onEvent?.({ event: 'fallback', data: fb })
-    }
-    return { mode: 'fallback' }
+    // HTTP 200 with no readable body is a failed stream, not proof the
+    // streaming route was missing. Starting /api/hint now can issue a second
+    // paid LLM request after the first endpoint has already charged.
+    if (!isCurrent() || signal?.aborted) return { mode: 'aborted' }
+    await onEvent?.({ event: 'error', data: {
+      error: 'The answer stream returned no content. Please retry.',
+    } })
+    return { mode: 'incomplete' }
   }
 
   const reader = res.body.getReader()

@@ -90,6 +90,35 @@ describe('Live hint stream completion safety', () => {
     expect(apiFetch).toHaveBeenCalledTimes(2)
   })
 
+  it('never issues a second paid hint request on HTTP 200 with an empty stream body', async () => {
+    apiFetch.mockResolvedValue({ ok: true, status: 200, body: null })
+    const onEvent = vi.fn()
+    const onFallback = vi.fn()
+    const result = await streamLiveHint({
+      body: { question: 'How do you design a retry?' },
+      onEvent,
+      onFallback,
+    })
+    expect(result.mode).toBe('incomplete')
+    expect(onEvent).toHaveBeenCalledWith({
+      event: 'error',
+      data: { error: expect.stringContaining('no content') },
+    })
+    expect(onFallback).not.toHaveBeenCalled()
+    expect(apiFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not emit errors for a stale aborted no-body stream', async () => {
+    apiFetch.mockResolvedValue({ ok: true, status: 200, body: null })
+    const ac = new AbortController()
+    ac.abort()
+    const onEvent = vi.fn()
+    const result = await streamLiveHint({ body: {}, signal: ac.signal, onEvent })
+    expect(result.mode).toBe('aborted')
+    expect(onEvent).not.toHaveBeenCalled()
+    expect(apiFetch).toHaveBeenCalledTimes(1)
+  })
+
   it('handles split CRLF and CR-only empty line delimiters', () => {
     const one = splitSseBuffer('event: token\r\ndata: "hello"\r')
     expect(one.events).toHaveLength(0)
