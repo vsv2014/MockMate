@@ -99,6 +99,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const keepAlive = useRef(null), reconnectTimer = useRef(null), reconnectAttempts = useRef(0)
   const userStop = useRef(false)
   const connectGen = useRef(0)
+  const restartGen = useRef(0)
   const activeSocketRef = useRef(null)
   const connecting = useRef(false)
   const suspendPaused = useRef(false)
@@ -170,6 +171,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   }, [abandonSocket])
 
   const stop = useCallback(() => {
+    restartGen.current += 1
     userStop.current = true
     connectGen.current += 1
     clearTimeout(reconnectTimer.current); reconnectTimer.current = null
@@ -412,6 +414,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
 
   const start = useCallback(async (sourceId = 'microphone', opts = {}) => {
     if (ws.current || stream.current) return
+    const startGen = connectGen.current
     userStop.current = false
     suspendPaused.current = false
     reconnectAttempts.current = 0
@@ -424,6 +427,12 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     speakerStats.current = new Map(); interviewerSpeaker.current = null; candidateSpeaker.current = null
     try {
       const audioStream = await getStream(sourceId)
+      // getUserMedia/getDisplayMedia may resolve after Stop, Restart or Suspend.
+      // Release that obsolete capture instead of resurrecting a stopped session.
+      if (userStop.current || suspendPaused.current || startGen !== connectGen.current) {
+        audioStream.getTracks().forEach(t => t.stop())
+        return
+      }
       if (!audioStream.getAudioTracks().length) {
         audioStream.getTracks().forEach(t => t.stop())
         const linux = (typeof navigator !== 'undefined' && /Linux/.test(navigator.userAgent))
@@ -433,18 +442,25 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       }
       stream.current = audioStream
       await buildAudioGraph(audioStream)
+      if (userStop.current || suspendPaused.current || startGen !== connectGen.current) {
+        audioStream.getTracks().forEach(t => t.stop())
+        if (stream.current === audioStream) teardown()
+        return
+      }
       await connectSocket()
     } catch (e) {
-      fail(e.message)
+      if (!userStop.current && !suspendPaused.current && startGen === connectGen.current) fail(e.message)
     }
-  }, [buildAudioGraph, connectSocket, fail])
+  }, [buildAudioGraph, connectSocket, fail, teardown])
 
   const restart = useCallback(async (sourceId = 'microphone', opts = {}) => {
+    const rev = ++restartGen.current
     userStop.current = true
     connectGen.current += 1
     clearTimeout(reconnectTimer.current); reconnectTimer.current = null
     teardown()
     await new Promise(r => setTimeout(r, 200))
+    if (rev !== restartGen.current) return
     return start(sourceId, opts)
   }, [start, teardown])
 
