@@ -9,12 +9,12 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 ## 0. Clean-room build (catches missing deps / stale node_modules)
 - [ ] `rm -rf node_modules dist release && npm install` (fresh — mirrors a new machine)
 - [ ] `npm run build` completes with no errors
-- [ ] `npm test` green (current v1.5.2 baseline: 66 suites / 478 tests)
+- [ ] `npm test` green for the exact candidate commit
 - [ ] `npm run smoke:api` green
 - [ ] `git status` shows no build artifacts tracked (dist/ ignored)
 
 ## 1. Packaged app boots (catches CSP / server-fork / dangling-import bugs)
-- [ ] `npm run electron:build:win` produces the v1.5.2 Windows installer
+- [ ] the Release workflow produces a signed Windows installer (PR CI artifacts are unsigned validation-only)
 - [ ] Install it fresh and launch — window appears, not blank
 - [ ] DevTools console: **zero red errors**, especially **no CSP `Refused to connect`** to `localhost:4000`
 - [ ] The auth/login window can be **moved, minimized, and closed** without Task Manager
@@ -35,7 +35,7 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 
 ## 3b. Live glanceable answers
 - [ ] After a streamed hint finishes: opener + ≤3 bullets visible; full answer behind Expand
-- [ ] Force stream fail (abort mid-token) → JSON fallback still shows opener/bullets/same answer shape
+- [ ] Force stream failure/abort mid-token → the partial hint is visibly incomplete with Retry; do **not** silently issue a second paid LLM call. Only 404/405/501 stream-unavailable responses may use JSON compatibility fallback
 
 ## 3c. Packaged Live dry-run evidence (First 10 #10)
 - [ ] Copy `docs/evidence/LIVE_DRY_RUN_TEMPLATE.md` → `docs/evidence/vX.Y.Z.md` for this version
@@ -47,7 +47,7 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] Speak an interviewer question → a hint **streams** (first word < ~1.5s)
 - [ ] Overlay is **invisible in a real screen share** (Zoom/Meet/Teams test) — the whole moat
 - [ ] Response-length + Coach/Answer toggles change output
-- [ ] Runs 5+ min without the socket dying; survives a brief network blip
+- [ ] Runs 5+ min without losing the interview; survives a brief network blip. Confirm Deepgram reconnects reuse the same unexpired grant rather than reserving another 300 seconds
 
 ## 5. Screenshot solve
 - [ ] Ctrl+Shift+U / F7 on a coding problem **from Live** → answer-first solution, no refusal
@@ -75,9 +75,16 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] Existing public `/api/ats-score`, `/api/referral`, `/api/resume-latex`, and `/api/tailor-resume` URLs still work through rewrites to the consolidated career function
 - [ ] Public Vercel API remains default-deny unless `MOCKMATE_ALLOW_PUBLIC_API=1` is intentionally set
 
+## 8b. Windows update signing and grant accounting
+- [ ] Public Release CI has `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` and `MOCKMATE_WINDOWS_PUBLISHER` set, with publisher matching the actual cert Subject.
+- [ ] `Get-AuthenticodeSignature` reports **Valid** on the NSIS installer and unpacked app executable; downloaded updates are publisher-verified.
+- [ ] An old **unsigned** installation's upgrade path is tested explicitly; use the manually downloaded signed installer if the old updater cannot establish trusted provenance.
+- [ ] Interruption/reconnect within one session does **not** request a new STT grant while its JWT is valid. Each new grant still reserves up to 300 seconds; do not claim precise per-second settlement.
+- [ ] Repeat an actual 10+ minute Live session with sleep/wake, device change, network flapping and diagnostics redaction on a Windows host.
+
 ## 9. Ship
-- [ ] `package.json` is `1.5.2` and CHANGELOG/release notes match the final implementation
-- [ ] Run the version-generic release workflow from current `main` with tag `v1.5.2`
+- [ ] `package.json` version matches a **new** release tag and CHANGELOG/release notes match the final implementation
+- [ ] Run the version-generic release workflow from current `main` with the matching new `vX.Y.Z` tag **only after signing secrets and Windows real-device certification are complete**
 - [ ] Post-publish: download the published Windows installer on a clean machine and repeat §1–§4
 - [ ] Keep the previous Windows version installed → Check for updates → Downloading → Ready → Restart & install; **do not uninstall** during this test
 - [ ] Settings → Diagnostics → Export logs; verify updater/provider/STT/session events exist and no key/token/transcript/prompt/screenshot content appears
