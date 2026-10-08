@@ -136,7 +136,6 @@ describe('managed streaming WebSocket policy', () => {
       expect(rig.calls.reserves[0].seconds).toBe(300)
       expect(rig.calls.provider[0].key).toBe('server-only-key')
       ws.send(new Uint8Array([0, 1, 2, 3]))
-      rig.provider.emitText(JSON.stringify({ type: 'Results', is_final: true }))
       const text = await new Promise(resolve => {
         ws.addEventListener('message', e => resolve(e.data), { once: true })
         rig.provider.emitText('{"channel":{"alternatives":[]}}')
