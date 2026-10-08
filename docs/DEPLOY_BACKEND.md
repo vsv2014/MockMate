@@ -61,7 +61,8 @@ The backend is authoritative for plan enforcement:
   `/api/deepgram-token` endpoint now returns a **30-second single-use gateway
   ticket**, consumed over `wss://<host>/api/stt-stream` as a WebSocket
   subprotocol. The backend verifies the ticket, reserves up to 300 seconds,
-  caps connection lifetime/16 kHz PCM bytes, forwards audio to Deepgram, and
+  caps connection lifetime/16 kHz PCM bytes (including final partial-length
+  grants when less than 300 seconds remain), forwards audio to Deepgram, and
   refunds unused time on socket cleanup. Each 300-second segment reconnects
   with a fresh ticket and a new capped reservation.
 - Configure the ingress/proxy to pass **WebSocket upgrades** over TLS (WSS) to
