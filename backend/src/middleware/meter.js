@@ -38,6 +38,9 @@ export async function reserveSttLease(req, res, next) {
       })
     }
     req._sttLeaseSeconds = STT_GRANT_LEASE_SECONDS
+    // Pin the usage period: a grant minted before midnight on month-end must
+    // release its own reservation, not next month's allowance.
+    req._sttLeasePeriod = period
     next()
   } catch (e) {
     console.error('[meter] reserveSttLease failed (blocking):', e.message)
