@@ -16,6 +16,7 @@ import { registerApiRoutes } from '../api/_lib/apiRoutes.js'
 import billingRoutes, { stripeWebhook } from './src/routes/billing.js'
 import { assertHostedConfig, envFlag, isPublicBind, parseCorsOrigins } from './src/hostedConfig.js'
 import { publicCapabilityStatus, reasoningPolicy } from './src/arch.js'
+import { makeManagedSttGateway } from './src/managedSttGateway.js'
 
 const MM_DATA_DIR = process.env.MOCKMATE_DATA_DIR
   || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support', 'mockmate')
@@ -67,6 +68,7 @@ function corsOriginAllowed(origin) {
   if (!hostedConfig?.hosted && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true
   return false
 }
+const managedSttGateway = makeManagedSttGateway({ originAllowed: corsOriginAllowed })
 app.use(cors({ origin(origin, cb) { corsOriginAllowed(origin) ? cb(null, true) : cb(new Error('CORS origin is not allowed')) }, credentials: true }))
 
 app.use((req, res, next) => {
@@ -115,6 +117,7 @@ registerApiRoutes(app, {
   // no unmetered grants), and released again if minting fails. /transcribe keeps
   // the read-only pre-check plus actual-duration accounting.
   sttGuard: [reserveSttLease],
+  issueManagedSttTicket: process.env.MONGO_URI ? req => managedSttGateway.issueTicket(req) : null,
   onSttRelease: req => (req._sttLeaseSeconds
     ? store().releaseSttUsage(req.userId, req._sttLeasePeriod || currentPeriod(), req._sttLeaseSeconds)
     : Promise.resolve()),
@@ -133,6 +136,7 @@ async function shutdown(signal) {
   console.log(`[backend] ${signal}: draining`)
   const force = setTimeout(() => process.exit(1), 10_000); force.unref?.()
   try {
+    managedSttGateway.closeAll()
     if (server) await new Promise(resolve => server.close(() => resolve()))
     await closeStore()
     clearTimeout(force)
@@ -165,6 +169,7 @@ initStore()
       console.log(`[backend] auth${storeMode() === 'mongo' ? '+managed AI' : ''} API on http://${HOST}:${PORT} (store: ${storeMode()})`)
       process.send?.({ type: 'ready', port: PORT })
     })
+    server.on('upgrade', (req, socket, head) => managedSttGateway.handleUpgrade(req, socket, head))
     server.on('error', e => {
       processReady = false
       console.error('[backend] listen failed:', e.message)
