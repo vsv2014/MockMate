@@ -1,0 +1,98 @@
+// Verify that the *packaged Electron Chromium renderer* boots the compiled
+// React/Vite app. Service readiness alone does not catch a blank UI, missing
+// renderer chunks, preload/IPC failure or a React ErrorBoundary crash.
+//
+// This script only connects to the temporary loopback DevTools endpoint that
+// windows-packaged-smoke.ps1 enables for the CI validation process.
+const debuggerUrl = process.env.MOCKMATE_SMOKE_CDP_URL || 'http://127.0.0.1:9228'
+const rendererOrigin = 'http://127.0.0.1:3002'
+const deadline = Date.now() + 30_000
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+async function getRendererTarget() {
+  const res = await fetch(debuggerUrl + '/json/list', { signal: AbortSignal.timeout(2_000) })
+  if (!res.ok) throw new Error('DevTools target discovery returned HTTP ' + res.status)
+  const targets = await res.json()
+  return targets.find(t => (
+    t.type === 'page' && typeof t.webSocketDebuggerUrl === 'string'
+    && (t.url === rendererOrigin + '/' || t.url === rendererOrigin)
+  ))
+}
+
+async function evaluate(target, expression) {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    let timer
+    let ws
+    const complete = (error, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      try { ws?.close() } catch {}
+      if (error) reject(error)
+      else resolve(value)
+    }
+    timer = setTimeout(() => complete(new Error('DevTools evaluation timed out')), 5_000)
+    try {
+      ws = new WebSocket(target.webSocketDebuggerUrl)
+      ws.addEventListener('error', () => complete(new Error('Cannot connect to packaged Electron renderer DevTools')))
+      ws.addEventListener('open', () => {
+        ws.send(JSON.stringify({
+          id: 1,
+          method: 'Runtime.evaluate',
+          params: { expression, returnByValue: true, awaitPromise: true },
+        }))
+      })
+      ws.addEventListener('message', ({ data }) => {
+        let msg
+        try { msg = JSON.parse(String(data)) } catch { return }
+        if (msg.id !== 1) return
+        if (msg.error || msg.result?.exceptionDetails) {
+          complete(new Error('Renderer evaluation failed: ' + JSON.stringify(msg.error || msg.result.exceptionDetails)))
+          return
+        }
+        complete(null, msg.result?.result?.value)
+      })
+    } catch (e) {
+      complete(e)
+    }
+  })
+}
+
+let mostRecent = 'renderer not discovered'
+while (Date.now() < deadline) {
+  try {
+    const target = await getRendererTarget()
+    if (!target) throw new Error('No main app renderer target at ' + rendererOrigin)
+    const state = await evaluate(target, `(() => {
+      const root = document.getElementById('root')
+      const visibleText = (root?.innerText || '').trim()
+      return {
+        readyState: document.readyState,
+        reactMounted: Boolean(root && root.childElementCount > 0),
+        hasRealContent: visibleText.length >= 12,
+        hasElectronBridge: window.electronAPI?.isElectron === true,
+        hasErrorBoundary: visibleText.includes('Something broke'),
+        hasChunk: [...document.scripts].some(s => s.type === 'module' && /assets\\/.+\\.js/.test(s.src)),
+        title: document.title,
+        contentChars: visibleText.length,
+      }
+    })()`)
+    if (state?.hasErrorBoundary) throw new Error('React ErrorBoundary is showing: ' + JSON.stringify(state))
+    if (
+      state?.readyState === 'complete'
+      && state.reactMounted && state.hasRealContent
+      && state.hasElectronBridge && state.hasChunk
+    ) {
+      console.log('Packaged Electron/React renderer smoke passed:', JSON.stringify(state))
+      process.exit(0)
+    }
+    mostRecent = JSON.stringify(state)
+  } catch (e) {
+    mostRecent = e?.message || String(e)
+  }
+  await sleep(500)
+}
+console.error('Packaged Electron/React renderer smoke FAILED:', mostRecent)
+process.exit(1)
