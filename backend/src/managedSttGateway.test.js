@@ -38,7 +38,7 @@ class StubProvider extends EventTarget {
   emitText(text) { this.dispatchEvent(new MessageEvent('message', { data: text })) }
 }
 
-async function testRig({ maxSeconds = STT_LEASE_SECONDS, originAllowed = () => true, limit = 5000, reserveSucceeds = true, reserveDelayMs = 0 } = {}) {
+async function testRig({ maxSeconds = STT_LEASE_SECONDS, originAllowed = () => true, limit = 5000, reserveSucceeds = true, reserveDelayMs = 0, providerOpenDelayMs = 0 } = {}) {
   const calls = { reserves: [], refunds: [], provider: [], sends: [] }
   let balance = 0
   const fakeStore = {
@@ -67,7 +67,8 @@ async function testRig({ maxSeconds = STT_LEASE_SECONDS, originAllowed = () => t
     connectProvider: (addr, key) => {
       calls.provider.push({ addr, key })
       provider = new StubProvider()
-      queueMicrotask(() => provider.open())
+      if (providerOpenDelayMs) setTimeout(() => provider.open(), providerOpenDelayMs)
+      else queueMicrotask(() => provider.open())
       return provider
     },
   })
@@ -167,6 +168,20 @@ describe('managed streaming WebSocket policy', () => {
       await sleep(110)
       expect(rig.calls.reserves).toHaveLength(1)
       expect(rig.provider.sent.some(data => data.byteLength === 4)).toBe(true)
+      ws.close()
+    } finally { await rig.close() }
+  })
+
+  it('replays Finalize after buffered first-turn speech in correct order', async () => {
+    const rig = await testRig({ providerOpenDelayMs: 90 })
+    try {
+      const ws = await rig.open()
+      ws.send(new Uint8Array([11, 12, 13]))
+      ws.send(JSON.stringify({ type: 'Finalize' }))
+      await sleep(140)
+      expect(rig.provider.sent).toHaveLength(2)
+      expect([...rig.provider.sent[0]]).toEqual([11, 12, 13])
+      expect(JSON.parse(rig.provider.sent[1])).toEqual({ type: 'Finalize' })
       ws.close()
     } finally { await rig.close() }
   })
