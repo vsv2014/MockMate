@@ -312,7 +312,13 @@ export function makeManagedSttGateway({
         period = getPeriod()
         reserved = Boolean(await getStore().reserveSttUsage(userId, period, limit, maxSeconds))
         if (!reserved) return close(4008, 'STT allowance exhausted')
-        if (closed) return cleanup() // async reservation completed after disconnect
+        if (closed) {
+          // A disconnect may race with the database reservation. A completed
+          // reservation must be refunded even when cleanup ran earlier.
+          settled = true
+          await getStore().releaseSttUsage(userId, period, maxSeconds)
+          return
+        }
         connectedAt = now()
         leaseTimer = setTimeout(() => close(4009, 'STT segment elapsed: reconnect to continue'), maxSeconds * 1000)
         const upstream = connectProvider(upstreamUrl, getProviderKey())
