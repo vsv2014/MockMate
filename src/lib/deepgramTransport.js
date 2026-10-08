@@ -97,8 +97,24 @@ export function flushQueuedPcm({
   pcmQueueRef.current = []
   pcmQueueBytesRef.current = 0
   pcmDroppedBytesRef.current = 0
-  for (const buf of queued) {
-    try { sock.send(buf) } catch {}
+  for (let i = 0; i < queued.length; i += 1) {
+    try {
+      if (sock.readyState !== 1) throw new Error('STT socket closed during PCM flush')
+      sock.send(queued[i])
+    } catch {
+      // A reconnect may race with a buffered flush. Preserve the unsent tail
+      // instead of dropping several seconds of interview audio silently.
+      for (let j = i; j < queued.length; j += 1) {
+        pcmQueueRef.current.push(queued[j])
+        pcmQueueBytesRef.current += queued[j].byteLength
+      }
+      while (pcmQueueBytesRef.current > MAX_QUEUE_BYTES && pcmQueueRef.current.length) {
+        const old = pcmQueueRef.current.shift()
+        pcmQueueBytesRef.current -= old.byteLength
+        pcmDroppedBytesRef.current += old.byteLength
+      }
+      break
+    }
   }
 }
 
