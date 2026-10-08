@@ -29,6 +29,31 @@ describe('sessionMetrics (Phase 6)', () => {
     expect(s.type).toBe('session_end')
   })
 
+  it('never persists raw provider errors containing interview questions or secrets', () => {
+    const originalWindow = globalThis.window
+    const saved = []
+    globalThis.window = {
+      electronAPI: { appendSessionMetrics: row => { saved.push(row) } },
+    }
+    try {
+      const m = createSessionMetrics('live')
+      m.markError('API 401: Bearer sk-private-secret: Explain your employer architecture')
+      m.markError('Network dropped while asking: What is your salary?')
+      m.markError('Unrecognized error with transcript and unredacted résumé details')
+      expect(saved.filter(row => row.type === 'error').map(row => row.code))
+        .toEqual(['auth', 'network', 'unknown'])
+      const persisted = JSON.stringify(saved)
+      expect(persisted).not.toContain('sk-private-secret')
+      expect(persisted).not.toContain('employer architecture')
+      expect(persisted).not.toContain('salary')
+      expect(persisted).not.toContain('résumé')
+      m.end()
+    } finally {
+      if (originalWindow === undefined) delete globalThis.window
+      else globalThis.window = originalWindow
+    }
+  })
+
   it('counts provider failover, timeout, and cancellation lifecycle events', () => {
     const m = createSessionMetrics('live')
     m.markProviderEvent({ type: 'started', attemptIndex: 0, provider: 'gemini' })
