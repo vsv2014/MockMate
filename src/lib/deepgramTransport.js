@@ -7,7 +7,8 @@ export const KEEPALIVE_MS = 4000
 export const FATAL_CLOSE = new Set([1008, 4001, 4003, 4008])
 export const PERMANENT_TOKEN_STATUSES = new Set([401, 402, 403, 429])
 export const BYTES_PER_SEC = 16000 * 2
-export const MAX_QUEUE_BYTES = 5 * BYTES_PER_SEC
+// Cover the maximum 8s reconnect backoff plus token and handshake latency.
+export const MAX_QUEUE_BYTES = 15 * BYTES_PER_SEC
 
 export function computeReconnectDelayMs(attempt = 1) {
   const n = Math.max(1, Number(attempt) || 1)
