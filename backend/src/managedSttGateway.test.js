@@ -171,6 +171,21 @@ describe('managed streaming WebSocket policy', () => {
     } finally { await rig.close() }
   })
 
+  it('refunds a reservation completed after the interviewer has stopped', async () => {
+    const rig = await testRig({ reserveDelayMs: 75 })
+    try {
+      const ws = await rig.open()
+      ws.close()
+      await sleep(140)
+      expect(rig.calls.reserves).toHaveLength(1)
+      expect(rig.calls.refunds).toEqual([
+        { userId: 'u1', period: '2026-10', seconds: STT_LEASE_SECONDS },
+      ])
+      expect(rig.balance).toBe(0)
+      expect(rig.calls.provider).toHaveLength(0)
+    } finally { await rig.close() }
+  })
+
   it('rejects depleted quotas with fatal 4008 and never starts Deepgram', async () => {
     const rig = await testRig({ reserveSucceeds: false })
     try {
