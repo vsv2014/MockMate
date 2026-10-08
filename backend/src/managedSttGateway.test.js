@@ -74,10 +74,9 @@ async function testRig({ maxSeconds = STT_LEASE_SECONDS, originAllowed = () => t
   server.on('upgrade', (req, socket, head) => gateway.handleUpgrade(req, socket, head))
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   const addr = server.address()
-  const open = async ({ ticket, path = url, origin } = {}) => {
+  const open = async ({ ticket, path = url } = {}) => {
     const t = ticket || gateway.issueTicket({ userId: 'u1' }).gateway_ticket
-    const ws = new WebSocket('ws://127.0.0.1:' + addr.port + path, ['mockmate-stt', t], origin ? { headers: { Origin: origin } } : undefined)
-    // Node WebSocket's browser-compatible constructor has no header option.
+    const ws = new WebSocket('ws://127.0.0.1:' + addr.port + path, ['mockmate-stt', t]);
     await new Promise((resolve, reject) => {
       ws.addEventListener('open', resolve, { once: true })
       ws.addEventListener('error', reject, { once: true })
@@ -85,7 +84,7 @@ async function testRig({ maxSeconds = STT_LEASE_SECONDS, originAllowed = () => t
     return ws
   }
   return {
-    calls, gateway, open, get provider() { return provider }, get balance() { return balance },
+    calls, gateway, open, port: addr.port, get provider() { return provider }, get balance() { return balance },
     close: async () => {
       gateway.closeAll()
       await new Promise(resolve => server.close(resolve))
@@ -150,9 +149,12 @@ describe('managed streaming WebSocket policy', () => {
       expect(rig.balance).toBeLessThan(300)
       expect(rig.calls.refunds.length).toBe(1)
       // A previously consumed ticket cannot authorize a second connection.
-      const second = new WebSocket('ws://127.0.0.1:' + rig.serverPort + url, ['mockmate-stt', ticket.gateway_ticket])
-      // Node client rejects HTTP 401 before "open".
-      second.close()
+      const second = new WebSocket('ws://127.0.0.1:' + rig.port + url, ['mockmate-stt', ticket.gateway_ticket])
+      const replay = await new Promise(resolve => {
+        second.addEventListener('error', () => resolve('rejected'), { once: true })
+        second.addEventListener('open', () => resolve('opened'), { once: true })
+      })
+      expect(replay).toBe('rejected')
     } finally { await rig.close() }
   })
 
