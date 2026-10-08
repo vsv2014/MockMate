@@ -7,7 +7,7 @@ Unsigned builds trigger OS trust walls:
 | **Windows** | SmartScreen / **Smart App Control** block install or **uninstall** ("could not verify its publisher") | Authenticode-sign the NSIS setup + `MockMate.exe` + uninstaller |
 | **macOS** | Gatekeeper: "Apple could not verify MockMate is free of malware" | Developer ID sign + notarize |
 
-Do the setup once. After the secrets are in GitHub, every tagged release (`vX.Y.Z`) is signed by CI when the matching secrets exist. Missing secrets → build still succeeds, but ships **unsigned**.
+The current Windows release workflow **requires** signing credentials and a matching certificate publisher; it refuses to publish unsigned artifacts. The macOS instructions below are preparation only: the current release workflow does not build or publish macOS.
 
 ---
 
@@ -18,7 +18,7 @@ Do the setup once. After the secrets are in GitHub, every tagged release (`vX.Y.
 1. An **Authenticode code-signing certificate** as a `.pfx` / `.p12`
    - **OV** works; **EV** builds SmartScreen reputation much faster.
    - Buy from a public CA (DigiCert, Sectigo, SSL.com, etc.). Azure Key Vault / cloud HSM certs also work if you can export or use a supported signing path.
-2. The cert subject / organization name should match what you want users to see as publisher (we set `publisherName: "MockMate"` in `package.json` — update both when you have a legal entity name on the cert).
+2. Set the Actions variable `MOCKMATE_WINDOWS_PUBLISHER` to the **exact** subject from a signed Windows executable, as reported by `(Get-AuthenticodeSignature .\\MockMate.exe).SignerCertificate.Subject`. The release workflow writes this identity into update metadata.
 
 ### Step 1 — Base64-encode the `.pfx`
 
@@ -41,16 +41,16 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 | `WIN_CSC_LINK`         | Base64 of the `.pfx` / `.p12`              |
 | `WIN_CSC_KEY_PASSWORD` | Password for that PKCS#12 file             |
 
-CI (`.github/workflows/release.yml`) already passes these into `electron-builder` on the Windows job. No workflow edit needed after the secrets exist.
+Also add the repository **Actions variable** `MOCKMATE_WINDOWS_PUBLISHER` (exact certificate subject). The release workflow fails before publication if any of these three values is missing, and verifies both installer and app signatures afterward.
 
 ### Step 3 — Release
 
 ```bash
-git tag v1.4.5
-git push origin v1.4.5
+git tag vX.Y.Z  # replace with a new version equal to package.json
+ git push origin vX.Y.Z
 ```
 
-The Windows job will Authenticode-sign `MockMate-Setup-*.exe`, the app executable, and the bundled uninstaller. After that:
+The Windows job must Authenticode-sign `MockMate-Setup-*.exe` and the app executable; the workflow verifies both signatures and fails on missing/untrusted/mismatched signatures. Check the bundled uninstaller during real-machine QA. After that:
 
 - SmartScreen / Smart App Control can **verify the publisher**
 - Uninstall from **Settings → Installed apps** works without the "publisher" block
@@ -128,10 +128,9 @@ git tag v1.4.5
 git push origin v1.4.5
 ```
 
-CI will build, **sign**, and **notarize** the macOS DMG when those secrets exist.
+The current `.github/workflows/release.yml` does **not** build a macOS DMG. A separate audited macOS release workflow, signing and notarization validation must be added before publishing or promising macOS auto-updates.
 
-> **Signing is conditional.** If the platform secrets are **not** set, that platform still builds — it just ships **unsigned**.
-> (`CSC_IDENTITY_AUTO_DISCOVERY` stays `false` in CI; signing turns on only when `WIN_CSC_*` / `MAC_CSC_*` secrets are present.)
+> **Windows signing is mandatory** for public releases. A failed/missing Windows certificate blocks publication; PR CI may still produce unsigned **validation-only** installers.
 
 ### Verifying locally (optional, on a Mac)
 

@@ -12,6 +12,7 @@ import {
   flushQueuedPcm,
   createDeepgramAudioGraph,
   requestDeepgramToken,
+  clearDeepgramTokenCache,
 } from './lib/deepgramTransport'
 
 /** Solo / Duo mic transcription via Deepgram. */
@@ -26,6 +27,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
   const connectGen = useRef(0)
   const acquiringGen = useRef(null)
   const activeSocketRef = useRef(null)
+  const tokenCache = useRef(null)
   const connecting = useRef(false)
   const suspendPaused = useRef(false)
   const pcmQueue = useRef([]), pcmQueueBytes = useRef(0), pcmDroppedBytes = useRef(0)
@@ -44,6 +46,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
   const teardown = useCallback(() => {
     clearInterval(keepAlive.current); keepAlive.current = null
     clearTimeout(reconnectTimer.current); reconnectTimer.current = null
+    clearDeepgramTokenCache(tokenCache)
     abandonSocket(activeSocketRef.current || ws.current)
     activeSocketRef.current = null
     try { proc.current?.disconnect() } catch {}
@@ -113,6 +116,8 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       mode: 'microphone',
       generation: gen,
       reconnectAttempt: reconnectAttempts.current,
+      cacheRef: tokenCache,
+      isCurrent: () => !userStop.current && !suspendPaused.current && gen === connectGen.current,
     })
     if (networkError) {
       connecting.current = false
@@ -188,7 +193,10 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       clearInterval(keepAlive.current); keepAlive.current = null
       if (userStop.current || suspendPaused.current) return
       diagnostic('stt', 'socket_closed', { mode: 'microphone', generation: gen, model, code: ev?.code || 0, clean: !!ev?.wasClean }, FATAL_CLOSE.has(ev?.code) ? 'error' : 'warn')
-      if (FATAL_CLOSE.has(ev?.code)) return failOrDegrade(`Deepgram closed the stream (code ${ev.code})`)
+      if (FATAL_CLOSE.has(ev?.code)) {
+        clearDeepgramTokenCache(tokenCache)
+        return failOrDegrade(`Deepgram closed the stream (code ${ev.code})`)
+      }
       scheduleReconnect('connection dropped')
     }
   }, [abandonSocket, fail]) // eslint-disable-line react-hooks/exhaustive-deps

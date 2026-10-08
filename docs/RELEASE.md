@@ -1,92 +1,69 @@
-# Releasing MockMate
+# MockMate desktop release — signed Windows gate
 
-How a new version actually reaches users. Read this before every release — the dangerous bugs
-here are **infra/signing**, not code (tests + reviews pass while an update silently never lands).
+**No public release until the signed installer and real-device Live verification both pass.**
 
-## TL;DR — who gets auto-updates
+This document reflects the current `.github/workflows/release.yml`: it builds and
+publishes **Windows NSIS only**. A PR's unsigned Windows CI installer is for
+validation, **not** for distributing as a trusted production update.
 
-| Platform | Auto-update on existing installs? | Why |
+## Before publication
+
+1. Merge the chosen release candidate into `main` and use a new version/tag.
+   Never overwrite a tag or ship changed binaries with an existing version.
+2. Confirm Desktop CI is green on Linux and Windows: tests, API smoke, renderer
+   build, packaged Windows runtime smoke and Linux entrypoint verification.
+3. Run the real packaged-device matrix in
+   [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) and record evidence. At minimum:
+   microphone and system audio Live, several actual interview turns, network
+   disconnect/recovery, sleep/wake, device changes, end/restart, screen-share
+   preview in Zoom/Meet/Teams, and a longer soak.
+4. Confirm hosted STT grants have the intended monthly reservation policy.
+   Deepgram grant **reuse** avoids charging another 300-second reservation for
+   every reconnect while the existing grant is valid. This is *not* a precise
+   recording-duration billing system: one new grant still reserves up to 300s.
+5. Configure repository Actions secrets and variable **before** running Release:
+
+| Setting | Where | Meaning |
 |---|---|---|
-| **Windows** | ✅ Yes — background download, explicit Restart & install | NSIS + `latest.yml` + `.blockmap`; auto-update works unsigned, but **Smart App Control / SmartScreen block unsigned install+uninstall** until `WIN_CSC_*` secrets are set |
-| **Linux** | ✅ Yes (AppImage) | `latest-linux.yml` |
-| **macOS** | ❌ **No — users must manually re-download the `.dmg`** | Squirrel.Mac **refuses unsigned updates**; needs Apple Developer ID signing + notarization |
+| `WIN_CSC_LINK` | GitHub Actions secret | Base64-encoded Authenticode PFX/P12 |
+| `WIN_CSC_KEY_PASSWORD` | GitHub Actions secret | Certificate password |
+| `MOCKMATE_WINDOWS_PUBLISHER` | GitHub Actions variable | **Exact** Windows certificate `SignerCertificate.Subject` string |
+| `MOCKMATE_API_BASE` | Optional Actions variable | Hosted HTTPS managed API; unset = BYOK-only |
 
-> Do **not** tell macOS users it auto-updates until the Apple secrets below are set. The README and
-> landing page are written to reflect "Mac = manual" — keep them honest.
->
-> Do **not** tell Windows users SmartScreen/SAC is gone until `WIN_CSC_LINK` is set — see [`SIGNING.md`](../SIGNING.md).
+The release workflow fails closed if the signing configuration is absent.
+It configures the publisher embedded in the update metadata, signs the installer,
+and requires `Get-AuthenticodeSignature` to report **Valid** for both the
+NSIS installer and unpacked application executable. A signing failure prevents
+GitHub Release publication.
 
-## Release steps
+## Build and publish
 
-1. **Bump the version** in `package.json` (single source — artifact names use `${version}`).
-   - It must be **strictly greater** than what users have installed, or electron-updater won't offer it.
-   - Never re-release the same version number with new artifacts — existing installs won't update.
-2. **Pre-flight (locally):**
-   ```bash
-   npm test              # must be green
-   npm run smoke:api     # route contract smoke
-   npm run build         # renderer builds clean
-   git status            # confirm NO .env / secrets / keys are staged (.gitignore covers .env)
-   ```
-   Bump `CHANGELOG.md` + skim `docs/ROADMAP.md` / README “Done” so release notes match the tag.
-   Update `docs/evidence/VALIDATION_STATUS.md` if you completed a packaged soak (else leave NOT VERIFIED).
-3. **Merge to `main`** (PR from your branch).
-4. **Tag and push** — this triggers the release workflow (`.github/workflows/release.yml`):
-   ```bash
-   git tag v1.3.0     # tag = v + the package.json version
-   git push origin v1.3.0
-   ```
-   (Or run the workflow manually via **Actions → Release → Run workflow** and enter the tag.)
-5. If hosted Managed AI is deployed, set the repository variable `MOCKMATE_API_BASE` to its HTTPS URL.
-   If it is unset, CI safely produces a BYOK-only build. Provider and Deepgram keys are never packaged.
-   CI then builds Windows/Linux/macOS and uploads installers **and the
-   `latest*.yml` update feeds** to a public GitHub Release via softprops. Signing is
-   **optional per platform**:
-   - Windows signs when `WIN_CSC_LINK` + `WIN_CSC_KEY_PASSWORD` exist
-   - macOS signs + notarizes when `MAC_CSC_*` + `APPLE_*` exist
-   - Provider secrets are never bundled; BYOK/private mode remains available per device
+- Bump `package.json` to the version intended for the next installer; update
+  changelog and evidence. CI verifies the tag and version match.
+- Push a tag from an eligible `main` commit (or dispatch the release workflow
+  from current `main` with the same tag).
+- CI runs tests, builds, verifies signatures, performs packaged runtime smoke,
+  and uploads `MockMate-Setup-*.exe`, `latest.yml`, and `*.blockmap`.
+- Inspect the published GitHub Release assets and run a real-device smoke.
+  Check the installed app's updater **against another signed test release**
+  before promising automatic updates.
 
-## Verify after the release
+## Migration from old unsigned Windows builds
 
-- The GitHub Release exists, is **public, not a draft/prerelease**, tag `vX.Y.Z`.
-- Assets include, per platform: the installer **and** its `latest*.yml` (the update feed) +
-  Windows `.blockmap`. **No `latest.yml` ⇒ no auto-update**, even if the installer is there.
-- Sanity-check auto-update on a real Windows install: open an older version, use Settings → Check
-  for updates, confirm Checking → Downloading → Ready → Restart & install, then confirm the new
-  version. Export Settings → Diagnostics if it fails; updater events are in
-  `%APPDATA%\mockmate\logs\diagnostics.jsonl`.
+Previously published unsigned installers may have update metadata that disables
+signature verification. Installing a newly signed app does not retroactively
+secure an older binary's update path. Verify the transition on a physical
+Windows host; use a manually downloaded **signed** installer if necessary.
+Once the signed application is installed, future NSIS updates must pass
+publisher signature verification.
 
-## Enabling code signing (one-time)
+## What release CI cannot prove
 
-Full steps: [`SIGNING.md`](../SIGNING.md). CI already wires these secrets (no workflow edit needed):
+- Actual Zoom/Teams/Meet screen-share privacy behavior for each sharing mode
+- Real microphone/loopback drivers, USB/Bluetooth changes, audio interruptions,
+  and difficult-accent/noisy interviews
+- macOS notarization or Linux AppImage publication (not in this workflow)
+- Accurate per-second reconciliation of direct-to-Deepgram streaming usage
 
-### Windows (Smart App Control / SmartScreen / uninstall publisher)
-
-| Secret | What |
-|---|---|
-| `WIN_CSC_LINK` | Authenticode cert (`.pfx` / `.p12`) base64-encoded |
-| `WIN_CSC_KEY_PASSWORD` | password for that PKCS#12 |
-
-### macOS (Gatekeeper + auto-update)
-
-| Secret | What |
-|---|---|
-| `MAC_CSC_LINK` | Developer ID Application cert (`.p12`) base64-encoded |
-| `MAC_CSC_KEY_PASSWORD` | password for that `.p12` |
-| `APPLE_ID` | Apple Developer account email |
-| `APPLE_APP_SPECIFIC_PASSWORD` | app-specific password (appleid.apple.com) |
-| `APPLE_TEAM_ID` | 10-char Team ID |
-
-Requires the **Apple Developer Program ($99/yr)** for Mac. Once Mac secrets are set, the next tagged
-release produces a signed + notarized DMG/ZIP and macOS installs auto-update like Windows — then
-update the README + landing page to say macOS auto-updates.
-
-## Things that silently break updates (the checklist that matters)
-
-- ❌ Re-tagging the **same version** → no update offered.
-- ❌ `latest*.yml` missing from the Release assets → clients can't see the new version.
-- ❌ Release left as **draft** → electron-updater can't read it.
-- ❌ macOS shipped unsigned but advertised as auto-updating → Mac users stuck on old version, silently.
-- ❌ Windows shipped unsigned while promising no SmartScreen/SAC friction → uninstall/install blocked on locked-down PCs.
-- ❌ `build.publish` owner/repo not matching the actual repo → updater 404s.
-- ❌ A committed or packaged `.env` → leaks keys. `.gitignore` and the builder exclusion cover it; double-check `git status`.
+See [SIGNING.md](../SIGNING.md) for certificate setup and
+[RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for manual evidence.
