@@ -41,7 +41,7 @@ export async function streamLiveHint({ body, signal, isCurrent = () => true, onE
   const res = await apiFetch('/api/hint-stream', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify(body),
   })
-  if (!isCurrent()) return { mode: 'aborted' }
+  if (!isCurrent() || signal?.aborted) return { mode: 'aborted' }
 
   // Only fall back when the streaming transport genuinely is unavailable. Auth,
   // quota, validation, rate-limit and server errors must not cause a second LLM call.
@@ -62,6 +62,10 @@ export async function streamLiveHint({ body, signal, isCurrent = () => true, onE
 
   if (!res.body) {
     if (onFallback) await onFallback()
+    else {
+      const fb = await fetchLiveHintFallback({ body, signal, isCurrent })
+      if (fb && isCurrent()) await onEvent?.({ event: 'fallback', data: fb })
+    }
     return { mode: 'fallback' }
   }
 
@@ -70,7 +74,7 @@ export async function streamLiveHint({ body, signal, isCurrent = () => true, onE
   let sseBuf = ''
   const dispatch = async events => {
     for (const ev of events) {
-      if (!isCurrent()) { try { await reader.cancel() } catch {}; return 'aborted' }
+      if (!isCurrent() || signal?.aborted) { try { await reader.cancel() } catch {}; return 'aborted' }
       const result = await onEvent?.(ev)
       if (result === 'stop') { try { await reader.cancel() } catch {}; return 'stopped' }
     }
@@ -80,7 +84,7 @@ export async function streamLiveHint({ body, signal, isCurrent = () => true, onE
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
-    if (!isCurrent()) { try { await reader.cancel() } catch {}; return { mode: 'aborted' } }
+    if (!isCurrent() || signal?.aborted) { try { await reader.cancel() } catch {}; return { mode: 'aborted' } }
     sseBuf += decoder.decode(value, { stream: true })
     const split = splitSseBuffer(sseBuf)
     sseBuf = split.rest
@@ -96,6 +100,7 @@ export async function streamLiveHint({ body, signal, isCurrent = () => true, onE
     const terminal = await dispatch(split.events)
     if (terminal) return { mode: terminal }
   }
+  if (!isCurrent() || signal?.aborted) return { mode: 'aborted' }
   return { mode: 'stream' }
 }
 
