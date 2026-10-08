@@ -6,7 +6,7 @@ const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
 const net = require('net')
-const { fork, execSync } = require('child_process')
+const { fork } = require('child_process')
 const { DiagnosticStore } = require('./diagnostics.cjs')
 
 // Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
@@ -207,48 +207,21 @@ function portInUse(port) {
   })
 }
 
-// Free a loopback port held by an orphaned MockMate child after a hard kill.
-function freePort(port) {
-  try {
-    if (process.platform === 'win32') {
-      const out = execSync('netstat -ano', { encoding: 'utf8', windowsHide: true })
-      const pids = new Set()
-      for (const line of out.split(/\r?\n/)) {
-        if (!line.includes(`:${port}`) || !/LISTENING/i.test(line)) continue
-        const parts = line.trim().split(/\s+/)
-        const pid = parts[parts.length - 1]
-        if (/^\d+$/.test(pid) && pid !== '0') pids.add(pid)
-      }
-      for (const pid of pids) {
-        try { execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore', windowsHide: true }) } catch {}
-      }
-    } else {
-      try { execSync(`fuser -k ${port}/tcp`, { stdio: 'ignore' }) } catch {}
-      try {
-        const out = execSync(`lsof -ti tcp:${port} -sTCP:LISTEN`, { encoding: 'utf8' }).trim()
-        for (const pid of out.split(/\s+/).filter(Boolean)) {
-          try { process.kill(Number(pid), 'SIGKILL') } catch {}
-        }
-      } catch {}
-    }
-  } catch (e) {
-    console.warn('[MockMate] freePort', port, e.message)
-  }
-}
-
+// Never terminate a process merely because it owns one of MockMate's preferred ports.
+// The single-instance lock prevents duplicate MockMate desktop processes, but ports can
+// legitimately belong to unrelated developer tools or services. Fail safely and tell the
+// user which port is occupied instead of guessing ownership and killing another process.
 async function ensurePortFree(port, label) {
   if (!(await portInUse(port))) return
-  console.warn(`[MockMate] ${label} port ${port} in use — reclaiming orphan process`)
-  freePort(port)
-  await new Promise(r => setTimeout(r, 400))
-  if (await portInUse(port)) {
-    throw new Error(`${label} port ${port} is still busy after reclaim`)
-  }
+  const error = new Error(`${label} port ${port} is already in use. Close the application using that port or configure MockMate to use a different port, then reopen MockMate.`)
+  error.code = 'EADDRINUSE'
+  error.port = port
+  throw error
 }
 
 function startApiServer(onReady) {
   const serverEntry = path.join(app.getAppPath(), 'server-entry.cjs')
-  // Reclaim stale :3002 before fork (orphans after Task Manager / SIGKILL).
+  // Refuse to start if :3002 is occupied; never kill an unknown port owner.
   ensurePortFree(3002, 'API').then(() => {
   apiServer = fork(serverEntry, [], {
     env: { ...process.env, PORT: '3002', NODE_ENV: 'production' },
