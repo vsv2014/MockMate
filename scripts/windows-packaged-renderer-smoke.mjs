@@ -85,7 +85,35 @@ while (Date.now() < deadline) {
       && state.reactMounted && state.hasRealContent
       && state.hasElectronBridge && state.hasChunk
     ) {
-      console.log('Packaged Electron/React renderer smoke passed:', JSON.stringify(state))
+      // React 19 event handlers must work too, not just paint static HTML.
+      // The CI runner uses a fresh profile, so its initial auth screen is the
+      // Welcome view (or Login if a profile somehow already exists).
+      const action = await evaluate(target, `(() => {
+        if (document.getElementById('mm-email') && document.getElementById('mm-password')) {
+          return 'login-already-visible'
+        }
+        const signIn = [...document.querySelectorAll('button')]
+          .find(b => /^Sign in$/i.test((b.textContent || '').trim()))
+        if (!signIn) return 'sign-in-button-missing'
+        signIn.click()
+        return 'sign-in-clicked'
+      })()`)
+      if (action === 'sign-in-button-missing') {
+        throw new Error('Packaged auth view has no usable Sign in control')
+      }
+      if (action === 'sign-in-clicked') {
+        let loginMounted = false
+        for (let i = 0; i < 20; i += 1) {
+          const login = await evaluate(target, `Boolean(
+            document.getElementById('mm-email')
+            && document.getElementById('mm-password')
+          )`)
+          if (login) { loginMounted = true; break }
+          await sleep(250)
+        }
+        if (!loginMounted) throw new Error('React 19 button handler failed to render Login form')
+      }
+      console.log('Packaged Electron/React renderer and auth navigation smoke passed:', JSON.stringify({ ...state, authNavigation: action }))
       process.exit(0)
     }
     mostRecent = JSON.stringify(state)
