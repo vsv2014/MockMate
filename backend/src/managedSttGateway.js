@@ -158,6 +158,11 @@ export function makeManagedSttGateway({
 
   function issueTicket(req) {
     if (!req.userId) throw new Error('Authenticated identity required')
+    if (!getProviderKey()) {
+      const e = new Error('Managed transcription provider is unavailable')
+      e.status = 503
+      throw e
+    }
     for (const [ticket, record] of pendingTickets) {
       if (record.expiresAt <= now()) pendingTickets.delete(ticket)
     }
