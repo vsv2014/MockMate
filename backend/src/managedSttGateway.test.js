@@ -38,12 +38,13 @@ class StubProvider extends EventTarget {
   emitText(text) { this.dispatchEvent(new MessageEvent('message', { data: text })) }
 }
 
-async function testRig({ maxSeconds = STT_LEASE_SECONDS, originAllowed = () => true, limit = 5000, reserveSucceeds = true } = {}) {
+async function testRig({ maxSeconds = STT_LEASE_SECONDS, originAllowed = () => true, limit = 5000, reserveSucceeds = true, reserveDelayMs = 0 } = {}) {
   const calls = { reserves: [], refunds: [], provider: [], sends: [] }
   let balance = 0
   const fakeStore = {
     async findUserById(id) { return id === 'u1' ? { plan: 'free' } : null },
     async reserveSttUsage(userId, period, cap, seconds) {
+      if (reserveDelayMs) await sleep(reserveDelayMs)
       calls.reserves.push({ userId, period, cap, seconds })
       if (!reserveSucceeds || balance + seconds > cap) return false
       balance += seconds
@@ -154,6 +155,19 @@ describe('managed streaming WebSocket policy', () => {
         second.addEventListener('open', () => resolve('opened'), { once: true })
       })
       expect(replay).toBe('rejected')
+    } finally { await rig.close() }
+  })
+
+  it('buffers initial speech before the database reservation finishes', async () => {
+    const rig = await testRig({ reserveDelayMs: 70 })
+    try {
+      const ws = await rig.open()
+      ws.send(new Uint8Array([4, 5, 6, 7])) // React emits immediately on socket open
+      expect(rig.calls.reserves).toHaveLength(0)
+      await sleep(110)
+      expect(rig.calls.reserves).toHaveLength(1)
+      expect(rig.provider.sent.some(data => data.byteLength === 4)).toBe(true)
+      ws.close()
     } finally { await rig.close() }
   })
 
