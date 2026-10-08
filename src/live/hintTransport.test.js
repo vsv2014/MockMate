@@ -12,6 +12,14 @@ describe('splitSseBuffer', () => {
     expect(rest).toContain('event: token')
   })
 
+  it('preserves split CRLF boundaries across chunks', () => {
+    const first = splitSseBuffer('event: token\r\ndata: "hello"\r')
+    expect(first.events).toHaveLength(0)
+    const second = splitSseBuffer(first.rest + '\n\r\n')
+    expect(second.events).toHaveLength(1)
+    expect(second.events[0]).toMatchObject({ event: 'token', data: 'hello' })
+  })
+
   it('returns empty events when buffer has no delimiter', () => {
     const { events, rest } = splitSseBuffer('event: meta\ndata: {')
     expect(events).toHaveLength(0)
