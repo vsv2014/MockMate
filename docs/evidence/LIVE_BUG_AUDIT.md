@@ -35,6 +35,7 @@ Definitions:
 | L20 | P0 privacy | Overlay capture exclusion differs by OS/share mode | Manual blocker | Windows/macOS Zoom, Meet, Teams share-preview screenshots; Linux unsupported |
 | L21 | P1 privacy | Session metric error event could persist raw speech/secret in provider errors | PR #72 | New redaction regression in `sessionMetrics.test.js` |
 | L22 | P1 | Provider auth failure mapped to retryable WebSocket close | PR #72 | Fatal-close gateway regression |
+| L23 | P1 | Less than 300s remaining quota could be denied rather than reserving remaining seconds | PR #72 | Atomic partial-lease regression |
 
 ## Required verification before public release
 
