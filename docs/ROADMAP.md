@@ -127,6 +127,20 @@ See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
 - [ ] Aggregate cohort dashboards with student-controlled transcript sharing.
 - [ ] Separate assessment workflows from undisclosed live-assistance positioning.
 
+## Product experience and growth backlog — after release stabilization
+
+These ideas were selected from the ParakeetAI comparison supplied by the user. They are future MockMate work, not verified competitor claims or shipped capabilities. P0 release reliability and Live transcription/recovery work take precedence; no release version or delivery date is committed here.
+
+| Priority | Opportunity | Planned scope | Acceptance criteria |
+|---|---|---|---|
+| First product follow-up | Optional meeting detection | Investigate Zoom/Teams meeting-start detection and offer an explicit **Start Session** confirmation. | Opt-in and easy to disable; validate supported OS/app combinations, false positives and performance; never start capture or recording without confirmation. |
+| First product follow-up | Company-specific Solo practice | Add a curated, searchable question bank with company, role, topic and difficulty filters, feeding Solo practice. | Record provenance and curation dates; distinguish representative practice questions from verified reports; do not claim frequency data without evidence; preserve resume/JD grounding and avoid fabricated experience. |
+| Next voice improvement | Voice-first mock interviews | Build on existing Solo questions, follow-ups and evaluations with realistic spoken exchanges, interruption handling and replay of previous attempts. | Test turn-taking, interrupt/stop/resume, network loss and provider recovery; make transcripts and attempt replay available with retention/export/delete controls. Complements P2 and P3. |
+| Next learning improvement | Post-interview insights | Strengthen session history with searchable transcripts, recurring weak areas and improvement across practice attempts. | Link insights to actual transcript/attempt evidence; compare consistent rubric dimensions over time without inventing a universal readiness score; preserve privacy and export/delete controls. Complements P5. |
+| After packaged validation | Genuine product demonstrations | Create short demos of Live transcription, coding assistance and recovery after a network interruption. | Use synthetic or explicitly consented content; show actual tested behavior and platform limits; exclude unsupported invisibility, accuracy or outcome claims. |
+
+Start future product implementation with meeting detection and company-specific Solo practice once stabilization gates are satisfied. Reliability, accurate personalized guidance and transparent privacy controls remain the product priorities.
+
 ## Non-negotiable product boundaries
 
 - Never claim universal invisibility or Linux Stealth.
