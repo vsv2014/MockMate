@@ -262,12 +262,15 @@ export function makeManagedSttGateway({
     }
 
     function sendAudio(bytes) {
-      if (closed || !reserved) return
+      // The WebSocket handshake can finish before the DB reservation and
+      // upstream Deepgram handshake. Queue this first audio instead of silently
+      // discarding the interviewer's first words.
+      if (closed) return
       audioBytes += bytes.length
       if (audioBytes > maxSeconds * STT_PCM_BYTES_PER_SECOND) {
         return close(4009, 'STT segment elapsed: reconnect to continue')
       }
-      if (!providerReady) {
+      if (!reserved || !providerReady) {
         pending.push(bytes)
         pendingBytes += bytes.length
         if (pendingBytes > MAX_PENDING_AUDIO) return close(1013, 'Audio provider starting too slowly')
