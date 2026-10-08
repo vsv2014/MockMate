@@ -9,6 +9,19 @@ import {
 } from './deepgramTransport'
 
 describe('deepgramTransport shared helpers', () => {
+  it('queues a PCM frame if WebSocket send throws during close', () => {
+    const frame = new Uint8Array([1, 2]).buffer
+    const refs = {
+      wsRef: { current: { readyState: 1, send: () => { throw new Error('closed') } } },
+      pcmQueueRef: { current: [] },
+      pcmQueueBytesRef: { current: 0 },
+      pcmDroppedBytesRef: { current: 0 },
+    }
+    expect(() => enqueueOrSendPcm(frame, refs)).not.toThrow()
+    expect(refs.pcmQueueRef.current).toEqual([frame])
+    expect(refs.pcmQueueBytesRef.current).toBe(2)
+  })
+
   it('computes exponential reconnect backoff capped at 8000ms', () => {
     expect(computeReconnectDelayMs(1)).toBe(500)
     expect(computeReconnectDelayMs(2)).toBe(1000)
