@@ -1310,6 +1310,22 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
               setHint(h => h ? { ...h, incomplete: true } : { confidence: 'general', incomplete: true })
               gen.fail('sse_error')
             }
+          } else if (isCurrent()) {
+            // The stream failed before producing a token: expose a retryable
+            // error instead of leaving the loading spinner on indefinitely.
+            clearTimers()
+            hintInFlight.current = false
+            hintIncompleteRef.current = true
+            setHintLoading(false); setStreaming(false); setBuyTimePhrase('')
+            const message = data?.error || 'The answer stream ended before a response arrived.'
+            metricsRef.current?.markError?.(message)
+            setError(message)
+            gen.fail('sse_error')
+            state.markQuestionFailed?.(questionId, message)
+            upsert({
+              answer: 'Answer unavailable — tap Retry',
+              hint: { confidence: 'general', fullAnswer: '', incomplete: true, failed: true },
+            })
           }
           return 'stop'
         }
@@ -1319,7 +1335,9 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       const mode = await controller.generateViaTransport()
 
       if (!isCurrent()) return
-      if (mode === 'aborted' || mode === 'fallback' || mode === 'stopped') return
+      // streamLiveHint returns a result object, not a string. Never finalize a
+      // skipped, aborted or failed generation (or trigger a duplicate fallback).
+      if (['aborted', 'fallback', 'stopped', 'incomplete'].includes(mode?.mode)) return
       if (incomplete || hintIncompleteRef.current) {
         hintInFlight.current = false
         if (isCurrent()) {
