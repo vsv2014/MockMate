@@ -226,6 +226,22 @@ describe('managed streaming WebSocket policy', () => {
     } finally { await rig.close() }
   })
 
+  it('propagates fatal upstream auth rejection instead of endlessly retrying', async () => {
+    const rig = await testRig()
+    try {
+      const ws = await rig.open()
+      await sleep(25)
+      const closed = new Promise(resolve => ws.addEventListener('close', ev => resolve(ev.code), { once: true }))
+      const event = new Event('close')
+      Object.defineProperty(event, 'code', { value: 4003 })
+      rig.provider.dispatchEvent(event)
+      expect(await closed).toBe(4003)
+      expect(rig.calls.reserves).toHaveLength(1)
+      await sleep(10)
+      expect(rig.calls.refunds).toHaveLength(1)
+    } finally { await rig.close() }
+  })
+
   it('caps simultaneous streams to protect provider spend', async () => {
     const rig = await testRig()
     try {
