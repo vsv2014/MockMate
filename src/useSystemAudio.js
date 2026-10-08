@@ -253,6 +253,11 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
 
     sock.onopen = () => {
       if (!owns()) { abandonSocket(sock); return }
+      // Deepgram speaker IDs are scoped to a socket, not a full interview.
+      speakerStats.current = new Map()
+      interviewerSpeaker.current = null
+      candidateSpeaker.current = null
+      setDiarizationLocked(false)
       connecting.current = false
       everConnected.current = true
       // A successful handshake is not proof of a stable connection.
