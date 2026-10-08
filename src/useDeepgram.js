@@ -24,6 +24,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
   const keepAlive = useRef(null), reconnectTimer = useRef(null), reconnectAttempts = useRef(0)
   const userStop = useRef(false)
   const connectGen = useRef(0)
+  const acquiringGen = useRef(null)
   const activeSocketRef = useRef(null)
   const connecting = useRef(false)
   const suspendPaused = useRef(false)
@@ -217,6 +218,9 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       return
     }
     if (ws.current || stream.current) return
+    const startGen = connectGen.current
+    if (acquiringGen.current === startGen) return // prevent duplicate permission prompts
+    acquiringGen.current = startGen
     userStop.current = false
     suspendPaused.current = false
     reconnectAttempts.current = 0
@@ -224,10 +228,23 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
     degradedAudio.current = false
     try {
       const mic = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } })
+      if (userStop.current || suspendPaused.current || startGen !== connectGen.current) {
+        mic.getTracks().forEach(t => t.stop())
+        return
+      }
       stream.current = mic
       await buildAudioGraph(mic)
+      if (userStop.current || suspendPaused.current || startGen !== connectGen.current) {
+        mic.getTracks().forEach(t => t.stop())
+        if (stream.current === mic) teardown()
+        return
+      }
       await connectSocket()
-    } catch (e) { fail(e.message) }
+    } catch (e) {
+      if (!userStop.current && !suspendPaused.current && startGen === connectGen.current) fail(e.message)
+    } finally {
+      if (acquiringGen.current === startGen) acquiringGen.current = null
+    }
   }, [buildAudioGraph, connectSocket, fail, teardown])
 
   useEffect(() => {
@@ -260,6 +277,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       const liveTrack = stream.current?.getAudioTracks?.().some(t => t.readyState === 'live')
       if (liveTrack) return afterWake()
       diagnostic('stt', 'audio_device_reacquire', { mode: 'microphone' }, 'warn')
+      connectGen.current += 1
       teardown()
       userStop.current = false
       try { await start() } catch (e) { onFailRef.current?.(e?.message || 'Microphone recovery failed') }

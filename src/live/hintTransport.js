@@ -6,8 +6,14 @@ import { apiFetch } from '../lib/apiClient.js'
 
 export function splitSseBuffer(buf = '') {
   const events = []
-  // Normalize CRLF and lone CR so valid SSE frames are parsed on every platform.
-  let rest = String(buf).replace(/\r\n?/g, '\n')
+  // A trailing CR may be the first half of a CRLF split across reads.
+  // Preserve it only when it does not already complete an empty SSE line.
+  // A complete CR-only frame (...\\r\\r) must dispatch immediately.
+  const source = String(buf)
+  let rest = source.replace(/\r\n|\r|\n/g, '\n')
+  if (source.endsWith('\r') && !rest.endsWith('\n\n')) {
+    rest = rest.slice(0, -1) + '\r'
+  }
   let nn
   while ((nn = rest.indexOf('\n\n')) !== -1) {
     const raw = rest.slice(0, nn)
@@ -38,7 +44,7 @@ export async function streamLiveHint({ body, signal, isCurrent = () => true, onE
   const res = await apiFetch('/api/hint-stream', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify(body),
   })
-  if (!isCurrent()) return { mode: 'aborted' }
+  if (!isCurrent() || signal?.aborted) return { mode: 'aborted' }
 
   // Only fall back when the streaming transport genuinely is unavailable. Auth,
   // quota, validation, rate-limit and server errors must not cause a second LLM call.
@@ -59,15 +65,21 @@ export async function streamLiveHint({ body, signal, isCurrent = () => true, onE
 
   if (!res.body) {
     if (onFallback) await onFallback()
+    else {
+      const fb = await fetchLiveHintFallback({ body, signal, isCurrent })
+      if (fb && isCurrent()) await onEvent?.({ event: 'fallback', data: fb })
+    }
     return { mode: 'fallback' }
   }
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let sseBuf = ''
+  let sawTerminalEvent = false
   const dispatch = async events => {
     for (const ev of events) {
-      if (!isCurrent()) { try { await reader.cancel() } catch {}; return 'aborted' }
+      if (['done', 'skip', 'error'].includes(ev.event)) sawTerminalEvent = true
+      if (!isCurrent() || signal?.aborted) { try { await reader.cancel() } catch {}; return 'aborted' }
       const result = await onEvent?.(ev)
       if (result === 'stop') { try { await reader.cancel() } catch {}; return 'stopped' }
     }
@@ -77,7 +89,7 @@ export async function streamLiveHint({ body, signal, isCurrent = () => true, onE
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
-    if (!isCurrent()) { try { await reader.cancel() } catch {}; return { mode: 'aborted' } }
+    if (!isCurrent() || signal?.aborted) { try { await reader.cancel() } catch {}; return { mode: 'aborted' } }
     sseBuf += decoder.decode(value, { stream: true })
     const split = splitSseBuffer(sseBuf)
     sseBuf = split.rest
@@ -92,6 +104,16 @@ export async function streamLiveHint({ body, signal, isCurrent = () => true, onE
     const split = splitSseBuffer(`${sseBuf}\n\n`)
     const terminal = await dispatch(split.events)
     if (terminal) return { mode: terminal }
+  }
+  if (!isCurrent() || signal?.aborted) return { mode: 'aborted' }
+  if (!sawTerminalEvent) {
+    // A successful HTTP status does not prove the LLM completed. Do not
+    // silently mark partially streamed answers as complete or bill twice via
+    // a speculative fallback call.
+    const terminal = await dispatch([{ event: 'error', data: {
+      error: 'The answer stream disconnected before completion. Please retry.',
+    } }])
+    return { mode: terminal || 'incomplete' }
   }
   return { mode: 'stream' }
 }

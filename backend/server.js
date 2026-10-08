@@ -116,7 +116,7 @@ registerApiRoutes(app, {
   // the read-only pre-check plus actual-duration accounting.
   sttGuard: [reserveSttLease],
   onSttRelease: req => (req._sttLeaseSeconds
-    ? store().releaseSttUsage(req.userId, currentPeriod(), req._sttLeaseSeconds)
+    ? store().releaseSttUsage(req.userId, req._sttLeasePeriod || currentPeriod(), req._sttLeaseSeconds)
     : Promise.resolve()),
   onLlm: recordLlm,
   onLlmFailure: releaseLlm,

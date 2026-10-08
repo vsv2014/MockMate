@@ -1310,6 +1310,22 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
               setHint(h => h ? { ...h, incomplete: true } : { confidence: 'general', incomplete: true })
               gen.fail('sse_error')
             }
+          } else if (isCurrent()) {
+            // The stream failed before producing a token: expose a retryable
+            // error instead of leaving the loading spinner on indefinitely.
+            clearTimers()
+            hintInFlight.current = false
+            hintIncompleteRef.current = true
+            setHintLoading(false); setStreaming(false); setBuyTimePhrase('')
+            const message = data?.error || 'The answer stream ended before a response arrived.'
+            metricsRef.current?.markError?.(message)
+            setError(message)
+            gen.fail('sse_error')
+            state.markQuestionFailed?.(questionId, message)
+            upsert({
+              answer: 'Answer unavailable — tap Retry',
+              hint: { confidence: 'general', fullAnswer: '', incomplete: true, failed: true },
+            })
           }
           return 'stop'
         }
@@ -1319,7 +1335,9 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       const mode = await controller.generateViaTransport()
 
       if (!isCurrent()) return
-      if (mode === 'aborted' || mode === 'fallback' || mode === 'stopped') return
+      // streamLiveHint returns a result object, not a string. Never finalize a
+      // skipped, aborted or failed generation (or trigger a duplicate fallback).
+      if (['aborted', 'fallback', 'stopped', 'incomplete'].includes(mode?.mode)) return
       if (incomplete || hintIncompleteRef.current) {
         hintInFlight.current = false
         if (isCurrent()) {
@@ -1339,25 +1357,33 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         }
         return
       }
-      try { await controller.runFallback() }
-      catch (e2) {
-        if (e2.name === 'AbortError') return
-        if (!isCurrent()) return
-        clearTimers()
-        setHintLoading(false); setStreaming(false)
-        hintInFlight.current = false
-        hintIncompleteRef.current = true
-        setBuyTimePhrase('')
-        metricsRef.current?.markError?.(e2.message || e.message)
-        setError(e2.message || e.message)
-        gen.fail(e2.message || e.message)
-        state.markQuestionFailed?.(questionId, e2.message || e.message)
+      if (!isCurrent()) return
+      // The transport already handles the explicit 404/405/501 compatibility
+      // fallback. Retrying after 401/402/429/5xx or a mid-stream failure can
+      // start a second paid LLM generation and overwrite a partial answer.
+      clearTimers()
+      setHintLoading(false); setStreaming(false)
+      hintInFlight.current = false
+      hintIncompleteRef.current = true
+      setBuyTimePhrase('')
+      const message = e?.message || 'Unable to complete the Live answer.'
+      metricsRef.current?.markError?.(message)
+      setError(message)
+      gen.fail(message)
+      state.markQuestionFailed?.(questionId, message)
+      if (answer.trim()) {
+        const layers = glanceLayers(answer, hintObj || {})
+        upsert({
+          answer: answer.trimEnd() + '\n\n[incomplete — connection/provider error]',
+          hint: { ...(hintObj || { confidence: 'general' }), opener: layers.opener, keyPoints: layers.keyPoints, fullAnswer: answer, incomplete: true, failed: true },
+        })
+      } else {
         upsert({
           answer: 'Answer unavailable — tap Retry',
           hint: { confidence: 'general', fullAnswer: '', incomplete: true, failed: true },
         })
-        logTrace('failed')
       }
+      logTrace('failed')
     }
   }
 

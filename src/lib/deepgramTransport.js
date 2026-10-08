@@ -54,8 +54,12 @@ export function enqueueOrSendPcm(
   if (!buf || (typeof shouldDropFrame === 'function' && shouldDropFrame())) return
   const sock = wsRef?.current
   if (sock && sock.readyState === 1) {
-    sock.send(buf)
-    return
+    try {
+      sock.send(buf)
+      return
+    } catch {
+      // The socket can close between readyState and send; retain the frame.
+    }
   }
   pcmQueueRef.current.push(buf)
   pcmQueueBytesRef.current += buf.byteLength
@@ -93,8 +97,24 @@ export function flushQueuedPcm({
   pcmQueueRef.current = []
   pcmQueueBytesRef.current = 0
   pcmDroppedBytesRef.current = 0
-  for (const buf of queued) {
-    try { sock.send(buf) } catch {}
+  for (let i = 0; i < queued.length; i += 1) {
+    try {
+      if (sock.readyState !== 1) throw new Error('STT socket closed during PCM flush')
+      sock.send(queued[i])
+    } catch {
+      // A reconnect may race with a buffered flush. Preserve the unsent tail
+      // instead of dropping several seconds of interview audio silently.
+      for (let j = i; j < queued.length; j += 1) {
+        pcmQueueRef.current.push(queued[j])
+        pcmQueueBytesRef.current += queued[j].byteLength
+      }
+      while (pcmQueueBytesRef.current > MAX_QUEUE_BYTES && pcmQueueRef.current.length) {
+        const old = pcmQueueRef.current.shift()
+        pcmQueueBytesRef.current -= old.byteLength
+        pcmDroppedBytesRef.current += old.byteLength
+      }
+      break
+    }
   }
 }
 
@@ -115,6 +135,8 @@ export async function createDeepgramAudioGraph(
   mute.gain.value = 0
   try {
     await ac.audioWorklet.addModule('/dg-worklet.js')
+    // Loading the worklet is async; Stop/Restart may have closed this context.
+    if (ctxRef.current !== ac || ac.state === 'closed') return
     const node = new AudioWorkletNode(ac, 'pcm-worklet')
     node.port.onmessage = e => sendPCM(e.data)
     source.connect(node)
@@ -122,6 +144,7 @@ export async function createDeepgramAudioGraph(
     mute.connect(ac.destination)
     procRef.current = node
   } catch (err) {
+    if (ctxRef.current !== ac || ac.state === 'closed') return
     console.warn(`[${logPrefix}] AudioWorklet unavailable, ScriptProcessor fallback:`, err?.message)
     const p = ac.createScriptProcessor(4096, 1, 1)
     p.onaudioprocess = e => sendPCM(toPCM16(e.inputBuffer.getChannelData(0), ac.sampleRate))
