@@ -110,7 +110,14 @@ export function validatedListenUrl(rawUrl) {
     'smart_format', 'punctuate', 'utterance_end_ms', 'vad_events',
     'endpointing', 'language', 'diarize', 'keyterm',
   ])
-  for (const key of url.searchParams.keys()) if (!allowed.has(key)) throw new Error('Unsupported STT parameter')
+  for (const key of url.searchParams.keys()) {
+    if (!allowed.has(key)) throw new Error('Unsupported STT parameter')
+    // Only Nova-3 keyterms may repeat. A second model/encoding/language value
+    // would make our validated choice differ from Deepgram's interpretation.
+    if (key !== 'keyterm' && url.searchParams.getAll(key).length !== 1) {
+      throw new Error('Duplicate STT parameter')
+    }
+  }
   const model = url.searchParams.get('model')
   if (!['nova-3', 'nova-2'].includes(model)) throw new Error('Invalid STT model')
   if (url.searchParams.get('encoding') !== 'linear16'
