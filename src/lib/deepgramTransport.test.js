@@ -92,7 +92,7 @@ describe('deepgramTransport shared helpers', () => {
 
     const send = vi.fn()
     flushQueuedPcm({
-      sock: { send },
+      sock: { readyState: 1, send },
       pcmQueueRef,
       pcmQueueBytesRef,
       pcmDroppedBytesRef,
