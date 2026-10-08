@@ -366,7 +366,13 @@ export function makeManagedSttGateway({
         })
         upstream.addEventListener('error', () => close(1011, 'STT provider error'))
         upstream.addEventListener('close', ev => {
-          if (!closed) close(ev.code === 1008 ? 1008 : 1012, 'STT provider connection closed')
+          if (closed) return
+          // Provider auth/policy denials are fatal: retrying them repeatedly
+          // burns quota and can leave the interviewer without transcription.
+          // Preserve only application-level codes that the renderer knows to
+          // handle; transient failures still use 1012 for bounded reconnect.
+          const code = [1008, 4001, 4003, 4008].includes(ev.code) ? ev.code : 1012
+          close(code, code === 1012 ? 'STT provider connection closed' : 'STT provider rejected the stream')
         })
       } catch (err) {
         console.error('[stt-gateway] session establishment failed:', err?.message)
