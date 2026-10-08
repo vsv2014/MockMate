@@ -148,6 +148,7 @@ describe('reserveSttLease (round-6: atomic lease before grant minting)', () => {
     await reserveSttLease(req, {}, () => { nextCalled = true })
     expect(nextCalled).toBe(true)
     expect(req._sttLeaseSeconds).toBe(STT_GRANT_LEASE_SECONDS)
+    expect(req._sttLeasePeriod).toBe('2026-10')
   })
 
   it('fails closed with 503 when the store throws (does not allow)', async () => {
