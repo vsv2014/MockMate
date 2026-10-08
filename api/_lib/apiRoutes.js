@@ -67,6 +67,7 @@ export function registerApiRoutes(app, opts = {}) {
   // the grant) and a release callback used when minting fails; the public-disabled
   // Vercel handlers stay unaffected by default.
   const sttGuard = opts.sttGuard ? [].concat(opts.sttGuard) : []
+  const issueManagedSttTicket = typeof opts.issueManagedSttTicket === 'function' ? opts.issueManagedSttTicket : null
   const onSttRelease = typeof opts.onSttRelease === 'function' ? opts.onSttRelease : null
   const report = typeof opts.report === 'function' ? opts.report : () => {}
   const onLlm = typeof opts.onLlm === 'function' ? opts.onLlm : null
@@ -90,15 +91,22 @@ export function registerApiRoutes(app, opts = {}) {
     catch (e) { res.status(500).json({ error: e.message }) }
   })
 
-  app.post('/api/deepgram-token', ...guardLight, ...sttGuard, async (req, res) => {
-    // Sequence (round-6 review): authenticate → sttGuard reserves the lease
-    // ATOMICALLY → mint grant → on mint failure, release the reservation → respond.
-    // No grant can be returned unmetered, and a Deepgram outage cannot burn the
-    // user's allowance.
+  app.post('/api/deepgram-token', ...guardLight, ...(issueManagedSttTicket ? [] : sttGuard), async (req, res) => {
+    // Hosted mode must never return a direct-to-Deepgram credential: an STT
+    // connection may remain open after the JWT expires, exceeding every fixed
+    // grant reservation. The trusted gateway reserves/settles quota per socket.
+    if (issueManagedSttTicket) {
+      try { return res.json(issueManagedSttTicket(req)) }
+      catch (error) { return res.status(error.status || 503).json({ error: error.message }) }
+    }
+    const remoteHosted = ['1', 'true'].includes(String(process.env.MOCKMATE_HOSTED || '').toLowerCase())
+    if (remoteHosted) return res.status(503).json({
+      error: 'Managed transcription gateway is not configured. Streaming access is disabled.',
+      code: 'managed_stt_gateway_required',
+    })
     try {
       const ip = req.ip || req.socket?.remoteAddress || ''
-      const remoteHosted = ['1', 'true'].includes(String(process.env.MOCKMATE_HOSTED || '').toLowerCase())
-      const allowApiKeyFallback = !remoteHosted && (isLoopbackAddress(ip) || !ip)
+      const allowApiKeyFallback = isLoopbackAddress(ip) || !ip
       res.json(await deepgramToken({ allowApiKeyFallback }))
     } catch (e) {
       if (onSttRelease) { try { await onSttRelease(req) } catch {} }
