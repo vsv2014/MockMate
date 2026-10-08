@@ -162,8 +162,27 @@ export function makeManagedSttGateway({
   const pendingTickets = new Map()
   const activePerUser = new Map()
   const sockets = new Set()
+  const socketClosers = new Map()
+  const pendingStartups = new Set()
+  const pendingSettlements = new Set()
+  let settlementFailures = 0
+  let draining = false
+
+  function trackSettlement(promise) {
+    const operation = Promise.resolve(promise).catch(err => {
+      settlementFailures += 1
+      console.error('[stt-gateway] usage settlement failed:', err?.message)
+    })
+    pendingSettlements.add(operation)
+    void operation.finally(() => pendingSettlements.delete(operation))
+  }
 
   function issueTicket(req) {
+    if (draining) {
+      const e = new Error('Managed transcription is shutting down')
+      e.status = 503
+      throw e
+    }
     if (!req.userId) throw new Error('Authenticated identity required')
     if (!getProviderKey()) {
       const e = new Error('Managed transcription provider is unavailable')
@@ -184,6 +203,7 @@ export function makeManagedSttGateway({
   }
 
   function handleUpgrade(req, socket, head) {
+    if (draining) return rejectUpgrade(socket, 503)
     const pathname = (() => { try { return new URL(req.url, 'http://localhost').pathname } catch { return '' } })()
     if (pathname !== '/api/stt-stream') return rejectUpgrade(socket, 404)
     if (!originAllowed(req.headers.origin || '')) return rejectUpgrade(socket, 403)
@@ -252,6 +272,7 @@ export function makeManagedSttGateway({
       clearTimeout(leaseTimer)
       clearTimeout(connectTimer)
       sockets.delete(socket)
+      socketClosers.delete(socket)
       const count = activePerUser.get(userId) || 1
       if (count <= 1) activePerUser.delete(userId)
       else activePerUser.set(userId, count - 1)
@@ -265,8 +286,9 @@ export function makeManagedSttGateway({
         const seconds = Math.min(reservedSeconds, Math.ceil(Math.max(elapsed, audioSent / STT_PCM_BYTES_PER_SECOND)))
         const refund = reservedSeconds - seconds
         if (refund > 0) {
-          Promise.resolve().then(() => getStore().releaseSttUsage(userId, period, refund))
-            .catch(err => console.error('[stt-gateway] usage settlement failed:', err?.message))
+          trackSettlement(
+            Promise.resolve().then(() => getStore().releaseSttUsage(userId, period, refund)),
+          )
         }
       }
     }
@@ -317,6 +339,10 @@ export function makeManagedSttGateway({
       }
     }
 
+    socketClosers.set(socket, () => {
+      close(1001, 'Service shutting down')
+      try { socket.destroy() } catch {}
+    })
     const reader = new ClientFrameReader(message)
     socket.on('data', data => {
       try { reader.push(data) }
@@ -328,7 +354,7 @@ export function makeManagedSttGateway({
       try { reader.push(head) } catch { close(1002, 'Invalid websocket frame') }
     }
 
-    ;(async () => {
+    const startup = (async () => {
       try {
         const identity = await getStore().findUserById(userId)
         if (!identity) return close(4001, 'Account expired')
@@ -350,7 +376,12 @@ export function makeManagedSttGateway({
           // A disconnect may race with the database reservation. A completed
           // reservation must be refunded even when cleanup ran earlier.
           settled = true
-          await getStore().releaseSttUsage(userId, period, reservedSeconds)
+          try {
+            await getStore().releaseSttUsage(userId, period, reservedSeconds)
+          } catch (err) {
+            settlementFailures += 1
+            throw err
+          }
           return
         }
         connectedAt = now()
@@ -397,13 +428,27 @@ export function makeManagedSttGateway({
         close(1011, 'STT provider temporarily unavailable')
       }
     })()
+    pendingStartups.add(startup)
+    void startup.finally(() => pendingStartups.delete(startup))
   }
 
-  function closeAll() {
-    for (const s of sockets) {
-      try { s.destroy() } catch {}
-    }
+  async function closeAll() {
+    // Close sockets synchronously before waiting for the database. This also
+    // covers connections for which the initial quota reservation is in flight.
+    draining = true
     pendingTickets.clear()
+    for (const disconnect of [...socketClosers.values()]) {
+      try { disconnect() } catch (err) {
+        console.error('[stt-gateway] socket drain failed:', err?.message)
+      }
+    }
+    // A reservation may finish after the WebSocket has already been closed.
+    // Its startup task performs the matching refund; do not close Mongo first.
+    await Promise.allSettled([...pendingStartups])
+    await Promise.allSettled([...pendingSettlements])
+    if (settlementFailures > 0) {
+      throw new Error('Managed STT usage settlement failed during shutdown')
+    }
   }
 
   return { issueTicket, handleUpgrade, closeAll }
