@@ -38,10 +38,11 @@ class StubProvider extends EventTarget {
   emitText(text) { this.dispatchEvent(new MessageEvent('message', { data: text })) }
 }
 
-async function testRig({ maxSeconds = STT_LEASE_SECONDS, originAllowed = () => true, limit = 5000, reserveSucceeds = true, reserveDelayMs = 0, providerOpenDelayMs = 0 } = {}) {
+async function testRig({ maxSeconds = STT_LEASE_SECONDS, originAllowed = () => true, limit = 5000, reserveSucceeds = true, reserveDelayMs = 0, providerOpenDelayMs = 0, initialUsage = 0 } = {}) {
   const calls = { reserves: [], refunds: [], provider: [], sends: [] }
-  let balance = 0
+  let balance = initialUsage
   const fakeStore = {
+    async getUsage(userId, period) { return { userId, period, sttSeconds: balance } },
     async findUserById(id) { return id === 'u1' ? { plan: 'free' } : null },
     async reserveSttUsage(userId, period, cap, seconds) {
       if (reserveDelayMs) await sleep(reserveDelayMs)
@@ -209,6 +210,23 @@ describe('managed streaming WebSocket policy', () => {
       expect(code).toBe(4008)
       expect(rig.calls.provider).toHaveLength(0)
       expect(rig.calls.reserves).toHaveLength(1)
+    } finally { await rig.close() }
+  })
+
+  it('uses and settles the last partial monthly quota instead of denying it', async () => {
+    const rig = await testRig({ maxSeconds: 300, limit: 500, initialUsage: 425 })
+    try {
+      const ws = await rig.open()
+      await sleep(25)
+      expect(rig.calls.reserves.map(row => row.seconds)).toEqual([300, 75])
+      expect(rig.calls.provider).toHaveLength(1)
+      const closed = new Promise(resolve => ws.addEventListener('close', ev => resolve(ev.code), { once: true }))
+      // Send 76 seconds in 32 KB PCM chunks to cross the smaller lease.
+      for (let i = 0; i < 76; i++) {
+        try { ws.send(new Uint8Array(32_000)) } catch { break }
+      }
+      expect(await closed).toBe(4009)
+      expect(rig.balance).toBeLessThanOrEqual(500)
     } finally { await rig.close() }
   })
 
