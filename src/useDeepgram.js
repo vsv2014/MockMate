@@ -139,7 +139,12 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       if (!owns()) { abandonSocket(sock); return }
       connecting.current = false
       everConnected.current = true
-      reconnectAttempts.current = 0
+      // A successful handshake is not proof of a stable connection.
+      // Retain the retry budget until this socket has remained healthy for 30s.
+      const stableTimer = setTimeout(() => {
+        if (owns() && sock.readyState === 1) reconnectAttempts.current = 0
+      }, 30_000)
+      sock.addEventListener('close', () => clearTimeout(stableTimer), { once: true })
       setActive(true); setReconnecting(false)
       diagnostic('stt', 'socket_open', { mode: 'microphone', generation: gen, model, degraded: degradedAudio.current })
       try { ctx.current?.resume?.() } catch {}
@@ -232,7 +237,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       const wasSuspended = suspendPaused.current
       suspendPaused.current = false
       if (userStop.current || !ctx.current) return
-      reconnectAttempts.current = 0
+      if (wasSuspended) reconnectAttempts.current = 0
       const sock = activeSocketRef.current || ws.current
       if (sock && sock.readyState === 1 && !wasSuspended) return
       if (connecting.current && sock && sock.readyState === 0) return
