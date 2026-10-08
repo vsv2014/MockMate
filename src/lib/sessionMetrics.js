@@ -50,7 +50,22 @@ export function createSessionMetrics(kind = 'live') {
   function markFallback() { counters.transportFallbacks += 1; event('stream_fallback') }
   function markIncomplete() { counters.incompleteStreams += 1; event('incomplete_stream') }
   function markSkip() { counters.skips += 1; event('skip') }
-  function markError(code) { counters.userVisibleErrors += 1; event('error', { code: String(code || 'unknown').slice(0, 80) }) }
+  function markError(code) {
+    counters.userVisibleErrors += 1
+    // A transport/provider Error.message is NOT a diagnostic code. It can
+    // include the user's spoken question, a prompt, or a provider credential.
+    // Categorize it locally and never persist any arbitrary error text.
+    const value = String(code || '').toLowerCase()
+    const category = /(?:^|\\b)(?:401|403|auth|unauthorized|forbidden|token|sign.in)(?:\\b|$)/i.test(value) ? 'auth'
+      : /(?:^|\\b)(?:402|quota|allowance|limit.reached)(?:\\b|$)/i.test(value) ? 'quota'
+      : /(?:^|\\b)(?:429|rate.limit|too.many)(?:\\b|$)/i.test(value) ? 'rate_limit'
+      : /(?:timeout|timed.out|deadline)/i.test(value) ? 'timeout'
+      : /(?:connection|network|socket|fetch|offline|disconnect)/i.test(value) ? 'network'
+      : /(?:abort|cancel|stopped)/i.test(value) ? 'cancelled'
+      : /(?:provider|model|unavailable|http.5\\d\\d)/i.test(value) ? 'provider'
+      : 'unknown'
+    event('error', { code: category })
+  }
   function markProviderEvent(payload = {}) {
     const type = String(payload.type || '')
     if (type === 'started' && Number(payload.attemptIndex) > 0) {
