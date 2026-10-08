@@ -24,7 +24,7 @@ At minimum, configure:
 - `MONGO_URI`
 - stable `JWT_SECRET`
 - `HOST=0.0.0.0`
-- explicit production `CORS_ORIGIN`
+- explicit production `CORS_ORIGIN` (include `http://localhost:3002` and `http://127.0.0.1:3002` for installed Electron desktop clients, plus the web app HTTPS origin)
 - the provider credentials used by Managed AI
 - `DEEPGRAM_API_KEY` for managed voice
 
@@ -57,7 +57,28 @@ Public Vercel AI access remains default-deny unless explicitly enabled.
 The backend is authoritative for plan enforcement:
 
 - LLM usage reserves quota before provider work.
-- Streaming STT reserves a conservative lease before a Deepgram grant is minted.
+- Hosted streaming STT never exposes a Direct Deepgram grant. The authenticated
+  `/api/deepgram-token` endpoint now returns a **30-second single-use gateway
+  ticket**, consumed over `wss://<host>/api/stt-stream` as a WebSocket
+  subprotocol. The backend verifies the ticket, reserves up to 300 seconds,
+  caps connection lifetime/16 kHz PCM bytes (including final partial-length
+  grants when less than 300 seconds remain), forwards audio to Deepgram, and
+  refunds unused time on socket cleanup. Each 300-second segment reconnects
+  with a fresh ticket and a new capped reservation.
+- Configure the ingress/proxy to pass **WebSocket upgrades** over TLS (WSS) to
+  `backend/server.js` on the SAME process as the HTTP ticket issuer. This
+  initial gateway uses a process-local ticket registry: horizontal replicas
+  require sticky routing or a distributed one-use ticket registry. Otherwise
+  issued tickets fail at handshake when load-balanced to a different instance.
+- The previous renderer expected direct Deepgram grants. Upgrade the hosted
+  Express backend and compatible desktop client together; do not switch just
+  one side in the public environment.
+- Allow the Electron origin (`http://localhost:3002`) explicitly in
+  `CORS_ORIGIN` for the installed desktop renderer, and verify the browser
+  WebSocket Origin is accepted. Never set a wildcard production origin.
+- Server crash recovery and exact provider-reported usage reconciliation
+  remain launch gates for managed billing; a bounded live connection does not
+  itself settle an outstanding reservation after a process crash.
 - Uploaded transcription server-probes duration and reserves before provider spend, then settles usage.
 - Mongo release operations clamp counters at zero.
 - Stripe checkout/webhook/portal/reconciliation code is available when Stripe is configured; the signed webhook and authoritative reconciliation path determine entitlement state.
@@ -86,6 +107,14 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST "$API/api/interview" -d '{}'
 
 Complete signup/login (and email verification when enabled), then verify:
 
+- Authenticated `/api/deepgram-token` returns `gateway: true` and no
+  `access_token` in hosted mode. A WebSocket with the ticket is accepted
+  once; replay/expiry/foreign-origin requests are rejected.
+- An actual 6+ minute Live call segments/reconnects without exceeding the
+  reserved usage; test mic and system audio, network loss, Stop during
+  provider startup, quota exhaustion, and the 4008/4009 behaviors.
+- Simulate a gateway crash and reconcile previously reserved usage before
+  claiming provider-billed settlement is exact.
 - Managed AI works without local provider keys.
 - LLM and STT limits return the expected 402 paths.
 - Mobile `/transcribe` succeeds for supported recordings and respects quota.

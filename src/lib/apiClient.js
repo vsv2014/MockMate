@@ -57,3 +57,18 @@ export async function apiFetch(path, opts = {}) {
     if (outerSignal && abortRelay) outerSignal.removeEventListener('abort', abortRelay)
   }
 }
+
+/** Managed STT uses the authenticated backend WebSocket, never a provider key. */
+export function managedSttGatewayUrl(upstreamListenUrl) {
+  if (!isManaged()) throw new Error('Managed STT gateway is only available in managed mode')
+  const base = managedBase()
+  const endpoint = new URL(base.replace(/\/$/, '') + '/api/stt-stream')
+  if (endpoint.protocol === 'https:') endpoint.protocol = 'wss:'
+  else if (endpoint.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(endpoint.hostname)) {
+    endpoint.protocol = 'ws:'
+  } else {
+    throw new Error('Managed audio must connect over a secure WebSocket')
+  }
+  endpoint.search = new URL(upstreamListenUrl).search
+  return endpoint.toString()
+}

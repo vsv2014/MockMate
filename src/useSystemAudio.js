@@ -12,6 +12,7 @@ import {
   flushQueuedPcm,
   createDeepgramAudioGraph,
   requestDeepgramToken,
+  deepgramSocketConfig,
   clearDeepgramTokenCache,
 } from './lib/deepgramTransport'
 
@@ -244,7 +245,14 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       diarize: true,
       keyterms: keytermsRef.current,
     })
-    const sock = new WebSocket(url, ['token', tokenRes.access_token])
+    let sock
+    try {
+      const connection = deepgramSocketConfig(tokenRes, url)
+      sock = new WebSocket(connection.url, connection.protocols)
+    } catch (error) {
+      connecting.current = false
+      return fail(error?.message || 'STT connection setup failed')
+    }
     diagnostic('stt', 'socket_connecting', {
       generation: gen, model,
       language: langRef.current, keytermCount: keytermsRef.current.length,
@@ -389,6 +397,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       diagnostic('stt', 'socket_closed', { code: ev?.code || 0, clean: !!ev?.wasClean, generation: gen }, FATAL_CLOSE.has(ev?.code) ? 'error' : 'warn')
       if (FATAL_CLOSE.has(ev?.code)) {
         clearDeepgramTokenCache(tokenCache)
+        if (ev?.code === 4008) return fail('Your managed voice-transcription allowance is exhausted. Try again next billing period or switch to BYOK.')
+        if ([4001, 4003].includes(ev?.code)) return fail('Managed transcription authentication failed. Sign in again.')
         return failOrDegrade(`Deepgram closed the stream (code ${ev.code})`)
       }
       scheduleReconnect('connection dropped')

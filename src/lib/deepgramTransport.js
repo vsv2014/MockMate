@@ -1,10 +1,12 @@
-import { apiFetch } from './apiClient'
+import { apiFetch, managedSttGatewayUrl } from './apiClient'
 import { diagnostic } from './diagnostics'
 import { toPCM16 } from '../audio-pcm'
 
 export const MAX_RECONNECTS = 150
 export const KEEPALIVE_MS = 4000
 export const FATAL_CLOSE = new Set([1008, 4001, 4003, 4008])
+// 4009 signals server-side 300-second segment completion; request a new
+// metered gateway ticket and continue the same Live interview.
 export const PERMANENT_TOKEN_STATUSES = new Set([401, 402, 403, 429])
 export const BYTES_PER_SEC = 16000 * 2
 // Cover the maximum 8s reconnect backoff plus token and handshake latency.
@@ -190,11 +192,11 @@ export async function requestDeepgramToken({
     const r = await apiFetch('/api/deepgram-token', { method: 'POST' })
     const tokenStatus = r.status
     const tokenRes = await r.json().catch(() => null)
-    const ok = Boolean(r.ok && tokenRes?.access_token)
+    const ok = Boolean(r.ok && (tokenRes?.access_token || (tokenRes?.gateway && tokenRes?.gateway_ticket)))
     const ttlSeconds = Number(tokenRes?.expires_in)
     // Raw local BYOK API keys are intentionally never retained in the grant cache.
     if (
-      ok && cacheRef && isCurrent() && !tokenRes?.fallback
+      ok && cacheRef && isCurrent() && !tokenRes?.gateway && !tokenRes?.fallback
       && Number.isFinite(ttlSeconds) && ttlSeconds > 0
     ) {
       cacheRef.current = {
@@ -206,4 +208,17 @@ export async function requestDeepgramToken({
   } catch {
     return { ok: false, tokenStatus: 0, tokenRes: null, networkError: true, reused: false }
   }
+}
+
+/** Return an upstream WebSocket only for local BYOK; managed tokens stay server-side. */
+export function deepgramSocketConfig(tokenRes, listenUrl) {
+  if (tokenRes?.gateway === true) {
+    if (!tokenRes.gateway_ticket) throw new Error('Managed STT gateway ticket missing')
+    return {
+      url: managedSttGatewayUrl(listenUrl),
+      protocols: ['mockmate-stt', tokenRes.gateway_ticket],
+    }
+  }
+  if (!tokenRes?.access_token) throw new Error('Deepgram access token missing')
+  return { url: listenUrl, protocols: ['token', tokenRes.access_token] }
 }

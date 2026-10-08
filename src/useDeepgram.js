@@ -12,6 +12,7 @@ import {
   flushQueuedPcm,
   createDeepgramAudioGraph,
   requestDeepgramToken,
+  deepgramSocketConfig,
   clearDeepgramTokenCache,
 } from './lib/deepgramTransport'
 
@@ -134,7 +135,14 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
 
     const model = degradedAudio.current ? 'nova-2' : 'nova-3'
     const url = buildDeepgramListenUrl({ degraded: degradedAudio.current, language: langRef.current, diarize: false })
-    const sock = new WebSocket(url, ['token', tokenRes.access_token])
+    let sock
+    try {
+      const connection = deepgramSocketConfig(tokenRes, url)
+      sock = new WebSocket(connection.url, connection.protocols)
+    } catch (error) {
+      connecting.current = false
+      return fail(error?.message || 'STT connection setup failed')
+    }
     diagnostic('stt', 'socket_connecting', { mode: 'microphone', generation: gen, model, language: langRef.current, degraded: degradedAudio.current })
     if (gen !== connectGen.current || suspendPaused.current) { abandonSocket(sock); connecting.current = false; return }
     ws.current = sock
@@ -195,6 +203,8 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       diagnostic('stt', 'socket_closed', { mode: 'microphone', generation: gen, model, code: ev?.code || 0, clean: !!ev?.wasClean }, FATAL_CLOSE.has(ev?.code) ? 'error' : 'warn')
       if (FATAL_CLOSE.has(ev?.code)) {
         clearDeepgramTokenCache(tokenCache)
+        if (ev?.code === 4008) return fail('Your managed voice-transcription allowance is exhausted. Try again next billing period or switch to BYOK.')
+        if ([4001, 4003].includes(ev?.code)) return fail('Managed transcription authentication failed. Sign in again.')
         return failOrDegrade(`Deepgram closed the stream (code ${ev.code})`)
       }
       scheduleReconnect('connection dropped')
