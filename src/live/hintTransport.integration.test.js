@@ -67,6 +67,29 @@ describe('Live hint stream completion safety', () => {
     expect(onEvent).not.toHaveBeenCalled()
   })
 
+  it('rejects quota and server errors without starting a second LLM request', async () => {
+    for (const status of [401, 402, 403, 429, 500]) {
+      apiFetch.mockReset()
+      apiFetch.mockResolvedValue({ ok: false, status, clone: () => ({
+        json: async () => ({ error: 'unavailable' }),
+      }) })
+      await expect(streamLiveHint({ body: { question: 'Q' } })).rejects.toMatchObject({ status })
+      expect(apiFetch).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('runs exactly one compatibility fallback when streaming endpoint is missing', async () => {
+    apiFetch.mockResolvedValueOnce({ ok: false, status: 404 })
+    apiFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ hint: { fullAnswer: 'fallback' } }) })
+    const events = []
+    const result = await streamLiveHint({
+      body: { question: 'Q' }, onEvent: ev => { events.push(ev) },
+    })
+    expect(result.mode).toBe('fallback')
+    expect(events.map(ev => ev.event)).toEqual(['fallback'])
+    expect(apiFetch).toHaveBeenCalledTimes(2)
+  })
+
   it('handles split CRLF and CR-only empty line delimiters', () => {
     const one = splitSseBuffer('event: token\r\ndata: "hello"\r')
     expect(one.events).toHaveLength(0)
