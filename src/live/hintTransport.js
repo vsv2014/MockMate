@@ -6,7 +6,8 @@ import { apiFetch } from '../lib/apiClient.js'
 
 export function splitSseBuffer(buf = '') {
   const events = []
-  let rest = String(buf)
+  // Normalize CRLF and lone CR so valid SSE frames are parsed on every platform.
+  let rest = String(buf).replace(/\r\n?/g, '\n')
   let nn
   while ((nn = rest.indexOf('\n\n')) !== -1) {
     const raw = rest.slice(0, nn)
