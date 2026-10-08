@@ -12,6 +12,7 @@ import {
   flushQueuedPcm,
   createDeepgramAudioGraph,
   requestDeepgramToken,
+  clearDeepgramTokenCache,
 } from './lib/deepgramTransport'
 
 // Silence window after the last STT event before we force-flush the open utterance.
@@ -102,6 +103,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const restartGen = useRef(0)
   const acquiringGen = useRef(null)
   const activeSocketRef = useRef(null)
+  const tokenCache = useRef(null)
   const connecting = useRef(false)
   const suspendPaused = useRef(false)
   const attemptsAtSuspend = useRef(0)
@@ -158,6 +160,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     // setFinalizeOnPause(). A genuinely new Live session mounts a fresh hook instance,
     // whose useRef(true) starts enabled.
     clearTimeout(reconnectTimer.current); reconnectTimer.current = null
+    clearDeepgramTokenCache(tokenCache)
     abandonSocket(activeSocketRef.current || ws.current)
     activeSocketRef.current = null
     try { proc.current?.disconnect() } catch {}
@@ -212,8 +215,11 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     ws.current = null
 
     const { ok, tokenStatus, tokenRes, networkError } = await requestDeepgramToken({
+      mode: 'system_audio',
       generation: gen,
       reconnectAttempt: reconnectAttempts.current,
+      cacheRef: tokenCache,
+      isCurrent: () => !userStop.current && !suspendPaused.current && gen === connectGen.current,
     })
     if (networkError) {
       connecting.current = false
@@ -381,7 +387,10 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       pendingInterim.current = false; finalizeSent.current = false
       if (userStop.current || suspendPaused.current) return
       diagnostic('stt', 'socket_closed', { code: ev?.code || 0, clean: !!ev?.wasClean, generation: gen }, FATAL_CLOSE.has(ev?.code) ? 'error' : 'warn')
-      if (FATAL_CLOSE.has(ev?.code)) return failOrDegrade(`Deepgram closed the stream (code ${ev.code})`)
+      if (FATAL_CLOSE.has(ev?.code)) {
+        clearDeepgramTokenCache(tokenCache)
+        return failOrDegrade(`Deepgram closed the stream (code ${ev.code})`)
+      }
       scheduleReconnect('connection dropped')
     }
   }, [abandonSocket, fail]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -463,7 +472,11 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     userStop.current = true
     connectGen.current += 1
     clearTimeout(reconnectTimer.current); reconnectTimer.current = null
+    // A source change within the same interview must not reserve another
+    // five-minute grant when the previous grant is still valid.
+    const existingGrant = tokenCache.current
     teardown()
+    if (rev === restartGen.current) tokenCache.current = existingGrant
     await new Promise(r => setTimeout(r, 200))
     if (rev !== restartGen.current) return
     return start(sourceId, opts)
