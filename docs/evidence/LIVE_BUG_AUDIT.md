@@ -36,6 +36,8 @@ Definitions:
 | L21 | P1 privacy | Session metric error event could persist raw speech/secret in provider errors | PR #72 | New redaction regression in `sessionMetrics.test.js` |
 | L22 | P1 | Provider auth failure mapped to retryable WebSocket close | PR #72 | Fatal-close gateway regression |
 | L23 | P1 | Less than 300s remaining quota could be denied rather than reserving remaining seconds | PR #72 | Atomic partial-lease regression |
+| L24 | P1 security | Duplicate model/PCM query parameters could bypass our chosen upstream STT policy | PR #72 | Query-parameter ambiguity regression |
+| L25 | P0 | Electron CSP missing HTTPS API's WSS managed STT socket origin | PR #72 | Network origin policy test |
 
 ## Required verification before public release
 
