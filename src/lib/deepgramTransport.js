@@ -155,7 +155,32 @@ export async function createDeepgramAudioGraph(
   }
 }
 
-export async function requestDeepgramToken({ mode, generation, reconnectAttempt } = {}) {
+/**
+ * Deepgram grants are valid for more than one WebSocket handshake until expiry.
+ * Reuse the same grant within an active capture so a flaky connection does not
+ * consume another 300-second hosted usage reservation on every reconnect.
+ * This cache is owned by the calling hook, not shared across accounts/sessions.
+ */
+export function clearDeepgramTokenCache(cacheRef) {
+  if (cacheRef) cacheRef.current = null
+}
+
+const TOKEN_REFRESH_SAFETY_MS = 30_000
+
+export async function requestDeepgramToken({
+  mode, generation, reconnectAttempt, cacheRef, isCurrent = () => true,
+} = {}) {
+  const cached = cacheRef?.current
+  if (
+    cached?.tokenRes?.access_token
+    && Number.isFinite(cached.expiresAt)
+    && cached.expiresAt > Date.now() + TOKEN_REFRESH_SAFETY_MS
+  ) {
+    diagnostic('stt', 'token_reused', { mode, generation, reconnectAttempt })
+    return { ok: true, tokenStatus: 200, tokenRes: cached.tokenRes, networkError: false, reused: true }
+  }
+
+  clearDeepgramTokenCache(cacheRef)
   diagnostic('stt', 'token_requested', {
     ...(mode ? { mode } : {}),
     generation,
@@ -165,8 +190,20 @@ export async function requestDeepgramToken({ mode, generation, reconnectAttempt 
     const r = await apiFetch('/api/deepgram-token', { method: 'POST' })
     const tokenStatus = r.status
     const tokenRes = await r.json().catch(() => null)
-    return { ok: Boolean(tokenRes?.access_token), tokenStatus, tokenRes, networkError: false }
+    const ok = Boolean(r.ok && tokenRes?.access_token)
+    const ttlSeconds = Number(tokenRes?.expires_in)
+    // Raw local BYOK API keys are intentionally never retained in the grant cache.
+    if (
+      ok && cacheRef && isCurrent() && !tokenRes?.fallback
+      && Number.isFinite(ttlSeconds) && ttlSeconds > 0
+    ) {
+      cacheRef.current = {
+        tokenRes,
+        expiresAt: Date.now() + Math.min(ttlSeconds, 3600) * 1000,
+      }
+    }
+    return { ok, tokenStatus, tokenRes, networkError: false, reused: false }
   } catch {
-    return { ok: false, tokenStatus: 0, tokenRes: null, networkError: true }
+    return { ok: false, tokenStatus: 0, tokenRes: null, networkError: true, reused: false }
   }
 }
