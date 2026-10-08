@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url'
 import { registerApiRoutes } from './api/_lib/apiRoutes.js'
 import { reasoningPolicy } from './backend/src/arch.js'
 import { CODE_RUNNER_WORKER_CSP } from './shared/codeRunnerPolicy.js'
+import { websocketOriginForApi } from './shared/networkOrigins.js'
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({ dsn: process.env.SENTRY_DSN, sendDefaultPii: false, beforeSend(event) { if (event.request) delete event.request.data; return event } })
@@ -19,6 +20,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const distDir = path.join(__dirname, 'dist')
 const PORT = Number(process.env.PORT) || 3002
 const backendOrigin = process.env.MOCKMATE_API_BASE || null
+const backendWebSocketOrigin = websocketOriginForApi(backendOrigin)
 let livekitOrigin = null
 try { if (process.env.LIVEKIT_URL) livekitOrigin = new URL(process.env.LIVEKIT_URL).origin } catch {}
 
@@ -42,6 +44,7 @@ app.use(helmet({
         "'self'",
         'http://localhost:4000', 'http://127.0.0.1:4000',
         ...(backendOrigin ? [backendOrigin] : []),
+        ...(backendWebSocketOrigin ? [backendWebSocketOrigin] : []),
         'wss://api.deepgram.com', 'https://*.sentry.io', 'https://*.ingest.sentry.io', 'https://*.ingest.us.sentry.io',
         'wss://*.livekit.cloud', 'https://*.livekit.cloud', ...(livekitOrigin ? [livekitOrigin] : []),
       ],
