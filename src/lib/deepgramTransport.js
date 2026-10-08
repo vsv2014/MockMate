@@ -119,6 +119,8 @@ export async function createDeepgramAudioGraph(
   mute.gain.value = 0
   try {
     await ac.audioWorklet.addModule('/dg-worklet.js')
+    // Loading the worklet is async; Stop/Restart may have closed this context.
+    if (ctxRef.current !== ac || ac.state === 'closed') return
     const node = new AudioWorkletNode(ac, 'pcm-worklet')
     node.port.onmessage = e => sendPCM(e.data)
     source.connect(node)
@@ -126,6 +128,7 @@ export async function createDeepgramAudioGraph(
     mute.connect(ac.destination)
     procRef.current = node
   } catch (err) {
+    if (ctxRef.current !== ac || ac.state === 'closed') return
     console.warn(`[${logPrefix}] AudioWorklet unavailable, ScriptProcessor fallback:`, err?.message)
     const p = ac.createScriptProcessor(4096, 1, 1)
     p.onaudioprocess = e => sendPCM(toPCM16(e.inputBuffer.getChannelData(0), ac.sampleRate))
