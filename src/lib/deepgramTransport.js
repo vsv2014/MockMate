@@ -54,8 +54,12 @@ export function enqueueOrSendPcm(
   if (!buf || (typeof shouldDropFrame === 'function' && shouldDropFrame())) return
   const sock = wsRef?.current
   if (sock && sock.readyState === 1) {
-    sock.send(buf)
-    return
+    try {
+      sock.send(buf)
+      return
+    } catch {
+      // The socket can close between readyState and send; retain the frame.
+    }
   }
   pcmQueueRef.current.push(buf)
   pcmQueueBytesRef.current += buf.byteLength
