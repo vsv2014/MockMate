@@ -99,6 +99,8 @@ describe('managed streaming WebSocket policy', () => {
   it('accepts only fixed Deepgram host, PCM format and permitted parameters', () => {
     expect(validatedListenUrl(url)).toContain('wss://api.deepgram.com/v1/listen?')
     expect(() => validatedListenUrl(url.replace('nova-3', 'whisper'))).toThrow('Invalid STT model')
+    expect(() => validatedListenUrl(url + '&model=nova-expensive')).toThrow('Duplicate STT parameter')
+    expect(() => validatedListenUrl(url + '&sample_rate=48000')).toThrow('Duplicate STT parameter')
     expect(() => validatedListenUrl(url + '&callback=https://attacker.invalid')).toThrow('Unsupported STT parameter')
     expect(() => validatedListenUrl(url.replace('16000', '48000'))).toThrow('Invalid PCM format')
     expect(() => validatedListenUrl(url + '&keyterm=' + 'x'.repeat(121))).toThrow('Too many STT keyterms')
