@@ -58,6 +58,28 @@ jobs:
           node-version: 24.21.0
           cache: npm
 
+      - name: Require production Windows signing identity
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          SIGNING_PUBLISHER: ${{ vars.MOCKMATE_WINDOWS_PUBLISHER }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WIN_CSC_LINK" ] || [ -z "$WIN_CSC_KEY_PASSWORD" ] || [ -z "$SIGNING_PUBLISHER" ]; then
+            echo "Public Windows releases require WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD secrets plus MOCKMATE_WINDOWS_PUBLISHER (exact certificate Subject)." >&2
+            exit 1
+          fi
+          node <<'NODE'
+          const fs = require('fs')
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          if (pkg.build?.win?.verifyUpdateCodeSignature !== true) {
+            throw new Error('Windows update signature verification must be enabled before publishing.')
+          }
+          pkg.build.win.signtoolOptions.publisherName = process.env.SIGNING_PUBLISHER
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
+          NODE
+
       - name: Sync release version into lock metadata
         shell: bash
         run: |
@@ -117,13 +139,34 @@ jobs:
       - name: Verify final configured application
         run: npm test && npm run build && npm run verify:vite-output
 
-      - name: Build Windows installer
+      - name: Build signed Windows installer
         shell: bash
-        run: |
-          unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
-          npx electron-builder --win --publish never
         env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: |
+          set -euo pipefail
+          npx electron-builder --win --publish never
+
+      - name: Verify Authenticode signatures and publisher
+        shell: pwsh
+        env:
+          SIGNING_PUBLISHER: ${{ vars.MOCKMATE_WINDOWS_PUBLISHER }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-ChildItem release -Filter 'MockMate-Setup-*.exe' | Select-Object -First 1
+          $appExe = Get-Item 'release/win-unpacked/MockMate.exe'
+          if (-not $installer) { throw 'Windows installer missing; refuse to publish' }
+          foreach ($file in @($installer, $appExe)) {
+            $signature = Get-AuthenticodeSignature -FilePath $file.FullName
+            if ($signature.Status -ne 'Valid') {
+              throw "$($file.Name) is not signed by a trusted publisher: $($signature.Status)"
+            }
+            if ($signature.SignerCertificate.Subject -ne $env:SIGNING_PUBLISHER) {
+              throw "$($file.Name) certificate subject does not match MOCKMATE_WINDOWS_PUBLISHER"
+            }
+          }
 
       - name: Smoke packaged Windows runtime before publication
         shell: pwsh
