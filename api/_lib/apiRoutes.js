@@ -100,7 +100,7 @@ export function registerApiRoutes(app, opts = {}) {
       catch (error) { return res.status(error.status || 503).json({ error: error.message }) }
     }
     const remoteHosted = ['1', 'true'].includes(String(process.env.MOCKMATE_HOSTED || '').toLowerCase())
-    if (remoteHosted) return res.status(503).json({
+    if (remoteHosted || Boolean(process.env.VERCEL)) return res.status(503).json({
       error: 'Managed transcription gateway is not configured. Streaming access is disabled.',
       code: 'managed_stt_gateway_required',
     })
