@@ -13,7 +13,9 @@ Write-Host "Launching packaged MockMate runtime: $exe"
 Write-Host "Local account backend required: $expectLocalBackend"
 
 try {
-  $proc = Start-Process -FilePath $exe -PassThru
+  # Loopback-only remote debugging for this validation process. Never enable
+  # this in production app shortcuts or release builds.
+  $proc = Start-Process -FilePath $exe -ArgumentList @('--remote-debugging-address=127.0.0.1', '--remote-debugging-port=9228') -PassThru
   $deadline = (Get-Date).AddSeconds(45)
 
   while ((Get-Date) -lt $deadline) {
@@ -41,7 +43,12 @@ try {
   if (-not $apiReady) { throw 'Packaged local UI/API service did not become ready on 127.0.0.1:3002.' }
   if (-not $backendReady) { throw 'Packaged local account service did not become ready on 127.0.0.1:4000.' }
 
-  Write-Host 'Packaged Windows runtime smoke passed: executable stayed alive and required local services became ready.'
+  # Node 24's built-in WebSocket talks directly to Chromium DevTools. Unlike an
+  # HTTP 200 on :3002, this proves compiled React actually mounted in Electron.
+  node scripts/windows-packaged-renderer-smoke.mjs
+  if ($LASTEXITCODE -ne 0) { throw "Packaged React renderer failed smoke verification (exit $LASTEXITCODE)" }
+
+  Write-Host 'Packaged Windows smoke passed: services ready, React mounted, Electron IPC preload present.'
 } finally {
   if ($proc) {
     try {
