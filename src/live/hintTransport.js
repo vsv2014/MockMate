@@ -6,8 +6,11 @@ import { apiFetch } from '../lib/apiClient.js'
 
 export function splitSseBuffer(buf = '') {
   const events = []
-  // Normalize CRLF and lone CR so valid SSE frames are parsed on every platform.
-  let rest = String(buf).replace(/\r\n?/g, '\n')
+  // Preserve a trailing CR: the next network chunk may begin with LF.
+  const source = String(buf)
+  const trailingCR = source.endsWith('\r')
+  let rest = source.replace(/\r\n|\r|\n/g, '\n')
+  if (trailingCR) rest = rest.slice(0, -1)
   let nn
   while ((nn = rest.indexOf('\n\n')) !== -1) {
     const raw = rest.slice(0, nn)
@@ -17,7 +20,7 @@ export function splitSseBuffer(buf = '') {
     try { data = JSON.parse(raw.match(/^data: ([\s\S]*)$/m)?.[1] ?? 'null') } catch { data = null }
     events.push({ event: ev, data, raw })
   }
-  return { events, rest }
+  return { events, rest: rest + (trailingCR ? '\r' : '') }
 }
 
 function httpError(status, data) {
