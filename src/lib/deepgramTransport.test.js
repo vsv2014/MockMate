@@ -22,6 +22,27 @@ describe('deepgramTransport shared helpers', () => {
     expect(refs.pcmQueueBytesRef.current).toBe(2)
   })
 
+  it('requeues the unsent PCM tail if a flush socket closes mid-send', () => {
+    const first = new Uint8Array([1]).buffer
+    const second = new Uint8Array([2]).buffer
+    const third = new Uint8Array([3]).buffer
+    const refs = {
+      pcmQueueRef: { current: [first, second, third] },
+      pcmQueueBytesRef: { current: 3 },
+      pcmDroppedBytesRef: { current: 0 },
+    }
+    const send = vi.fn()
+      .mockImplementationOnce(() => {})
+      .mockImplementationOnce(() => { throw new Error('socket closed') })
+    flushQueuedPcm({ sock: { readyState: 1, send }, ...refs })
+    expect(refs.pcmQueueRef.current).toEqual([second, third])
+    expect(refs.pcmQueueBytesRef.current).toBe(2)
+    const recovered = vi.fn()
+    flushQueuedPcm({ sock: { readyState: 1, send: recovered }, ...refs })
+    expect(recovered.mock.calls.map(([buf]) => [...new Uint8Array(buf)])).toEqual([[2], [3]])
+    expect(refs.pcmQueueBytesRef.current).toBe(0)
+  })
+
   it('computes exponential reconnect backoff capped at 8000ms', () => {
     expect(computeReconnectDelayMs(1)).toBe(500)
     expect(computeReconnectDelayMs(2)).toBe(1000)
