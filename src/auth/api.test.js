@@ -18,7 +18,7 @@ vi.stubGlobal('sessionStorage', {
 const fetchMock = vi.fn()
 vi.stubGlobal('fetch', fetchMock)
 
-import { signup, getToken, clearToken } from './api.js'
+import { signup, login, fetchMe, getToken, clearToken, setUnauthorizedHandler } from './api.js'
 
 const jsonResponse = (status, body) => Promise.resolve({
   ok: status >= 200 && status < 300,
@@ -49,5 +49,60 @@ describe('signup response union (round-5 P1)', () => {
     const result = await signup({ name: 'C', email: 'c@b.c', password: 'password123' })
     expect(result.verificationRequired).toBe(true)
     expect(await getToken()).toBeNull()
+  })
+})
+
+describe('N06: late requests from a prior account never replace the active session', () => {
+  beforeEach(async () => {
+    fetchMock.mockReset()
+    ls.clear()
+    ss.clear()
+    await clearToken()
+    setUnauthorizedHandler(() => {})
+  })
+
+  it('ignores a stale 401 from account A after account B signs in', async () => {
+    let finishOldRequest
+    let loginNumber = 0
+    fetchMock.mockImplementation(url => {
+      if (String(url).endsWith('/auth/login')) {
+        loginNumber += 1
+        return jsonResponse(200, {
+          token: loginNumber === 1 ? 'token-a' : 'token-b',
+          user: { id: loginNumber === 1 ? 'account-a' : 'account-b' },
+        })
+      }
+      if (String(url).endsWith('/auth/me')) {
+        return new Promise(resolve => { finishOldRequest = resolve })
+      }
+      throw new Error('Unexpected endpoint ' + url)
+    })
+
+    await login({ email: 'a@test.example', password: 'test' })
+    const oldRequest = fetchMe()
+    for (let i = 0; i < 10 && !finishOldRequest; i++) await Promise.resolve()
+    expect(finishOldRequest).toBeTypeOf('function')
+
+    await login({ email: 'b@test.example', password: 'test' })
+    const unauthorized = vi.fn()
+    setUnauthorizedHandler(unauthorized)
+    finishOldRequest(await jsonResponse(401, { error: 'expired' }))
+
+    await expect(oldRequest).rejects.toThrow('previous session')
+    expect(unauthorized).not.toHaveBeenCalled()
+    expect(await getToken()).toBe('token-b')
+    expect(ss.get('mm-active-account-scope')).toBe('account-b')
+  })
+
+  it('does not switch account scope when a stale 200 /auth/me response arrives', async () => {
+    let complete
+    fetchMock.mockReturnValueOnce(new Promise(resolve => { complete = resolve }))
+    const pending = fetchMe()
+    for (let i = 0; i < 10 && !complete; i++) await Promise.resolve()
+    expect(complete).toBeTypeOf('function')
+    ss.set('mm-active-account-scope', 'account-b')
+    complete(await jsonResponse(200, { user: { id: 'account-a' } }))
+    expect((await pending).user.id).toBe('account-a')
+    expect(ss.get('mm-active-account-scope')).toBe('account-b')
   })
 })

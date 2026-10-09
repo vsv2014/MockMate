@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { T } from './tokens'
 import { Spinner } from './ui'
 import Welcome from './Welcome'
@@ -24,10 +24,16 @@ export default function AuthGate({ children }) {
   const [view, setView] = useState('welcome')
   const [session, setSession] = useState(null)
   const [pendingEmail, setPendingEmail] = useState('')
+  const authRevision = useRef(0)
 
   const loadSession = useCallback(async () => {
+    const revision = authRevision.current
     const me = await fetchMe()
-    setActiveAccountScope(me?.user?.id || me?.user?._id || me?.user?.email || 'guest')
+    // A previous /auth/me response must never restore account A after Logout,
+    // Guest, unauthorized, or a later account B login has won the race.
+    if (revision !== authRevision.current) return null
+    if (!me?.user) throw new Error('Authenticated session has no account identity')
+    setActiveAccountScope(me.user.id || me.user._id || me.user.email || 'guest')
     setGuestMode(false)
     setSession(me)
     setStatus('ready')
@@ -36,6 +42,7 @@ export default function AuthGate({ children }) {
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      authRevision.current += 1
       clearActiveAccountScope()
       setGuestMode(false)
       setSession(null); setView('login'); setStatus('auth')
@@ -51,7 +58,7 @@ export default function AuthGate({ children }) {
       }
       catch { if (alive) { clearActiveAccountScope(); setView('login'); setStatus('auth') } }
     })()
-    return () => { alive = false }
+    return () => { alive = false; authRevision.current += 1 }
   }, [loadSession])
 
   useEffect(() => {
@@ -61,11 +68,13 @@ export default function AuthGate({ children }) {
   }, [status, session?.guest])
 
   const handleLogin = useCallback(async (creds) => {
+    authRevision.current += 1
     await login(creds)
     await loadSession()
   }, [loadSession])
 
   const handleSignup = useCallback(async (form) => {
+    authRevision.current += 1
     const result = await signup(form)
     markSeenWelcome()
     // Explicit union branch (round-5 review P1): when the backend requires email
@@ -101,6 +110,8 @@ export default function AuthGate({ children }) {
   }, [session, loadSession])
 
   const doLogout = useCallback(async () => {
+    authRevision.current += 1
+    setStatus('loading')
     await apiLogout()
     markSeenWelcome()
     clearActiveAccountScope()
@@ -109,6 +120,7 @@ export default function AuthGate({ children }) {
   }, [])
 
   const enterGuest = useCallback(() => {
+    authRevision.current += 1
     markSeenWelcome()
     clearActiveAccountScope()
     const previous = getAiMode()
@@ -119,6 +131,7 @@ export default function AuthGate({ children }) {
   }, [])
 
   const goSignIn = useCallback(() => {
+    authRevision.current += 1
     clearActiveAccountScope()
     setSession(null); setView('login'); setStatus('auth')
   }, [])

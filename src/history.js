@@ -1,20 +1,26 @@
 // Local session history for Solo/Live Practice — stored only on this machine per account.
 import { getScopedItem, setScopedItem, removeScopedItem } from './lib/accountScope'
+import { readScopedArrayWithRecovery } from './lib/storageRecovery'
 
 const KEY = 'mm-sessions'
+const CORRUPT_HISTORY_BACKUP_KEY = 'mm-sessions-corrupt-backup-v1'
 const SOLO_DRAFT_KEY = 'mm-solo-draft'
 const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000
 const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const MAX_SESSIONS = 60
 
 function writeSessions(items) {
+  // Refuse to destroy unreadable history unless its original bytes have
+  // already been preserved under this same account's recovery key.
+  if (!readScopedArrayWithRecovery(KEY, CORRUPT_HISTORY_BACKUP_KEY).writable) {
+    throw new Error('Existing interview history could not be backed up')
+  }
   if (!setScopedItem(KEY, JSON.stringify(items.slice(0, MAX_SESSIONS)))) throw new Error('local storage write failed')
 }
 
 export function loadSessions() {
   try {
-    const arr = JSON.parse(getScopedItem(KEY, '[]') || '[]')
-    if (!Array.isArray(arr)) return []
+    const { items: arr } = readScopedArrayWithRecovery(KEY, CORRUPT_HISTORY_BACKUP_KEY)
     const cutoff = Date.now() - MAX_AGE_MS
     const kept = arr.filter(s => s && s.ts && s.ts >= cutoff).sort((a, b) => b.ts - a.ts).slice(0, MAX_SESSIONS)
     if (kept.length !== arr.length) { try { writeSessions(kept) } catch {} }

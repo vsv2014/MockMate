@@ -14,6 +14,32 @@ vi.stubGlobal('localStorage', {
   removeItem: k => { store.delete(k) },
 })
 
+describe('N05: corrupt document recovery without losing original bytes', () => {
+  beforeEach(() => { store.clear(); apiFetchMock.mockReset() })
+
+  it('keeps a scoped backup before adding a document over corrupt JSON', () => {
+    store.set('mm-docs::guest', '{broken private document data')
+    const saved = addDoc({ name: 'New notes', type: 'knowledge', text: 'A freshly imported set of notes.' })
+    expect(saved).not.toBeNull()
+    expect(listDocs()).toHaveLength(1)
+    expect(store.get('mm-docs-corrupt-backup-v1::guest')).toBe('{broken private document data')
+  })
+
+  it('rejects a new document when existing corruption cannot be backed up', () => {
+    store.set('mm-docs::guest', '{broken private document data')
+    const prev = localStorage.setItem
+    localStorage.setItem = (key, value) => {
+      if (key.includes('corrupt-backup')) throw new Error('quota')
+      store.set(key, String(value))
+    }
+    try {
+      const saved = addDoc({ name: 'Another document', type: 'knowledge', text: 'New notes content.' })
+      expect(saved).toBeNull()
+      expect(store.get('mm-docs::guest')).toBe('{broken private document data')
+    } finally { localStorage.setItem = prev }
+  })
+})
+
 describe('inferDocType', () => {
   it('maps resume/cv/jd/knowledge filenames', () => {
     expect(inferDocType('My_Resume.pdf')).toBe('resume')

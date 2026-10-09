@@ -5,9 +5,11 @@ import { apiFetch } from './apiClient'
 import { chunkText, topK, lexicalTopK, groundingBlock } from '../../shared/retrieval.js'
 import { getDocThreshold } from './aiSettings'
 import { diagnostic } from './diagnostics'
-import { getScopedItem, setScopedItem } from './accountScope'
+import { activeAccountScope, getScopedItem, setScopedItem } from './accountScope'
+import { readScopedArrayWithRecovery } from './storageRecovery'
 
 const KEY = 'mm-docs'
+const CORRUPT_DOCS_BACKUP_KEY = 'mm-docs-corrupt-backup-v1'
 const INDEX_STORAGE_KEY = 'mm-docs-index-v1'
 export const MAX_INDEX_CHUNKS_PER_DOC = 40
 export const LONG_DOC_CHARS = 20000
@@ -19,14 +21,16 @@ export function sampleChunksForIndex(chunks, max = MAX_INDEX_CHUNKS_PER_DOC) {
 }
 
 const save = d => {
-  try { return setScopedItem(KEY, JSON.stringify(d)) }
-  catch { return false }
+  try {
+    if (!readScopedArrayWithRecovery(KEY, CORRUPT_DOCS_BACKUP_KEY).writable) return false
+    return setScopedItem(KEY, JSON.stringify(d))
+  } catch { return false }
 }
 
 const load = () => {
+  ensureCurrentScope()
   try {
-    const raw = JSON.parse(getScopedItem(KEY, '[]') || '[]')
-    if (!Array.isArray(raw)) return []
+    const { items: raw } = readScopedArrayWithRecovery(KEY, CORRUPT_DOCS_BACKUP_KEY)
     let dirty = false
     const docs = raw.map(d => {
       if (!d || typeof d !== 'object') return d
@@ -81,7 +85,7 @@ export function setDocType(id, type) {
   const docs = load(); const i = docs.findIndex(d => d.id === id)
   if (i < 0) return null
   docs[i] = { ...docs[i], type: normalizeDocType(type) }
-  indexCache.delete(id)
+  invalidateDocIndex(id)
   return save(docs) ? toMeta(docs[i]) : null
 }
 
@@ -147,7 +151,38 @@ const indexInFlight = new Map()
 const indexGeneration = new Map()
 const indexAbort = new Map()
 
+// The underlying account-scoped localStorage is isolated, but these in-memory
+// maps used to be keyed by document ID alone and survived account switching.
+// A delayed /api/embed could also finish after sign-out and write a previous
+// account's chunk text into the newly active account's vector-cache key.
+let cacheAccountScope = activeAccountScope()
+let cacheScopeEpoch = 0
+
+function ensureCurrentScope() {
+  const currentScope = activeAccountScope()
+  if (currentScope !== cacheAccountScope) {
+    cacheAccountScope = currentScope
+    cacheScopeEpoch += 1
+    for (const controller of indexAbort.values()) {
+      try { controller.abort(new DOMException('Account switched during embedding', 'AbortError')) } catch {}
+    }
+    indexAbort.clear()
+    indexCache.clear()
+    indexInFlight.clear()
+    indexGeneration.clear()
+  }
+  return { scope: cacheAccountScope, epoch: cacheScopeEpoch }
+}
+
+function assertCurrentScope(expected) {
+  const current = ensureCurrentScope()
+  if (expected.scope !== current.scope || expected.epoch !== current.epoch) {
+    throw new DOMException('Account changed while document retrieval was running', 'AbortError')
+  }
+}
+
 function invalidateDocIndex(id) {
+  ensureCurrentScope()
   indexGeneration.set(id, (indexGeneration.get(id) || 0) + 1)
   const ctrl = indexAbort.get(id)
   if (ctrl) {
@@ -250,6 +285,7 @@ async function embed(texts, signal) {
 }
 
 export function warmDocs(docIds) {
+  ensureCurrentScope()
   const docs = filterDocs(load(), { docIds })
   if (docs.length) ensureIndexed(docs).catch(() => {})
 }
@@ -261,6 +297,7 @@ function filterDocs(docs, { docIds, types } = {}) {
 }
 
 async function indexOne(doc, signal, force = false, expectedEmbeddingModel = null) {
+  const origin = ensureCurrentScope()
   const sig = documentSignature(doc.text)
   const cached = indexCache.get(doc.id)
   if (
@@ -298,6 +335,7 @@ async function indexOne(doc, signal, force = false, expectedEmbeddingModel = nul
       const chunks = sampleChunksForIndex(allChunks)
       const vectors = chunks.length ? await embed(chunks, ctrl.signal) : []
       if (ctrl.signal.aborted) throw ctrl.signal.reason || new DOMException('Aborted', 'AbortError')
+      assertCurrentScope(origin)
       // Stale-task guards: the document may have been deleted, replaced, or
       // account-purged while the embed request was in flight. Never write
       // removed/private text back into the cache or storage in that case.
@@ -315,6 +353,7 @@ async function indexOne(doc, signal, force = false, expectedEmbeddingModel = nul
         embeddingModel,
         chunks: chunks.map((text, i) => ({ text, vector: vectors[i] || [] })),
       }
+      assertCurrentScope(origin)
       indexCache.set(doc.id, entry)
       persistIndexEntry(doc.id, entry)
       return entry
@@ -382,6 +421,7 @@ export function canReuseSpeculativeRag(specQuery = '', committedQuery = '') {
 }
 
 export async function retrieveContext(question, { k = 4, minScore, budgetMs = 2000, docIds, types, signal: externalSignal } = {}) {
+  const origin = ensureCurrentScope()
   if (!question || !String(question).trim()) return ''
   if (externalSignal?.aborted) return ''
   if (Array.isArray(docIds) && docIds.length === 0) return ''
@@ -397,13 +437,16 @@ export async function retrieveContext(question, { k = 4, minScore, budgetMs = 20
   const timeout = new Promise(resolve => { timeoutId = setTimeout(() => { ac.abort(new DOMException('RAG deadline exceeded', 'AbortError')); diagnostic('rag', 'retrieval_timed_out', { documentCount: docs.length, budgetMs, durationMs: Math.round(performance.now() - startedAt) }, 'warn'); resolve('') }, budgetMs) })
   const work = (async () => {
     const qvList = await embed([question], ac.signal)
+    assertCurrentScope(origin)
     const [qv] = qvList || []
     const queryEmbeddingModel = qvList?.embeddingModel || 'default'
     if (!qv?.length || externalSignal?.aborted) return ''
     let items = await ensureIndexed(docs, { signal: ac.signal, expectedEmbeddingModel: queryEmbeddingModel })
+    assertCurrentScope(origin)
     if (items.some(item => item.vector?.length && (item.vector.length !== qv.length || item.embeddingModel !== queryEmbeddingModel))) {
       for (const doc of docs) indexCache.delete(doc.id)
       items = await ensureIndexed(docs, { signal: ac.signal, force: true, expectedEmbeddingModel: queryEmbeddingModel })
+      assertCurrentScope(origin)
     }
     if (!items.length || items.some(item => item.vector?.length && (item.vector.length !== qv.length || item.embeddingModel !== queryEmbeddingModel))) {
       diagnostic('rag', 'retrieval_dimension_mismatch', { queryDimensions: qv.length, queryEmbeddingModel, documentCount: docs.length }, 'warn')
@@ -413,13 +456,17 @@ export async function retrieveContext(question, { k = 4, minScore, budgetMs = 20
     diagnostic('rag', 'retrieval_completed', { documentCount: docs.length, indexedChunkCount: items.length, hitCount: chunks.length, maxScore: chunks.length ? Number(Math.max(...chunks.map(c => c.score)).toFixed(3)) : 0, minScore: chunks.length ? Number(Math.min(...chunks.map(c => c.score)).toFixed(3)) : 0, durationMs: Math.round(performance.now() - startedAt) })
     return groundingBlock(chunks)
   })().catch(e => {
-    if (externalSignal?.aborted) return ''
+    if (externalSignal?.aborted || activeAccountScope() !== origin.scope) return ''
     if (e?.name !== 'AbortError') diagnostic('rag', 'retrieval_failed', { reason: e?.name || 'error', durationMs: Math.round(performance.now() - startedAt) }, 'warn')
     const lexicalHits = lexicalTopK(question, buildLexicalItems(docs), { k, minScore: Math.max(0.28, threshold) })
     return groundingBlock(lexicalHits)
   })
   const result = await Promise.race([work, timeout])
   clearTimeout(timeoutId)
+  if (activeAccountScope() !== origin.scope) {
+    ac.abort(new DOMException('Account changed during retrieval', 'AbortError'))
+    return ''
+  }
   if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
   if (externalSignal?.aborted) return ''
   if (result) return result

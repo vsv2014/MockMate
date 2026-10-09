@@ -53,9 +53,10 @@ async function request(path, { method = 'GET', body, auth = false, timeoutMs = 1
   const startedAt = performance.now()
   const headers = { 'X-MockMate-Request-Id': requestId }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
+  let requestToken = null
   if (auth) {
-    const token = await getToken()
-    if (token) headers.Authorization = `Bearer ${token}`
+    requestToken = await getToken()
+    if (requestToken) headers.Authorization = `Bearer ${requestToken}`
   }
 
   let res
@@ -81,6 +82,11 @@ async function request(path, { method = 'GET', body, auth = false, timeoutMs = 1
   }
 
   if (res.status === 401 && auth) {
+    // A slow request sent with account A's token must never clear account B's
+    // freshly authenticated session after a user switch.
+    if (requestToken !== await getToken()) {
+      throw new ApiError('This request belongs to a previous session.', 401)
+    }
     await handleUnauthorized(path)
     throw new ApiError('Your session expired. Please sign in again.', 401)
   }
@@ -133,9 +139,9 @@ export async function login({ email, password }) {
   return rememberUser(data.user)
 }
 export async function fetchMe() {
-  const payload = await request('/auth/me', { auth: true })
-  rememberUser(payload?.user)
-  return payload
+  // AuthGate is responsible for applying the account scope only after it
+  // confirms this async response still belongs to the active auth generation.
+  return request('/auth/me', { auth: true })
 }
 export async function updateProfile(patch) { const { user } = await request('/me', { method: 'PATCH', body: patch, auth: true }); return rememberUser(user) }
 export async function logout() {

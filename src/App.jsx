@@ -1533,5 +1533,11 @@ function HomeTile({ onClick, icon, title, sub, accent = T.borderStrong, glow, ba
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {
   if (!inElectron) return <BrowserGate />
-  return <AuthGate>{auth => <ElectronShell auth={auth} />}</AuthGate>
+  // AuthGate can refresh/switch identity without unmounting the ready stage.
+  // Force account-owned React state (profile, docs, cached UI, live jobs) to be
+  // discarded on a real identity switch, never reused under another account.
+  return <AuthGate>{auth => <ElectronShell
+    key={String(auth?.user?.id || auth?.user?._id || auth?.user?.email || 'guest')}
+    auth={auth}
+  />}</AuthGate>
 }
