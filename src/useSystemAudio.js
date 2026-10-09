@@ -528,6 +528,13 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       resumeAudio()
       const wasSuspended = suspendPaused.current
       suspendPaused.current = false
+      // Tracks can die while the OS is suspended. 'ended' is ignored while
+      // suspended to avoid fighting OS power events; check it again on wake.
+      if (!userStop.current && stream.current
+        && !stream.current.getAudioTracks?.().some(t => t.readyState === 'live')) {
+        recoverCaptureRef.current?.()
+        return
+      }
       if (userStop.current || !ctx.current) return
       if (wasSuspended) reconnectAttempts.current = 0
       attemptsAtSuspend.current = 0
