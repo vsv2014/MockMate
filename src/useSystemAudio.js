@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { diagnostic } from './lib/diagnostics'
+import { watchAudioTrackEnded, shouldRecoverEndedTrack } from './lib/audioTrackRecovery'
 import {
   MAX_RECONNECTS,
   KEEPALIVE_MS,
@@ -105,6 +106,9 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const acquiringGen = useRef(null)
   const activeSocketRef = useRef(null)
   const tokenCache = useRef(null)
+  const trackWatchOff = useRef(null)
+  const trackRecoveryTimer = useRef(null)
+  const recoverCaptureRef = useRef(null)
   const connecting = useRef(false)
   const suspendPaused = useRef(false)
   const attemptsAtSuspend = useRef(0)
@@ -161,6 +165,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     // setFinalizeOnPause(). A genuinely new Live session mounts a fresh hook instance,
     // whose useRef(true) starts enabled.
     clearTimeout(reconnectTimer.current); reconnectTimer.current = null
+    clearTimeout(trackRecoveryTimer.current); trackRecoveryTimer.current = null
+    trackWatchOff.current?.(); trackWatchOff.current = null
     clearDeepgramTokenCache(tokenCache)
     abandonSocket(activeSocketRef.current || ws.current)
     activeSocketRef.current = null
@@ -463,6 +469,20 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
           : 'No audio track from the selected source. Try Microphone.')
       }
       stream.current = audioStream
+      trackWatchOff.current?.()
+      trackWatchOff.current = watchAudioTrackEnded(audioStream, () => {
+        if (!shouldRecoverEndedTrack({
+          expectedStream: audioStream, activeStream: stream.current,
+          stopped: userStop.current, suspended: suspendPaused.current,
+        })) return
+        clearTimeout(trackRecoveryTimer.current)
+        trackRecoveryTimer.current = setTimeout(() => {
+          if (shouldRecoverEndedTrack({
+            expectedStream: audioStream, activeStream: stream.current,
+            stopped: userStop.current, suspended: suspendPaused.current,
+          })) recoverCaptureRef.current?.()
+        }, 450)
+      })
       await buildAudioGraph(audioStream)
       if (userStop.current || suspendPaused.current || startGen !== connectGen.current) {
         audioStream.getTracks().forEach(t => t.stop())
@@ -493,11 +513,28 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   }, [start, teardown])
 
   useEffect(() => {
+    recoverCaptureRef.current = async () => {
+      if (userStop.current || suspendPaused.current || !stream.current) return
+      diagnostic('stt', 'audio_track_ended_reacquire', { source: sourceIdRef.current }, 'warn')
+      try { await restart(sourceIdRef.current, startOptsRef.current) }
+      catch (e) { onFailRef.current?.(e?.message || 'Audio source recovery failed') }
+    }
+    return () => { recoverCaptureRef.current = null }
+  }, [restart])
+
+  useEffect(() => {
     const resumeAudio = () => { try { if (ctx.current?.state === 'suspended') ctx.current.resume() } catch {} }
     const afterWake = () => {
       resumeAudio()
       const wasSuspended = suspendPaused.current
       suspendPaused.current = false
+      // Tracks can die while the OS is suspended. 'ended' is ignored while
+      // suspended to avoid fighting OS power events; check it again on wake.
+      if (!userStop.current && stream.current
+        && !stream.current.getAudioTracks?.().some(t => t.readyState === 'live')) {
+        recoverCaptureRef.current?.()
+        return
+      }
       if (userStop.current || !ctx.current) return
       if (wasSuspended) reconnectAttempts.current = 0
       attemptsAtSuspend.current = 0
