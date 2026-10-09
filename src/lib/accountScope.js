@@ -1,6 +1,6 @@
 // Account-scoped local persistence for desktop renderer state.
 const ACTIVE_SCOPE_KEY = 'mm-active-account-scope'
-const STORAGE_SCHEMA_VERSION = 3
+const STORAGE_SCHEMA_VERSION = 4
 const LEGACY_KEYS = [
   'peerMockProfile', 'mm-docs', 'mm-sessions', 'mm-ai-mode', 'mm-answer-style',
   'mm-screenshot-speed', 'mm-auto-skip', 'mm-doc-threshold', 'llmProvider',
@@ -52,6 +52,24 @@ function migrateVersion(scope, fromVersion) {
     const modeKey = scopedKey('mm-ai-mode', scope)
     const mode = localStorage.getItem(modeKey)
     if (mode !== null && !['managed', 'byok'].includes(mode)) localStorage.setItem(modeKey, 'byok')
+  }
+  // v3→v4: one-time transition for two historical installation-global stores.
+  // Never run for guest accounts. Scoped state always wins if already present.
+  // A storage quota failure aborts migration before deleting the old value or
+  // advancing the version marker; the next sign-in can safely retry.
+  if (fromVersion < 4) {
+    for (const key of ['mm-saved-jobs', 'mm-career-draft']) {
+      const legacy = localStorage.getItem(key)
+      if (legacy === null) continue
+      const destination = scopedKey(key, scope)
+      if (localStorage.getItem(destination) === null) {
+        localStorage.setItem(destination, legacy)
+        if (localStorage.getItem(destination) !== legacy) {
+          throw new Error('Failed to verify account-scoped migration')
+        }
+      }
+      localStorage.removeItem(key)
+    }
   }
 }
 

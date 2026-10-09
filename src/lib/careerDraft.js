@@ -2,11 +2,13 @@
  * Resume Studio analysis draft — separate from Live/Solo profile.jobDescription.
  * Survives minimize (App used to unmount Career) and tab switches within Career.
  */
+import { getScopedItem, setScopedItem } from './accountScope'
+
 export const CAREER_DRAFT_KEY = 'mm-career-draft'
 
 export function loadCareerDraft() {
   try {
-    const raw = JSON.parse(localStorage.getItem(CAREER_DRAFT_KEY) || 'null')
+    const raw = JSON.parse(getScopedItem(CAREER_DRAFT_KEY, 'null') || 'null')
     if (!raw || typeof raw !== 'object') return {}
     return {
       jd: typeof raw.jd === 'string' ? raw.jd : '',
@@ -30,8 +32,7 @@ export function saveCareerDraft(partial = {}) {
       ...partial,
       updatedAt: new Date().toISOString(),
     }
-    localStorage.setItem(CAREER_DRAFT_KEY, JSON.stringify(next))
-    return next
+    return setScopedItem(CAREER_DRAFT_KEY, JSON.stringify(next)) ? next : null
   } catch {
     return null
   }

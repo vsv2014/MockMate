@@ -1,6 +1,8 @@
-// Saved jobs — a local bookmark list of roles the user wants to track, stored only on
-// this machine (localStorage). Same shape/retention discipline as history.js. Jobs come
-// from the /api/jobs ranker, so each already has { id, title, company, url, score, ... }.
+// Saved jobs — account-scoped local bookmarks stored on this machine.
+// The public API is unchanged; all reads/writes use the existing scoped storage
+// boundary so statuses and personal notes cannot bleed between signed-in users.
+import { getScopedItem, setScopedItem } from './lib/accountScope'
+// Jobs come from the /api/jobs ranker, with { id, title, company, url, score, ... }.
 
 const KEY = 'mm-saved-jobs'
 // Generous safety bound so localStorage never bloats (~1KB/entry → <0.5MB at the cap, well under
@@ -16,7 +18,7 @@ const keyOf = j => j?.id || j?.url || ''
 // Newest-saved first.
 export function loadSavedJobs() {
   try {
-    const arr = JSON.parse(localStorage.getItem(KEY) || '[]')
+    const arr = JSON.parse(getScopedItem(KEY, '[]') || '[]')
     return Array.isArray(arr) ? arr.sort((a, b) => (b.savedTs || 0) - (a.savedTs || 0)) : []
   } catch { return [] }
 }
@@ -33,8 +35,7 @@ export function saveJob(job) {
       status: SAVED_STATUSES.includes(job.status) ? job.status : 'interested',
       notes: typeof job.notes === 'string' ? job.notes : '',
     }, ...list].slice(0, SAVED_MAX)
-    localStorage.setItem(KEY, JSON.stringify(next))
-    return next
+    return setScopedItem(KEY, JSON.stringify(next)) ? next : loadSavedJobs()
   } catch { return loadSavedJobs() }   // quota exceeded etc. — non-fatal
 }
 
@@ -42,8 +43,7 @@ export function removeSavedJob(jobOrId) {
   const k = typeof jobOrId === 'string' ? jobOrId : keyOf(jobOrId)
   try {
     const next = loadSavedJobs().filter(j => keyOf(j) !== k)
-    localStorage.setItem(KEY, JSON.stringify(next))
-    return next
+    return setScopedItem(KEY, JSON.stringify(next)) ? next : loadSavedJobs()
   } catch { return loadSavedJobs() }
 }
 
@@ -62,8 +62,7 @@ export function updateSavedJob(jobOrId, patch = {}) {
       if (patch.notes != null) updated.notes = String(patch.notes)
       return updated
     })
-    localStorage.setItem(KEY, JSON.stringify(next))
-    return next
+    return setScopedItem(KEY, JSON.stringify(next)) ? next : loadSavedJobs()
   } catch { return loadSavedJobs() }
 }
 
