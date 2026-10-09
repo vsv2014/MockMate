@@ -62,23 +62,32 @@ describe('N06: late requests from a prior account never replace the active sessi
   })
 
   it('ignores a stale 401 from account A after account B signs in', async () => {
-    fetchMock.mockReturnValueOnce(jsonResponse(200, {
-      token: 'token-a', user: { id: 'account-a' },
-    }))
-    await login({ email: 'a@test.example', password: 'test' })
     let finishOldRequest
-    fetchMock.mockReturnValueOnce(new Promise(resolve => { finishOldRequest = resolve }))
+    let loginNumber = 0
+    fetchMock.mockImplementation(url => {
+      if (String(url).endsWith('/auth/login')) {
+        loginNumber += 1
+        return jsonResponse(200, {
+          token: loginNumber === 1 ? 'token-a' : 'token-b',
+          user: { id: loginNumber === 1 ? 'account-a' : 'account-b' },
+        })
+      }
+      if (String(url).endsWith('/auth/me')) {
+        return new Promise(resolve => { finishOldRequest = resolve })
+      }
+      throw new Error('Unexpected endpoint ' + url)
+    })
+
+    await login({ email: 'a@test.example', password: 'test' })
     const oldRequest = fetchMe()
-    // Allow the async getToken() step to reach fetch() before stubbing login B.
     for (let i = 0; i < 10 && !finishOldRequest; i++) await Promise.resolve()
     expect(finishOldRequest).toBeTypeOf('function')
-    fetchMock.mockReturnValueOnce(jsonResponse(200, {
-      token: 'token-b', user: { id: 'account-b' },
-    }))
+
     await login({ email: 'b@test.example', password: 'test' })
     const unauthorized = vi.fn()
     setUnauthorizedHandler(unauthorized)
     finishOldRequest(await jsonResponse(401, { error: 'expired' }))
+
     await expect(oldRequest).rejects.toThrow('previous session')
     expect(unauthorized).not.toHaveBeenCalled()
     expect(await getToken()).toBe('token-b')
