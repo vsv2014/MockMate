@@ -46,6 +46,27 @@ describe('session history persistence', () => {
     expect(loadSessions()[0].score).toBe(90)
   })
 
+  it('preserves corrupt history bytes before writing a new session', () => {
+    store.set('mm-sessions::guest', '{"broken confidential history":')
+    const saved = saveSession({ report: { overallScore: 85 }, transcript: [{ text: 'new answer' }] })
+    expect(saved).not.toBeNull()
+    expect(loadSessions()).toHaveLength(1)
+    expect(store.get('mm-sessions-corrupt-backup-v1::guest')).toBe('{"broken confidential history":')
+  })
+
+  it('refuses to replace unbacked-up corrupt history when quota blocks recovery', () => {
+    store.set('mm-sessions::guest', '{"broken confidential history":')
+    const original = localStorage.setItem
+    localStorage.setItem = (key, value) => {
+      if (key.includes('corrupt-backup')) throw new Error('quota')
+      store.set(key, String(value))
+    }
+    try {
+      expect(saveSession({ report: { overallScore: 90 } })).toBeNull()
+      expect(store.get('mm-sessions::guest')).toBe('{"broken confidential history":')
+    } finally { localStorage.setItem = original }
+  })
+
   it('returns null when even the newest session cannot be stored', () => {
     const original = localStorage.setItem
     localStorage.setItem = () => { throw new Error('quota') }
