@@ -6,8 +6,10 @@ import { chunkText, topK, lexicalTopK, groundingBlock } from '../../shared/retri
 import { getDocThreshold } from './aiSettings'
 import { diagnostic } from './diagnostics'
 import { activeAccountScope, getScopedItem, setScopedItem } from './accountScope'
+import { readScopedArrayWithRecovery } from './storageRecovery'
 
 const KEY = 'mm-docs'
+const CORRUPT_DOCS_BACKUP_KEY = 'mm-docs-corrupt-backup-v1'
 const INDEX_STORAGE_KEY = 'mm-docs-index-v1'
 export const MAX_INDEX_CHUNKS_PER_DOC = 40
 export const LONG_DOC_CHARS = 20000
@@ -19,15 +21,16 @@ export function sampleChunksForIndex(chunks, max = MAX_INDEX_CHUNKS_PER_DOC) {
 }
 
 const save = d => {
-  try { return setScopedItem(KEY, JSON.stringify(d)) }
-  catch { return false }
+  try {
+    if (!readScopedArrayWithRecovery(KEY, CORRUPT_DOCS_BACKUP_KEY).writable) return false
+    return setScopedItem(KEY, JSON.stringify(d))
+  } catch { return false }
 }
 
 const load = () => {
   ensureCurrentScope()
   try {
-    const raw = JSON.parse(getScopedItem(KEY, '[]') || '[]')
-    if (!Array.isArray(raw)) return []
+    const { items: raw } = readScopedArrayWithRecovery(KEY, CORRUPT_DOCS_BACKUP_KEY)
     let dirty = false
     const docs = raw.map(d => {
       if (!d || typeof d !== 'object') return d
