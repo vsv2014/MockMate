@@ -2257,6 +2257,38 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
   // window; live = compact invisible overlay.
   useEffect(() => { onPhaseChange?.(phase) }, [phase, onPhaseChange])
 
+  if (phase === 'notes' && sessionNotes?.recovered) {
+    const recovered = sessionNotes.checkpoint
+    return (
+      <div style={{ minHeight: '100vh', background: T.bg, color: T.text1, fontFamily: T.font, overflowY: 'auto' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '22px 26px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Recovered Live notes</h2>
+          <p style={{ fontSize: 13, color: T.text2, lineHeight: 1.6, margin: 0 }}>
+            These are questions and AI suggestions from an interrupted session, not your spoken answers or a scored interview.
+            Audio and pending requests are not resumed. The original notes remain on this device for up to 12 hours unless discarded.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={() => copyText(checkpointToConversation(recovered).map(t => (t.role === 'interviewer' ? 'QUESTION: ' : 'AI SUGGESTION: ') + t.text).join('\n\n'))}
+              style={{ border: 0, borderRadius: T.rCtrl, padding: '9px 12px', background: T.accentFrom, color: T.bg, cursor: 'pointer' }}>Copy recovered notes</button>
+            <button type="button" onClick={onHome}
+              style={{ border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, padding: '9px 12px', background: T.surface2, color: T.text1, cursor: 'pointer' }}>← Dashboard</button>
+          </div>
+          {recovered.transcript.map((item, i) => {
+            const suggested = item.answer || item.hint?.fullAnswer || ''
+            return <div key={item.questionId || i} style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '14px 16px' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: T.accentFrom }}>QUESTION {i + 1}</div>
+              <div style={{ fontSize: 13, marginTop: 6, whiteSpace: 'pre-wrap' }}>{item.text}</div>
+              {suggested && <>
+                <div style={{ fontSize: 11, fontWeight: 600, color: T.text3, marginTop: 12 }}>AI SUGGESTION {item.hint?.incomplete ? '— INCOMPLETE' : ''}</div>
+                <div style={{ fontSize: 12.5, color: T.text2, marginTop: 5, whiteSpace: 'pre-wrap' }}>{suggested}</div>
+              </>}
+            </div>
+          })}
+        </div>
+      </div>
+    )
+  }
+
   if (phase === 'notes') {
     const conversation = sessionNotes?.conversation || []
     const report = sessionNotes?.report || { summary: 'Session ended — your conversation is below.', overallScore: null, dimensions: [], strengths: [], improvements: [] }
@@ -2273,15 +2305,7 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
     <SetupScreen
       recoveredLive={recoveredLive}
       onRecoverLive={() => {
-        const conversation = checkpointToConversation(recoveredLive)
-        setSessionNotes({
-          conversation,
-          report: {
-            summary: 'Recovered questions and AI hints from an interrupted Live session. These are local notes only, not a scored interview. Audio and pending requests cannot be resumed.',
-            overallScore: null,
-            dimensions: [], strengths: [], improvements: [],
-          },
-        })
+        setSessionNotes({ recovered: true, checkpoint: recoveredLive })
         setPhase('notes')
       }}
       onDiscardLive={() => { clearLiveCheckpoint(); setRecoveredLive(null) }}
