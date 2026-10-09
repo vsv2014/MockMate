@@ -12,6 +12,7 @@ import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTION
 import { OverlayPanel, ScreenAnalysisPanel, IconBtn, CodeBlock } from './App'
 import ApiKeysPanel from './ApiKeys'
 import { saveSession } from './history'
+import { saveLiveCheckpoint, loadLiveCheckpoint, clearLiveCheckpoint, checkpointToConversation } from './lib/liveCheckpoint'
 import { loadProfile, saveProfile } from './lib/profile'
 import { fmtClock } from './lib/ui'
 import { LANGUAGES, STT_LANG, CODING_LANGUAGES } from './lib/languages'
@@ -141,7 +142,7 @@ function stopSpeaking() { window.speechSynthesis?.cancel() }
 
 
 // ── Setup screen ──────────────────────────────────────────────────────────────
-function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity }) {
+function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardLive, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity }) {
   const [profile, setProfile] = useState(loadProfile)
   const [audioSources, setAudioSources] = useState([])
   const [sourceId, setSourceId] = useState('microphone')
@@ -286,6 +287,19 @@ function SetupScreen({ onStart, onHome, panelSize, stealth, minimized, onStealth
           </div>
           <button onClick={onHome} style={{ height: 38, padding: '0 16px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 13, cursor: 'pointer', fontFamily: T.font }}>← Back</button>
         </div>
+
+        {recoveredLive && (
+          <div role="status" style={{ background: 'rgba(20,184,166,0.10)', border: '1px solid rgba(20,184,166,0.40)', borderRadius: T.rCard, padding: '12px 14px', color: T.text1 }}>
+            <div style={{ fontSize: 13, fontWeight: 650 }}>Recover notes from an interrupted Live session</div>
+            <div style={{ fontSize: 12, color: T.text2, marginTop: 5, lineHeight: 1.5 }}>
+              {recoveredLive.transcript.length} saved question{recoveredLive.transcript.length === 1 ? '' : 's'} from your previous session. Notes are stored locally for up to 12 hours. Recovery opens a read-only timeline; it does not restart audio, reconnect the interview, or create a score.
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 9 }}>
+              <button type="button" onClick={onRecoverLive} style={{ background: T.accentFrom, color: T.bg, border: 0, borderRadius: T.rCtrl, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}>View recovered notes</button>
+              <button type="button" onClick={onDiscardLive} style={{ background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}>Discard</button>
+            </div>
+          </div>
+        )}
 
         {/* Preflight — clear pass/fail before a real interview */}
         <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '12px 14px' }}>
@@ -609,6 +623,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const genManagerRef = useRef(null)
   if (!genManagerRef.current) genManagerRef.current = createGenerationManager()
   const sessionActiveRef = useRef(true)
+  const checkpointRowsRef = useRef(transcript)
+  checkpointRowsRef.current = transcript
   const pendingManualQ = useRef(null) // { text, questionId } | null — never lose id on mic flush
   const lastHintText = useRef('')
   const lastClassificationRef = useRef(null)
@@ -813,10 +829,25 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   useEffect(() => { answerStyleRef.current = answerStyle; persistAnswerStyle(answerStyle) }, [answerStyle])
 
+  // Save the visible Q&A feed, not profile/secrets/raw audio. A crash or
+  // unexpected renderer reload can then offer explicit read-only recovery.
+  useEffect(() => {
+    if (!transcript.some(item => item.isQuestion)) return
+    const timer = setTimeout(() => {
+      if (sessionActiveRef.current) {
+        saveLiveCheckpoint({ sessionId: sessionIdRef.current, transcript })
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [transcript])
+
   useEffect(() => {
     bcRef.current = new BroadcastChannel('mockmate-live')
     sessionActiveRef.current = true
     return () => {
+      if (sessionActiveRef.current && checkpointRowsRef.current.length) {
+        saveLiveCheckpoint({ sessionId: sessionIdRef.current, transcript: checkpointRowsRef.current })
+      }
       sessionActiveRef.current = false
       cancelSpeculativeRag()
       try { genManagerRef.current?.cancelCurrent?.('unmount') } catch {}
@@ -2221,6 +2252,7 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
   const [phase, setPhase] = useState('setup')
   const [sessionConfig, setSessionConfig] = useState(null)
   const [sessionNotes, setSessionNotes] = useState(null)
+  const [recoveredLive, setRecoveredLive] = useState(() => loadLiveCheckpoint())
   // Tell the parent our phase so it can size the window: setup/notes = full dashboard
   // window; live = compact invisible overlay.
   useEffect(() => { onPhaseChange?.(phase) }, [phase, onPhaseChange])
@@ -2239,7 +2271,23 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
 
   if (phase === 'setup') return (
     <SetupScreen
+      recoveredLive={recoveredLive}
+      onRecoverLive={() => {
+        const conversation = checkpointToConversation(recoveredLive)
+        setSessionNotes({
+          conversation,
+          report: {
+            summary: 'Recovered questions and AI hints from an interrupted Live session. These are local notes only, not a scored interview. Audio and pending requests cannot be resumed.',
+            overallScore: null,
+            dimensions: [], strengths: [], improvements: [],
+          },
+        })
+        setPhase('notes')
+      }}
+      onDiscardLive={() => { clearLiveCheckpoint(); setRecoveredLive(null) }}
       onStart={config => {
+        clearLiveCheckpoint()
+        setRecoveredLive(null)
         // Do not auto-open Protected/PiP — user opens it explicitly from the live overlay.
         onSessionStart?.()
         setSessionConfig({ ...config, pip: null })
@@ -2262,6 +2310,8 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
       onResize={onResize} onDrag={onDrag}
       opacity={opacity} onOpacity={onOpacity}
       onEnd={data => {
+        clearLiveCheckpoint()
+        setRecoveredLive(null)
         onSessionEnd?.()
         let nextData = data
         // Persist to Sessions only when we actually scored candidate speech.
