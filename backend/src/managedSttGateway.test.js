@@ -38,7 +38,7 @@ class StubProvider extends EventTarget {
   emitText(text) { this.dispatchEvent(new MessageEvent('message', { data: text })) }
 }
 
-async function testRig({ maxSeconds = STT_LEASE_SECONDS, originAllowed = () => true, limit = 5000, reserveSucceeds = true, reserveDelayMs = 0, providerOpenDelayMs = 0, initialUsage = 0 } = {}) {
+async function testRig({ maxSeconds = STT_LEASE_SECONDS, originAllowed = () => true, limit = 5000, reserveSucceeds = true, reserveDelayMs = 0, providerOpenDelayMs = 0, initialUsage = 0, refundDelayMs = 0, refundFails = false } = {}) {
   const calls = { reserves: [], refunds: [], provider: [], sends: [] }
   let balance = initialUsage
   const fakeStore = {
@@ -52,6 +52,8 @@ async function testRig({ maxSeconds = STT_LEASE_SECONDS, originAllowed = () => t
       return true
     },
     async releaseSttUsage(userId, period, seconds) {
+      if (refundDelayMs) await sleep(refundDelayMs)
+      if (refundFails) throw new Error('Mongo settlement unavailable')
       calls.refunds.push({ userId, period, seconds })
       balance = Math.max(0, balance - seconds)
     },
@@ -89,7 +91,7 @@ async function testRig({ maxSeconds = STT_LEASE_SECONDS, originAllowed = () => t
   return {
     calls, gateway, open, port: addr.port, get provider() { return provider }, get balance() { return balance },
     close: async () => {
-      gateway.closeAll()
+      await gateway.closeAll()
       await new Promise(resolve => server.close(resolve))
     },
   }
@@ -260,6 +262,50 @@ describe('managed streaming WebSocket policy', () => {
       await sleep(10)
       expect(rig.calls.refunds).toHaveLength(1)
     } finally { await rig.close() }
+  })
+
+  it('drains sockets and waits for committed usage refunds before returning from shutdown', async () => {
+    const rig = await testRig({ refundDelayMs: 90 })
+    try {
+      const ws = await rig.open()
+      await sleep(30)
+      expect(rig.calls.reserves).toHaveLength(1)
+      let drained = false
+      const pending = rig.gateway.closeAll().then(() => { drained = true })
+      await sleep(20)
+      expect(drained).toBe(false) // the Mongo refund is deliberately still pending
+      await pending
+      expect(drained).toBe(true)
+      expect(rig.calls.refunds).toHaveLength(1)
+      expect(rig.balance).toBeLessThan(300)
+      expect(() => rig.gateway.issueTicket({ userId: 'u1' })).toThrow('shutting down')
+      expect(ws.readyState).not.toBe(WebSocket.OPEN)
+    } finally { await rig.close() }
+  })
+
+  it('waits for a late quota reservation and fully refunds if shutdown won the race', async () => {
+    const rig = await testRig({ reserveDelayMs: 85, refundDelayMs: 15 })
+    try {
+      await rig.open()
+      await rig.gateway.closeAll()
+      expect(rig.calls.reserves).toHaveLength(1)
+      expect(rig.calls.refunds).toEqual([
+        { userId: 'u1', period: '2026-10', seconds: STT_LEASE_SECONDS },
+      ])
+      expect(rig.balance).toBe(0)
+      expect(rig.calls.provider).toHaveLength(0)
+    } finally { await rig.close() }
+  })
+
+  it('fails shutdown rather than reporting success when quota reconciliation fails', async () => {
+    const rig = await testRig({ refundFails: true })
+    try {
+      await rig.open()
+      await sleep(25)
+      await expect(rig.gateway.closeAll()).rejects.toThrow('usage settlement failed')
+    } finally {
+      try { await rig.close() } catch {} // expected fake Mongo failure
+    }
   })
 
   it('caps simultaneous streams to protect provider spend', async () => {

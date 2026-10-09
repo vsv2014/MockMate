@@ -136,7 +136,7 @@ async function shutdown(signal) {
   console.log(`[backend] ${signal}: draining`)
   const force = setTimeout(() => process.exit(1), 10_000); force.unref?.()
   try {
-    managedSttGateway.closeAll()
+    await managedSttGateway.closeAll()
     if (server) await new Promise(resolve => server.close(() => resolve()))
     await closeStore()
     clearTimeout(force)
