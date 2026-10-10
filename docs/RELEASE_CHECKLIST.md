@@ -1,5 +1,7 @@
 # MockMate release checklist
 
+**Current target: v1.5.5 (unpublished as of 2026-10-10).** The last actually published Windows installer is v1.5.3; v1.5.4 was an interim source-only hotfix. Check `package.json` and `package-lock.json` versions and use a new matching tag only after all gates pass.
+
 **Rule: no `git tag` / no upload until every box below is checked on a REAL packaged build.**
 Every 1.4.2 defect (CSP broke Solo+Live, STT coupled to the LLM cap, dangling `mintToken` import,
 no `.gitignore`, un-closeable login) was a "nobody ran the packaged build and clicked through it"
@@ -24,6 +26,8 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] Verification-enabled hosted mode refuses to boot unless mail delivery prerequisites are valid (`RESEND_API_KEY` + HTTPS `VERIFY_URL_BASE`)
 - [ ] Backend reachable: no "Can't reach MockMate" on login/signup
 - [ ] Sign out → sign back in works
+- [ ] Two real accounts plus Guest: N01 saved-job status/notes and N02 Resume Studio drafts remain isolated, including after restart; verify account deletion clears its own scoped data only
+- [ ] Upgrade an installation with legacy global jobs and career drafts: schema v3→v4 first-sign-in migration attributes existing data to the intended account; preserve other accounts' scoped state
 
 ## 3. Solo Practice — end to end
 - [ ] Start a session → interviewer asks a real question (not an error toast)
@@ -43,11 +47,13 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] Attach the evidence file to the GitHub Release (`npm run check:dry-run`)
 
 ## 4. Live Interview — end to end (the core moment)
-- [ ] Start Live → managed STT grant is minted only after the account atomically reserves its ≤300s STT lease
+- [ ] Start Live in Managed AI → desktop obtains a short-lived **single-use backend WSS ticket**, not a direct Deepgram grant; authenticated gateway reserves at most one bounded segment before provider streaming and enforces PCM/time limits
 - [ ] Speak an interviewer question → a hint **streams** (first word < ~1.5s)
-- [ ] Overlay is **invisible in a real screen share** (Zoom/Meet/Teams test) — the whole moat
+- [ ] Inspect actual Zoom / Meet / Teams window and full-screen share previews; record whether the overlay is excluded by each mode. Do **not** assume universal invisibility.
 - [ ] Response-length + Coach/Answer toggles change output
-- [ ] Runs 5+ min without losing the interview; survives a brief network blip. Confirm Deepgram reconnects reuse the same unexpired grant rather than reserving another 300 seconds
+- [ ] Runs 5+ min without losing the interview; survives a brief network blip. For **managed gateway** reconnect, verify new one-use tickets/segment reservations and correct usage settlement; BYOK's direct-to-provider flow is separate. Do not assume hosted grant reuse from the legacy implementation.
+- [ ] On a test kill/relaunch, recent Live question/hint notes are readable via explicit recovery, without auto-resuming mic, STT, generation or billing
+- [ ] Physically exercise sleep/wake and audio-track `ended` without `devicechange`, and verify capture reacquisition never resurrects after Stop
 
 ## 5. Screenshot solve
 - [ ] Ctrl+Shift+U / F7 on a coding problem **from Live** → answer-first solution, no refusal
@@ -65,7 +71,7 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 
 ## 7. Regression sweep
 - [ ] Over the LLM cap: managed LLM routes 402 with the upgrade message
-- [ ] Over the STT cap: `/api/deepgram-token` and managed `/transcribe` reject **before provider spend** with `stt_quota_exhausted`; failed mint/provider attempts release their reservation
+- [ ] Over the STT cap: managed WSS ticket/stream and uploaded `/transcribe` reject **before provider spend** with `stt_quota_exhausted`; failed reservation/provider attempts settle or refund correctly, including graceful shutdown
 - [ ] Near the STT cap: a long upload cannot pass on “1 second remaining”; server-probed duration must reserve atomically before Deepgram is called
 - [ ] BYOK mode: keys entered in Settings → Solo/Live use them, no hosted account quota is consumed
 - [ ] What's New modal shows once after a version bump, then not again
@@ -79,14 +85,14 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] Public Release CI has `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` and `MOCKMATE_WINDOWS_PUBLISHER` set, with publisher matching the actual cert Subject.
 - [ ] `Get-AuthenticodeSignature` reports **Valid** on the NSIS installer and unpacked app executable; downloaded updates are publisher-verified.
 - [ ] An old **unsigned** installation's upgrade path is tested explicitly; use the manually downloaded signed installer if the old updater cannot establish trusted provenance.
-- [ ] Interruption/reconnect within one session does **not** request a new STT grant while its JWT is valid. Each new grant still reserves up to 300 seconds; do not claim precise per-second settlement.
+- [ ] Managed mode: every one-use gateway ticket and bounded stream uses authenticated quota reservation/settlement; verify safe behavior across reconnect, duplicate ticket replay, stop and backend graceful shutdown. A host crash still requires durable reservation reconciliation; do not claim precise provider-billed per-second accounting without real E2E evidence.
 - [ ] Repeat an actual 10+ minute Live session with sleep/wake, device change, network flapping and diagnostics redaction on a Windows host.
 
 ## 9. Ship
 - [ ] `package.json` version matches a **new** release tag and CHANGELOG/release notes match the final implementation
-- [ ] Run the version-generic release workflow from current `main` with the matching new `vX.Y.Z` tag **only after signing secrets and Windows real-device certification are complete**
+- [ ] For this candidate, run the version-generic release workflow from reviewed current `main` with new `v1.5.5` tag **only after signing secrets, real Windows certification, and (for Managed AI) hosted WSS/Mongo/Deepgram verification are complete**
 - [ ] Post-publish: download the published Windows installer on a clean machine and repeat §1–§4
-- [ ] Keep the previous Windows version installed → Check for updates → Downloading → Ready → Restart & install; **do not uninstall** during this test
+- [ ] Keep the last published Windows version **v1.5.3** installed → Check for updates → Downloading → Ready → Restart & install; **do not uninstall** during this test. For unsigned-to-signed migration, verify the safe manual signed-installer path if the legacy updater cannot verify provenance.
 - [ ] Settings → Diagnostics → Export logs; verify updater/provider/STT/session events exist and no key/token/transcript/prompt/screenshot content appears
 
 ---
