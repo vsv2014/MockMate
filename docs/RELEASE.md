@@ -69,6 +69,45 @@ If the signing provider, hosted gateway, runtime smoke, or certificate checks fa
 - Repeat upgrade from v1.5.3 with preserved local account documents/history/keys where applicable, capture Logs/Diagnostics without secrets, and record the selected screen-share preview results.
 - Mark evidence rows PASS only with actual observation. Keep unresolved code/hardware/hosted billing issues open.
 
+## Free, unsigned personal preview — separate distribution track
+
+When a trusted Windows code-signing certificate is unavailable, use the separate
+[`Unsigned Personal Preview (Windows)`](../.github/workflows/personal-preview.yml)
+workflow instead of weakening the signed release workflow. It is strictly a
+**testing pre-release**, not a replacement for public, production-grade signed updates.
+
+- The first merge of the new workflow into `main` initiates preview iteration `1`
+  automatically. For a manual retry or an additional candidate, use **Run workflow**
+  on `main` and enter an **unused** `preview_number`.
+- For root version `1.5.5`, iteration `1` uses tag **`personal-v1.5.5-1`**
+  and internal app version **`1.5.5-personal.1`**. This tag deliberately cannot
+  match the signed release workflow's `v*.*.*` trigger.
+- The build is **BYOK/local only**; it does not embed a managed hosted API or
+  provider keys. It uses a different app ID, product name, executable, NSIS
+  installer and per-app user-data directory from normal MockMate.
+- The preview deliberately disables **all** automatic update checks, downloads,
+  install prompts and manual update checks in the packaged runtime. Its GitHub
+  pre-release contains only an **unsigned NSIS EXE, SHA256SUMS.txt and notice**;
+  never `latest.yml`, `app-update.yml` or blockmaps.
+- All normal code checks and the packaged Windows React renderer smoke run
+  **before** the unsigned pre-release publishes. Public signed release and
+  certificate checks in `release.yml` remain unchanged.
+- Install the preview manually, and do not run it simultaneously with stable
+  MockMate: the two desktop applications share loopback service ports.
+- The preview has separate local keys and history. It does **not** import existing
+  production user data automatically. The preview uninstall does not deliberately
+  delete its user-data directory; back up personal session data before uninstall
+  or migration.
+- Windows Defender SmartScreen/Smart App Control may block an unsigned installer.
+  Do not bypass an organization-managed security policy. Only install an artifact
+  whose GitHub source and SHA-256 you have independently verified.
+- Missing real Windows microphone/system-audio checks, screen-share preview tests,
+  signed upgrade tests and hosted usage reconciliation remain explicit limitations.
+
+The unsigned pre-release is **not** shown on GitHub's `releases/latest` stable
+download endpoint. Future production builds still require the trusted signer,
+real-device evidence, and the `v1.5.5` signed version tag.
+
 ## Scope limits
 
 - macOS signed/notarized DMG and Linux AppImage are **not** built by this public workflow.
