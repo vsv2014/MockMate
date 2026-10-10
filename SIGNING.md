@@ -136,7 +136,7 @@ git push origin v1.4.5
 
 The current `.github/workflows/release.yml` does **not** build a macOS DMG. A separate audited macOS release workflow, signing and notarization validation must be added before publishing or promising macOS auto-updates.
 
-> **Windows signing is mandatory** for public releases. A failed/missing Windows certificate blocks publication; PR CI may still produce unsigned **validation-only** installers.
+> **Windows signing is mandatory** for production public releases and automatic updates. A failed/missing Windows certificate blocks the signed `release.yml` workflow. The separately labeled [`Unsigned Personal Preview`](.github/workflows/personal-preview.yml) workflow can publish a **pre-release testing installer** without signing, with a distinct app identity, no managed API, and no automatic-update feed. It is not a signed production update.
 
 ### Verifying locally (optional, on a Mac)
 
