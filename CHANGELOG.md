@@ -1,6 +1,36 @@
 # Changelog
 
-## v1.5.4 — 2026-10-04
+## v1.5.5 — 2026-10-10 (release candidate; not published)
+
+Windows desktop release candidate incorporating the previously untagged v1.5.4 packaged-process hotfix and the October 4–9 reliability, privacy, metering, and platform updates. **This entry describes code merged into `main`, not a published or real-device-certified installer.**
+
+### Live audio and AI reliability
+- Guard system/microphone capture restarts, STT reconnect buffers, terminal streaming events, and provider failures; handle CRLF/CR SSE framing, avoid duplicate paid hint generation, and reacquire tracks that end without a `devicechange` event (PRs #64–#67, #73, #76).
+- Save an account-scoped, bounded, 12-hour checkpoint of visible Live questions and AI suggestions for read-only recovery after unexpected renderer exit. This does **not** automatically restart audio, transcription, or billing (PR #75).
+- Hosted **managed** streaming STT now uses authenticated, one-use backend WebSocket tickets and a bounded server-to-Deepgram gateway instead of sending a direct, long-lived provider grant to the desktop client. Limit each segment by time and PCM bytes; validate upstream parameters, enforce plan reservations, and settle on normal termination (PR #72). Local BYOK uses its separate direct-provider path.
+- Graceful backend shutdown drains pending STT reservations and settlements before closing MongoDB (PR #74). **Abrupt process crashes and real provider-versus-billing reconciliation remain unverified.**
+
+### Privacy, account switching, and local data
+- Isolate saved job bookmarks/statuses/notes and Resume Studio drafts per account. Add schema v3→v4 migration for legacy installation-global values, preserving existing account-scoped values and reporting failed storage writes (PR #79).
+- Prevent stale authentication responses, in-flight RAG embedding results, and cached document text from crossing account boundaries (PR #77).
+- Preserve unreadable session-history/document JSON in account-scoped recovery backups before subsequent writes; fail closed if backup storage is unavailable (PR #77).
+- Legacy global-data ownership remains ambiguous on shared installations; verify migration with two real accounts before public rollout.
+
+### Runtime, security, and delivery
+- Include the v1.5.4 correction for packaged Windows child-process `cwd` under `app.asar` and retain v1.5.3 installer/update handoff protections (PRs #52–#53).
+- Upgrade to Electron 44, React 19, Vite 8, Vitest 5, Express 5.2.1, and refreshed dependencies, with corresponding smoke and regression checks (PRs #54–#62, #70).
+- Avoid terminating unrelated processes on occupied local ports (PR #63).
+- Require signed Windows public releases, verify the publisher/certificate, and keep PR-generated Windows builds **unsigned and validation-only** (PR #68).
+
+### Verification and outstanding release gates
+- Latest pre-documentation merge, PR #79: **80 application test files / 567 tests passed**, backend tests passed, production build and API smoke passed, and Linux/Windows CI passed including the packaged Windows renderer/runtime smoke. Evidence: https://github.com/vsv2014/MockMate/actions/runs/37877818087.
+- Windows CI packaging does **not** certify a physical install, signed updater, microphone/system audio, Deepgram/Mongo deployment, meeting share-preview privacy, or a two-hour Live soak.
+- Still required: signed release workflow secrets and actual Authenticode verification; physical Windows clean-install and upgrade checks; Live/Solo dry runs; two-account legacy migration; hosted WSS/Deepgram billing integration; and Zoom/Meet/Teams share-preview evidence. See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
+- `package.json` and `package-lock.json` are already **1.5.5**. The `v1.5.5` tag/release is not yet published. The v1.5.4 entry below was an interim hotfix recorded in the changelog but not published as a separate GitHub Release.
+
+---
+
+## v1.5.4 — 2026-10-04 (interim hotfix; not separately published)
 
 Windows hotfix for packaged local-service startup. `child_process.fork()` can report `spawn MockMate.exe ENOENT` when the child working directory is invalid even if the executable itself exists. In packaged MockMate, both local services were started with a `cwd` under `app.asar`, which is a virtual archive path rather than a real Windows process directory.
 

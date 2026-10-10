@@ -1,69 +1,67 @@
 # MockMate desktop release — signed Windows gate
 
-**No public release until the signed installer and real-device Live verification both pass.**
+**Candidate version: v1.5.5 (not yet published). Latest published installer: v1.5.3.**
+**Do not tag or publicly publish until real Windows-device checks and trusted signing are complete.**
 
-This document reflects the current `.github/workflows/release.yml`: it builds and
-publishes **Windows NSIS only**. A PR's unsigned Windows CI installer is for
-validation, **not** for distributing as a trusted production update.
+The current [Release workflow](../.github/workflows/release.yml) publishes **Windows x64 NSIS only**. CI-generated PR installers are **unsigned, validation-only** artifacts; they are not production updates. This document describes the release process, not evidence that a signed v1.5.5 installer already exists.
 
-## Before publication
+## Source and version prerequisites
 
-1. Merge the chosen release candidate into `main` and use a new version/tag.
-   Never overwrite a tag or ship changed binaries with an existing version.
-2. Confirm Desktop CI is green on Linux and Windows: tests, API smoke, renderer
-   build, packaged Windows runtime smoke and Linux entrypoint verification.
-3. Run the real packaged-device matrix in
-   [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) and record evidence. At minimum:
-   microphone and system audio Live, several actual interview turns, network
-   disconnect/recovery, sleep/wake, device changes, end/restart, screen-share
-   preview in Zoom/Meet/Teams, and a longer soak.
-4. Confirm hosted STT grants have the intended monthly reservation policy.
-   Deepgram grant **reuse** avoids charging another 300-second reservation for
-   every reconnect while the existing grant is valid. This is *not* a precise
-   recording-duration billing system: one new grant still reserves up to 300s.
-5. Configure repository Actions secrets and variable **before** running Release:
+1. Select the reviewed, immutable `main` commit. Both `package.json` and the root `package-lock.json` version must equal the target version (currently `1.5.5`). Use a new `v1.5.5` tag exactly once; do not replace an existing tag.
+2. Confirm `CHANGELOG.md`, `README.md`, and [v1.5.5 candidate release notes](RELEASE_NOTES_v1.5.5.md) describe only the code actually present in the selected commit.
+3. Confirm Linux and Windows Desktop CI passes: tests, API smoke, Vite build, packaged Windows renderer/runtime smoke. The latest pre-documentation baseline is [PR #79's successful CI](https://github.com/vsv2014/MockMate/actions/runs/37877818087): 80 application suites / 567 tests and packaged Windows validation.
+4. Run the [real-device checklist](RELEASE_CHECKLIST.md). Record the results in [validation evidence](evidence/VALIDATION_STATUS.md). An unsigned PR smoke cannot replace a signed, installed Windows check.
 
-| Setting | Where | Meaning |
+## Physical Windows release gate
+
+Required minimum: clean install and upgrade from the latest *actually published* installer (v1.5.3); sign-in, two-account legacy jobs/Resume Studio migration, Solo, microphone/system-audio Live, overlay modes, transcript/hint recovery, network blips, device switching, sleep/wake, diagnostics redaction, and a longer Live run. Check Zoom/Meet/Teams **actual share previews** by window/full-display mode; never claim universal invisibility.
+
+Installer/update transition needs particular care: existing unsigned builds cannot be assumed to accept future signed updates with publisher verification. Use a manually downloaded, verified signed installer when the older updater cannot establish a safe upgrade path; do not silently uninstall local user state.
+
+## Managed STT production gate
+
+The old direct-to-Deepgram desktop hosted grant flow has been replaced in `main` (PR #72) by an authenticated backend WebSocket gateway using one-use tickets and bounded PCM/time segments. Graceful backend shutdown drains pending reservations/refunds before Mongo closes (PR #74). Do **not** describe the new gateway as the previous client-side grant reuse system.
+
+Before a public **Managed AI** deployment, exercise the real hosted backend with MongoDB, HTTPS **and WSS upgrade routing**, Deepgram credentials, actual audio, end/reconnect/stop, plan caps, quota settlement, concurrent sessions, and the chosen ticket-store topology. Abrupt process failure may still leave in-flight reservations requiring durable reconciliation; compare provider-billed duration against the backend's usage counts. Code tests alone cannot certify production billing.
+
+BYOK local/provider operation is a separate mode; do not imply it is subject to hosted monthly billing in the same way.
+
+## Required GitHub Actions configuration
+
+| Setting | Type | Purpose |
 |---|---|---|
-| `WIN_CSC_LINK` | GitHub Actions secret | Base64-encoded Authenticode PFX/P12 |
-| `WIN_CSC_KEY_PASSWORD` | GitHub Actions secret | Certificate password |
-| `MOCKMATE_WINDOWS_PUBLISHER` | GitHub Actions variable | **Exact** Windows certificate `SignerCertificate.Subject` string |
-| `MOCKMATE_API_BASE` | Optional Actions variable | Hosted HTTPS managed API; unset = BYOK-only |
+| `WIN_CSC_LINK` | GitHub Actions secret | Base64-encoded Windows Authenticode PFX/P12 |
+| `WIN_CSC_KEY_PASSWORD` | GitHub Actions secret | Password for that certificate |
+| `MOCKMATE_WINDOWS_PUBLISHER` | GitHub Actions variable | **Exact** `SignerCertificate.Subject` of the trusted code-signing certificate |
+| `MOCKMATE_API_BASE` | Optional Actions variable | Managed API HTTPS origin; omit for BYOK-only |
 
-The release workflow fails closed if the signing configuration is absent.
-It configures the publisher embedded in the update metadata, signs the installer,
-and requires `Get-AuthenticodeSignature` to report **Valid** for both the
-NSIS installer and unpacked application executable. A signing failure prevents
-GitHub Release publication.
+The release workflow fails closed when required signing settings are absent. It signs the app and installer, verifies `Get-AuthenticodeSignature` is **Valid** and the publisher subject matches, checks the packaged runtime, and only then publishes the GitHub Release. The connection used for PR work cannot inspect GitHub secret values; never mark signing as verified without a real workflow run.
 
-## Build and publish
+## Triggering the v1.5.5 release
 
-- Bump `package.json` to the version intended for the next installer; update
-  changelog and evidence. CI verifies the tag and version match.
-- Push a tag from an eligible `main` commit (or dispatch the release workflow
-  from current `main` with the same tag).
-- CI runs tests, builds, verifies signatures, performs packaged runtime smoke,
-  and uploads `MockMate-Setup-*.exe`, `latest.yml`, and `*.blockmap`.
-- Inspect the published GitHub Release assets and run a real-device smoke.
-  Check the installed app's updater **against another signed test release**
-  before promising automatic updates.
+**Only after all gates pass:**
 
-## Migration from old unsigned Windows builds
+1. Open [Build & Release MockMate (Windows)](https://github.com/vsv2014/MockMate/actions/workflows/release.yml).
+2. Select **Run workflow** on current `main`, set the required tag input to **`v1.5.5`**, and run it.
+3. Alternatively, push a new matching version tag on an eligible verified `main` commit. Do **not** do both.
+4. The `provenance` job checks `v1.5.5` matches `package.json.version` and the source commit belongs to `main`.
+5. Windows jobs install/check dependencies, run production audits/tests/build, configure the optional managed HTTPS API origin, sign the NSIS installer, verify signatures, smoke the packaged runtime, and stage `MockMate-Setup-1.5.5.exe`, `latest.yml`, and `*.blockmap`.
+6. Only after all required jobs pass does the workflow publish the GitHub Release.
 
-Previously published unsigned installers may have update metadata that disables
-signature verification. Installing a newly signed app does not retroactively
-secure an older binary's update path. Verify the transition on a physical
-Windows host; use a manually downloaded **signed** installer if necessary.
-Once the signed application is installed, future NSIS updates must pass
-publisher signature verification.
+If the signing provider, hosted gateway, runtime smoke, or certificate checks fail, **fix and revalidate; do not upload an unsigned fallback or overwrite a release tag**.
 
-## What release CI cannot prove
+## Post-publication verification
 
-- Actual Zoom/Teams/Meet screen-share privacy behavior for each sharing mode
-- Real microphone/loopback drivers, USB/Bluetooth changes, audio interruptions,
-  and difficult-accent/noisy interviews
-- macOS notarization or Linux AppImage publication (not in this workflow)
-- Accurate per-second reconciliation of direct-to-Deepgram streaming usage
+- Verify the published tag and artifact versions are `v1.5.5`, not merely the source `package.json` version.
+- Download the public installer on a clean Windows machine, verify its signer, install and exercise Solo and Live.
+- Repeat upgrade from v1.5.3 with preserved local account documents/history/keys where applicable, capture Logs/Diagnostics without secrets, and record the selected screen-share preview results.
+- Mark evidence rows PASS only with actual observation. Keep unresolved code/hardware/hosted billing issues open.
 
-See [SIGNING.md](../SIGNING.md) for certificate setup and
-[RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for manual evidence.
+## Scope limits
+
+- macOS signed/notarized DMG and Linux AppImage are **not** built by this public workflow.
+- Linux screen-share content protection is unsupported.
+- Screen protection depends on capture API/meeting share mode; it cannot guarantee invisibility.
+- Green unit tests and Windows CI smoke do not prove end-to-end provider billing or physical audio behavior.
+
+See [SIGNING.md](../SIGNING.md) for certificate configuration and [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for the full release matrix.

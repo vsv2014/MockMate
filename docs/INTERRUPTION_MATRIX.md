@@ -23,7 +23,7 @@ Statuses: `PASS` | `FAIL` | `PARTIAL` | `UNKNOWN`
 | I07–I09 | Overlay geometry/pin; content protection re-applied on new windows |
 | I10–I11 | Main broadcasts `display-changed`; renderer nudges audio resume (overlay still primary-display positioned) |
 | I12 | `powerMonitor` resume/unlock → renderer reconnects STT if socket dead |
-| I13 | Renderer reload loses in-memory transcript — user must restart Live (document as PARTIAL if no persistence) |
+| I13 | Unexpected renderer exit: recent visible Live questions and AI suggestions are available as **read-only recovered notes** (PR #75; 12-hour TTL). Audio/STT/LLM must not auto-resume. Confirm on physical Windows. |
 | I14 | `ensurePortFree` reclaim `:3002`/`:4000` on launch; SIGKILL children on quit |
 | I15 | Incomplete stream badge + JSON `/api/hint` fallback |
 | I16 | Provider failover in `api/_lib/core.js` before/around stream |

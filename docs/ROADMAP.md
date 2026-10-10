@@ -5,29 +5,31 @@ MockMate is an interview-performance OS: prepare, practice, perform and learn ac
 
 `docs/ARCHITECTURE.md` is the source of truth for **current implementation**. This roadmap contains future work and release gates only.
 
-## Current v1.5.2 state
+## Current v1.5.5 source candidate (not published)
 
 ### Desktop
 - [x] Windows multi-monitor overlay and 760×240 camera-anchored Teleprompter.
 - [x] Mode-scoped overlay shortcuts (`Alt+T`, `Alt+R`, `Alt+Up/Down`) and bounded `F7` capture.
-- [x] First-turn system-audio capture hardening.
+- [x] First-turn system-audio capture hardening, reconnect/track-ended recovery, and bounded read-only Live question/hint checkpoints (PRs #64–#67, #75–#76).
 - [x] Hybrid RAG with layout-aware PDF extraction, section-aware chunks, embedding-model-bound cache, speculative pre-warm, and Context Audit Trail.
 - [x] Interview Playbook / `CustomPromptStudio` across Live and Solo.
-- [x] Resume Studio, Jobs/Career, local history, diagnostics, and updater flows.
+- [x] Resume Studio, Jobs/Career, local history, diagnostics, and updater flows; saved jobs and Resume Studio drafts account-scoped with v3→v4 migration (PR #79).
+- [x] Account-safe in-flight RAG/auth handling and corrupt document/session-data recovery backup (PR #77).
 - [x] ARCH policy plane with operation-scoped adaptive routing.
 - [x] Product Intelligence as **local/runtime adaptive telemetry** with privacy-safe behavioral signals.
-- [ ] Hosted closed-loop Product Intelligence / tenant-scoped analytics. This is **not** a v1.5.2 capability.
+- [ ] Hosted closed-loop Product Intelligence / tenant-scoped analytics. This is **not** a v1.5.5 capability.
 
 ### Managed backend and billing
 - [x] Hosted-capable auth/JWT backend with Mongo support.
 - [x] Managed LLM proxy with plan/model enforcement and atomic usage reservation.
-- [x] Managed STT enforcement for both streaming grants and uploaded transcription; reserve-before-spend is atomic.
+- [x] Managed streaming STT authenticated backend WSS gateway with one-use tickets, bounded segments and reserved quota (PR #72); graceful shutdown awaits usage settlements (PR #74). Uploaded transcription reserves before provider spend.
+- [ ] Host the gateway with production HTTPS/WSS, Mongo/Deepgram, session-affinity/shared ticket storage as appropriate; validate provider usage and abrupt-crash lease reconciliation.
 - [x] Stripe checkout/webhook/portal code paths.
 - [x] Email-verification flow and boot-time prerequisite validation.
 - [x] Vercel Hobby deployment shape reduced from 15 to **12 Serverless Functions** while preserving career/resume route URLs.
 - [ ] Production Stripe configuration and failure/replay validation against the hosted service.
 - [ ] Production email delivery/recovery and optional Google account linking validation.
-- [ ] Exact per-second streamed STT reconciliation instead of the conservative ≤5-minute grant lease.
+- [ ] Reconcile real provider-billed seconds against server-observed managed stream usage, including crash recovery, rather than claiming exact billing from bounded reservations.
 
 ### Mobile private beta
 - [x] Expo/React Native shell for iOS and Android.
@@ -40,28 +42,32 @@ MockMate is an interview-performance OS: prepare, practice, perform and learn ac
 - [ ] Real second-device pairing / Duo remote companion.
 - [ ] Store-ready PDF/DOCX mobile upload/extraction path.
 
-## Release gates for v1.5.2
+## Release gates for v1.5.5 (not yet published)
 
-- [x] 66 test suites / 478 tests, exit 0, zero unhandled errors.
+- [x] Pre-documentation candidate PR #79: 80 application test files / 567 tests, backend checks, Linux/Windows CI green; [run 37877818087](https://github.com/vsv2014/MockMate/actions/runs/37877818087).
 - [x] `npm run build` and `npm run smoke:api`.
 - [x] Ubuntu and Windows CI.
 - [x] Version-generic Windows release workflow.
 - [x] Vercel deployment constrained to Hobby's 12-function limit.
 - [ ] One clean hosted deployment on the final public head.
-- [ ] Packaged Windows clean-install smoke.
+- [ ] Physical signed Windows v1.5.5 clean-install smoke; PR smoke uses an unsigned validation-only installer.
 - [ ] Packaged Live: `Alt+T → drag → Alt+T`, mic/system first question, `F7` repeat/display memory.
 - [ ] Real Zoom/Meet/Teams share-preview confirmation.
-- [ ] v1.5.1 → v1.5.2 auto-update validation.
+- [ ] Real v1.5.3 → signed v1.5.5 update/install migration, including previously unsigned installers.
 - [ ] Diagnostics export/redaction click-through on the packaged build.
+- [ ] Two-account v3→v4 saved jobs and Resume Studio migration check on physical Windows, including Guest and account deletion.
+- [ ] Hosted managed WSS/Mongo/Deepgram E2E, session settlement and abrupt crash accounting.
+- [ ] Configure release signing certificate/secrets, verify trusted Authenticode signatures, and publish only after release checklist evidence.
 
 See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
 
 ## P0 — Public release reliability
 
-- [ ] Complete the packaged Windows release checklist before creating the v1.5.2 tag.
+- [ ] Complete the packaged Windows release checklist before creating the **v1.5.5** tag.
 - [ ] Add automated coverage for deployment-shape constraints so Hobby/serverless limits cannot regress silently.
-- [ ] Verify process identity before `freePort()` kills listeners on ports 3002/4000; current behavior predates PR #45 and should be hardened separately.
-- [ ] Add signed Windows installer/update channel when certificates are available.
+- [x] Guard local startup against killing unknown processes on ports 3002/4000 (PR #63).
+- [x] Signed Windows release/publisher validation gate enforced in workflow (PR #68).
+- [ ] Supply real trusted signing credentials and pass signed-install/update verification on Windows hardware.
 - [ ] Establish staged rollout and rollback procedure.
 
 ## P1 — Hosted product hardening
