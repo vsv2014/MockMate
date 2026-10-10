@@ -1,0 +1,206 @@
+name: Build Unsigned Personal Pre-release (Windows)
+
+# Manual-only, separate from the signed production release workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'New tag, e.g. v1.5.5-personal.1 (lowercase)'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: personal-prerelease-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Confirm current main, exact version and unused personal-only tag
+        id: check
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = main
+          git fetch origin main --no-tags
+          test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
+          node <<'NODE'
+          const pkg = require('./package.json')
+          const lock = require('./package-lock.json')
+          const tag = String(process.env.RELEASE_TAG || '')
+          if (!/^\d+\.\d+\.\d+$/.test(pkg.version)) throw new Error('Version must be numeric.')
+          if (pkg.version !== lock.version || pkg.version !== lock.packages?.['']?.version) throw new Error('package-lock mismatch.')
+          const pattern = new RegExp('^v' + pkg.version.replaceAll('.', '\\.') + '-personal\\.[1-9][0-9]*$')
+          if (!pattern.test(tag)) throw new Error('Use a unique lowercase tag such as v' + pkg.version + '-personal.1. Got: ' + tag)
+          NODE
+          if [ -n "$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG")" ]; then
+            echo 'Refusing to overwrite an existing tag.' >&2
+            exit 1
+          fi
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          node -p "'version=' + require('./package.json').version" >> "$GITHUB_OUTPUT"
+
+  build-windows:
+    needs: provenance
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.21.0
+          cache: npm
+      - run: npm run verify:platform
+      - run: npm run verify:react19
+      - run: npm run verify:vitest5
+      - run: npm run verify:dev-tooling
+      - run: npm run verify:auth-config
+      - run: npm run verify:express5
+      - run: npm ci
+      - run: npm --prefix backend ci
+      - name: Require zero production dependency advisories
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --omit=dev --audit-level=low
+          npm --prefix backend audit --audit-level=low
+      - run: npx electron --version
+      - name: Force BYOK mode and remove in-app updater feed
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs')
+          const pkg = JSON.parse(fs.readFileSync('package.json','utf8'))
+          pkg.managedApiBase = ''
+          pkg.build.publish = []
+          fs.writeFileSync('package.json',JSON.stringify(pkg,null,2)+'\n')
+          fs.writeFileSync('.env.production.local','VITE_MANAGED_AI_AVAILABLE=false\n')
+          NODE
+      - name: Unit tests, API smoke and production build
+        run: npm test && npm run smoke:api && npm run build && npm run verify:vite-output
+      - name: Build unsigned installer
+        run: npx electron-builder --win --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Validate unsigned installer and no app-update feed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          foreach ($file in @("release/MockMate-Setup-$version.exe", 'release/win-unpacked/MockMate.exe')) {
+            if (-not (Test-Path $file)) { throw "Missing: $file" }
+            $status = (Get-AuthenticodeSignature $file).Status
+            if ($status -ne 'NotSigned') { throw "Expected unsigned binary: $file, got $status" }
+          }
+          if (Test-Path 'release/win-unpacked/resources/app-update.yml') {
+            throw 'Personal build must not embed updater metadata.'
+          }
+      - name: Packaged Windows runtime and React renderer smoke
+        shell: pwsh
+        run: ./scripts/windows-packaged-smoke.ps1
+      - name: Stage only unsigned EXE and SHA256 checksum
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          New-Item -ItemType Directory -Path staged -Force | Out-Null
+          $filename = "MockMate-Setup-$version-UNSIGNED-PERSONAL.exe"
+          Copy-Item "release/MockMate-Setup-$version.exe" "staged/$filename"
+          $hash = (Get-FileHash "staged/$filename" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $filename" | Set-Content 'staged/SHA256SUMS.txt' -Encoding utf8
+          if (@(Get-ChildItem staged -File).Count -ne 2) { throw 'Unexpected staging assets' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-personal-windows
+          path: |
+            staged/MockMate-Setup-*-UNSIGNED-PERSONAL.exe
+            staged/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [provenance, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Refuse stale main or already-created release tag
+        env:
+          RELEASE_TAG: ${{ needs.provenance.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
+          if [ -n "$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG")" ]; then
+            echo 'Refusing to overwrite an existing tag/release.' >&2
+            exit 1
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-personal-windows
+          path: staged
+      - name: Verify precise assets; reject updater metadata
+        shell: bash
+        env:
+          VERSION: ${{ needs.provenance.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -s "staged/MockMate-Setup-$VERSION-UNSIGNED-PERSONAL.exe"
+          test -s staged/SHA256SUMS.txt
+          test "$(find staged -maxdepth 1 -type f | wc -l)" -eq 2
+          test "$(find staged -maxdepth 1 -type f \( -name 'latest*.yml' -o -name '*.blockmap' \) | wc -l)" -eq 0
+          (cd staged && sha256sum -c SHA256SUMS.txt)
+      - name: Write pre-release warning
+        env:
+          RELEASE_TAG: ${{ needs.provenance.outputs.tag }}
+        shell: bash
+        run: |
+          cat > notes.md <<'NOTES'
+          ## UNSIGNED Windows personal test build
+
+          **Manual-download public pre-release only. NOT a signed, certified production release.**
+
+          - Windows SmartScreen / Smart App Control may warn or block this unsigned EXE.
+          - BYOK mode only; no hosted Managed AI endpoint is configured.
+          - No automatic-updater metadata is published or bundled. Download future builds manually.
+          - Signed production workflow and signing requirements remain unchanged.
+          - Back up your local data before installation. Uninstalling MockMate can delete app data.
+          - CI verifies code, API, packaged Windows startup and React renderer, NOT real audio devices, share-preview privacy or hosted billing.
+          - Verify the EXE SHA256 hash with the included SHA256SUMS.txt.
+
+          Scope and known gates: https://github.com/vsv2014/MockMate/blob/main/docs/RELEASE_NOTES_v1.5.5.md
+          NOTES
+          printf '\nTag: %s\nCommit: %s\n' "$RELEASE_TAG" "$GITHUB_SHA" >> notes.md
+      - name: Publish unsigned personal pre-release only
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.provenance.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: 'MockMate ${{ needs.provenance.outputs.tag }} - UNSIGNED personal test'
+          prerelease: true
+          draft: false
+          make_latest: false
+          generate_release_notes: false
+          overwrite_files: false
+          fail_on_unmatched_files: true
+          body_path: notes.md
+          files: |
+            staged/MockMate-Setup-*-UNSIGNED-PERSONAL.exe
+            staged/SHA256SUMS.txt
