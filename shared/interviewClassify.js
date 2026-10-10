@@ -7,12 +7,17 @@
  *
  * Prompt / classifier version — bump when matching rules or contextNeeds change.
  */
-export const CLASSIFIER_VERSION = 'classify_v2_soft_ctx'
+export const CLASSIFIER_VERSION = 'classify_v3_live_followups'
 
 /** Meeting mechanics are not interview questions and should never consume an LLM call. */
 export function isLogisticalCheck(question = '') {
   const q = String(question || '').trim()
-  return /^(?:(?:hello|hi)[,.!? ]*)?(?:am i audible|can you hear me|is (?:it|this|that|my screen) visible(?: (?:to|for) you)?|can you see (?:it|this|that|my screen)|is (?:the )?(?:audio|screen share) (?:fine|clear|working)|are you (?:able to )?(?:hear|see) me)(?:\s+(?:now|from (?:my|your) side))?[?.! ]*$/i.test(q)
+  if (/^(?:(?:hello|hi)[,.!? ]*)?(?:am i audible|can you hear me|is (?:it|this|that|my screen) visible(?: (?:to|for) you)?|can you see (?:it|this|that|my screen)|is (?:the )?(?:audio|screen share) (?:fine|clear|working)|are you (?:able to )?(?:hear|see) me)(?:\s+(?:now|from (?:my|your) side))?[?.! ]*$/i.test(q)) return true
+  // Short acknowledgments are not a request to regenerate the previous answer.
+  // Keep this anchored: "Okay, can you write the code?" MUST remain actionable.
+  if (/^(?:(?:hello|hi|hey|yes|yeah|yep|okay|ok|right|sure|fine|absolutely|exactly|understood|got it|good enough|that's good enough|thank you|thanks|bye)[\s,.!?]+){1,8}$/i.test(q + ' ')) return true
+  if (/^(?:(?:just\s+)?give me\s+(?:a|one)\s+(?:second|moment|minute)|(?:one|a)\s+(?:second|moment|minute)|hold on(?:\s+a\s+(?:moment|second))?|i'?ll\s+(?:be right back|come back in a minute))[.!,\s]*$/i.test(q)) return true
+  return false
 }
 
 /** @typedef {'software_engineering'|'AI_ML'|'data'|'product'|'business_analysis'|'program_management'|'sales'|'business_development'|'marketing'|'finance'|'operations'|'customer_success'|'customer_support'|'HR'|'design'|'consulting'|'leadership'|'domain_specific'|'unknown'} RoleFamily */
@@ -85,6 +90,15 @@ function looksLikeFollowUp(question, history, lastClassification = null) {
   const prior = lastInterviewer(history)
   const anchor = parentAnchorType(lastClassification)
   if (!prior && !history?.length && !anchor) return false
+  // "How does binary search work?" after Jump Game is a NEW DSA question, not
+  // a follow-up merely because it starts with "How". Same-topic probes still
+  // inherit the parent, and explicit "this/that" retains follow-up semantics.
+  if (['dsa', 'coding', 'screen_code'].includes(anchor)) {
+    const namedTopic = q.match(/\b(binary search|jump game|two sum|linked list|sliding window|merge sort|quick sort|heap sort|bfs|dfs)\b/i)?.[1]
+    const priorTopic = String(lastClassification?.parentTopic || lastClassification?.question || prior).toLowerCase()
+    if (namedTopic && !priorTopic.includes(namedTopic.toLowerCase())
+      && !/\b(this|that|same|previous|above)\b/i.test(q)) return false
+  }
   if (SHORT_FOLLOW_UP.test(q)) return true
   if (FOLLOW_UP_SHAPE.test(q)) return true
   if (words(q) <= 8 && /\b(that|this|it|those|these|there|instead|alternative)\b/i.test(q)) return true
@@ -110,6 +124,9 @@ export function isCodingTransformFollowUp(question = '') {
     || /\bwithout (?:using )?(?:any )?(?:extra )?(?:data structures?|arrays?|hash\s*maps?|maps?|sets?|recursion|heaps?)\b/i.test(q)
     || /\b(?:using )?(?:only )?(?:o\(1\)\s*space|constant space|in[- ]?place|two pointers?|no extra (?:space|memory))\b/i.test(q)
     || /\b(?:simpler|brute force|more optimal|optimize (?:it|this|the (?:code|solution)))\b/i.test(q)
+    // Real live interviews often give tiny commands after a code screenshot.
+    // Treat them as follow-ups ONLY when a coding/screen parent exists.
+    || /\b(?:console(?:\.log)?|print (?:the )?(?:output|result)|run (?:it|this)|code it|paste (?:it|the code)|write (?:the )?code|write (?:a )?snippet|minimum (?:number of )?jumps?|jump count|how many jumps|instead of (?:true|false|boolean)|return (?:a )?(?:number|count)|make this change)\b/i.test(q)
 }
 
 function words(q) {

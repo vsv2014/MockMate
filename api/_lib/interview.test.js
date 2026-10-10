@@ -43,6 +43,39 @@ describe('current-turn output and evidence contracts', () => {
   })
 })
 
+describe('real-time follow-up output contracts', () => {
+  const coding = { questionType: 'follow_up', isFollowUp: true, parentType: 'dsa' }
+
+  it.each(['console', 'write console', 'Can you code it?', 'paste the code'])('requires code first for terse coding requests: %s', question => {
+    const block = answerRequirementBlock(question, {}, coding)
+    expect(block).toMatch(/complete runnable code/i)
+    expect(block).toMatch(/latest requested return type/i)
+  })
+
+  it('answers the concrete print request instead of defining console', () => {
+    const block = answerRequirementBlock('write console', {}, coding)
+    expect(block).toMatch(/literal executable call/i)
+    expect(block).toMatch(/console\.log/i)
+  })
+
+  it('keeps latest correction authoritative, even when the old screenshot still shows a boolean exercise', () => {
+    const block = answerRequirementBlock('I want jump count, not true or false', {}, coding)
+    expect(block).toMatch(/minimum jump count/i)
+    expect(block).toMatch(/LATEST explicit requirement/i)
+    expect(block).toMatch(/Never echo a suggested numeric result/i)
+  })
+
+  it('does not require code for a non-coding standalone acknowledgement', () => {
+    const block = answerRequirementBlock('Okay', {}, { questionType: 'general', isFollowUp: false })
+    expect(block).not.toMatch(/complete runnable code/i)
+  })
+
+  it.each(['Hello.', 'Yes. Yes. Yeah.', 'Good enough.', 'Give me one minute.'])('returns skip before LLM for clear acknowledgments: %s', async question => {
+    const out = await streamHint({ question, autoSkip: true }, {})
+    expect(out).toMatchObject({ skipped: true, reason: 'logistical_check' })
+  })
+})
+
 describe('online compiler harness detection', () => {
   it.each([
     ['JavaScript', 'function solve(a) { return a.length }\nconsole.log(solve([1, 2]))'],

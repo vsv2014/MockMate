@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classifyTurn, inferRoleFamily, contextNeedsFor, shouldRetrieveDocs } from './interviewClassify.js'
+import { classifyTurn, inferRoleFamily, contextNeedsFor, shouldRetrieveDocs, isLogisticalCheck } from './interviewClassify.js'
 
 describe('inferRoleFamily', () => {
   it('detects product from targetRole', () => {
@@ -79,5 +79,62 @@ describe('contextNeedsFor (soft advisory)', () => {
   it('shouldRetrieveDocs never hard-blocks', () => {
     expect(shouldRetrieveDocs({ contextNeeds: { rag: false } })).toBe(true)
     expect(shouldRetrieveDocs(null)).toBe(true)
+  })
+})
+
+describe('long Live technical interview benchmark — short turns', () => {
+  const dsaRoot = {
+    questionType: 'dsa',
+    question: 'Given a jump array, determine whether the last index is reachable.',
+    parentTopic: 'Given a jump array, determine whether the last index is reachable.',
+  }
+  const history = [{ role: 'interviewer', text: dsaRoot.question }]
+
+  it.each([
+    'Hello.',
+    'Okay.',
+    'Yes. Yes. Yeah.',
+    'Good enough.',
+    'Absolutely.',
+    'Give me one minute.',
+    "I'll come back in a minute.",
+  ])('suppresses clear non-questions without paid model generation: %s', utterance => {
+    expect(isLogisticalCheck(utterance)).toBe(true)
+  })
+
+  it.each([
+    'Okay, can you write the code?',
+    'Can you print the result?',
+    'Write console.',
+    'I want jump count.',
+    'How many jumps do we need?',
+    'Can you hear me from the other service?',
+  ])('does not discard actionable speech because of a greeting/short length: %s', utterance => {
+    expect(isLogisticalCheck(utterance)).toBe(false)
+  })
+
+  it.each([
+    'console',
+    'write console',
+    'paste the code',
+    'code it',
+    'I want jump count',
+    'minimum number of jumps needed',
+    'instead of boolean, return a count',
+  ])('retains the active coding parent for terse instructions: %s', question => {
+    const c = classifyTurn({ question, lastClassification: dsaRoot, conversationHistory: history })
+    expect(c.questionType).toBe('follow_up')
+    expect(c.parentType).toBe('dsa')
+    expect(c.playbookKey).toBe('follow_up')
+  })
+
+  it('a named binary-search question starts a new DSA problem instead of repeating Jump Game', () => {
+    const c = classifyTurn({
+      question: 'How exactly do you perform binary search in a sorted array?',
+      lastClassification: dsaRoot,
+      conversationHistory: history,
+    })
+    expect(c.questionType).toBe('dsa')
+    expect(c.isFollowUp).toBe(false)
   })
 })
