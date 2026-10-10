@@ -17,6 +17,7 @@ export function createPersonalPreviewConfig(pkg, lock, number) {
 
   preview.version = version
   preview.personalPreviewBuild = true // Electron reads this from packaged package.json.
+  preview.productName = 'MockMate Personal Preview' // Electron app.getName/userData must not share stable app state.
   preview.managedApiBase = '' // BYOK/local only: do not ship an unverified hosted gateway.
   preview.build.appId = 'com.mockmate.personal.preview'
   preview.build.productName = 'MockMate Personal Preview'
