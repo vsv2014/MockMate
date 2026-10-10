@@ -11,6 +11,12 @@ The current Windows release workflow **requires** signing credentials and a matc
 
 ---
 
+## Free unsigned personal-test builds
+
+No certificate is required to make an **explicitly labeled, manual-download personal pre-release** using [the separate unsigned workflow](.github/workflows/unsigned-personal-prerelease.yml). It produces an unsigned Windows installer and SHA256 checksum, requires BYOK, does **not** publish update metadata, and never becomes the latest stable release. Windows protection features may warn or block it. **Do not disable security controls to force an install.**
+
+The signed **production** workflow described below continues to require a valid Authenticode certificate and publisher identity.
+
 ## Windows Authenticode (fixes Smart App Control / SmartScreen)
 
 ### Prerequisites
