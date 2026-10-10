@@ -286,18 +286,30 @@ function classificationBlock(c) {
   return `\n\n[INTERNAL ROUTING — do not mention to the candidate: ${bits.join('; ')}]`
 }
 
-export function answerRequirementBlock(question = '', profile = {}) {
+export function answerRequirementBlock(question = '', profile = {}, classification = null) {
   const q = String(question || '')
+  const codingThread = ['dsa', 'coding', 'screen_code'].includes(
+    classification?.isFollowUp ? classification?.parentType : classification?.questionType,
+  )
   const rules = [
     'EVIDENCE: Resume is the only source for first-person work claims. JD describes desired skills, not candidate experience.',
     'If a requested skill is absent from the resume, say so briefly, then give a practical conceptual approach. Never fabricate hands-on use.',
     'Never invent years of experience, project ownership, employers, tools, cloud services, acronyms, metrics, or locations. If the resume does not explicitly prove a first-person claim, do not make it.',
     'The current question is authoritative. Use prior conversation only to resolve explicit references such as "it", "that", or "the previous code"; never continue an old topic into a standalone new question.',
     'FIT: For career/project questions, frame truthful resume evidence toward the JD priorities. For knowledge questions, answer the current question directly.',
+    'CORRECTIONS: If the interviewer changes the requested output (e.g. boolean reachability to minimum jump count), the LATEST explicit requirement replaces the old one. Do not revert to the previous problem because an earlier screenshot/example shows it.',
+    'VERIFY: Never echo a suggested numeric result or claim a program ran without verification. Check a small example mentally, flag ambiguity briefly, and correct errors instead of agreeing automatically.',
+    'NO ECHO LOOP: Treat acknowledgments and one-word confirmations as non-questions; for repeated clarification, answer only the NEW ask and avoid repeating the full earlier solution.',
   ]
-  const wantsCode = /\b(write|show|give|provide|implement|code|function|script|pseudo[ -]?code)\b/i.test(q)
-    && /\b(code|function|script|test|implementation|pseudo[ -]?code|python|javascript|typescript|java|sql)\b/i.test(q)
+  const codingAction = codingThread && (
+    /\b(?:write|show|paste|add|print|give|provide|run|execute|test)\b.{0,85}\b(?:console(?:\.log)?|code|function|snippet|example|output|result|test|it)\b/i.test(q)
+    || /^(?:console(?:\.log)?|code(?: it)?|paste (?:it|the code)|write console(?:\.log)?|write code)[.!?\s]*$/i.test(q.trim())
+  )
+  const wantsCode = codingAction || (/\b(write|show|give|provide|implement|code|function|script|pseudo[ -]?code)\b/i.test(q)
+    && /\b(code|function|script|test|implementation|pseudo[ -]?code|python|javascript|typescript|java|sql)\b/i.test(q))
   if (wantsCode) rules.push('OUTPUT CONTRACT: The interviewer requested code. Put complete runnable code (or pseudocode only if explicitly allowed) first; keep explanation after it very short. Do not answer with explanation alone.')
+  if (codingThread) rules.push('CODING FOLLOW-UP: Stay on the active problem only while it is still the topic; apply the latest requested return type/behavior to the existing solution rather than restarting with the original task. If a brand-new named problem arrives, solve that instead.')
+  if (codingAction && /\bconsole(?:\.log)?|\bprint|\b(?:run|execute|test)\b/i.test(q)) rules.push('CODE RUNNER CONTRACT: Give a literal executable call and output statement (e.g. console.log(solution([2, 3, 1, 1, 4]))), not a definition of the word console or a repeated algorithm lecture. Do not claim you actually ran it.')
   if (/\b(brief|briefly|short|concise|one line|quickly)\b/i.test(q)) {
     rules.push('OUTPUT CONTRACT: Keep the answer brief and direct.')
   }
@@ -343,6 +355,8 @@ WHEN TO USE THE RESUME (critical — applies to EVERY question type):
 ${SOURCE_MODE_POLICY}
 
 Pick ONE option, don't list three ("I'd use X"). If they say "just tell me X", give only X. If it's a repeat, answer shorter.
+If the interviewer changes the task or corrects a previous misunderstanding, follow the NEW requirement, not an earlier screenshot or stale question. Do not agree with a guessed answer unless the algorithm supports it.
+For a tiny coding request ("write console", "paste code", "show the snippet"), provide the requested runnable code immediately without repeating the earlier spoken explanation.
 
 FOR THIS EXACT QUESTION TYPE — follow this and nothing else:
 ${guide}`
@@ -456,7 +470,7 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   // Auto-skip OFF → force an answer for every input (override the [SKIP] instruction).
   const skipDirective = autoSkip ? '' : '\n\nALWAYS ANSWER: respond to every input — do NOT output [SKIP], even for small talk, filler, or a partial/unclear question. Do your best with what was said.'
   const system = baseSystem + directive + skipDirective + classificationBlock(classification)
-    + answerRequirementBlock(question, profile)
+    + answerRequirementBlock(question, profile, classification)
 
   let buf = '', metaSent = false, skipped = false, proseEmitted = false
   const emitProse = t => { if (t) { proseEmitted = true; onToken?.(t) } }
@@ -599,7 +613,7 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
   const hint = await completeJSON({
     maxTokens, provider: chosen,
     messages: [
-      { role: 'system', content: baseSystem + directive + skipDirective + classificationBlock(classification) + answerRequirementBlock(question, profile) + schemaNote },
+      { role: 'system', content: baseSystem + directive + skipDirective + classificationBlock(classification) + answerRequirementBlock(question, profile, classification) + schemaNote },
       { role: 'user', content: `${packed ? packed + '\n\n' : ''}${historyBlock}${searchBlock}${followParent}${screenNote}\n\nCurrent question: "${String(question).slice(0, 800)}"` },
     ],
   })
