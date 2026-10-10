@@ -90,6 +90,15 @@ function looksLikeFollowUp(question, history, lastClassification = null) {
   const prior = lastInterviewer(history)
   const anchor = parentAnchorType(lastClassification)
   if (!prior && !history?.length && !anchor) return false
+  // "How does binary search work?" after Jump Game is a NEW DSA question, not
+  // a follow-up merely because it starts with "How". Same-topic probes still
+  // inherit the parent, and explicit "this/that" retains follow-up semantics.
+  if (['dsa', 'coding', 'screen_code'].includes(anchor)) {
+    const namedTopic = q.match(/\b(binary search|jump game|two sum|linked list|sliding window|merge sort|quick sort|heap sort|bfs|dfs)\b/i)?.[1]
+    const priorTopic = String(lastClassification?.parentTopic || lastClassification?.question || prior).toLowerCase()
+    if (namedTopic && !priorTopic.includes(namedTopic.toLowerCase())
+      && !/\b(this|that|same|previous|above)\b/i.test(q)) return false
+  }
   if (SHORT_FOLLOW_UP.test(q)) return true
   if (FOLLOW_UP_SHAPE.test(q)) return true
   if (words(q) <= 8 && /\b(that|this|it|those|these|there|instead|alternative)\b/i.test(q)) return true
