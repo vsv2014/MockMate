@@ -14,6 +14,7 @@ test('preview keeps versioned install isolated, unsigned and manual-update-only'
   assert.equal(p.personalPreviewBuild, true)
   assert.equal(p.managedApiBase, '')
   assert.equal(p.build.appId, 'com.mockmate.personal.preview')
+  assert.equal(p.productName, 'MockMate Personal Preview')
   assert.equal(p.build.productName, 'MockMate Personal Preview')
   assert.equal(p.build.executableName, 'MockMatePersonalPreview')
   assert.equal(p.build.nsis.shortcutName, 'MockMate Personal Preview')
