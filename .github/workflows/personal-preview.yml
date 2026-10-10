@@ -83,7 +83,7 @@ jobs:
           npm audit --omit=dev --audit-level=low
           npm --prefix backend audit --audit-level=low
       - name: Preview identity and update-isolation contract
-        run: node --test scripts/personal-preview-config.test.mjs
+        run: node --test scripts/personal-preview-contract.mjs
       - name: Switch CI workspace to isolated unsigned BYOK preview (never commit)
         shell: bash
         env:
