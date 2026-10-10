@@ -1,0 +1,192 @@
+name: Unsigned Personal Preview (Windows)
+
+# Separate from release.yml: deliberately NOT triggered by v*.*.* tags.
+# The first merge on main builds personal-vX.Y.Z-1 automatically; subsequent
+# personal previews can be dispatched with a fresh preview_number.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/personal-preview.yml'
+  workflow_dispatch:
+    inputs:
+      preview_number:
+        description: 'New preview iteration (1-999); use a new number after publishing'
+        required: true
+        default: '1'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: unsigned-personal-preview-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      number: ${{ steps.meta.outputs.number }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Confirm current main and a never-before-used preview tag
+        id: meta
+        shell: bash
+        env:
+          NUMBER: ${{ github.event.inputs.preview_number || '1' }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          import { createPersonalPreviewConfig } from './scripts/personal-preview-config.mjs'
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
+          const result = createPersonalPreviewConfig(pkg, lock, process.env.NUMBER)
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${result.version}\ntag=${result.tag}\nnumber=${process.env.NUMBER}\n`)
+          console.log('Validated preview:', result.tag, result.version)
+          NODE
+          tag="personal-v$(node -p "require('./package.json').version")-$NUMBER"
+          if git ls-remote --tags origin "refs/tags/$tag" | grep -q .; then
+            echo "Preview $tag already exists. Choose a new preview_number; never overwrite release assets." >&2
+            exit 1
+          fi
+
+  build-windows:
+    needs: provenance
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.21.0
+          cache: npm
+      - run: npm run verify:platform
+      - run: npm run verify:react19
+      - run: npm run verify:vitest5
+      - run: npm run verify:dev-tooling
+      - run: npm run verify:auth-config
+      - run: npm run verify:express5
+      - run: npm ci
+      - run: npm --prefix backend ci
+      - name: Keep production dependency advisory gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --omit=dev --audit-level=low
+          npm --prefix backend audit --audit-level=low
+      - name: Preview identity and update-isolation contract
+        run: node --test scripts/personal-preview-contract.mjs
+      - name: Switch CI workspace to isolated unsigned BYOK preview (never commit)
+        shell: bash
+        env:
+          NUMBER: ${{ needs.provenance.outputs.number }}
+        run: |
+          set -euo pipefail
+          node scripts/configure-personal-preview.mjs "$NUMBER"
+          npm run verify:platform
+          node -e "const p=require('./package.json'); if(p.personalPreviewBuild!==true || p.build.appId!=='com.mockmate.personal.preview' || p.managedApiBase || p.build.publish || p.build.win.verifyUpdateCodeSignature!==true) process.exit(1)"
+      - name: Application tests, API smoke and production renderer
+        run: npm test && npm run smoke:api && npm run build && npm run verify:vite-output
+      - name: Bootstrap Electron runtime
+        run: npx electron --version
+      - name: Build UNSIGNED personal-preview Windows NSIS installer
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          WIN_CSC_LINK: ''
+          WIN_CSC_KEY_PASSWORD: ''
+        run: |
+          set -euo pipefail
+          npx electron-builder --win --publish never
+      - name: Real packaged runtime / React renderer smoke
+        shell: pwsh
+        run: ./scripts/windows-packaged-smoke.ps1
+      - name: Verify unsigned identity, stage EXE only and write SHA256
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @(Get-ChildItem release -Filter 'MockMate-Personal-Preview-*-UNSIGNED.exe')
+          if ($files.Count -ne 1) { throw 'Expected exactly one unsigned personal preview NSIS installer.' }
+          $exe = $files[0]
+          $appExe = Get-Item 'release/win-unpacked/MockMatePersonalPreview.exe'
+          foreach ($target in @($exe, $appExe)) {
+            $sig = Get-AuthenticodeSignature -FilePath $target.FullName
+            if ($sig.Status -ne 'NotSigned') { throw "Expected unsigned preview artifact, got $($sig.Status): $($target.Name)" }
+          }
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          if ($pkg.personalPreviewBuild -ne $true) { throw 'Preview build marker missing' }
+          if ($pkg.build.productName -ne 'MockMate Personal Preview') { throw 'Stable product identity leaked into preview' }
+          if ($pkg.build.publish) { throw 'Preview must not contain a GitHub updater publisher' }
+          if ($pkg.version -ne '${{ needs.provenance.outputs.version }}') { throw 'Preview package version differs from tag' }
+          New-Item staged -ItemType Directory -Force | Out-Null
+          Copy-Item $exe.FullName staged/
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash *$($exe.Name)" | Set-Content staged/SHA256SUMS.txt -Encoding utf8
+          @'
+          UNSIGNED PERSONAL PREVIEW — NOT A PRODUCTION RELEASE
+          Manual Windows install only. SmartScreen may warn because no trusted signing certificate is used.
+          Distinct Windows app/shortcut/userData identity: MockMate Personal Preview.
+          This does NOT auto-update itself or replace the signed MockMate update feed.
+          BYOK/local configuration only; Managed AI is not configured in this build.
+          No latest.yml or update blockmaps are attached to the GitHub pre-release.
+          Do not enter any secrets into GitHub Actions; configure your API keys inside the preview app.
+          Physical Windows Live/Solo, device/share-preview and upgrade acceptance are not certified.
+          '@ | Set-Content staged/PERSONAL-PREVIEW-NOTICE.txt -Encoding utf8
+          if (@(Get-ChildItem staged -Include '*.yml','*.yaml','*.blockmap' -Recurse).Count -gt 0) {
+            throw 'Updater metadata must never be staged for unsigned preview publication.'
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-personal-preview-windows
+          path: staged/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-personal-preview:
+    needs: [provenance, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-personal-preview-windows
+          path: staged
+      - name: Verify no auto-update feed or non-preview binary can be published
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find staged -maxdepth 1 -name 'MockMate-Personal-Preview-*-UNSIGNED.exe' | wc -l)" -eq 1
+          test -f staged/SHA256SUMS.txt
+          test -f staged/PERSONAL-PREVIEW-NOTICE.txt
+          test -z "$(find staged -type f \( -name 'latest.yml' -o -name '*.blockmap' -o -name 'app-update.yml' \) -print -quit)"
+      - name: Publish clearly labeled UNSIGNED GitHub pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.provenance.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: MockMate Personal Preview ${{ needs.provenance.outputs.version }} (UNSIGNED)
+          draft: false
+          prerelease: true
+          make_latest: false
+          generate_release_notes: false
+          fail_on_unmatched_files: true
+          body: |
+            ⚠️ **UNSIGNED personal Windows testing build — not a production release.**
+            This is the isolated BYOK-only MockMate Personal Preview app, separate from normal MockMate installs.
+            No Authenticode certificate; Windows SmartScreen may warn. You must decide whether to install it.
+            No `latest.yml`, update blockmaps, or auto-update registration. Download and install future previews manually.
+            Not physically certified for Zoom/Meet/Teams share capture, Live hardware or hosted managed billing.
+            See PERSONAL-PREVIEW-NOTICE.txt and SHA256SUMS.txt in the release assets.
+          files: |
+            staged/MockMate-Personal-Preview-*-UNSIGNED.exe
+            staged/SHA256SUMS.txt
+            staged/PERSONAL-PREVIEW-NOTICE.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,9 +1,11 @@
 $ErrorActionPreference = 'Stop'
 
-$exe = Join-Path (Resolve-Path 'release\win-unpacked') 'MockMate.exe'
-if (-not (Test-Path $exe)) { throw "Packaged MockMate executable missing: $exe" }
-
 $pkg = Get-Content 'package.json' -Raw | ConvertFrom-Json
+# The personal preview intentionally uses a different executable/app identity.
+# Default signed/CI MockMate smoke continues to launch MockMate.exe.
+$exeBase = if ($pkg.build.executableName) { [string]$pkg.build.executableName } else { 'MockMate' }
+$exe = Join-Path (Resolve-Path 'release\win-unpacked') "$exeBase.exe"
+if (-not (Test-Path $exe)) { throw "Packaged MockMate executable missing: $exe" }
 $expectLocalBackend = [string]::IsNullOrWhiteSpace([string]$pkg.managedApiBase)
 $apiReady = $false
 $backendReady = -not $expectLocalBackend

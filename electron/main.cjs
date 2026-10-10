@@ -17,6 +17,10 @@ try {
 } catch {}
 
 const isProd = app.isPackaged
+// Personal Preview uses a distinct install identity and never contacts the
+// signed production update feed. Injected only into CI's packaged preview.
+let isUnsignedPersonalPreview = false
+try { isUnsignedPersonalPreview = isProd && require('../package.json').personalPreviewBuild === true } catch {}
 const DEV_URL = 'http://localhost:5174'
 const PROD_URL = 'http://localhost:3002'
 
@@ -632,6 +636,12 @@ function sendUpdate(payload) {
   try { mainWindow?.webContents?.send('update-status', payload) } catch {}
 }
 function setupAutoUpdate() {
+  if (isUnsignedPersonalPreview) {
+    // No automatic checks, downloads or installation for unsigned previews.
+    // Users install a later personal-preview installer explicitly.
+    diag('updater', 'disabled_unsigned_personal_preview')
+    return
+  }
   if (!isProd || updaterStarted) return   // guard re-entry: don't double-register listeners / interval
   updaterStarted = true
   diag('updater', 'initialized', { currentVersion: app.getVersion(), autoDownload: true })
@@ -681,6 +691,9 @@ ipcMain.handle('download-update', async () => {
 let demoUpdateTimer = null
 ipcMain.handle('get-update-status', () => lastUpdateStatus)
 ipcMain.handle('check-updates-now', () => {
+  if (isUnsignedPersonalPreview) {
+    return { ok: false, error: 'Automatic updates are disabled for unsigned personal previews. Download a newer preview installer manually.' }
+  }
   if (isProd && autoUpdaterRef) {
     manualUpdateCheck = true
     sendUpdate({ state: 'checking' })

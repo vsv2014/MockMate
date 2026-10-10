@@ -50,6 +50,35 @@ Use the [latest published GitHub Release](https://github.com/vsv2014/MockMate/re
 
 For the detailed candidate release notes, see [`docs/RELEASE_NOTES_v1.5.5.md`](docs/RELEASE_NOTES_v1.5.5.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
+## Unsigned Windows personal preview (no certificate needed)
+
+For personal testing without a paid Windows code-signing certificate, MockMate
+has a separate [**Unsigned Personal Preview** workflow](.github/workflows/personal-preview.yml).
+Once the candidate has passed that workflow, look under
+[**GitHub pre-releases**](https://github.com/vsv2014/MockMate/releases)
+for **MockMate Personal Preview**. It is not the same as the signed/stable
+`v1.5.5` production release and is not linked from `releases/latest`.
+
+- **Free, unsigned installer:** Windows may warn or block it; verify the
+  `SHA256SUMS.txt` asset and do not override managed security policies.
+- **Separate installation:** `MockMate Personal Preview` uses its own app
+  identity, shortcut, executable and local user-data directory. Your normal
+  installation stays separate. Don't run both apps at the same time because
+  their local service ports overlap.
+- **Bring your own keys:** Preview is local/BYOK only, with no included API
+  credentials or unverified hosted Managed AI configuration.
+- **Manual upgrades:** Automatic updating is disabled, and the pre-release
+  does not publish `latest.yml` or blockmaps. Download future preview
+  versions manually.
+- **Validation scope:** CI tests and an unpacked Windows runtime/React smoke
+  pass before the pre-release workflow publishes; physical installer,
+  microphone, meeting share-preview, and two-account migration checks are
+  not certified by that smoke alone.
+
+The original [**signed production release workflow**](.github/workflows/release.yml)
+continues to require a genuine signing certificate and physical release
+acceptance. See [`docs/RELEASE.md`](docs/RELEASE.md).
+
 ## AI modes
 
 MockMate supports:
