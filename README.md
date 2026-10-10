@@ -2,37 +2,47 @@
 
 MockMate is a desktop-first interview preparation and live-performance companion. It combines Solo practice, Resume Studio, Job Matching, Documents, session history, and a content-protected Live overlay that can transcribe interview audio and generate resume-grounded guidance.
 
-## v1.5.2 public release status
+## Release status — v1.5.5 candidate
 
-- **Public desktop artifact:** Windows NSIS installer (`MockMate-Setup-1.5.2.exe`).
-- **macOS/Linux:** source support exists, but v1.5.2 does **not** claim automated public DMG/AppImage artifacts from the current release workflow.
-- **Mobile:** iOS/Android Expo app is a **private beta foundation**, not an App Store/Play Store release.
-- **Hosted API:** Vercel Hobby deployment is kept at **12 Serverless Functions** by consolidating four career/resume endpoints behind rewrites. Public Vercel AI routes remain default-deny unless explicitly enabled.
-- **Validation:** 66 test suites / 478 tests, production build, API smoke, Ubuntu CI, and Windows CI are green. Packaged-Windows behavior and share-preview validation remain release gates.
+- **Source version:** `1.5.5` on `main` (`package.json` and `package-lock.json` agree). The v1.5.5 public release has **not been published**.
+- **Latest published Windows installer:** [v1.5.3](https://github.com/vsv2014/MockMate/releases/tag/v1.5.3) (`MockMate-Setup-1.5.3.exe`). The v1.5.4 hotfix was recorded in the changelog but was not separately published.
+- **Next Windows release:** a **signed** NSIS installer (`MockMate-Setup-1.5.5.exe`) *if* the release workflow and real-device gates pass. Unsigned PR/CI validation installers are not public update artifacts.
+- **macOS/Linux:** source support exists; the current public release workflow only publishes Windows NSIS. Linux overlay content protection is not supported.
+- **Mobile:** iOS/Android remains a private beta foundation, not a store release.
+- **Hosted API:** Vercel Hobby shape targets 12 Serverless Functions; managed streaming STT depends on an authenticated hosted WebSocket gateway with verified MongoDB/provider integration.
+- **Validation:** last reviewed code PR #79 passed Linux/Windows CI (80 application test files, 567 tests; backend tests, build, API smoke, packaged Windows renderer/runtime smoke). Physical Windows Live/Solo, share-preview, signing, upgrade and hosted STT reconciliation remain unverified; [validation evidence](docs/evidence/VALIDATION_STATUS.md).
 
-## Download
+## Download and platforms
 
-Use the [Releases page](https://github.com/vsv2014/MockMate/releases/latest).
+Use the [latest published GitHub Release](https://github.com/vsv2014/MockMate/releases/latest) for currently available builds. **Do not treat the prepared v1.5.5 source version as an already released installer.**
 
-| Platform | v1.5.2 status | Artifact |
+| Platform | Current availability | Artifact / limitation |
 |---|---|---|
-| Windows | Public release target | `MockMate-Setup-1.5.2.exe` |
-| macOS | Not part of current automated v1.5.2 public release | Build from source / future signed DMG |
-| Linux | Not part of current automated v1.5.2 public release | Build from source; Stealth not supported |
+| Windows | v1.5.3 published; v1.5.5 awaiting release gates | Published `MockMate-Setup-1.5.3.exe`; prospective signed `MockMate-Setup-1.5.5.exe` |
+| macOS | Not produced by current automated public release workflow | Source/developer build; signed/notarized DMG not published through this workflow |
+| Linux | Not produced by current automated public release workflow | Source/developer build; screen-share content protection not supported |
+| iOS / Android | Private beta foundation | No public store release |
 
-> Windows installers are currently unsigned unless Authenticode secrets are configured. SmartScreen may warn. See [`SIGNING.md`](SIGNING.md).
+> Public Windows releases require a trusted Authenticode signing certificate and valid publisher signature checks. PR validation binaries are unsigned. See [`SIGNING.md`](SIGNING.md) and [`docs/RELEASE.md`](docs/RELEASE.md).
 
-## What v1.5.2 adds
+## What v1.5.5 adds over the last published installer
 
-- 760×240 camera-anchored Teleprompter mode with multi-monitor preservation.
-- Hands-free overlay shortcuts scoped only to active overlay/teleprompter modes.
-- First-turn system-audio question-capture fixes.
-- Layout-aware PDF extraction and hybrid RAG with section-aware chunks, persistent embedding cache, speculative pre-warm, and context-source badges.
+- **More reliable Live audio and suggestions:** stronger reconnect and microphone/system-audio recovery, clearer incomplete-stream handling without duplicate paid requests, and safe read-only recovery of recent Live question/hint notes after an unexpected exit.
+- **Managed streaming STT controls:** authenticated single-use server WebSocket tickets, bounded backend-to-Deepgram sessions and metering/settlement logic. Real hosted WSS/Mongo/Deepgram integration and abrupt-crash reconciliation remain outstanding release validation.
+- **Account privacy:** saved job notes/statuses and Resume Studio drafts isolated by account; stale auth or RAG operations cannot return a previous account's private context; corrupt local document/history data is backed up before replacement.
+- **Updated desktop stack:** Electron 44, React 19, Vite 8, Vitest 5 and Express 5 with additional real-renderer Windows CI validation.
+- **Windows startup hardening:** includes the interim v1.5.4 packaged-process working-directory fix and the earlier v1.5.3 update/install handoff safeguards.
+
+## Features introduced in v1.5.2 and retained
+
+- 760×240 camera-anchored Teleprompter mode and multi-monitor support.
+- First-turn system-audio question capture and mode-scoped shortcuts.
+- Layout-aware PDF extraction, hybrid RAG, section-aware chunks, persisted embedding cache, speculative pre-warm and source badges.
 - Interview Playbook / `CustomPromptStudio` templates and account-scoped presets.
-- Resume Studio, job matching, career tools, and private-beta mobile foundations.
-- ARCH policy plane with operation-scoped adaptive routing.
-- **Product Intelligence as local/runtime adaptive telemetry**. It is not hosted closed-loop analytics.
-- Managed STT quota enforcement with atomic reserve-before-spend for both streaming grants and uploaded transcription.
+- Solo, Live, Resume Studio, job matching, career tools and mobile beta foundations.
+- ARCH adaptive routing and **local/runtime** Product Intelligence; not hosted closed-loop analytics.
+
+For the detailed candidate release notes, see [`docs/RELEASE_NOTES_v1.5.5.md`](docs/RELEASE_NOTES_v1.5.5.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
 ## AI modes
 
