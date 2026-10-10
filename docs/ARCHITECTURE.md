@@ -1,6 +1,6 @@
 # MockMate — Architecture
 
-This document describes the current v1.5.2 architecture. Roadmap items live in `docs/ROADMAP.md`; release evidence lives in `docs/evidence/VALIDATION_STATUS.md`.
+This document describes the implementation on the **v1.5.5 source candidate**, not a published or device-certified v1.5.5 release. Roadmap items live in `docs/ROADMAP.md`; release evidence lives in `docs/evidence/VALIDATION_STATUS.md`.
 
 ## 1. System shape
 
@@ -20,7 +20,7 @@ Window modes include dashboard/app, overlay, camera-anchored teleprompter and pi
 
 Windows/macOS use Electron content protection where supported. This is a partial protection mechanism, not a universal invisibility guarantee; meeting-app share preview must still be verified. Linux does not provide the same protected-overlay guarantee.
 
-The current public v1.5.2 automated release artifact is Windows NSIS. macOS/Linux runtime and packaging code remain in the repository but are not claimed as automated v1.5.2 public artifacts.
+Latest actually published Windows installer: **v1.5.3**. Source/manifests target **v1.5.5**, but the signed public v1.5.5 installer is not yet published. The automated release workflow emits Windows x64 NSIS only; macOS/Linux source and packaging code are not claimed as current public DMG/AppImage artifacts.
 
 ## 3. Live interview pipeline
 
@@ -34,7 +34,7 @@ system/mic audio
 → privacy-safe metrics
 ```
 
-Turn-1 system-audio handling, duplicate suppression, corrections, answer-now behavior and bounded generation are implemented in shared/live modules.
+Turn-1 system-audio handling, duplicate suppression, corrections, answer-now behavior and bounded generation are implemented in shared/live modules. Audio-track `ended` recovery and safer reconnect/stream termination are implemented and regression-tested. Unexpected renderer termination can preserve a bounded 12-hour **read-only** account-scoped view of recent questions and AI suggestions; no audio/LLM/STT session resumes automatically.
 
 ### STT quota model
 
@@ -50,7 +50,7 @@ Managed upload transcription parses supported audio duration server-side, reserv
 
 Selected résumé/JD/notes are parsed, chunked and embedded. Persistent vectors in `mm-docs-index-v1` are tied to document signature, vector dimensions and exact `provider:model` embedding identity.
 
-Delete/replace invalidates in-flight generations so stale async embedding work cannot resurrect removed document content. Local persistence is account-scoped and bounded by a byte budget.
+Delete/replace invalidates in-flight generations so stale async embedding work cannot resurrect removed document content. In-memory embedding work is also invalidated on account switches; stale retrieval/auth responses are rejected when a user logs out or switches. Local persistence is account-scoped and bounded by a byte budget. Malformed session/document JSON is backed up within the same account before it can be overwritten; a backup write failure prevents destructive replacement.
 
 ## 5. API topology
 
@@ -74,7 +74,7 @@ Signup has two valid outcomes:
 
 Hosted verification configuration fails closed if required mail settings are incomplete.
 
-Desktop tokens are persisted through the Electron auth bridge; mobile tokens use OS-protected secure storage.
+Desktop tokens are persisted through the Electron auth bridge; mobile tokens use OS-protected secure storage. A change of authenticated identity remounts account-owned desktop React state. Saved job bookmarks/statuses/notes and Resume Studio drafts are account-scoped using schema v4. Legacy installation-global values are migrated to the first authenticated account when an account-scoped value does not already exist; the original owner of such global values cannot be reconstructed without a real migration check.
 
 ## 7. Billing / metering
 
@@ -129,6 +129,6 @@ Still private-beta gated: PDF/DOCX mobile extraction, real Duo pairing/remote co
 
 ## 12. Release/validation boundaries
 
-Code review and green CI do not equal a field-proven release. v1.5.2 still requires the packaged Windows smoke/share-preview/updater evidence recorded in `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md` before the release is called fully validated.
+Code review and green CI do not equal a field-proven public release. The **v1.5.5 candidate** requires a trusted Authenticode signed installer, physical Windows Solo/Live/reconnect/updater tests, two-account migration, actual Zoom/Meet/Teams share-preview evidence, and real hosted WSS/Mongo/Deepgram billing validation if shipping Managed AI. See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
 
-Current automated verification baseline: **66 suites / 478 tests**, API smoke and production build green on the reviewed branch.
+Latest pre-documentation code CI: PR #79, **80 application test files / 567 tests**, backend tests, API smoke, production build, and Linux/Windows packaged-runtime/React-renderer checks green ([run 37877818087](https://github.com/vsv2014/MockMate/actions/runs/37877818087)). No signed production v1.5.5 or physical certification is implied.
