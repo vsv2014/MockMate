@@ -5,6 +5,18 @@
 
 The current [Release workflow](../.github/workflows/release.yml) publishes **Windows x64 NSIS only**. CI-generated PR installers are **unsigned, validation-only** artifacts; they are not production updates. This document describes the release process, not evidence that a signed v1.5.5 installer already exists.
 
+## Exception: unsigned personal-testing pre-release (no signing secrets)
+
+For personal BYOK testing only, use the **separate** [Build Unsigned Personal Pre-release (Windows)](../.github/workflows/unsigned-personal-prerelease.yml) GitHub Actions workflow. This does **not** relax or alter the signed production release workflow described below.
+
+- Dispatch manually from the current `main` branch with a **new** `v1.5.5-personal.1` tag (or next unused `-personal.N` suffix). **Never use the stable `v1.5.5` tag** for this route; it is reserved for a future signed release.
+- All dependency audits, application/API tests, builds and Windows packaged runtime/renderer smoke must succeed. Personal builds set Managed AI unavailable and omit the packaged update-feed configuration.
+- Publication is a **public GitHub pre-release** with `make_latest: false`, not a stable update. Only the installer named with `UNSIGNED-PERSONAL` and `SHA256SUMS.txt` are released; no `latest.yml` or blockmap is published. No automatic updates are supported.
+- These downloads lack Authenticode signatures and may be blocked by SmartScreen / Smart App Control. Windows device policy must be respected; manual test builds are **not certified** for audio/capture privacy or hosted billing. Back up local data before updating.
+- A versioned release/tag already created by this workflow is never overwritten or reused. Re-run with a fresh `-personal.N` value if a newly built candidate must be published.
+
+This exception is **not** approval to call v1.5.5 a production-certified signed release. All formal release gates below still apply to the stable signed version.
+
 ## Source and version prerequisites
 
 1. Select the reviewed, immutable `main` commit. Both `package.json` and the root `package-lock.json` version must equal the target version (currently `1.5.5`). Use a new `v1.5.5` tag exactly once; do not replace an existing tag.
