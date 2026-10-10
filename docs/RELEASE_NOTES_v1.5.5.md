@@ -4,6 +4,10 @@
 
 The normal public release workflow builds **signed Windows x64 NSIS** and publishes `MockMate-Setup-1.5.5.exe`, `latest.yml`, and a blockmap only after signing/signature and packaged-runtime checks pass. The GitHub Actions PR installer is an **unsigned validation artifact**, not a trusted production update. The current workflow does not create macOS DMG or Linux AppImage releases.
 
+## Optional no-cost personal unsigned pre-release
+
+A separate, manual-only GitHub Actions workflow can publish a **BYOK-only Windows personal-test pre-release** tagged `v1.5.5-personal.1` (or another unused `-personal.N` suffix). The downloadable installer includes `UNSIGNED-PERSONAL` in its name. Only the EXE and SHA256 checksum are published; no auto-update manifests or blockmaps, and no packaged updater feed. This does **not** create a signed `v1.5.5` stable release, certify real-device behavior, or replace the managed-backend verification gates.
+
 ## User-facing improvements since v1.5.3
 
 ### Live interview continuity

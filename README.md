@@ -12,6 +12,12 @@ MockMate is a desktop-first interview preparation and live-performance companion
 - **Hosted API:** Vercel Hobby shape targets 12 Serverless Functions; managed streaming STT depends on an authenticated hosted WebSocket gateway with verified MongoDB/provider integration.
 - **Validation:** last reviewed code PR #79 passed Linux/Windows CI (80 application test files, 567 tests; backend tests, build, API smoke, packaged Windows renderer/runtime smoke). Physical Windows Live/Solo, share-preview, signing, upgrade and hosted STT reconciliation remain unverified; [validation evidence](docs/evidence/VALIDATION_STATUS.md).
 
+## Optional unsigned personal test pre-release
+
+If you do not have a Windows code-signing certificate, MockMate has a **separate manual-only unsigned personal-test workflow**: [Build Unsigned Personal Pre-release](.github/workflows/unsigned-personal-prerelease.yml). Run it on the current `main` with a unique lowercase tag such as `v1.5.5-personal.1`. Once tests/build/packaged runtime checks pass, it publishes a **GitHub pre-release**, not a stable signed release. The build is BYOK-only.
+
+The unsigned installer is named `MockMate-Setup-1.5.5-UNSIGNED-PERSONAL.exe`; it is **not Authenticode-signed**, so Windows SmartScreen / Smart App Control may warn or block it. The release includes a SHA256 checksum but **no `latest.yml` or blockmap**, and the packaged app has no update-feed configuration: install updates manually. This is public on GitHub but **not certified for production use**. Do not manually bypass device security policies. See [release process](docs/RELEASE.md).
+
 ## Download and platforms
 
 Use the [latest published GitHub Release](https://github.com/vsv2014/MockMate/releases/latest) for currently available builds. **Do not treat the prepared v1.5.5 source version as an already released installer.**
