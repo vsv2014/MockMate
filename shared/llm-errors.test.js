@@ -48,6 +48,12 @@ describe('getRetryAfterMs', () => {
     expect(getRetryAfterMs({ response: { headers: new Headers({ 'retry-after': 'Sun, 11 Oct 2026 12:00:10 GMT' }) } }, now)).toBe(10_000)
   })
 
+  it('interprets numeric reset headers as Unix timestamps when appropriate', () => {
+    expect(getRetryAfterMs({ headers: { 'x-ratelimit-reset': String((now + 7_000) / 1000) } }, now)).toBe(7_000)
+    expect(getRetryAfterMs({ headers: { 'x-ratelimit-reset': String(now + 9_000) } }, now)).toBe(9_000)
+    expect(getRetryAfterMs({ headers: { 'x-ratelimit-reset': String((now - 7_000) / 1000) } }, now)).toBe(0)
+  })
+
   it('uses the longest active reset and ignores invalid or expired values', () => {
     expect(getRetryAfterMs({ headers: {
       'retry-after': '3',

@@ -4,6 +4,7 @@ import OpenAI from 'openai'
 import { analyze } from '../../shared/delivery.js'
 import { fetchWithTimeout } from './http.js'
 import { getRetryAfterMs, isRateLimit, isQuotaExhausted, isTransient } from '../../shared/llm-errors.js'
+import { LIVE_PROVIDER_ATTEMPT_TIMEOUT_MS } from '../../shared/liveTiming.js'
 import {
   filterVisionProviders,
   markVision429Family,
@@ -1015,7 +1016,7 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
     const providerStartedAt = Date.now()
     let firstTokenAt = null
     const attemptId = newProviderAttemptId()
-    const deadline = withDeadline(signal, Number(process.env.LLM_STREAM_TIMEOUT_MS) || 11000)
+    const deadline = withDeadline(signal, Number(process.env.LLM_STREAM_TIMEOUT_MS) || LIVE_PROVIDER_ATTEMPT_TIMEOUT_MS)
     providerDiagnostic('attempt_started', {
       attemptId, operation: 'stream', provider: provId, model, maxTokens,
       requestedProvider: provider || 'auto', selectionReason: attemptIndex > 0 ? 'fallback' : (provider && provider !== 'auto' ? 'requested' : 'automatic'),

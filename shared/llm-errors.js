@@ -54,6 +54,19 @@ function parseDurationMs(value) {
   return parts.reduce((total, part) => total + Number(part[1]) * scales[part[2].toLowerCase()], 0)
 }
 
+function parseResetMs(value, now) {
+  const text = String(value || '').trim()
+  if (!text) return 0
+  if (/^\d+(?:\.\d+)?$/.test(text)) {
+    const numeric = Number(text)
+    // Reset headers are inconsistent across providers: some return a duration
+    // in seconds, while others return a Unix timestamp (seconds or millis).
+    if (numeric >= 1_000_000_000_000) return Math.max(0, numeric - now)
+    if (numeric >= 1_000_000_000) return Math.max(0, numeric * 1000 - now)
+  }
+  return parseDurationMs(text)
+}
+
 /**
  * Read common provider retry/reset metadata. Returns milliseconds, or 0 when the provider did
  * not give a usable duration. The one-day cap protects against malformed/custom endpoint headers.
@@ -79,7 +92,7 @@ export function getRetryAfterMs(error, now = Date.now()) {
     }
   }
   for (const reset of [requestReset, tokenReset, genericReset]) {
-    const duration = parseDurationMs(reset)
+    const duration = parseResetMs(reset, now)
     if (duration > 0) candidates.push(duration)
   }
 

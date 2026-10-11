@@ -31,6 +31,7 @@ import { createGenerationManager } from '../shared/generationManager.js'
 import { resolveContextSources, formatInterviewDevTrace } from '../shared/contextSelection.js'
 import { createTranscriptBuffer } from '../shared/transcriptBuffer.js'
 import { createQuestionCaptureController, formatCaptureDebugLine } from '../shared/questionCapture.js'
+import { LIVE_HINT_OVERALL_TIMEOUT_MS } from '../shared/liveTiming.js'
 import { createLiveSessionController } from './live/LiveSessionController.js'
 import { computeLiveCanStart, resolveAnswerNowCandidate } from './live/liveGate.js'
 import { formatLiveError } from './live/hintTransport.js'
@@ -1087,7 +1088,9 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       })
     }
 
-    // Hard backstop: mark incomplete while still authoritative, then fail the generation.
+    // Hard backstop: the server may spend one attempt budget on each configured
+    // provider before it finds a healthy fallback. Keep this deadline above the
+    // default three-provider budget so the browser does not cancel failover at 12s.
     const lockTimeout = setTimeout(() => {
       if (!isCurrent()) return
       hintInFlight.current = false
@@ -1101,7 +1104,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         state.markQuestionFailed?.(questionId, 'timed_out')
       }
       try { gen.fail('timed_out') } catch {}
-    }, 12000)
+    }, LIVE_HINT_OVERALL_TIMEOUT_MS)
     lockTimerRef.current = lockTimeout
 
     let lastAnswer = ''

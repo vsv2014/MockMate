@@ -6,9 +6,10 @@ import { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const main = fs.readFileSync(path.join(root, 'electron', 'main.cjs'), 'utf8')
-const uiServer = fs.readFileSync(path.join(root, 'server.js'), 'utf8')
-const accountServer = fs.readFileSync(path.join(root, 'backend', 'server.js'), 'utf8')
+const normalizeNewlines = source => source.replace(/\r\n?/g, '\n')
+const main = normalizeNewlines(fs.readFileSync(path.join(root, 'electron', 'main.cjs'), 'utf8'))
+const uiServer = normalizeNewlines(fs.readFileSync(path.join(root, 'server.js'), 'utf8'))
+const accountServer = normalizeNewlines(fs.readFileSync(path.join(root, 'backend', 'server.js'), 'utf8'))
 const require = createRequire(import.meta.url)
 const {
   attachRequiredServiceLifecycle,
