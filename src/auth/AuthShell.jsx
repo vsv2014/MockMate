@@ -149,6 +149,17 @@ export function AuthShell({ children, maxWidth = 360 }) {
           #mm-auth { padding-left: 12px !important; padding-right: 12px !important; }
           #mm-auth .mm-auth-card { padding: 24px 20px; border-radius: 16px; }
         }
+        @media (max-height: 680px) {
+          #mm-auth { padding-top: 56px; padding-bottom: 16px; }
+          #mm-auth .mm-auth-stage { min-height: auto; align-items: start; gap: 24px; }
+          #mm-auth .mm-auth-card { padding-top: 22px; padding-bottom: 22px; }
+          #mm-auth .mm-auth-story { padding-top: 4px; padding-bottom: 4px; }
+        }
+        @media (max-height: 520px) {
+          #mm-auth .mm-auth-story { display: none; }
+          #mm-auth .mm-auth-stage { grid-template-columns: 1fr; }
+          #mm-auth .mm-auth-card { max-width: 520px !important; }
+        }
         @media (prefers-reduced-motion: reduce) {
           #mm-auth *, #mm-auth *::before, #mm-auth *::after { animation: none !important; transition: none !important; }
         }

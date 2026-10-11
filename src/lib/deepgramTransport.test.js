@@ -1,7 +1,16 @@
 import { describe, it, expect, vi } from 'vitest'
+
+vi.mock('./apiClient', async importOriginal => ({
+  ...(await importOriginal()),
+  apiFetch: vi.fn(),
+}))
+
+import { apiFetch } from './apiClient'
 import {
   MAX_QUEUE_BYTES,
+  PERMANENT_TOKEN_STATUSES,
   computeReconnectDelayMs,
+  requestDeepgramToken,
   buildDeepgramListenUrl,
   abandonDeepgramSocket,
   enqueueOrSendPcm,
@@ -43,12 +52,29 @@ describe('deepgramTransport shared helpers', () => {
     expect(refs.pcmQueueBytesRef.current).toBe(0)
   })
 
-  it('computes exponential reconnect backoff capped at 8000ms', () => {
+  it('retries temporary token-grant 429s but leaves auth and quota statuses for user intervention', () => {
+    expect(PERMANENT_TOKEN_STATUSES.has(429)).toBe(false)
+    for (const status of [401, 402, 403]) expect(PERMANENT_TOKEN_STATUSES.has(status)).toBe(true)
+  })
+
+  it('computes exponential reconnect backoff capped at 8000ms unless the provider asks for longer', () => {
     expect(computeReconnectDelayMs(1)).toBe(500)
     expect(computeReconnectDelayMs(2)).toBe(1000)
     expect(computeReconnectDelayMs(3)).toBe(2000)
     expect(computeReconnectDelayMs(5)).toBe(8000)
     expect(computeReconnectDelayMs(20)).toBe(8000)
+    expect(computeReconnectDelayMs(1, 12_000)).toBe(12_000)
+  })
+
+  it('preserves provider Retry-After metadata for Deepgram token-grant reconnects', async () => {
+    apiFetch.mockResolvedValue({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'retry-after': '12' }),
+      json: async () => ({ error: 'rate limited', retryAfterMs: 10_000 }),
+    })
+    const result = await requestDeepgramToken({ cacheRef: { current: null } })
+    expect(result).toMatchObject({ ok: false, tokenStatus: 429, retryAfterMs: 12_000 })
   })
 
   it('builds Deepgram listen URLs for microphone and diarized system audio', () => {

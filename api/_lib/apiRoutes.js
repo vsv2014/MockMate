@@ -2,7 +2,7 @@
 // Deployments:
 //   - Local BYOK (server.js): no auth, loopback-only.
 //   - Managed backend (backend/server.js): auth + metering/model policy.
-import { makeReport, availableProviders, allProviders, listModels, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed, isLoopbackAddress } from './core.js'
+import { makeReport, availableProviders, allProviders, listModels, testProviderConnection, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed, isLoopbackAddress } from './core.js'
 import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen, streamHint } from './interview.js'
 import { findJobs } from './jobs.js'
 import { atsScore, tailorResume, referralMessage, resumeLatex } from './career.js'
@@ -17,6 +17,21 @@ export function isProviderFailureError(e, { closed = false, signal = null } = {}
   return isQuotaExhausted(e) || isRateLimit(e) || isTransient(e)
 }
 
+function errorPayload(error) {
+  const payload = { error: error?.message || 'The request failed.' }
+  if (error?.code || error?.kind) payload.code = error.code || error.kind
+  const retryAfterMs = Number(error?.retryAfterMs)
+  if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) payload.retryAfterMs = Math.ceil(retryAfterMs)
+  return payload
+}
+
+function setRetryAfterHeader(res, error) {
+  const retryAfterMs = Number(error?.retryAfterMs)
+  if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+    res.setHeader('Retry-After', String(Math.max(1, Math.ceil(retryAfterMs / 1000))))
+  }
+}
+
 export const API_ROUTE_CONTRACT = [
   { method: 'GET', path: '/api/providers' }, { method: 'GET', path: '/api/models' },
   { method: 'GET', path: '/api/arch' },
@@ -27,6 +42,10 @@ export const API_ROUTE_CONTRACT = [
   { method: 'POST', path: '/api/jobs' }, { method: 'POST', path: '/api/ats-score' },
   { method: 'POST', path: '/api/tailor-resume' }, { method: 'POST', path: '/api/referral' },
   { method: 'POST', path: '/api/resume-latex' }, { method: 'POST', path: '/api/hint-stream' },
+]
+
+export const LOCAL_ONLY_API_ROUTE_CONTRACT = [
+  { method: 'POST', path: '/api/providers/test' },
 ]
 
 export const OPERATION_BY_PATH = {
@@ -77,6 +96,19 @@ export function registerApiRoutes(app, opts = {}) {
   const bodyWithPolicy = (path, raw = {}) => applyArchReasoningPolicy(path, raw, resolveReasoningPolicy)
 
   app.get('/api/providers', ...guardLight, (req, res) => res.json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured() }))
+  if (opts.enableLocalProviderTest === true) {
+    app.post('/api/providers/test', ...guardLight, async (req, res) => {
+      try {
+        res.json(await testProviderConnection(req.body?.provider))
+      } catch (e) {
+        const status = Number(e?.status || e?.statusCode) || 502
+        res.status(status >= 400 && status <= 599 ? status : 502).json({
+          ok: false,
+          error: String(e?.message || 'Provider test failed.').slice(0, 240),
+        })
+      }
+    })
+  }
   app.get('/api/models', ...guardLight, async (req, res) => {
     try { res.json({ models: await listModels() }) }
     catch (e) { console.error('[api] GET /api/models:', e.message); res.json({ models: [] }) }
@@ -110,13 +142,13 @@ export function registerApiRoutes(app, opts = {}) {
       res.json(await deepgramToken({ allowApiKeyFallback }))
     } catch (e) {
       if (onSttRelease) { try { await onSttRelease(req) } catch {} }
-      report(e); res.status(e.status || 500).json({ error: e.message })
+      report(e); setRetryAfterHeader(res, e); res.status(e.status || 500).json(errorPayload(e))
     }
   })
 
   app.post('/api/token', ...guardLight, async (req, res) => {
     try { res.json(await mintToken({ ...(req.body || {}), requesterId: req.userId || null })) }
-    catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
+    catch (e) { report(e); setRetryAfterHeader(res, e); res.status(e.status || 500).json(errorPayload(e)) }
   })
 
   // Embeddings consume a provider request too. Managed deployments use the full guard so document
@@ -136,7 +168,7 @@ export function registerApiRoutes(app, opts = {}) {
       })
     } catch (e) {
       if (onLlmFailure) { try { await onLlmFailure(req, '/api/embed') } catch {} }
-      report(e); res.status(e.status || 500).json({ error: e.message })
+      report(e); setRetryAfterHeader(res, e); res.status(e.status || 500).json(errorPayload(e))
     }
   })
 
@@ -160,7 +192,7 @@ export function registerApiRoutes(app, opts = {}) {
       }
       report(e)
       console.error(`[api] POST ${path} → ${e.status || 500}: ${e.message}`)
-      res.status(e.status || 500).json({ error: e.message })
+      setRetryAfterHeader(res, e); res.status(e.status || 500).json(errorPayload(e))
     }
   })
 
@@ -187,7 +219,7 @@ export function registerApiRoutes(app, opts = {}) {
       }
       report(e)
       console.error(`[api] POST /api/analyze-screen → ${e.status || 500}: ${e.message}`)
-      res.status(e.status || 500).json({ error: e.message, code: e.code || undefined })
+      setRetryAfterHeader(res, e); res.status(e.status || 500).json(errorPayload(e))
     }
   })
 
@@ -251,7 +283,7 @@ export function registerApiRoutes(app, opts = {}) {
           recordArchMetric('provider_failure_count', 1)
         }
         report(e)
-        send('error', { error: e.message })
+        send('error', errorPayload(e))
       }
     }
     if (!closed) res.end()

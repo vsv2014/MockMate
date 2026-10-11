@@ -28,17 +28,21 @@ export default function Onboarding({ onComplete }) {
   const [busy, setBusy] = useState(false)
   const [saveError, setSaveError] = useState(null)
   const inputRef = useRef(null)
+  const uploadSeq = useRef(0)
 
   async function handleFile(file) {
     if (!file) return
+    const sequence = uploadSeq.current + 1
     setFileError(null)
     const okType = /\.pdf$/i.test(file.name) || file.type === 'application/pdf'
     if (!okType) { setFileError('Please choose a PDF file (DOCX is not supported yet — export to PDF or paste text in Solo / Career)'); return }
     if (file.size > MAX_BYTES) { setFileError('That file is over 5MB — please choose a smaller one'); return }
 
+    uploadSeq.current = sequence
     setResume({ name: file.name, status: 'parsing', text: '', kind: 'pdf' })
     let text = ''
     try { text = await extractPdfText(file) } catch { text = '' }
+    if (sequence !== uploadSeq.current) return
     const status = text && text.length > 20 ? 'ready' : 'empty'
     setResume({ name: file.name, status, text, kind: 'pdf' })
   }
@@ -48,16 +52,21 @@ export default function Onboarding({ onComplete }) {
     handleFile(e.dataTransfer.files?.[0])
   }
 
-  async function finish() {
-    if (busy) return
+  async function finish({ skipResume = false } = {}) {
+    if (busy || (!skipResume && resume?.status === 'parsing')) return
+    if (skipResume) {
+      uploadSeq.current += 1
+      if (resume?.status === 'parsing') setResume(null)
+    }
     setSaveError(null); setBusy(true)
+    const readyResume = !skipResume && resume?.status === 'ready' ? resume : null
     try {
       await onComplete({
         currentRole: currentRole.trim(),
         targetRole,
         yearsExp,
-        resumeText: resume?.text || '',
-        resumeName: resume?.name || '',
+        resumeText: readyResume?.text || '',
+        resumeName: readyResume?.name || '',
       })
     } catch (err) {
       setSaveError(err?.message || 'Could not save your details. Please try again.')
@@ -99,33 +108,32 @@ export default function Onboarding({ onComplete }) {
           </div>
 
           <input
-            ref={inputRef} type="file" accept={ACCEPT} style={{ display: 'none' }}
-            onChange={e => handleFile(e.target.files?.[0])}
+            ref={inputRef} id="mm-resume-file" type="file" accept={ACCEPT}
+            style={{ display: 'none' }}
+            onChange={e => { handleFile(e.target.files?.[0]); e.target.value = '' }}
           />
 
           {!resume ? (
-            <div
-              role="button" tabIndex={0}
+            <button type="button" aria-label="Upload a PDF resume, up to 5 megabytes"
               onClick={() => inputRef.current?.click()}
-              onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
               onDragOver={e => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
               onDrop={onDrop}
               style={{
-                border: `1.5px dashed ${dragOver ? T.accentFrom : T.borderStrong}`,
-                background: dragOver ? 'rgba(20,184,166,0.06)' : T.surface2,
+                width: '100%', border: `1.5px dashed ${dragOver ? T.accentFrom : T.borderStrong}`,
+                background: dragOver ? 'rgba(20,184,166,0.06)' : T.surface2, color: 'inherit', font: 'inherit',
                 borderRadius: T.rCard, padding: '28px 16px', textAlign: 'center', cursor: 'pointer',
                 transition: 'border-color 0.15s, background 0.15s',
               }}
             >
-              <UploadIcon />
-              <div style={{ marginTop: 10, fontSize: 13, fontWeight: 500, color: T.text1 }}>
+              <UploadIcon aria-hidden="true" />
+              <span style={{ display: 'block', marginTop: 10, fontSize: 13, fontWeight: 500, color: T.text1 }}>
                 Drag &amp; drop your resume
-              </div>
-              <div style={{ marginTop: 3, fontSize: 11, fontWeight: 400, color: T.text3 }}>
+              </span>
+              <span style={{ display: 'block', marginTop: 3, fontSize: 11, fontWeight: 400, color: T.text3 }}>
                 or <span style={{ color: T.accentFrom }}>browse</span> · PDF · max 5MB
-              </div>
-            </div>
+              </span>
+            </button>
           ) : (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 11,
@@ -136,31 +144,31 @@ export default function Onboarding({ onComplete }) {
                 <div style={{ fontSize: 13, fontWeight: 500, color: T.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {resume.name}
                 </div>
-                <div style={{ fontSize: 11, fontWeight: 400, color: resume.status === 'ready' ? T.success : (resume.status === 'parsing' ? T.text3 : '#fbbf24'), display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div role="status" aria-live="polite" style={{ fontSize: 11, fontWeight: 400, color: resume.status === 'ready' ? T.success : (resume.status === 'parsing' ? T.text3 : '#fbbf24'), display: 'flex', alignItems: 'center', gap: 5 }}>
                   {resume.status === 'parsing' && <><Spinner /> Reading…</>}
                   {resume.status === 'ready' && <><CheckIcon /> Ready · text extracted</>}
                   {resume.status === 'empty' && <>⚠ No text found — paste your resume in Solo or Career</>}
                 </div>
               </div>
               <button
-                type="button" onClick={() => { setResume(null); setFileError(null); if (inputRef.current) inputRef.current.value = '' }}
+                type="button" onClick={() => { uploadSeq.current += 1; setResume(null); setFileError(null); if (inputRef.current) inputRef.current.value = '' }}
                 aria-label="Remove resume"
                 style={{ background: 'transparent', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 4 }}
               >×</button>
             </div>
           )}
 
-          {fileError && <div style={{ marginTop: 10, fontSize: 11, color: T.danger }}>{fileError}</div>}
+          {fileError && <div role="alert" aria-live="assertive" style={{ marginTop: 10, fontSize: 11, color: T.danger }}>{fileError}</div>}
           <FormError>{saveError}</FormError>
 
           <div style={{ marginTop: 20 }}>
-            <PrimaryButton type="button" onClick={finish} busy={busy} busyLabel="Saving…">
-              {resume ? 'Finish setup' : 'Finish'}
+            <PrimaryButton type="button" onClick={finish} disabled={resume?.status === 'parsing'} busy={busy} busyLabel="Saving…">
+              {resume?.status === 'empty' ? 'Finish without resume' : resume ? 'Finish setup' : 'Finish'}
             </PrimaryButton>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14 }}>
             <TextLink onClick={() => setStep(1)}>← Back</TextLink>
-            <TextLink onClick={finish}>Skip for now</TextLink>
+            <TextLink onClick={() => finish({ skipResume: true })}>Skip for now</TextLink>
           </div>
         </>
       )}
@@ -196,9 +204,9 @@ function ChipGroup({ label, options, value, onChange }) {
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
-function UploadIcon() {
+function UploadIcon(props) {
   return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={T.text2} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto' }}>
+    <svg {...props} focusable="false" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={T.text2} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto' }}>
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
     </svg>
   )

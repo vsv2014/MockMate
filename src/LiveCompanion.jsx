@@ -5,7 +5,7 @@ import SoloFeedback from './SoloFeedback'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { getAutoSkip, getAnswerStyle, setAnswerStyle as persistAnswerStyle } from './lib/aiSettings'
-import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, listDocs, canReuseSpeculativeRag } from './lib/docs'
+import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, getKitSelectedDocIds, listDocs, listKitDocs, canReuseSpeculativeRag } from './lib/docs'
 import Documents from './Documents'
 import CustomPromptStudio from './components/CustomPromptStudio'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
@@ -31,8 +31,10 @@ import { createGenerationManager } from '../shared/generationManager.js'
 import { resolveContextSources, formatInterviewDevTrace } from '../shared/contextSelection.js'
 import { createTranscriptBuffer } from '../shared/transcriptBuffer.js'
 import { createQuestionCaptureController, formatCaptureDebugLine } from '../shared/questionCapture.js'
+import { LIVE_HINT_OVERALL_TIMEOUT_MS } from '../shared/liveTiming.js'
 import { createLiveSessionController } from './live/LiveSessionController.js'
 import { computeLiveCanStart, resolveAnswerNowCandidate } from './live/liveGate.js'
+import { formatLiveError } from './live/hintTransport.js'
 import { copyText } from './lib/clipboard'
 import { trackProductEvent } from './lib/productIntelligence'
 import { nid } from '../shared/id.js'
@@ -51,6 +53,7 @@ function liveRagOpts(_classification, interviewConfig, budgetMs = 600) {
   return {
     budgetMs: ms,
     docIds: Array.isArray(ids) ? ids : undefined,
+    kitId: interviewConfig?.kitId || null,
     // Soft policy: do not hard-filter by classifier ragTypes (that hid knowledge banks).
   }
 }
@@ -142,8 +145,9 @@ function stopSpeaking() { window.speechSynthesis?.cancel() }
 
 
 // ── Setup screen ──────────────────────────────────────────────────────────────
-function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardLive, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity }) {
-  const [profile, setProfile] = useState(loadProfile)
+function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardLive, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, initialProfile, initialKit, onProfileChange }) {
+  const kitScoped = Boolean(initialKit?.id && initialProfile)
+  const [profile, setProfile] = useState(() => initialProfile ? { ...loadProfile(), ...initialProfile } : loadProfile())
   const [audioSources, setAudioSources] = useState([])
   const [sourceId, setSourceId] = useState('microphone')
   const [providers, setProviders] = useState([])       // configured only (for default + validation)
@@ -155,7 +159,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   const providerNames = configuredProviderNames(models, providers)
   // Inline API-key entry — same keys are also editable globally (Home → Settings).
   const [showKeys, setShowKeys] = useState(false)
-  const [documentMeta, setDocumentMeta] = useState(() => listDocs())
+  const [documentMeta, setDocumentMeta] = useState(() => kitScoped && initialKit?.id ? listKitDocs(initialKit.id) : listDocs())
 
   function refetchProviders() {
     return apiFetch('/api/providers').then(r => r.json()).then(d => {
@@ -189,10 +193,21 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   }, [])
 
   useEffect(() => { persistModelSelection(provider) }, [provider])
+  useEffect(() => {
+    setDocumentMeta(kitScoped && initialKit?.id ? listKitDocs(initialKit.id) : listDocs())
+  }, [kitScoped, initialKit?.id])
 
-  function patch(p) { const next = { ...profile, ...p }; setProfile(next); saveProfile(next) }
+  function patch(p) {
+    const next = { ...profile, ...p }
+    setProfile(next)
+    if (kitScoped) onProfileChange?.(next)
+    else saveProfile(next)
+  }
   const managed = isManaged()   // managed → hide model picker, let the server auto-route
-  const [pdfMsg, setPdfMsg] = useState('')
+  const [resumePdfMsg, setResumePdfMsg] = useState('')
+  const [jdPdfMsg, setJdPdfMsg] = useState('')
+  const resumePdfRef = useRef(null)
+  const jdPdfRef = useRef(null)
   const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
   const inElectron = typeof window !== 'undefined' && !!window.electronAPI
   const isDevLocal = Boolean(import.meta.env?.DEV)
@@ -347,7 +362,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
               <span style={{ color: meetingContext.active ? '#86efac' : '#fbbf24' }}>
                 {meetingContext.active ? `✓ Detected ${meetingContext.label || 'meeting app'}` : '⚠ No supported meeting app detected'}
               </span>
-              <select value={shareMode} onChange={e => { setShareMode(e.target.value); setShareVerified(false) }}
+              <select aria-label="Meeting share preview type" value={shareMode} onChange={e => { setShareMode(e.target.value); setShareVerified(false) }}
                 style={{ marginLeft: 'auto', background: T.surface2, color: T.text1, border: `1px solid ${T.border}`, borderRadius: 5, padding: '4px 7px', fontSize: 11 }}>
                 <option value="entire-screen">Entire screen</option>
                 <option value="window">Window</option>
@@ -404,9 +419,9 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
         </div>
 
         <Section n={1} title="Interview" subtitle="Optional — name, role, company" defaultOpen={false}>
-        <Field label="Your name"><input style={inp} value={profile.name || ''} placeholder="e.g. Charan" onChange={e => patch({ name: e.target.value })} /></Field>
-        <Field label="Target role"><input style={inp} value={profile.targetRole || ''} placeholder="e.g. Senior AI Engineer" onChange={e => patch({ targetRole: e.target.value })} /></Field>
-        <Field label="Target company (sharpens 'why us' answers + web search)"><input style={inp} value={profile.targetCompany || ''} placeholder="e.g. Stripe" onChange={e => patch({ targetCompany: e.target.value })} /></Field>
+        <Field label="Your name" htmlFor="live-profile-name"><input id="live-profile-name" style={inp} value={profile.name || ''} autoComplete="name" placeholder="e.g. Charan" onChange={e => patch({ name: e.target.value })} /></Field>
+        <Field label="Target role" htmlFor="live-target-role"><input id="live-target-role" style={inp} value={profile.targetRole || ''} placeholder="e.g. Senior AI Engineer" onChange={e => patch({ targetRole: e.target.value })} /></Field>
+        <Field label="Target company (sharpens 'why us' answers + web search)" htmlFor="live-target-company"><input id="live-target-company" style={inp} value={profile.targetCompany || ''} placeholder="e.g. Stripe" onChange={e => patch({ targetCompany: e.target.value })} /></Field>
         </Section>
 
         <Section
@@ -427,56 +442,66 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
 
         <Section n={3} title="Interview Documents" subtitle={`${contextSourceCount} source${contextSourceCount === 1 ? '' : 's'} ready · choose exactly what AI may use`} defaultOpen={false}>
         <div style={{ fontSize: 11, color: T.text3, lineHeight: 1.45, marginBottom: 4 }}>
-          Resume &amp; JD below feed identity answers. Knowledge banks / notes go in the library — check what to use. They are not duplicated in the list.
+          {kitScoped
+            ? 'Resume & JD below feed identity answers. Supporting files belong to this Kit; check only the material you want used for this opportunity.'
+            : 'Resume & JD below feed identity answers. Knowledge banks / notes go in the library — check what to use. They are not duplicated in the list.'}
         </div>
-        <Field label="Resume (optional — answers reference your projects)">
-          <textarea rows={3} style={{ ...inp, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste resume text…" onChange={e => patch({ resume: e.target.value })} />
+        <Field label="Resume (optional — answers reference your projects)" htmlFor="live-profile-resume">
+          <textarea id="live-profile-resume" rows={3} style={{ ...inp, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste resume text…" onChange={e => patch({ resume: e.target.value })} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px' }}>
+            <button type="button" onClick={() => resumePdfRef.current?.click()} aria-label="Upload resume PDF"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px', fontFamily: T.font }}>
               📄 Upload PDF
-              <input type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
-                onChange={async e => {
-                  const file = e.target.files?.[0]; e.target.value = ''
-                  if (!file) return
-                  setPdfMsg('Reading PDF…')
-                  try {
-                    const text = await extractPdfText(file)
-                    if (text && text.length > 20) { patch({ resume: text }); setPdfMsg(`✓ Loaded ${text.length.toLocaleString()} chars`) }
-                    else setPdfMsg('⚠ No text found (scanned image?) — paste it instead')
-                  } catch { setPdfMsg('⚠ Could not read that PDF — please paste the text') }
-                }} />
-            </label>
-            {pdfMsg && <span style={{ fontSize: 10, color: pdfMsg.startsWith('⚠') ? '#fca5a5' : '#86efac' }}>{pdfMsg}</span>}
+            </button>
+            <input ref={resumePdfRef} type="file" accept="application/pdf,.pdf" aria-label="Choose a resume PDF" style={{ display: 'none' }}
+              onChange={async e => {
+                const file = e.target.files?.[0]; e.target.value = ''
+                if (!file) return
+                setResumePdfMsg('Reading resume PDF…')
+                try {
+                  const text = await extractPdfText(file)
+                  if (text && text.length > 20) { patch({ resume: text }); setResumePdfMsg(`✓ Loaded ${text.length.toLocaleString()} chars`) }
+                  else setResumePdfMsg('⚠ No text found (scanned image?) — paste it instead')
+                } catch { setResumePdfMsg('⚠ Could not read that PDF — please paste the text') }
+              }} />
+            {resumePdfMsg && <span role={resumePdfMsg.startsWith('⚠') ? 'alert' : 'status'} aria-live={resumePdfMsg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: 10, color: resumePdfMsg.startsWith('⚠') ? '#fca5a5' : '#86efac' }}>{resumePdfMsg}</span>}
           </div>
         </Field>
-        <Field label="Job description (optional — sharpens answers to this role)">
-          <textarea rows={2} style={{ ...inp, resize: 'vertical' }} value={profile.jobDescription || ''} placeholder="Paste job description…" onChange={e => patch({ jobDescription: e.target.value })} />
+        <Field label="Job description (optional — sharpens answers to this role)" htmlFor="live-profile-job-description">
+          <textarea id="live-profile-job-description" rows={2} style={{ ...inp, resize: 'vertical' }} value={profile.jobDescription || ''} placeholder="Paste job description…" onChange={e => patch({ jobDescription: e.target.value })} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px' }}>
+            <button type="button" onClick={() => jdPdfRef.current?.click()} aria-label="Upload job description PDF"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px', fontFamily: T.font }}>
               📄 Upload PDF
-              <input type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
-                onChange={async e => {
-                  const file = e.target.files?.[0]; e.target.value = ''
-                  if (!file) return
-                  setPdfMsg('Reading JD PDF…')
-                  try {
-                    const text = await extractPdfText(file)
-                    if (text && text.length > 20) { patch({ jobDescription: text }); setPdfMsg(`✓ JD loaded ${text.length.toLocaleString()} chars`) }
-                    else setPdfMsg('⚠ No text found (scanned image?) — paste it instead')
-                  } catch { setPdfMsg('⚠ Could not read that PDF — please paste the text') }
-                }} />
-            </label>
+            </button>
+            <input ref={jdPdfRef} type="file" accept="application/pdf,.pdf" aria-label="Choose a job description PDF" style={{ display: 'none' }}
+              onChange={async e => {
+                const file = e.target.files?.[0]; e.target.value = ''
+                if (!file) return
+                setJdPdfMsg('Reading job description PDF…')
+                try {
+                  const text = await extractPdfText(file)
+                  if (text && text.length > 20) { patch({ jobDescription: text }); setJdPdfMsg(`✓ JD loaded ${text.length.toLocaleString()} chars`) }
+                  else setJdPdfMsg('⚠ No text found (scanned image?) — paste it instead')
+                } catch { setJdPdfMsg('⚠ Could not read that PDF — please paste the text') }
+              }} />
+            {jdPdfMsg && <span role={jdPdfMsg.startsWith('⚠') ? 'alert' : 'status'} aria-live={jdPdfMsg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: 10, color: jdPdfMsg.startsWith('⚠') ? '#fca5a5' : '#86efac' }}>{jdPdfMsg}</span>}
           </div>
         </Field>
-        <Field label="Knowledge & notes (checked = used for retrieval)">
-          <Documents hideBioTypes onLibraryChange={setDocumentMeta} />
+        <Field label={kitScoped ? 'Kit-only knowledge & notes (checked = used for retrieval)' : 'Knowledge & notes (checked = used for retrieval)'}>
+          <Documents
+            key={kitScoped ? `kit:${initialKit.id}` : 'shared-library'}
+            kitId={kitScoped ? initialKit.id : null}
+            hideBioTypes
+            onLibraryChange={setDocumentMeta}
+          />
         </Field>
         </Section>
 
         <Section n={4} title="More options" subtitle="Model, language, coding" defaultOpen={false}>
         {!managed && (
-          <Field label="AI model">
-            <select style={inp} value={provider} onChange={e => setProvider(e.target.value)} disabled={!providers.length && !models.length}>
+          <Field label="AI model" htmlFor="live-ai-model">
+            <select id="live-ai-model" style={inp} value={provider} onChange={e => setProvider(e.target.value)} disabled={!providers.length && !models.length}>
               {!providers.length && !models.length && <option value="">No models yet — add a key in Settings</option>}
               {(providers.length > 0 || models.length > 0) && <option value="">Automatic — recommended</option>}
               {modelOptions.length > 0
@@ -489,8 +514,8 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           </Field>
         )}
 
-        <Field label="Answer intelligence">
-          <select style={inp} value={profile.modelStrategy || 'balanced'} onChange={e => patch({ modelStrategy: e.target.value })}>
+        <Field label="Answer intelligence" htmlFor="live-answer-intelligence">
+          <select id="live-answer-intelligence" style={inp} value={profile.modelStrategy || 'balanced'} onChange={e => patch({ modelStrategy: e.target.value })}>
             <option value="balanced">Balanced — fast normally, strongest for hard questions</option>
             <option value="quality">Maximum quality — strongest model for every answer</option>
             <option value="fast">Fast — lowest response latency</option>
@@ -500,25 +525,32 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           </div>
         </Field>
 
-        <Field label="Interview language">
-          <select style={inp} value={profile.language || 'English'} onChange={e => patch({ language: e.target.value })}>
+        <Field label="Interview language" htmlFor="live-interview-language">
+          <select id="live-interview-language" style={inp} value={profile.language || 'English'} onChange={e => patch({ language: e.target.value })}>
             {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
         </Field>
 
-        <Field label="Coding language (for screen-capture solutions)">
-          <select style={inp} value={profile.codingLanguage || 'Python'} onChange={e => patch({ codingLanguage: e.target.value })}>
+        <Field label="Coding language (for screen-capture solutions)" htmlFor="live-coding-language">
+          <select id="live-coding-language" style={inp} value={profile.codingLanguage || 'Python'} onChange={e => patch({ codingLanguage: e.target.value })}>
             {CODING_LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
         </Field>
         </Section>
 
         <button disabled={!canStart} onClick={() => {
-          if (profile.resume?.trim()) addDoc({ name: 'Resume', type: 'resume', text: profile.resume })
-          if (profile.jobDescription?.trim()) addDoc({ name: 'Job Description', type: 'jd', text: profile.jobDescription })
-          const selectedDocumentIds = getSelectedDocIds()
+          // Kit-owned materials remain separate from the shared profile/document library.
+          if (!kitScoped) {
+            if (profile.resume?.trim()) addDoc({ name: 'Resume', type: 'resume', text: profile.resume })
+            if (profile.jobDescription?.trim()) addDoc({ name: 'Job Description', type: 'jd', text: profile.jobDescription })
+          }
+          const selectedDocumentIds = kitScoped ? getKitSelectedDocIds(initialKit.id) : getSelectedDocIds()
           const interviewConfig = buildInterviewConfig({ profile, selectedDocumentIds, source: 'live' })
-          onStart({ profile, sourceId, provider: managed ? '' : provider, interviewConfig })
+          if (kitScoped) {
+            interviewConfig.kitId = initialKit.id
+            interviewConfig.kitName = initialKit.name || 'Interview Kit'
+          }
+          onStart({ profile, sourceId, provider: managed ? '' : provider, interviewConfig, kitId: initialKit?.id, kitName: initialKit?.name })
         }}
           style={{ position: 'sticky', bottom: 0, zIndex: 3, height: 52, background: canStart ? T.accent : T.surface2, color: canStart ? '#fff' : T.text3, border: `1px solid ${canStart ? 'rgba(103,232,249,0.45)' : T.border}`, borderRadius: T.rCtrl, boxShadow: '0 -10px 24px rgba(6,12,22,0.78)', fontSize: 15, fontWeight: 700, cursor: canStart ? 'pointer' : 'default', fontFamily: T.font }}>
           Start Live →
@@ -538,10 +570,12 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   )
 }
 
-function Field({ label, children }) {
+function Field({ label, children, htmlFor }) {
   return (
     <div>
-      <div style={{ fontSize: 11.5, color: T.text2, marginBottom: 6, fontFamily: T.font }}>{label}</div>
+      {htmlFor
+        ? <label htmlFor={htmlFor} style={{ display: 'block', fontSize: 11.5, color: T.text2, marginBottom: 6, fontFamily: T.font }}>{label}</label>
+        : <div style={{ fontSize: 11.5, color: T.text2, marginBottom: 6, fontFamily: T.font }}>{label}</div>}
       {children}
     </div>
   )
@@ -573,12 +607,15 @@ function Section({ n, title, subtitle, defaultOpen = true, highlight = false, ch
 }
 
 // ── Live overlay ──────────────────────────────────────────────────────────────
-function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, pip: initialPip, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId, interviewConfig: initialInterviewConfig }) {
-  const interviewConfigRef = useRef(initialInterviewConfig || buildInterviewConfig({
-    profile,
-    selectedDocumentIds: getSelectedDocIds(),
-    source: 'live',
-  }))
+function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, pip: initialPip, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId, interviewConfig: initialInterviewConfig, kitId }) {
+  const interviewConfigRef = useRef(initialInterviewConfig || {
+    ...buildInterviewConfig({
+      profile,
+      selectedDocumentIds: kitId ? getKitSelectedDocIds(kitId) : getSelectedDocIds(),
+      source: 'live',
+    }),
+    ...(kitId ? { kitId } : {}),
+  })
   const [transcript, setTranscript] = useState([])
   const [hint, setHint] = useState(null)
   const [hintLoading, setHintLoading] = useState(false)
@@ -1086,7 +1123,9 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       })
     }
 
-    // Hard backstop: mark incomplete while still authoritative, then fail the generation.
+    // Hard backstop: the server may spend one attempt budget on each configured
+    // provider before it finds a healthy fallback. Keep this deadline above the
+    // default three-provider budget so the browser does not cancel failover at 12s.
     const lockTimeout = setTimeout(() => {
       if (!isCurrent()) return
       hintInFlight.current = false
@@ -1100,7 +1139,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         state.markQuestionFailed?.(questionId, 'timed_out')
       }
       try { gen.fail('timed_out') } catch {}
-    }, 12000)
+    }, LIVE_HINT_OVERALL_TIMEOUT_MS)
     lockTimerRef.current = lockTimeout
 
     let lastAnswer = ''
@@ -1332,7 +1371,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             incomplete = true
             hintIncompleteRef.current = true
             metricsRef.current?.markIncomplete?.()
+            const message = data?.error
+              ? formatLiveError(data)
+              : 'The answer stream failed after partial output; the partial answer was kept and not retried automatically.'
             if (isCurrent()) {
+              clearTimers()
+              hintInFlight.current = false
+              setHintLoading(false); setStreaming(false); setBuyTimePhrase('')
+              metricsRef.current?.markError?.(message)
+              setError(message)
               const layers = glanceLayers(answer, hintObj || {})
               upsert({
                 answer: answer.trimEnd() + '\n\n[incomplete — connection/provider error]',
@@ -1348,7 +1395,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             hintInFlight.current = false
             hintIncompleteRef.current = true
             setHintLoading(false); setStreaming(false); setBuyTimePhrase('')
-            const message = data?.error || 'The answer stream ended before a response arrived.'
+            const message = data?.error ? formatLiveError(data) : 'The answer stream ended before a response arrived.'
             metricsRef.current?.markError?.(message)
             setError(message)
             gen.fail('sse_error')
@@ -1397,7 +1444,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       hintInFlight.current = false
       hintIncompleteRef.current = true
       setBuyTimePhrase('')
-      const message = e?.message || 'Unable to complete the Live answer.'
+      const message = formatLiveError(e) || 'Unable to complete the Live answer.'
       metricsRef.current?.markError?.(message)
       setError(message)
       gen.fail(message)
@@ -1663,7 +1710,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   useEffect(() => {
     finalizeOffOnceRef.current = false
     audio.start(liveSourceId, audioOpts())
-    warmDocs(interviewConfigRef.current?.selectedDocumentIds)   // pre-embed selected docs only
+    warmDocs(interviewConfigRef.current?.selectedDocumentIds, { kitId: interviewConfigRef.current?.kitId || kitId })   // pre-embed selected docs only
     metricsRef.current = createSessionMetrics('live')
     hintTimingRef.current = null
     if (initialPip && !initialPip.closed) {
@@ -1873,7 +1920,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         )}
         {error && (
           <div role="alert" style={{ background: '#450a0a', border: '1px solid #ef4444', borderRadius: 5, padding: '5px 8px', fontSize: 10, color: '#fca5a5', marginBottom: 6, lineHeight: 1.4 }}>
-            ⚠ {error.includes('rate-limit') || error.includes('quota') ? 'API rate limited — try again or check Settings' : error}
+            ⚠ {error}
             <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center' }}>
               {/transcription|deepgram|connection|captur|token grant|audio/i.test(error) && (
                 <>
@@ -2237,7 +2284,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                 </span>
               )}
             </div>
-            <textarea value={extraContext} onChange={e => setExtraContext(e.target.value)}
+            <textarea aria-label="Extra context for AI interview hints" value={extraContext} onChange={e => setExtraContext(e.target.value)}
               placeholder="Extra context — e.g. 'Focus on Python' · 'System design round'"
               style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(20,184,166,0.25)', borderRadius: 5, color: T.text1, fontSize: 10, padding: '5px 7px', resize: 'vertical', minHeight: 44, fontFamily: T.font, lineHeight: 1.5, boxSizing: 'border-box' }} rows={2} />
           </div>
@@ -2248,7 +2295,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, onSessionEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId }) {
+export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, onSessionEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId, initialProfile, initialKit, onProfileChange }) {
   const [phase, setPhase] = useState('setup')
   const [sessionConfig, setSessionConfig] = useState(null)
   const [sessionNotes, setSessionNotes] = useState(null)
@@ -2304,6 +2351,9 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
   if (phase === 'setup') return (
     <SetupScreen
       recoveredLive={recoveredLive}
+      initialProfile={initialProfile}
+      initialKit={initialKit}
+      onProfileChange={onProfileChange}
       onRecoverLive={() => {
         setSessionNotes({ recovered: true, checkpoint: recoveredLive })
         setPhase('notes')
@@ -2343,7 +2393,7 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
           const stored = saveSession({
             report: data.report,
             transcript: data.conversation,
-            config: { domainLabel: (sessionConfig?.profile?.targetRole) || 'Live interview', interviewSetup: sessionConfig?.interviewConfig },
+            config: { domainLabel: (sessionConfig?.profile?.targetRole) || 'Live interview', kitId: sessionConfig?.kitId, kitName: sessionConfig?.kitName, interviewSetup: sessionConfig?.interviewConfig },
             profile: sessionConfig?.profile || {},
           })
           if (!stored) nextData = { ...data, report: { ...data.report, _storageWarning: 'This session could not be saved. Copy the transcript before leaving this screen.' } }

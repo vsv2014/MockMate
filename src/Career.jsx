@@ -193,6 +193,18 @@ export default function Career({
     : tab === 'tailor' ? 'Tailor my resume'
     : 'Draft referral message'
 
+  function handleTabKeyDown(event, currentTab) {
+    const index = TABS.findIndex(([key]) => key === currentTab)
+    const nextIndex = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? (index + 1) % TABS.length
+      : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? (index + TABS.length - 1) % TABS.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? TABS.length - 1 : -1
+    if (nextIndex < 0) return
+    event.preventDefault()
+    const nextTab = TABS[nextIndex][0]
+    setTabReset(nextTab)
+    document.getElementById(`career-tab-${nextTab}`)?.focus()
+  }
+
   return (
     <div style={{ padding: embedded ? 0 : '12px 14px 16px', fontFamily: T.font, color: T.text1 }}>
       {!embedded && (
@@ -204,12 +216,14 @@ export default function Career({
 
       <div role="tablist" aria-label="Resume Studio tools" style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         {TABS.map(([k, label]) => (
-          <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTabReset(k)} style={tabStyle(tab === k)}>
+          <button key={k} id={`career-tab-${k}`} type="button" role="tab" aria-selected={tab === k} aria-controls="career-tabpanel"
+            tabIndex={tab === k ? 0 : -1} onClick={() => setTabReset(k)} onKeyDown={event => handleTabKeyDown(event, k)} style={tabStyle(tab === k)}>
             {label}
           </button>
         ))}
       </div>
 
+      <div id="career-tabpanel" role="tabpanel" aria-labelledby={`career-tab-${tab}`} tabIndex={0}>
       {noProviders && (
         <NoKeysBanner onSettings={onSettings} what="ATS scoring, tailoring, and referral drafts need an AI key." />
       )}
@@ -235,14 +249,14 @@ export default function Career({
       </div>
 
       <div style={S.panel}>
-        <label style={S.lbl}>Target role</label>
-        <input style={S.input} value={profile.targetRole || ''} placeholder="e.g. Senior Backend Engineer"
+        <label htmlFor="career-target-role" style={S.lbl}>Target role</label>
+        <input id="career-target-role" style={S.input} value={profile.targetRole || ''} placeholder="e.g. Senior Backend Engineer"
           onChange={e => patch({ targetRole: e.target.value })} />
 
         {tab !== 'referral' && (
           <>
-            <label style={S.lbl}>Job description for this analysis (saved in Resume Studio — not Live/Solo)</label>
-            <textarea rows={3} style={{ ...S.input, resize: 'vertical' }} value={jd} placeholder="Paste a JD to score or tailor against…"
+            <label htmlFor="career-analysis-jd" style={S.lbl}>Job description for this analysis (saved in Resume Studio — not Live/Solo)</label>
+            <textarea id="career-analysis-jd" rows={3} style={{ ...S.input, resize: 'vertical' }} value={jd} placeholder="Paste a JD to score or tailor against…"
               onChange={e => { setJd(e.target.value); setSeedNote(false) }} />
           </>
         )}
@@ -253,11 +267,11 @@ export default function Career({
               This drafts a LinkedIn / email message for <strong style={{ color: T.text1 }}>you to send</strong>.
               MockMate does not email anyone or connect to LinkedIn — tap Copy, then paste where you message the person.
             </div>
-            <label style={S.lbl}>Company</label>
-            <input style={S.input} value={company} placeholder="e.g. Stripe"
+            <label htmlFor="career-company" style={S.lbl}>Company</label>
+            <input id="career-company" style={S.input} value={company} placeholder="e.g. Stripe"
               onChange={e => { setCompany(e.target.value); patch({ targetCompany: e.target.value }) }} />
-            <label style={S.lbl}>Person you’re asking (optional)</label>
-            <input style={{ ...S.input, marginBottom: 0 }} value={person} placeholder="e.g. Priya, EM on the Payments team"
+            <label htmlFor="career-contact" style={S.lbl}>Person you’re asking (optional)</label>
+            <input id="career-contact" style={{ ...S.input, marginBottom: 0 }} value={person} placeholder="e.g. Priya, EM on the Payments team"
               onChange={e => setPerson(e.target.value)} />
           </>
         )}
@@ -373,6 +387,7 @@ export default function Career({
         />
       )}
       {result && tab === 'referral' && <ReferralResult r={result} company={company} role={profile.targetRole} />}
+      </div>
     </div>
   )
 }

@@ -14,7 +14,8 @@ const isLinuxUA = typeof navigator !== 'undefined' && /linux/i.test(navigator.us
 
 const NAV = [
   { id: 'home', icon: '🏠', label: 'Home' },
-  { id: 'companion', icon: '🎯', label: 'Live Interview' },
+  { id: 'kits', icon: '▤', label: 'Interview Kits' },
+  { id: 'ready-room', icon: '🎯', label: 'Ready Room' },
   { id: 'solo', icon: '🤖', label: 'Solo Practice' },
   { id: 'duo', icon: '👥', label: 'Duo (Beta)' },
   { id: 'jobs', icon: '💼', label: 'Jobs' },
@@ -165,8 +166,8 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
                     }}>
                     <span style={{ fontSize: 15, width: sidebarIcons ? 'auto' : 18, textAlign: 'center' }}>{n.icon}</span>
                     {!sidebarIcons && <span style={{ flex: 1 }}>{n.label}</span>}
-                    {!sidebarIcons && n.id === 'companion' && meetingActive && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444' }} />}
-                    {sidebarIcons && n.id === 'companion' && meetingActive && (
+                    {!sidebarIcons && n.id === 'ready-room' && meetingActive && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444' }} />}
+                    {sidebarIcons && n.id === 'ready-room' && meetingActive && (
                       <span style={{ position: 'absolute', top: 8, right: 10, width: 6, height: 6, borderRadius: '50%', background: '#ef4444' }} />
                     )}
                   </button>
@@ -213,10 +214,21 @@ export function UpdateToast() {
   const [u, setU] = useState(null)          // { state, version, percent, transferred, total }
   const [dismissed, setDismissed] = useState(false)
   const [installing, setInstalling] = useState(false)
+  const [actionError, setActionError] = useState('')
   useEffect(() => {
-    const off = window.electronAPI?.onUpdateStatus?.(d => { setU(d); setDismissed(false) })
+    const off = window.electronAPI?.onUpdateStatus?.(d => { setU(d); setDismissed(false); setActionError(''); setInstalling(false) })
     return () => off?.()
   }, [])
+  async function runUpdateAction(action, fallback) {
+    setActionError('')
+    try {
+      const result = await action?.()
+      if (result?.ok === false) throw new Error(result.error || fallback)
+    } catch (error) {
+      setActionError(error?.message || fallback)
+      setInstalling(false)
+    }
+  }
   if (!u || dismissed) return null
   const ready = u.state === 'ready'
   const failed = u.state === 'error'
@@ -224,8 +236,9 @@ export function UpdateToast() {
   const current = u.state === 'current'
   const RELEASES = 'https://github.com/vsv2014/MockMate/releases/latest'
   const mb = b => (Number(b || 0) / 1e6).toFixed(1)
+  const percent = u.percent != null && Number.isFinite(Number(u.percent)) ? Math.max(0, Math.min(100, Number(u.percent))) : null
   return (
-    <div style={{ position: 'fixed', right: 20, bottom: 20, width: 340, zIndex: 100000, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, boxShadow: '0 16px 48px rgba(0,0,0,0.55)', padding: '14px 16px', fontFamily: T.font }}>
+    <div role={failed ? 'alert' : 'status'} aria-live={failed ? 'assertive' : 'polite'} aria-atomic="true" aria-label="MockMate update status" style={{ position: 'fixed', right: 20, bottom: 20, width: 340, zIndex: 100000, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, boxShadow: '0 16px 48px rgba(0,0,0,0.55)', padding: '14px 16px', fontFamily: T.font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
         <span style={{ fontSize: 15 }}>⬇️</span>
         <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: T.text1 }}>
@@ -236,15 +249,18 @@ export function UpdateToast() {
             : ready ? 'Update ready to install'
             : `Downloading update${u.version && u.version !== 'demo' ? ` v${u.version}` : ''}`}
         </span>
-        <button onClick={() => setDismissed(true)} style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 14 }}>✕</button>
+        <button type="button" onClick={() => setDismissed(true)} aria-label="Dismiss update notification" style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 14 }}>✕</button>
       </div>
+      {actionError && <div role="alert" aria-live="assertive" style={{ fontSize: 11.5, color: '#fca5a5', marginTop: 8 }}>{actionError}</div>}
       {!ready && !failed && !checking && !current && (
         <>
           <div style={{ fontSize: 11.5, color: T.text2, margin: '8px 0 7px' }}>
-            {u.percent != null ? `${u.percent}%` : '…'}{u.total ? ` (${mb(u.transferred)}MB of ${mb(u.total)}MB)` : ''}
+            {percent != null ? `${percent}%` : 'Downloading…'}{u.total ? ` (${mb(u.transferred)}MB of ${mb(u.total)}MB)` : ''}
           </div>
-          <div style={{ height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${u.percent || 4}%`, background: T.accent, borderRadius: 3, transition: 'width .3s' }} />
+          <div role="progressbar" aria-label="Update download progress" aria-valuemin={0} aria-valuemax={100}
+            aria-valuenow={percent == null ? undefined : percent} aria-valuetext={percent == null ? 'Download in progress' : `${percent}% downloaded`}
+            style={{ height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+            <div aria-hidden="true" style={{ height: '100%', width: `${percent == null ? 4 : percent}%`, background: T.accent, borderRadius: 3, transition: 'width .3s' }} />
           </div>
           <div style={{ fontSize: 10.5, color: T.text3, marginTop: 8 }}>Continues downloading in the background. MockMate installs only when you choose Restart & install.</div>
         </>
@@ -259,22 +275,25 @@ export function UpdateToast() {
               : 'Auto-update didn’t complete. Retry, or download and reinstall the latest version manually.'}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => u.scope === 'check' ? window.electronAPI?.checkForUpdates?.() : window.electronAPI?.downloadUpdate?.()}
+            <button type="button" onClick={() => runUpdateAction(
+              () => u.scope === 'check' ? window.electronAPI?.checkForUpdates?.() : window.electronAPI?.downloadUpdate?.(),
+              u.scope === 'check' ? 'Could not retry the update check.' : 'Could not retry the update download.',
+            )}
               style={{ flex: 1, height: 36, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>
               {u.scope === 'check' ? 'Retry check' : 'Retry download'}
             </button>
-            <button onClick={() => window.electronAPI?.openExternal?.(RELEASES)}
+            <button type="button" onClick={() => runUpdateAction(() => window.electronAPI?.openExternal?.(RELEASES), 'Could not open the releases page.')}
               style={{ height: 36, padding: '0 14px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12.5, cursor: 'pointer', fontFamily: T.font }}>Get it manually</button>
           </div>
         </>
       )}
       {ready && (
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          <button onClick={() => { setInstalling(true); window.electronAPI?.installUpdate?.() }} disabled={installing}
+          <button type="button" onClick={() => { setInstalling(true); runUpdateAction(() => window.electronAPI?.installUpdate?.(), 'Could not start the update installer.') }} disabled={installing}
             style={{ flex: 1, height: 36, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>
             {installing ? 'Restarting…' : 'Restart & install'}
           </button>
-          <button onClick={() => setDismissed(true)}
+          <button type="button" onClick={() => setDismissed(true)}
             style={{ height: 36, padding: '0 14px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12.5, cursor: 'pointer', fontFamily: T.font }}>Later</button>
         </div>
       )}
@@ -488,39 +507,43 @@ export function SessionsTable({ sessions = [], onOpen, onDelete }) {
     )
   }
   const cols = '1.8fr 0.9fr 70px 70px 84px'
-  const cell = { padding: '12px 14px', fontSize: 12.5, color: T.text2, display: 'flex', alignItems: 'center' }
+  const cell = { padding: '12px 14px', fontSize: 12.5, color: T.text2, display: 'flex', alignItems: 'center', minWidth: 0 }
   return (
-    <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, overflow: 'hidden' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: cols, background: T.surface2, borderBottom: `1px solid ${T.border}` }}>
-        {['Session', 'Date', 'Score', 'Msgs', ''].map((h, i) => (
-          <div key={i} style={{ ...cell, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.05em', color: T.text3, textTransform: 'uppercase' }}>{h}</div>
+    <div role="table" aria-label="Saved interview sessions" style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, overflow: 'hidden' }}>
+      <div role="row" style={{ display: 'grid', gridTemplateColumns: cols, background: T.surface2, borderBottom: `1px solid ${T.border}` }}>
+        {['Session', 'Date', 'Score', 'Msgs', 'Actions'].map((h, i) => (
+          <div key={i} role="columnheader" style={{ ...cell, fontSize: 10.5, fontWeight: 600, letterSpacing: '0.05em', color: T.text3, textTransform: 'uppercase' }}>{h}</div>
         ))}
       </div>
-      {sessions.map((s, i) => (
-        <div key={s.id} role="button" tabIndex={0}
-          aria-label={`Open session ${s.label || 'Interview'}`}
-          style={{ display: 'grid', gridTemplateColumns: cols, borderBottom: i < sessions.length - 1 ? `1px solid ${T.border}` : 'none', cursor: 'pointer' }}
-          onClick={() => onOpen(s)}
-          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(s) } }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-          <div style={{ ...cell, flexDirection: 'column', alignItems: 'flex-start', gap: 2, minWidth: 0 }}>
-            <span style={{ color: T.text1, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{s.label || 'Interview'}</span>
-            {s.verdict && <span style={{ fontSize: 11, color: T.text3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{s.verdict}</span>}
+      {sessions.map((s, i) => {
+        const label = s.label || 'Interview'
+        const date = new Date(s.ts)
+        const dateLabel = Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+        return (
+          <div key={s.id} role="row" style={{ display: 'grid', gridTemplateColumns: cols, borderBottom: i < sessions.length - 1 ? `1px solid ${T.border}` : 'none' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+            <div role="cell" style={{ ...cell, padding: 0 }}>
+              <button type="button" onClick={() => onOpen?.(s)} aria-label={`Open session ${label}`}
+                style={{ ...cell, width: '100%', height: '100%', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 2, background: 'transparent', border: 0, textAlign: 'left', cursor: 'pointer', font: 'inherit' }}>
+                <span style={{ color: T.text1, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{label}</span>
+                {s.verdict && <span style={{ fontSize: 11, color: T.text3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{s.verdict}</span>}
+              </button>
+            </div>
+            <div role="cell" style={cell}>{dateLabel}</div>
+            <div role="cell" style={cell}>{typeof s.score === 'number' ? <span style={{ color: scoreColor(s.score), fontWeight: 600 }}>{(s.score / 10).toFixed(1)}</span> : <span style={{ color: s.report?.error || s.note === 'evaluate_error' ? '#fca5a5' : T.text3 }}>{s.report?.error || s.note === 'evaluate_error' ? 'Err' : '—'}</span>}</div>
+            <div role="cell" style={cell}>{s.transcript?.length || 0}</div>
+            <div role="cell" style={{ ...cell, gap: 4 }}>
+              <button type="button" onClick={() => onOpen?.(s)} title="View" aria-label={`View session ${label}`} style={iconBtn}>👁</button>
+              <button type="button" onClick={() => onDelete?.(s.id)} title="Delete" aria-label={`Delete session ${label}`} style={iconBtn}>🗑</button>
+            </div>
           </div>
-          <div style={cell}>{new Date(s.ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</div>
-          <div style={cell}>{typeof s.score === 'number' ? <span style={{ color: scoreColor(s.score), fontWeight: 600 }}>{(s.score / 10).toFixed(1)}</span> : <span style={{ color: s.report?.error || s.note === 'evaluate_error' ? '#fca5a5' : T.text3 }}>{s.report?.error || s.note === 'evaluate_error' ? 'Err' : '—'}</span>}</div>
-          <div style={cell}>{s.transcript?.length || 0}</div>
-          <div style={{ ...cell, gap: 4 }}>
-            <button onClick={e => { e.stopPropagation(); onOpen(s) }} title="View" style={iconBtn}>👁</button>
-            <button onClick={e => { e.stopPropagation(); onDelete(s.id) }} title="Delete" style={iconBtn}>🗑</button>
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
-const iconBtn = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, opacity: 0.6, padding: 2 }
+const iconBtn = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, opacity: 0.8, padding: 4, color: T.text2, borderRadius: 4 }
 
 // ── System status — turns the abstract "managed AI" into visible confidence ──
 function StatusRow({ label, value, ok, warn }) {

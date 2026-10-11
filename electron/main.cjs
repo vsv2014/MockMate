@@ -8,7 +8,7 @@ const crypto = require('crypto')
 const net = require('net')
 const { fork } = require('child_process')
 const { DiagnosticStore } = require('./diagnostics.cjs')
-const { attachRequiredServiceLifecycle, waitForOptionalServiceReady } = require('./service-lifecycle.cjs')
+const { attachRequiredServiceLifecycle, waitForOptionalServiceReady, stopServiceAndWait, classifyRendererLoadFailure } = require('./service-lifecycle.cjs')
 
 // Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
 // so a candidate's resume/transcript never leaves the device via Sentry (privacy-first).
@@ -32,6 +32,18 @@ let diagnostics = null
 function diag(component, event, fields = {}, level = 'info') {
   try { diagnostics?.event(component, event, fields, level) } catch {}
 }
+let clickThroughRecoveryRegistered = false
+let clickThroughForcedOff = true
+function registerGlobalShortcut(accelerator, callback) {
+  try {
+    const registered = globalShortcut.register(accelerator, callback)
+    if (!registered) diag('shortcuts', 'registration_failed', { accelerator }, 'warn')
+    return !!registered
+  } catch (e) {
+    diag('shortcuts', 'registration_failed', { accelerator, error: e?.message || 'unknown' }, 'warn')
+    return false
+  }
+}
 // Pin default ON — Live overlay stays when switching to Zoom; unpin → collapse to pill on blur.
 let pinnedState = true
 // Ignore blur-hide/collapse during screenshot, mode switches, and brief focus handoffs.
@@ -44,7 +56,7 @@ let lastOverlaySize = { w: 300, h: 360 }
 // overlay/teleprompter mode (syncOverlayShortcuts). A permanently registered
 // globalShortcut makes the OS reserve the accelerator for MockMate even when the
 // callback no-ops — that would hijack those keys from other applications.
-let overlayShortcutsRegistered = false
+const overlayShortcutsRegistered = new Set()
 let syncOverlayShortcuts = () => {}
 // F7 display memory: last display the user explicitly captured / selected via the
 // display picker, so F7 re-captures the interview screen instead of MockMate's monitor.
@@ -224,83 +236,90 @@ async function ensurePortFree(port, label) {
   throw error
 }
 
-// Packaged Electron must not use child_process.fork() for its two local Node
-// services. fork() launches process.execPath (MockMate.exe) again with
-// ELECTRON_RUN_AS_NODE, which is exactly the path that has repeatedly failed
-// with spawn ENOENT during Windows install/update handoff. utilityProcess uses
-// Chromium's Services API instead and is Electron's supported fork equivalent.
-// Development keeps ordinary child_process.fork() so CLI/test workflows remain
-// unchanged.
+// Packaged services use Electron's utility process rather than respawning MockMate.exe with
+// child_process.fork(). Development keeps Node fork so local tooling remains unchanged. This
+// removes one Windows child-launch failure path; port conflicts, damaged installs, blocked helpers,
+// and other startup failures still need the explicit readiness/error handling below.
 function startLocalService(modulePath, env, serviceName, developmentCwd) {
-  let child
+  let service
   if (isProd) {
     if (typeof utilityProcess?.fork !== 'function') {
-      throw new Error('This Electron build cannot start MockMate local services safely. Please reinstall the latest MockMate build.')
+      throw new Error('This Electron build cannot start MockMate local services safely. Please reinstall the latest build.')
     }
     const runtimeCwd = path.join(app.getPath('userData'), 'runtime')
     fs.mkdirSync(runtimeCwd, { recursive: true })
-    child = utilityProcess.fork(modulePath, [], {
+    service = utilityProcess.fork(modulePath, [], {
       env,
       cwd: runtimeCwd,
       stdio: 'pipe',
       serviceName,
     })
-    child._mockMateUtilityProcess = true
+    service._mockMateUtilityProcess = true
   } else {
-    child = fork(modulePath, [], { env, cwd: developmentCwd, stdio: 'pipe' })
+    service = fork(modulePath, [], { env, cwd: developmentCwd, stdio: 'pipe' })
   }
 
-  // Normalize the one lifecycle difference used by the rest of main.cjs:
-  // UtilityProcess.kill() accepts no signal, while ChildProcess.kill() does.
-  const originalKill = child.kill.bind(child)
-  child.kill = function intentionalServiceKill(signal) {
-    child._mockMateIntentionalStop = true
-    return child._mockMateUtilityProcess ? originalKill() : originalKill(signal)
+  // UtilityProcess.kill() takes no signal; normalize calls from shutdown/key-reload paths.
+  const originalKill = service.kill.bind(service)
+  service.kill = function stopLocalService(signal) {
+    service._mockMateIntentionalStop = true
+    return service._mockMateUtilityProcess ? originalKill() : originalKill(signal)
   }
-  return child
+  return service
 }
 
 function startApiServer(onReady) {
+  if (quitDrainStarted) return
   const serverEntry = path.join(app.getAppPath(), 'server-entry.cjs')
+  diag('api', 'service_starting', { mode: isProd ? 'utility_process' : 'child_process' })
   // Refuse to start if :3002 is occupied; never kill an unknown port owner.
   ensurePortFree(3002, 'API').then(() => {
-  const service = startLocalService(
-    serverEntry,
-    { ...process.env, PORT: '3002', NODE_ENV: 'production' },
-    'MockMate Local UI and AI',
-    app.getAppPath(),
-  )
-  apiServer = service
-  service.stdout?.on('data', d => console.log('[API]', d.toString().trim()))
-  service.stderr?.on('data', d => console.error('[API]', d.toString().trim()))
+    // The port probe is async; do not spawn a child after app shutdown has begun.
+    if (quitDrainStarted) return
+    const service = startLocalService(
+      serverEntry,
+      { ...process.env, PORT: '3002', NODE_ENV: 'production' },
+      'MockMate Local UI and AI',
+      app.getAppPath(),
+    )
+    apiServer = service
+    diag('api', 'service_started', { mode: service._mockMateUtilityProcess ? 'utility_process' : 'child_process', pid: service.pid || null })
+    service.stdout?.on('data', d => console.log('[API]', d.toString().trim()))
+    service.stderr?.on('data', d => console.error('[API]', d.toString().trim()))
 
-  attachRequiredServiceLifecycle(service, {
-    timeoutMs: 15_000,
-    timeoutMessage: 'The local UI service did not become ready within 15 seconds.',
-    exitBeforeReadyMessage: code => `The local UI service exited before startup completed (${code ?? 'unknown'}).`,
-    exitAfterReadyMessage: code => `The local UI service stopped unexpectedly (${code ?? 'unknown'}). MockMate must close so it can restart cleanly.`,
-    serverErrorMessage: msg => msg.code === 'EADDRINUSE'
-      ? 'Port 3002 is already in use — another MockMate may still be running. Quit it (or reboot) and reopen MockMate.'
-      : `The local server failed to start: ${msg.message || msg.code || 'unknown error'}`,
-    onReady,
-    onDiagnostic: row => diagnostics?.ingest(row),
-    onFatal: error => {
-    const message = error?.message || String(error || 'unknown startup error')
-    diag('api', 'service_failed', { message }, 'error')
-    console.error('[API] service failed:', message)
-    dialog.showErrorBox('MockMate could not start', `${message}\n\nClose MockMate completely and reopen it. If this repeats, reinstall the latest build; your locally saved API keys and history are preserved.`)
-    app.quit()
-    },
-  })
+    attachRequiredServiceLifecycle(service, {
+      timeoutMs: 15_000,
+      timeoutMessage: 'The local UI service did not become ready within 15 seconds.',
+      exitBeforeReadyMessage: code => `The local UI service exited before startup completed (${code ?? 'unknown'}).`,
+      exitAfterReadyMessage: code => `The local UI service stopped unexpectedly (${code ?? 'unknown'}). MockMate will close so it can restart cleanly.`,
+      serverErrorMessage: msg => msg.code === 'EADDRINUSE'
+        ? 'Port 3002 is already in use — another MockMate may still be running. Quit it (or reboot) and reopen MockMate.'
+        : `The local server failed to start: ${msg.message || msg.code || 'unknown error'}`,
+      onReady: message => {
+        diag('api', 'service_ready', { port: message?.port || 3002 })
+        onReady?.()
+      },
+      onDiagnostic: row => diagnostics?.ingest(row),
+      onFatal: error => {
+        const message = error?.message || String(error || 'unknown startup error')
+        diag('api', 'service_failed', { message }, 'error')
+        console.error('[API] service failed:', message)
+        dialog.showErrorBox('MockMate could not start', `${message}\n\nClose MockMate completely and reopen it. If this repeats, reinstall the latest build; your locally saved API keys and history are preserved.`)
+        app.quit()
+      },
+    })
   }).catch(e => {
-    console.error('[API] ensurePortFree failed:', e.message)
-    dialog.showErrorBox('MockMate could not start', e.message || 'The local API port could not be prepared.')
+    if (quitDrainStarted) return
+    const message = e?.message || 'The local API port could not be prepared.'
+    diag('api', 'service_start_failed', { code: e?.code || null, message }, 'error')
+    console.error('[API] local UI service startup failed:', message)
+    dialog.showErrorBox('MockMate could not start', message)
     app.quit()
   })
 }
 
 // Persistent per-install JWT secret. Generated once, kept in userData (0600),
-// and handed to the forked backend so tokens stay valid across app restarts.
+// and handed to the local account service so tokens stay valid across app restarts.
 function getJwtSecret() {
   const f = path.join(app.getPath('userData'), '.jwt-secret')
   try { if (fs.existsSync(f)) return fs.readFileSync(f, 'utf8').trim() } catch {}
@@ -309,12 +328,17 @@ function getJwtSecret() {
   return secret
 }
 
-// Fork the auth backend (Express). File-backed by default (offline-safe, no
+// Start the local account/auth backend (Express). File-backed by default (offline-safe, no
 // MongoDB needed); set MONGO_URI to switch to Mongo. Data lives in userData.
 function startBackend() {
+  if (quitDrainStarted) return Promise.resolve({ type: 'stopped' })
   const entry = path.join(app.getAppPath(), 'backend', 'server-entry.cjs')
   if (!fs.existsSync(entry)) return Promise.reject(new Error(`backend entry not found: ${entry}`))
-  return ensurePortFree(Number(BACKEND_PORT) || 4000, 'backend').then(() => {
+  const port = Number(BACKEND_PORT) || 4000
+  diag('backend', 'service_starting', { mode: isProd ? 'utility_process' : 'child_process', port })
+  return ensurePortFree(port, 'backend').then(() => {
+    // The port probe is async; do not spawn a child after app shutdown has begun.
+    if (quitDrainStarted) return { type: 'stopped' }
     const service = startLocalService(
       entry,
       {
@@ -329,15 +353,21 @@ function startBackend() {
       path.join(app.getAppPath(), 'backend'),
     )
     backendServer = service
+    diag('backend', 'service_started', { mode: service._mockMateUtilityProcess ? 'utility_process' : 'child_process', port, pid: service.pid || null })
     service.stdout?.on('data', d => console.log('[backend]', d.toString().trim()))
     service.stderr?.on('data', d => console.error('[backend]', d.toString().trim()))
     service.on('exit', code => {
+      if (service._mockMateIntentionalStop) return
+      diag('backend', 'service_exited', { code: code ?? null }, 'warn')
       if (code) console.error('[backend] exited with code', code)
     })
     return waitForOptionalServiceReady(service, {
       timeoutMs: 10_000,
-      timeoutMessage: `auth backend did not become ready on port ${BACKEND_PORT}`,
-      serverErrorMessage: msg => msg.message || msg.code || 'backend startup failed',
+      timeoutMessage: `Local account service did not become ready on port ${port} within 10 seconds.`,
+      serverErrorMessage: msg => msg.message || msg.code || 'Local account service startup failed.',
+    }).then(result => {
+      if (result?.type === 'ready') diag('backend', 'service_ready', { port: result.port || port })
+      return result
     })
   })
 }
@@ -365,6 +395,7 @@ function createSetupWindow() {
 }
 
 let rendererLoadFailures = 0
+let rendererRetryTimer = null
 function createMainWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize
   // Linux compositors often render transparent frameless windows as fully invisible,
@@ -436,19 +467,32 @@ function createMainWindow() {
     if (/^https?:\/\//.test(url) && !sameOrigin) { e.preventDefault(); shell.openExternal(url) }
   })
 
-  mainWindow.webContents.on('did-finish-load', () => { rendererLoadFailures = 0 })
+  mainWindow.webContents.on('did-finish-load', () => {
+    clearTimeout(rendererRetryTimer)
+    rendererRetryTimer = null
+    rendererLoadFailures = 0
+  })
   mainWindow.webContents.on('did-fail-load', (_e, code, _description, _validatedURL, isMainFrame) => {
-    if (code === -3) return
-    if (isMainFrame === false) return
-    rendererLoadFailures += 1
-    if (rendererLoadFailures > 5) {
+    const decision = classifyRendererLoadFailure(rendererLoadFailures, code, isMainFrame)
+    if (decision.action === 'ignore') return
+    rendererLoadFailures = decision.attempts
+    clearTimeout(rendererRetryTimer)
+    if (decision.action === 'fatal') {
       const message = 'The desktop UI failed to load after several retries. MockMate will close so the next launch can start cleanly.'
       diag('renderer', 'load_failed_exhausted', { code, attempts: rendererLoadFailures }, 'error')
       dialog.showErrorBox('MockMate could not load', message)
       app.quit()
       return
     }
-    setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(isProd ? PROD_URL : DEV_URL) }, Math.min(4000, 500 * rendererLoadFailures))
+    const attempts = decision.attempts
+    rendererRetryTimer = setTimeout(() => {
+      rendererRetryTimer = null
+      if (rendererLoadFailures === attempts && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.loadURL(isProd ? PROD_URL : DEV_URL).catch(error => {
+          diag('renderer', 'retry_navigation_failed', { attempts, message: error?.message || 'navigation failed' }, 'warn')
+        })
+      }
+    }, decision.delayMs)
   })
 
   if (isProd) {
@@ -459,7 +503,12 @@ function createMainWindow() {
     startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(DEV_URL) })
   }
 
-  mainWindow.on('closed', () => { mainWindow = null; app.quit() })
+  mainWindow.on('closed', () => {
+    clearTimeout(rendererRetryTimer)
+    rendererRetryTimer = null
+    mainWindow = null
+    app.quit()
+  })
 }
 
 function launchTrayAndShortcuts() {
@@ -479,11 +528,12 @@ function launchTrayAndShortcuts() {
     if (!mainWindow.isVisible()) { showMain(); return }
     try { mainWindow.webContents.send('shortcut-stealth') } catch { toggleVisibility() }
   }
-  globalShortcut.register('Alt+H', stealthOrToggle)
-  globalShortcut.register('CommandOrControl+Shift+H', stealthOrToggle)
+  registerGlobalShortcut('Alt+H', stealthOrToggle)
+  registerGlobalShortcut('CommandOrControl+Shift+H', stealthOrToggle)
   // Force-disable click-through when the overlay traps the user (region miss / stuck ignore).
-  globalShortcut.register('Alt+C', () => {
+  clickThroughRecoveryRegistered = registerGlobalShortcut('Alt+C', () => {
     if (!mainWindow || mainWindow.isDestroyed()) return
+    clickThroughForcedOff = true
     try { mainWindow.setIgnoreMouseEvents(false) } catch {}
     try { mainWindow.webContents.send('shortcut-clickthrough-off') } catch {}
   })
@@ -510,8 +560,8 @@ function launchTrayAndShortcuts() {
   } catch {}
 
   // Screen solve: Ctrl+Shift+U (avoids Zoom/browser stealing lone F-keys) + F7 alias.
-  globalShortcut.register('CommandOrControl+Shift+U', captureScreen)
-  try { globalShortcut.register('F7', captureScreen) } catch {}
+  registerGlobalShortcut('CommandOrControl+Shift+U', captureScreen)
+  registerGlobalShortcut('F7', captureScreen)
 
   // Zero-mouse overlay navigation & Top-Center Camera Anchor (Teleprompter) mode.
   // PR #45 review fix: mode-scoped registration. The shortcuts are registered when the
@@ -522,33 +572,32 @@ function launchTrayAndShortcuts() {
   // controls that.)
   syncOverlayShortcuts = () => {
     const active = mainWindow && !mainWindow.isDestroyed() && (lastWindowMode === 'overlay' || lastWindowMode === 'teleprompter')
-    if (active && !overlayShortcutsRegistered) {
-      try {
-        globalShortcut.register('Alt+T', () => {
-          if (lastWindowMode === 'teleprompter') {
-            lastWindowMode = null
-            ipcMain.emit('set-window-mode', null, 'overlay')
-            try { mainWindow.webContents.send('overlay-command', { type: 'teleprompter', active: false, width: lastOverlaySize.w, height: lastOverlaySize.h }) } catch {}
-          } else {
-            applyTeleprompterGeometry()
-          }
-        })
-        globalShortcut.register('Alt+Up', () => {
-          try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-up' }) } catch {}
-        })
-        globalShortcut.register('Alt+Down', () => {
-          try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-down' }) } catch {}
-        })
-        globalShortcut.register('Alt+R', () => {
-          try { mainWindow?.webContents?.send('overlay-command', { type: 'answer-now' }) } catch {}
-        })
-        overlayShortcutsRegistered = true
-      } catch {}
-    } else if (!active && overlayShortcutsRegistered) {
-      for (const acc of ['Alt+T', 'Alt+R', 'Alt+Up', 'Alt+Down']) {
-        try { globalShortcut.unregister(acc) } catch {}
+    const shortcuts = [
+      ['Alt+T', () => {
+        if (lastWindowMode === 'teleprompter') {
+          lastWindowMode = null
+          ipcMain.emit('set-window-mode', null, 'overlay')
+          try { mainWindow?.webContents?.send('overlay-command', { type: 'teleprompter', active: false, width: lastOverlaySize.w, height: lastOverlaySize.h }) } catch {}
+        } else {
+          applyTeleprompterGeometry()
+        }
+      }],
+      ['Alt+Up', () => { try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-up' }) } catch {} }],
+      ['Alt+Down', () => { try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-down' }) } catch {} }],
+      ['Alt+R', () => { try { mainWindow?.webContents?.send('overlay-command', { type: 'answer-now' }) } catch {} }],
+    ]
+    if (active) {
+      for (const [accelerator, callback] of shortcuts) {
+        if (overlayShortcutsRegistered.has(accelerator)) continue
+        if (registerGlobalShortcut(accelerator, callback)) overlayShortcutsRegistered.add(accelerator)
       }
-      overlayShortcutsRegistered = false
+    } else {
+      for (const accelerator of [...overlayShortcutsRegistered]) {
+        try { globalShortcut.unregister(accelerator) } catch (e) {
+          diag('shortcuts', 'unregister_failed', { accelerator, error: e?.message || 'unknown' }, 'warn')
+        }
+        overlayShortcutsRegistered.delete(accelerator)
+      }
     }
   }
   syncOverlayShortcuts()
@@ -779,15 +828,16 @@ if (!gotTheLock) {
       v8Version: process.versions.v8,
     })
     loadEnv()
-    // Fork a LOCAL auth backend only when NOT pointed at a hosted one. With MOCKMATE_API_BASE set
-    // (production / Mongo-backed), the desktop talks to the hosted backend over HTTPS — no local
-    // fork, and DB credentials (MONGO_URI) never ship on the client.
+    // managedApiBase is empty by default, so normal desktop installs use the local account service.
+    // Only an explicit hosted API base skips this local process; DB credentials never ship on client.
     if (!process.env.MOCKMATE_API_BASE && !BUILT_MANAGED_API_BASE) {
       try {
-        await startBackend()
+        const backendStart = await startBackend()
+        if (backendStart?.type === 'stopped' && quitDrainStarted) return
         diag('backend', 'started', { mode: 'local' })
       } catch (e) {
-        diag('backend', 'startup_failed', { mode: 'local', message: e.message }, 'error')
+        if (quitDrainStarted) return
+        diag('backend', 'service_start_failed', { mode: 'local', code: e?.code || null, message: e?.message || 'startup failed' }, 'error')
         console.error('[backend] startup failed:', e.message)
         // Authentication is optional: BYOK/guest interview modes use the local AI
         // server and must remain available when the account service is unhealthy.
@@ -802,9 +852,11 @@ if (!gotTheLock) {
         }).catch(() => {})
       }
     }
+    if (quitDrainStarted) return
     // ALWAYS open the single overlay window — no separate setup window. With the
     // local developer/BYOK keys present it goes straight to work; if no keys are found the
     // overlay shows its inline "Add your API keys" form. One window, never two.
+    // This required local UI/AI service still starts for guests; guest mode bypasses account auth only.
     createMainWindow()
     launchTrayAndShortcuts()
     setupAutoUpdate()
@@ -1010,22 +1062,36 @@ ipcMain.on('set-pin', (_, on) => {
   } catch {}
 })
 ipcMain.handle('get-pin', () => pinnedState)
-// Click-through: forward mouse events to apps underneath; pill/header still need
-// setIgnoreMouseEvents(false) when interacting — renderer toggles this.
-ipcMain.on('set-click-through', (_, on) => {
-  if (!mainWindow || mainWindow.isDestroyed()) return
+// Click-through: forward mouse events to apps underneath; report the actual main-process
+// result so the renderer can roll its toggle back instead of claiming a state IPC could not apply.
+ipcMain.handle('set-click-through', (_, on) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, error: 'Overlay window is unavailable.' }
+  if (on && !clickThroughRecoveryRegistered) {
+    return { ok: false, error: 'Alt+C recovery shortcut is unavailable, so click-through was left off.' }
+  }
   try {
+    clickThroughForcedOff = !on
     if (on) mainWindow.setIgnoreMouseEvents(true, { forward: true })
     else mainWindow.setIgnoreMouseEvents(false)
-  } catch {}
+    return { ok: true, enabled: !!on }
+  } catch (e) {
+    clickThroughForcedOff = true
+    diag('overlay', 'click_through_apply_failed', { enabled: !!on, error: e?.message || 'unknown' }, 'error')
+    return { ok: false, error: e?.message || 'Could not change click-through.' }
+  }
 })
 // Fine-grained region control while click-through is ON (hover interactive chrome → accept hits).
-ipcMain.on('set-ignore-mouse-events', (_, { ignore, forward } = {}) => {
-  if (!mainWindow || mainWindow.isDestroyed()) return
+ipcMain.handle('set-ignore-mouse-events', (_, { ignore, forward } = {}) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, error: 'Overlay window is unavailable.' }
+  if (ignore && clickThroughForcedOff) return { ok: false, error: 'Click-through is off; enable it again before forwarding mouse events.' }
   try {
     if (ignore) mainWindow.setIgnoreMouseEvents(true, { forward: forward !== false })
     else mainWindow.setIgnoreMouseEvents(false)
-  } catch {}
+    return { ok: true, ignored: !!ignore }
+  } catch (e) {
+    diag('overlay', 'mouse_region_apply_failed', { ignore: !!ignore, error: e?.message || 'unknown' }, 'error')
+    return { ok: false, error: e?.message || 'Could not change mouse handling.' }
+  }
 })
 ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
@@ -1228,16 +1294,20 @@ ipcMain.handle('remove-provider-key', (_, provider) => {
 // It also races the single-instance lock in prod. Instead we transition live:
 // writeEnv already pushed the keys into process.env, so we just open the overlay
 // (first run) or restart the API server (keys changed while running).
-ipcMain.handle('apply-keys', () => {
+ipcMain.handle('apply-keys', async () => {
   loadEnv()   // safety net: make sure file values are in process.env
   if (!mainWindow || mainWindow.isDestroyed()) {
     createMainWindow()
     launchTrayAndShortcuts()
     setupAutoUpdate()
   } else if (apiServer) {
-    // Prod: forked server read its env at fork time — restart it to pick up new keys.
-    try { apiServer.kill() } catch {}
+    // The local service read its environment at launch. Wait for the old process
+    // to exit and release :3002 before probing that port for its replacement.
+    const previousApiServer = apiServer
     apiServer = null
+    const stopped = await stopServiceAndWait(previousApiServer, { timeoutMs: 5_000 })
+    diag('api', 'service_stopped_for_key_reload', { result: stopped?.type || 'unknown' }, stopped?.type === 'exited' || stopped?.type === 'not_running' ? 'info' : 'warn')
+    if (quitDrainStarted) return { ok: false, error: 'MockMate is closing.' }
     startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(isProd ? PROD_URL : DEV_URL) })
   } else {
     mainWindow.webContents.reload()   // dev: server is separate; just refresh providers
@@ -1253,10 +1323,15 @@ ipcMain.handle('relaunch-app', () => { app.relaunch(); app.exit(0) })
 // Strict URL validation lives in bootstrap.cjs (the process-wide navigation policy);
 // same rule as the shell.openExternal guard so IPC and navigation can never diverge.
 const { externalNavigationAllowed } = require('./bootstrap.cjs')
-ipcMain.handle('open-external', (_e, url) => {
-  if (typeof url !== 'string' || !externalNavigationAllowed(url)) return { ok: false }
-  shell.openExternal(url)
-  return { ok: true }
+ipcMain.handle('open-external', async (_e, url) => {
+  if (typeof url !== 'string' || !externalNavigationAllowed(url)) return { ok: false, error: 'That external URL is not allowed.' }
+  try {
+    await shell.openExternal(url)
+    return { ok: true }
+  } catch (e) {
+    diag('navigation', 'open_external_failed', { error: e?.message || 'unknown' }, 'warn')
+    return { ok: false, error: e?.message || 'Could not open the external URL.' }
+  }
 })
 // Open the API-key setup window on demand (e.g. "Add API keys" from the overlay).
 ipcMain.handle('open-key-setup', () => { if (!setupWindow) createSetupWindow(); else setupWindow.focus(); return { ok: true } })

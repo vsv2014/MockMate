@@ -40,6 +40,7 @@ function sendToDesktop(message) {
     else process.parentPort?.postMessage(message)
   } catch {}
 }
+
 app.use(helmet({
   contentSecurityPolicy: {
     useDefaults: true,
@@ -78,7 +79,7 @@ app.use(express.json({ limit: '2mb' }))
 app.use('/api', rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }))
 
 const report = e => { if (process.env.SENTRY_DSN && (!e?.status || e.status >= 500)) Sentry.captureException(e) }
-registerApiRoutes(app, { report, reasoningPolicy })
+registerApiRoutes(app, { report, reasoningPolicy, enableLocalProviderTest: true })
 
 app.use(express.static(distDir))
 app.use((req, res, next) => {

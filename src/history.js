@@ -5,6 +5,10 @@ import { readScopedArrayWithRecovery } from './lib/storageRecovery'
 const KEY = 'mm-sessions'
 const CORRUPT_HISTORY_BACKUP_KEY = 'mm-sessions-corrupt-backup-v1'
 const SOLO_DRAFT_KEY = 'mm-solo-draft'
+const soloDraftStorageKey = scope => {
+  const safe = String(scope || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120)
+  return safe ? `${SOLO_DRAFT_KEY}::${safe}` : SOLO_DRAFT_KEY
+}
 const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000
 const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const MAX_SESSIONS = 60
@@ -28,7 +32,7 @@ export function loadSessions() {
   } catch { return [] }
 }
 
-export function saveSoloDraft(draft = {}) {
+export function saveSoloDraft(draft = {}, scope = '') {
   try {
     const row = {
       version: 1,
@@ -49,25 +53,26 @@ export function saveSoloDraft(draft = {}) {
       interviewType: draft.interviewType || 'Technical', voiceStyle: draft.voiceStyle || 'Professional',
       followupDepth: draft.followupDepth || 'normal', relentless: !!draft.relentless, tts: draft.tts !== false,
     }
-    if (!setScopedItem(SOLO_DRAFT_KEY, JSON.stringify(row))) return false
+    if (!setScopedItem(soloDraftStorageKey(scope), JSON.stringify(row))) return false
     return true
   } catch { return false }
 }
 
-export function loadSoloDraft() {
+export function loadSoloDraft(scope = '') {
   try {
-    const raw = getScopedItem(SOLO_DRAFT_KEY, '')
+    const key = soloDraftStorageKey(scope)
+    const raw = getScopedItem(key, '')
     if (!raw) return null
     const row = JSON.parse(raw)
     if (!row || !row.savedAt || Date.now() - row.savedAt > DRAFT_MAX_AGE_MS || !Array.isArray(row.transcript)) {
-      removeScopedItem(SOLO_DRAFT_KEY)
+      removeScopedItem(key)
       return null
     }
     return row
   } catch { return null }
 }
 
-export function clearSoloDraft() { return removeScopedItem(SOLO_DRAFT_KEY) }
+export function clearSoloDraft(scope = '') { return removeScopedItem(soloDraftStorageKey(scope)) }
 
 function newSessionId(ts) {
   try { if (globalThis.crypto?.randomUUID) return `s_${globalThis.crypto.randomUUID()}` } catch {}
@@ -80,11 +85,30 @@ export function saveSession({ report, transcript = [], config = {}, profile = {}
     const ts = Date.now(); const isError = !!report.error; const setup = config.interviewSetup || config
     const company = setup.targetCompany || profile.targetCompany || ''
     const role = setup.targetRole || config.domainLabel || profile.targetRole || ''
+    const kitId = setup.kitId || config.kitId || ''
+    const kitName = setup.kitName || config.kitName || ''
+    const kitSnapshot = kitId ? {
+      id: String(kitId).slice(0, 180),
+      name: String(kitName || [role, company].filter(Boolean).join(' at ') || 'Interview Kit').slice(0, 100),
+      candidateName: String(setup.candidateName || profile.name || '').slice(0, 120),
+      targetRole: String(setup.targetRole || role).slice(0, 120),
+      targetCompany: String(setup.targetCompany || company).slice(0, 120),
+      yearsExp: String(setup.yearsExp || profile.yearsExp || '').slice(0, 80),
+      interviewType: String(setup.interviewType || profile.interviewType || 'Technical').slice(0, 40),
+      language: String(setup.language || profile.language || 'English').slice(0, 40),
+      voiceStyle: String(setup.voiceStyle || profile.voiceStyle || 'Professional').slice(0, 40),
+      resumeText: String(setup.resumeText || profile.resume || '').slice(0, 40_000),
+      jobDescriptionText: String(setup.jobDescriptionText || profile.jobDescription || '').slice(0, 40_000),
+      customInstructions: String(setup.customInstructions || profile.customPrompt || '').slice(0, 3_000),
+      selectedDocumentIds: Array.isArray(setup.selectedDocumentIds) ? [...setup.selectedDocumentIds] : [],
+      createdAt: setup.createdAt || new Date(ts).toISOString(),
+    } : null
     const entry = {
       id: newSessionId(ts), ts,
       label: [company, role].filter(Boolean).join(' · ') || 'Interview',
       mode: setup.source === 'live' ? 'live' : 'solo', company, role,
       setup: {
+        ...(kitId ? { kitId, kitName } : {}),
         selectedDocumentIds: Array.isArray(setup.selectedDocumentIds) ? [...setup.selectedDocumentIds] : [],
         playbookActive: !!String(setup.customInstructions || profile.customPrompt || '').trim(),
         resumeIncluded: !!String(setup.resumeText || profile.resume || '').trim(),
@@ -93,6 +117,7 @@ export function saveSession({ report, transcript = [], config = {}, profile = {}
         responseStyle: setup.responseStyle || profile.responseStyle || profile.answerStyle || 'balanced',
         modelStrategy: setup.modelStrategy || profile.modelStrategy || null,
       },
+      ...(kitSnapshot ? { kitSnapshot } : {}),
       score: typeof report.overallScore === 'number' ? report.overallScore : null,
       verdict: report.verdict || (isError ? 'Evaluation failed' : null), report, transcript,
       note: note || (isError ? 'evaluate_error' : undefined),

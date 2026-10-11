@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useId } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { curateModelOptions, configuredProviderNames, curateProviderFallbacks, loadModelSelection, persistModelSelection } from './lib/modelPicker'
 import { useDeepgram } from './useDeepgram'
@@ -11,7 +11,7 @@ import { LANGUAGES, STT_LANG } from './lib/languages'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { createSessionId, createGeneration, hasEnoughAnswerLength } from './lib/sessionGen'
-import { retrieveContext, warmDocs, addDoc, getSelectedDocIds } from './lib/docs'
+import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, getKitSelectedDocIds } from './lib/docs'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import Documents from './Documents'
 import CustomPromptStudio from './components/CustomPromptStudio'
@@ -43,20 +43,27 @@ function Section({ title, hint, children }) {
     </div>
   )
 }
-function Label({ children }) { return <div style={{ fontSize: 12, color: T.text2, marginBottom: 7 }}>{children}</div> }
-function Chips({ options, value, onChange }) {
+function Label({ children, htmlFor }) {
+  const style = { display: 'block', fontSize: 12, color: T.text2, marginBottom: 7 }
+  return htmlFor ? <label htmlFor={htmlFor} style={style}>{children}</label> : <div style={style}>{children}</div>
+}
+function Chips({ label, options, value, onChange }) {
+  const labelId = useId()
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-      {options.map(o => {
-        const [val, label] = Array.isArray(o) ? o : [o, o]
-        const on = value === val
-        return (
-          <button key={val} onClick={() => onChange(val)}
-            style={{ padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font, fontSize: 12.5, fontWeight: on ? 600 : 400,
-              background: on ? 'rgba(20,184,166,0.18)' : T.surface2, color: on ? T.text1 : T.text2,
-              border: `1px solid ${on ? 'rgba(20,184,166,0.5)' : T.border}` }}>{label}</button>
-        )
-      })}
+    <div>
+      <div id={labelId} style={{ fontSize: 12, color: T.text2, marginBottom: 7 }}>{label}</div>
+      <div role="group" aria-labelledby={labelId} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {options.map(o => {
+          const [val, text] = Array.isArray(o) ? o : [o, o]
+          const on = value === val
+          return (
+            <button key={val} type="button" aria-pressed={on} onClick={() => onChange(val)}
+              style={{ padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font, fontSize: 12.5, fontWeight: on ? 600 : 400,
+                background: on ? 'rgba(20,184,166,0.18)' : T.surface2, color: on ? T.text1 : T.text2,
+                border: `1px solid ${on ? 'rgba(20,184,166,0.5)' : T.border}` }}>{text}</button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -87,11 +94,14 @@ const TIPS_BY_TYPE = {
   Mixed: ['Structure the answer before you dive in', 'Be specific — numbers and examples land', 'Pause to think; silence is fine'],
 }
 
-export default function Solo({ onHome, noProviders }) {
+export default function Solo({ onHome, noProviders, initialProfile, kitId, kitName, draftScope, onProfileChange }) {
+  const kitScoped = Boolean(kitId && initialProfile)
   const [phase, setPhase] = useState('setup')   // setup | live | evaluating | report
-  const [profile, setProfile] = useState(loadProfile())
-  const [interviewType, setInterviewType] = useState(() => loadProfile().interviewType || 'Technical')
-  const [voiceStyle, setVoiceStyle] = useState(() => loadProfile().voiceStyle || 'Professional')
+  const [profile, setProfile] = useState(() => initialProfile ? { ...initialProfile } : loadProfile())
+  const [interviewType, setInterviewType] = useState(() => initialProfile?.interviewType || loadProfile().interviewType || 'Technical')
+  const [voiceStyle, setVoiceStyle] = useState(() => initialProfile?.voiceStyle || loadProfile().voiceStyle || 'Professional')
+  const soloFormId = useId()
+  const resumeFileRef = useRef(null)
   const [followupDepth, setFollowupDepth] = useState('normal')   // Follow-ups: light|normal|deep
   const [pdfMsg, setPdfMsg] = useState('')
   const [relentless, setRelentless] = useState(false)
@@ -105,7 +115,7 @@ export default function Solo({ onHome, noProviders }) {
   const modelOptions = curateModelOptions(models)
   const providerNames = configuredProviderNames(models, providers)
   const [setupError, setSetupError] = useState('')
-  const [resumeDraft, setResumeDraft] = useState(() => loadSoloDraft())
+  const [resumeDraft, setResumeDraft] = useState(() => loadSoloDraft(draftScope))
   // Voice = Deepgram ONLY. The browser SpeechRecognition API silently fails inside
   // Electron, which is what made the mic "not work". No Deepgram key → type your answers.
 
@@ -185,9 +195,9 @@ export default function Solo({ onHome, noProviders }) {
       elapsedMs: Math.max(0, Date.now() - startedAt.current),
       profile, interviewConfig: interviewConfigRef.current,
       interviewType, voiceStyle, followupDepth, relentless, tts,
-    }), 250)
+    }, draftScope), 250)
     return () => clearTimeout(timer)
-  }, [phase, transcript, answer, practiceQ, currentQuestion, profile, interviewType, voiceStyle, followupDepth, relentless, tts])
+  }, [phase, transcript, answer, practiceQ, currentQuestion, profile, interviewType, voiceStyle, followupDepth, relentless, tts, draftScope])
 
   // Unmount: invalidate all in-flight work
   useEffect(() => () => {
@@ -323,14 +333,25 @@ export default function Solo({ onHome, noProviders }) {
   )
   const nudge = liveStats ? liveNudge(liveStats, { spoken: !!answerSpokenRef.current }) : null
 
-  function saveProfile(p) { setProfile(p); persistProfile(p) }
+  function saveProfile(p) {
+    setProfile(p)
+    if (kitScoped) onProfileChange?.(p)
+    else persistProfile(p)
+  }
   function patchProfile(patch) { saveProfile({ ...profile, ...patch }) }
+  function currentSelectedDocIds() { return kitScoped ? getKitSelectedDocIds(kitId) : getSelectedDocIds() }
 
-  const [selectedDocIds, setSelectedDocIds] = useState(() => getSelectedDocIds())
+  const [selectedDocIds, setSelectedDocIds] = useState(() => currentSelectedDocIds())
+  useEffect(() => { setSelectedDocIds(currentSelectedDocIds()) }, [kitId, kitScoped])
   const isDevLocal = Boolean(import.meta.env?.DEV)
     && typeof window !== 'undefined'
     && /^(localhost|127\.0\.0\.1)$/i.test(window.location?.hostname || '')
-  const hasContext = !!(String(profile.resume || '').trim().length > 40 || String(profile.jobDescription || '').trim().length > 40 || selectedDocIds.length > 0)
+  const hasContext = !!(
+    String(profile.resume || '').trim().length > 40
+    || String(profile.jobDescription || '').trim().length > 40
+    || selectedDocIds.length > 0
+    || (kitScoped && [profile.targetRole, profile.targetCompany, profile.customPrompt].some(value => String(value || '').trim()))
+  )
   const canStartSolo = !noProviders && (hasContext || isDevLocal)
 
   async function requestTurn(current, attempt = 0, gen = null) {
@@ -374,7 +395,8 @@ export default function Solo({ onHome, noProviders }) {
       const cfg = interviewConfigRef.current
       const extraContext = await retrieveContext(lastAsk, {
         budgetMs: 1800,
-        docIds: Array.isArray(cfg?.selectedDocumentIds) ? cfg.selectedDocumentIds : getSelectedDocIds(),
+        docIds: Array.isArray(cfg?.selectedDocumentIds) ? cfg.selectedDocumentIds : currentSelectedDocIds(),
+        kitId: cfg?.kitId || (kitScoped ? kitId : null),
       }).catch(() => '')
       if (!isCurrent()) return null
 
@@ -417,15 +439,19 @@ export default function Solo({ onHome, noProviders }) {
 
   function resumeInterrupted() {
     const draft = resumeDraft
-    if (!draft?.transcript?.length) { clearSoloDraft(); setResumeDraft(null); return }
+    if (!draft?.transcript?.length) { clearSoloDraft(draftScope); setResumeDraft(null); return }
     const restoredProfile = { ...profile, ...(draft.profile || {}) }
-    setProfile(restoredProfile); persistProfile(restoredProfile)
+    saveProfile(restoredProfile)
     setInterviewType(draft.interviewType || restoredProfile.interviewType || 'Technical')
     setVoiceStyle(draft.voiceStyle || restoredProfile.voiceStyle || 'Professional')
     setFollowupDepth(draft.followupDepth || 'normal')
     setRelentless(!!draft.relentless); setTts(draft.tts !== false)
     sessionIdRef.current = draft.sessionId || createSessionId()
-    interviewConfigRef.current = draft.interviewConfig || buildInterviewConfig({ profile: restoredProfile, selectedDocumentIds: getSelectedDocIds(), source: 'solo' })
+    interviewConfigRef.current = draft.interviewConfig || buildInterviewConfig({ profile: restoredProfile, selectedDocumentIds: currentSelectedDocIds(), source: 'solo' })
+    if (kitScoped && !draft.interviewConfig) {
+      interviewConfigRef.current.kitId = kitId
+      interviewConfigRef.current.kitName = kitName || 'Interview Kit'
+    }
     sessionActiveRef.current = true
     startLockRef.current = false; submitLockRef.current = false
     const restored = draft.transcript.slice(-300)
@@ -450,7 +476,7 @@ export default function Solo({ onHome, noProviders }) {
       return
     }
     startLockRef.current = true
-    clearSoloDraft(); setResumeDraft(null)
+    clearSoloDraft(draftScope); setResumeDraft(null)
     sessionIdRef.current = createSessionId()
     sessionActiveRef.current = true
     turnGen.current.bump()
@@ -470,14 +496,22 @@ export default function Solo({ onHome, noProviders }) {
 
     const resume = String(profile.resume || '').trim()
     const jd = String(profile.jobDescription || '').trim()
-    if (resume.length > 40) addDoc({ name: 'Resume (pasted)', type: 'resume', text: resume })
-    if (jd.length > 40) addDoc({ name: 'Job Description (pasted)', type: 'jd', text: jd })
+    // Shared-profile Solo may mirror pasted materials into the shared local doc library.
+    // A Kit session keeps its materials Kit-owned and snapshots them without that side effect.
+    if (!kitScoped) {
+      if (resume.length > 40) addDoc({ name: 'Resume (pasted)', type: 'resume', text: resume })
+      if (jd.length > 40) addDoc({ name: 'Job Description (pasted)', type: 'jd', text: jd })
+    }
     interviewConfigRef.current = buildInterviewConfig({
       profile,
-      selectedDocumentIds: getSelectedDocIds(),
+      selectedDocumentIds: currentSelectedDocIds(),
       source: 'solo',
     })
-    warmDocs(interviewConfigRef.current.selectedDocumentIds)
+    if (kitScoped) {
+      interviewConfigRef.current.kitId = kitId
+      interviewConfigRef.current.kitName = kitName || 'Interview Kit'
+    }
+    warmDocs(interviewConfigRef.current.selectedDocumentIds, { kitId: kitScoped ? kitId : null })
 
     setPhase('live')
     phaseRef.current = 'live'
@@ -574,7 +608,7 @@ export default function Solo({ onHome, noProviders }) {
         return
       }
       sessionActiveRef.current = false
-      clearSoloDraft()
+      clearSoloDraft(draftScope)
       onHome()
       return
     }
@@ -608,7 +642,7 @@ export default function Solo({ onHome, noProviders }) {
       phaseRef.current = 'report'
     }
     sessionActiveRef.current = false
-    clearSoloDraft()
+    clearSoloDraft(draftScope)
     setResumeDraft(null)
     setEvaluating(false)
     trackProductEvent('solo_evaluated', { ok: true })
@@ -623,7 +657,7 @@ export default function Solo({ onHome, noProviders }) {
     voiceRef.current = false
     try { speech.stop() } catch {}
     sessionActiveRef.current = false
-    clearSoloDraft(); setResumeDraft(null)
+    clearSoloDraft(draftScope); setResumeDraft(null)
     sessionIdRef.current = null
     turnGen.current.bump()
     ttsGen.current.bump()
@@ -668,7 +702,7 @@ export default function Solo({ onHome, noProviders }) {
           <strong style={{ color: '#5eead4' }}>Interrupted practice found.</strong> {resumeDraft.transcript.length} saved turn{resumeDraft.transcript.length === 1 ? '' : 's'} can be recovered.
           <span style={{ float: 'right', display: 'inline-flex', gap: 6 }}>
             <button onClick={resumeInterrupted} style={{ ...textInput, width: 'auto', padding: '5px 10px', cursor: 'pointer' }}>Resume</button>
-            <button onClick={() => { clearSoloDraft(); setResumeDraft(null) }} style={{ ...textInput, width: 'auto', padding: '5px 10px', cursor: 'pointer' }}>Discard</button>
+            <button onClick={() => { clearSoloDraft(draftScope); setResumeDraft(null) }} style={{ ...textInput, width: 'auto', padding: '5px 10px', cursor: 'pointer' }}>Discard</button>
           </span>
         </div>
       )}
@@ -692,39 +726,45 @@ export default function Solo({ onHome, noProviders }) {
 
       <Section title="Your materials" hint="Resume + JD for the interviewer · optional knowledge bank for grounding.">
         <div style={{ fontSize: 11.5, color: T.text3, lineHeight: 1.45, marginBottom: 4 }}>
-          Paste resume &amp; JD here (required for good questions). Extra knowledge banks go below — checked items are retrieved during the session.
+          {kitScoped ? 'Use this Kit’s role, resume, JD, focus notes, and checked Kit-only materials for practice.' : 'Paste resume & JD here (required for good questions). Extra knowledge banks go below — checked items are retrieved during the session.'}
         </div>
         <div>
-          <Label>Resume</Label>
-          <textarea rows={5} style={{ ...textInput, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste your resume text…" onChange={e => patchProfile({ resume: e.target.value })} />
+          <Label htmlFor={`${soloFormId}-resume`}>Resume</Label>
+          <textarea id={`${soloFormId}-resume`} rows={5} style={{ ...textInput, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste your resume text…" onChange={e => patchProfile({ resume: e.target.value })} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px' }}>
+            <button type="button" onClick={() => resumeFileRef.current?.click()} aria-label="Upload resume PDF"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px', fontFamily: T.font }}>
               Upload PDF
-              <input type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
-                onChange={async e => {
-                  const file = e.target.files?.[0]; e.target.value = ''
-                  if (!file) return
-                  setPdfMsg('Reading PDF…')
-                  try {
-                    const text = await extractPdfText(file)
-                    if (text && text.length > 20) { patchProfile({ resume: text }); setPdfMsg(`Loaded ${text.length.toLocaleString()} characters`) }
-                    else setPdfMsg('No text found (scanned image?) — paste instead')
-                  } catch { setPdfMsg('Could not read that PDF — paste the text instead') }
-                }} />
-            </label>
-            {pdfMsg && <span role="status" style={{ fontSize: 11, color: /No text|Could not|scanned/i.test(pdfMsg) ? '#fca5a5' : '#86efac' }}>{pdfMsg}</span>}
+            </button>
+            <input ref={resumeFileRef} type="file" accept="application/pdf,.pdf" aria-label="Choose a resume PDF" style={{ display: 'none' }}
+              onChange={async e => {
+                const file = e.target.files?.[0]; e.target.value = ''
+                if (!file) return
+                setPdfMsg('Reading PDF…')
+                try {
+                  const text = await extractPdfText(file)
+                  if (text && text.length > 20) { patchProfile({ resume: text }); setPdfMsg(`Loaded ${text.length.toLocaleString()} characters`) }
+                  else setPdfMsg('No text found (scanned image?) — paste instead')
+                } catch { setPdfMsg('Could not read that PDF — paste the text instead') }
+              }} />
+            {pdfMsg && <span role={/No text|Could not|scanned/i.test(pdfMsg) ? 'alert' : 'status'} aria-live={/No text|Could not|scanned/i.test(pdfMsg) ? 'assertive' : 'polite'} style={{ fontSize: 11, color: /No text|Could not|scanned/i.test(pdfMsg) ? '#fca5a5' : '#86efac' }}>{pdfMsg}</span>}
           </div>
         </div>
         <div>
-          <Label>Job description</Label>
-          <textarea rows={4} style={{ ...textInput, resize: 'vertical' }} value={profile.jobDescription || ''} placeholder="Paste the JD you’re practicing for…" onChange={e => patchProfile({ jobDescription: e.target.value })} />
+          <Label htmlFor={`${soloFormId}-job-description`}>Job description</Label>
+          <textarea id={`${soloFormId}-job-description`} rows={4} style={{ ...textInput, resize: 'vertical' }} value={profile.jobDescription || ''} placeholder="Paste the JD you’re practicing for…" onChange={e => patchProfile({ jobDescription: e.target.value })} />
         </div>
         {!hasContext && (
           <div role="status" style={{ fontSize: 12, color: '#fbbf24' }}>Add a resume or JD so questions stay practical and conversational.</div>
         )}
         <div>
           <Label>Knowledge & notes (optional)</Label>
-          <Documents hideBioTypes onLibraryChange={() => setSelectedDocIds(getSelectedDocIds())} />
+          <Documents
+            key={kitScoped ? `kit:${kitId}` : 'shared-library'}
+            kitId={kitScoped ? kitId : null}
+            hideBioTypes
+            onLibraryChange={() => setSelectedDocIds(currentSelectedDocIds())}
+          />
         </div>
       </Section>
 
@@ -740,29 +780,27 @@ export default function Solo({ onHome, noProviders }) {
 
       <Section title="Interview">
         <div>
-          <Label>Your name</Label>
-          <input style={textInput} value={profile.name || ''} placeholder="How should the interviewer address you?" onChange={e => patchProfile({ name: e.target.value })} />
+          <Label htmlFor={`${soloFormId}-name`}>Your name</Label>
+          <input id={`${soloFormId}-name`} autoComplete="name" style={textInput} value={profile.name || ''} placeholder="How should the interviewer address you?" onChange={e => patchProfile({ name: e.target.value })} />
         </div>
         <div>
-          <Label>Role</Label>
-          <input style={textInput} value={profile.targetRole || ''} placeholder="e.g. Senior Backend Engineer" onChange={e => patchProfile({ targetRole: e.target.value })} />
+          <Label htmlFor={`${soloFormId}-role`}>Role</Label>
+          <input id={`${soloFormId}-role`} style={textInput} value={profile.targetRole || ''} placeholder="e.g. Senior Backend Engineer" onChange={e => patchProfile({ targetRole: e.target.value })} />
         </div>
         <div>
-          <Label>Experience</Label>
-          <Chips options={['Student / New grad', '1–3 years', '4–6 years', '7+ years']} value={profile.yearsExp || ''} onChange={v => patchProfile({ yearsExp: v })} />
+          <Chips label="Experience" options={['Student / New grad', '1–3 years', '4–6 years', '7+ years']} value={profile.yearsExp || ''} onChange={v => patchProfile({ yearsExp: v })} />
         </div>
         <div>
-          <Label>Interview type</Label>
-          <Chips options={['Technical', 'Behavioral', 'System Design', 'Mixed']} value={interviewType} onChange={v => { setInterviewType(v); patchProfile({ interviewType: v }) }} />
+          <Chips label="Interview type" options={['Technical', 'Behavioral', 'System Design', 'Mixed']} value={interviewType} onChange={v => { setInterviewType(v); patchProfile({ interviewType: v }) }} />
         </div>
         <div>
-          <Label>Follow-ups</Label>
-          <Chips options={[['light', 'Light'], ['normal', 'Normal'], ['deep', 'Deep']]} value={followupDepth} onChange={setFollowupDepth} />
+          <Chips label="Follow-ups" options={[['light', 'Light'], ['normal', 'Normal'], ['deep', 'Deep']]} value={followupDepth} onChange={setFollowupDepth} />
         </div>
       </Section>
 
       <Section title="Target company" hint="Optional — every company and every attempt can use a different setup.">
-        <input style={textInput} value={profile.targetCompany || ''} placeholder="Type any company, e.g. RealPage, Teradata, Amazon…" onChange={e => patchProfile({ targetCompany: e.target.value })} />
+        <Label htmlFor={`${soloFormId}-company`}>Company</Label>
+        <input id={`${soloFormId}-company`} style={textInput} value={profile.targetCompany || ''} placeholder="Type any company, e.g. RealPage, Teradata, Amazon…" onChange={e => patchProfile({ targetCompany: e.target.value })} />
         <div style={{ fontSize: 11, color: T.text3, lineHeight: 1.45 }}>
           This does not restrict your account to one company. MockMate snapshots the active company, role, playbook and selected documents when the session begins.
         </div>
@@ -772,13 +810,12 @@ export default function Solo({ onHome, noProviders }) {
         <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: T.text2 }}>Session options</summary>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 14 }}>
           <div>
-            <Label>Voice style</Label>
-            <Chips options={['Professional', 'Friendly', 'Concise', 'Detailed']} value={voiceStyle} onChange={v => { setVoiceStyle(v); patchProfile({ voiceStyle: v }) }} />
+            <Chips label="Voice style" options={['Professional', 'Friendly', 'Concise', 'Detailed']} value={voiceStyle} onChange={v => { setVoiceStyle(v); patchProfile({ voiceStyle: v }) }} />
           </div>
           {!managed && (providers.length > 0 || models.length > 0) && (
             <div>
-              <Label>AI model</Label>
-              <select value={provider} onChange={e => setProvider(e.target.value)} style={{ ...textInput, maxWidth: 380 }}>
+              <Label htmlFor={`${soloFormId}-model`}>AI model</Label>
+              <select id={`${soloFormId}-model`} value={provider} onChange={e => setProvider(e.target.value)} style={{ ...textInput, maxWidth: 380 }}>
                 <option value="">Automatic — recommended</option>
                 {modelOptions.length > 0
                   ? modelOptions.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
@@ -788,8 +825,8 @@ export default function Solo({ onHome, noProviders }) {
             </div>
           )}
           <div>
-            <Label>Language</Label>
-            <select value={profile.language || 'English'} onChange={e => patchProfile({ language: e.target.value })} style={{ ...textInput, maxWidth: 340 }}>
+            <Label htmlFor={`${soloFormId}-language`}>Language</Label>
+            <select id={`${soloFormId}-language`} value={profile.language || 'English'} onChange={e => patchProfile({ language: e.target.value })} style={{ ...textInput, maxWidth: 340 }}>
               {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
           </div>
@@ -946,6 +983,7 @@ export default function Solo({ onHome, noProviders }) {
           </form>
 
           <textarea rows={3} style={{ ...textInput, resize: 'none', flexShrink: 0 }}
+            aria-label="Your answer"
             placeholder={speech.active ? 'Listening…' : canSpeak ? 'Type your answer · Enter to submit' : 'Type your answer · Enter to submit'}
             value={answer}
             onChange={e => { setAnswer(e.target.value); if (endingEmpty) { endConfirmRef.current = false; setEndingEmpty(false) } }}

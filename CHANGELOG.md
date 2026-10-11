@@ -1,6 +1,30 @@
 # Changelog
 
-## v1.5.5 — 2026-10-10 (release candidate; not published)
+## v1.6.0 — 2026-10-11 (release candidate; not published)
+
+Feature-release candidate on PR #85’s branch. Not merged, tagged, or published. The latest published stable release remains v1.5.3; v1.5.5 was an unpublished source candidate. Full notes and release gates: [`docs/RELEASE_NOTES_v1.6.0.md`](docs/RELEASE_NOTES_v1.6.0.md).
+
+### Interview preparation workspace
+- Add Home, Interview Kits, and Ready Room screens to the desktop shell, including Kit creation/editing, active-Kit selection, and Ready Room handoffs.
+- Keep opportunity context, Solo drafts, and saved-session snapshots Kit-scoped; add locally stored, per-Kit supporting-document attachments for practice and Live while keeping the shared document library and profile isolated.
+- Show honest pre-flight states for local services, configured providers, real AI/voice checks, and screen-share privacy; disclose possible provider usage. The demo preview uses synthetic data and disables external tests.
+
+### Live and provider reliability
+- Distinguish quota, rate-limit, transient, and mixed provider errors; honor retry metadata and preserve cooling-down/failover behavior.
+- Preserve partial Live answers on stream failure without silently replaying a paid request; retry Deepgram token-grant rate limits and keep quota/auth errors actionable.
+- Preserve the Live failover budget on Windows, wait for the local API service before key-reload restart, and improve bounded local-service/renderer lifecycle handling while retaining packaged `child_process.fork()`.
+
+### Accessibility and operational feedback
+- Associate visible labels with Solo, Live, Career, Jobs, and provider-setting fields; add keyboard-operable tab groups, named choice groups, accessible upload buttons, and announced upload/error/progress states.
+- Preserve native keyboard navigation for the AI-mode choice, report updater and external-link failures, and prevent stale mouse-region IPC results from re-enabling click-through after it is switched off. Click-through now reports failures and refuses to enable without its recovery shortcut.
+- Add an explicit, one-request provider connection test for configured local keys. The route is mounted only by the loopback desktop service (not the hosted managed backend), is offered only in the desktop app, and warns that the request may incur provider usage; it is not run automatically during routing.
+
+### Candidate verification and release boundary
+- Current per-Kit attachment worktree checks: 86 test files / 644 tests, API smoke 5/5, production build, Vite-output verification, platform/React/Vitest/dev-tooling/auth-config/Express checks, and `git diff --check`. These ran under Node 22.22.3; release CI pins Node 24. The aggregate `npm run verify` previously stopped before build/tests because `scripts/doctor.mjs` could not download the Electron runtime binary; see `docs/evidence/VALIDATION_STATUS.md`.
+- Per-Kit feature commit `0445a894107289fe140129f4d6474aad6971a33d` passed `verify-desktop`, `windows-tests`, and Vercel checks in [run 38126143427](https://github.com/vsv2014/MockMate/actions/runs/38126143427). CI is unsigned validation, not physical-install certification; the branch remains unmerged and unpublished.
+- Physical Windows installation/audio, signed updater, actual meeting share-preview, and hosted WSS/Mongo/Deepgram usage reconciliation remain release gates. See [`docs/evidence/VALIDATION_STATUS.md`](docs/evidence/VALIDATION_STATUS.md).
+
+## v1.5.5 — 2026-10-10 (superseded release candidate; never published)
 
 Windows desktop release candidate incorporating the previously untagged v1.5.4 packaged-process hotfix and the October 4–9 reliability, privacy, metering, and platform updates. **This entry describes code merged into `main`, not a published or real-device-certified installer.**
 

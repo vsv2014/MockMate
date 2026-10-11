@@ -3,7 +3,7 @@ import express from 'express'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
-import { registerApiRoutes, API_ROUTE_CONTRACT, isProviderFailureError } from './apiRoutes.js'
+import { registerApiRoutes, API_ROUTE_CONTRACT, LOCAL_ONLY_API_ROUTE_CONTRACT, isProviderFailureError } from './apiRoutes.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -32,10 +32,26 @@ describe('API route contract', () => {
     expect(API_ROUTE_CONTRACT.some(r => r.method === 'GET' && r.path === '/api/models')).toBe(true)
   })
 
+  it('mounts the provider spend-test route only when a local server explicitly enables it', () => {
+    const hostedApp = express()
+    registerApiRoutes(hostedApp)
+    expect(registeredRoutes(hostedApp)).not.toContainEqual(LOCAL_ONLY_API_ROUTE_CONTRACT[0])
+
+    const localApp = express()
+    registerApiRoutes(localApp, { enableLocalProviderTest: true })
+    for (const expected of LOCAL_ONLY_API_ROUTE_CONTRACT) {
+      expect(registeredRoutes(localApp)).toContainEqual(expected)
+    }
+
+    const backendSource = readFileSync(path.join(__dirname, '..', '..', 'backend', 'server.js'), 'utf8')
+    expect(backendSource).not.toMatch(/enableLocalProviderTest\s*:\s*true/)
+  })
+
   it('local server.js uses registerApiRoutes (no divergent inline copy)', () => {
     const serverPath = path.join(__dirname, '..', '..', 'server.js')
     const src = readFileSync(serverPath, 'utf8')
     expect(src).toMatch(/registerApiRoutes\s*\(/)
+    expect(src).toMatch(/enableLocalProviderTest:\s*true/)
     expect(src).not.toMatch(/app\.get\(['"]\/api\/providers['"]/)
     expect(src).toMatch(/from ['"]\.\/api\/_lib\/apiRoutes\.js['"]/)
   })

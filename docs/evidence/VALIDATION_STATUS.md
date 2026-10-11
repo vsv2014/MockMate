@@ -1,34 +1,39 @@
-# Validation status — v1.5.5 release candidate
+# Validation status — v1.6.0 release candidate
 
-**As of 2026-10-10. Status is evidence-based; do not infer a physical PASS from unit tests, code review, or an unsigned CI installer.**
+**As of 2026-10-11. Evidence is version- and commit-specific; do not infer a physical PASS from unit tests, code review, or an unsigned CI installer.**
 
-- **Source version:** `1.5.5` in both root package manifests. The candidate is **not** a published GitHub Release. Latest published GitHub Release: `v1.5.3`; v1.5.4 was an untagged interim fix.
-- **Reviewed source baseline:** merged `main` at `69fd857a79f47d81925b7554116f15d8fd1650b2` (PR #79) before release-documentation changes.
-- **CI evidence:** [run 37877818087](https://github.com/vsv2014/MockMate/actions/runs/37877818087), Linux + Windows success. 80 application test files / 567 tests, backend tests, API smoke, build, unsigned validation Windows installer, packaged runtime and real React renderer/navigation smoke.
-- **Production readiness:** **NOT CERTIFIED.** Signed public workflow and physical host/device coverage were not observed.
+- **Candidate source:** branch `arena/b60e7f0c-mockmate` / PR #85; version `1.6.0` in root `package.json` and `package-lock.json`. It is not merged to `main`, tagged, or published.
+- **Latest stable public Windows release:** `v1.5.3`. The v1.5.4 hotfix and v1.5.5 source candidate were not stable releases.
+- **Current per-Kit attachment worktree checks (2026-10-11):** `npx vitest run` — **86 files / 644 tests passed**; `npm run smoke:api` — **5 tests passed**; `npm run build`, `npm run verify:vite-output`, platform/React/Vitest/dev-tooling/auth/Express checks, and `git diff --check` passed under sandbox Node 22.22.3. The aggregate `npm run verify` previously stopped in `scripts/doctor.mjs` before build/tests because the Electron runtime download failed (`fetch failed`; the sandbox cannot reach its download host). The release workflow pins Node 24, as required by `package.json`.
+- **Latest PR-head CI (2026-10-11):** [run 38126406179](https://github.com/vsv2014/MockMate/actions/runs/38126406179) passed `verify-desktop`, `windows-tests`, and Vercel checks on head `e34229089c12807fbddd8255dcbdde4f58795604`. This remains an unsigned CI validation, not a physical install or signed-release certification.
+- **Production readiness:** **NOT CERTIFIED.** This source verification does not include a signed public build, physical Windows install/audio/share-preview test, or a real hosted WSS/Mongo/Deepgram usage reconciliation.
 
 | Item | Status | Evidence / remaining requirement |
 |---|---|---|
-| Package/lock version | CODE VERIFIED | `package.json.version` and root `package-lock.json.version` / root package entry are `1.5.5`. |
-| Latest merged desktop code CI | CI PASS | [Run 37877818087](https://github.com/vsv2014/MockMate/actions/runs/37877818087): 80 application files/567 tests, backend tests, smoke/build, Linux and Windows jobs succeeded. Re-run for any changed candidate commit. |
-| Packaged Windows React launch/navigation | CI PASS (unsigned) | PR #70 added actual renderer smoke; latest PR #79 Windows CI passed. **This is not a clean physical signed-install certification.** |
-| Windows Authenticode signature/publisher | NOT VERIFIED | Production release requires `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`, `MOCKMATE_WINDOWS_PUBLISHER`; no signed v1.5.5 public workflow result recorded. |
-| Physical Windows clean install / updater | NOT VERIFIED | Verify signed `v1.5.5` over the last published `v1.5.3`, including unsigned-to-signed transition. No v1.5.4 public release exists. |
-| Packaged Solo practice / evaluation soak | NOT VERIFIED | Physical Windows speaker/microphone/provider session, report and restart; attach build ID and evidence. |
-| Packaged Live mic/system audio soak | NOT VERIFIED | Use real devices, noisy interviews, source changes, sleep/wake, reconnect, pause/Stop, turn commit, hints, and long session. |
-| Live interrupted renderer notes recovery | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | PR #75 account-scoped read-only checkpoint. Kill/relaunch physical app and verify recovered question/hint notes; no provider calls automatically resume. |
-| Managed Live streaming gateway + metering | CODE/UNIT VERIFIED; HOSTED UNVERIFIED | PR #72 authenticated backend WSS, per-segment cap and reservation; PR #74 graceful settlement drain. Need Mongo/TLS/WSS/Deepgram E2E, real provider-usage reconciliation, abrupt-crash ledger recovery. |
-| Account-switch and RAG privacy | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | PR #77 blocks stale account auth/embedding responses and preserves corrupt document/history bytes; physical multi-account check outstanding. |
-| Saved jobs / Resume Studio migration | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | PR #79 scope v3→v4 + per-account data; first-account legacy-global ownership and A/B sign-in/Guest/delete-account must be checked on real upgrade. |
-| Diagnostics export, redaction, Product Intelligence | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | Sanitizer tests pass; verify physical export contains no tokens, prompts, transcript raw content or screenshots. Product Intelligence is local/runtime adaptive telemetry only. |
-| Windows overlay content protection | UNKNOWN | Actual Zoom / Meet / Teams full-display and window share previews not recorded. Content protection is OS/capture-mode-dependent. |
-| Linux overlay content protection | NOT SUPPORTED | Linux has no equivalent implemented OS content-protection API. |
-| Hosted Vercel build/deployment | CODE SHAPE FIXED; HOSTED VERIFY | Vercel Hobby 12-function shape (PR #46); production HTTPS deployments, gateway WS routing and end-to-end provider/auth checks not certified. |
-| 120-minute continuous usage | NOT VERIFIED | Code handles recovery paths; cannot claim a two-hour session without recorded timed test. |
-| Electron / React / Vite / Vitest platform upgrades | CODE/CI VERIFIED; DEVICE UNVERIFIED | Electron 44, React 19, Vite 8, Vitest 5; include packaged real-device check for audio, drag, modal, copy, updater. |
+| Package/lock version | CODE VERIFIED | Root `package.json.version` and `package-lock.json` root version are `1.6.0`. No stable v1.6.0 tag/release has been created. |
+| Per-Kit attachment checks | PASS (sandbox + CI) | 86 test files / 644 tests; API smoke 5/5; Vite production build/output; platform, React 19, Vitest 5, dev-tooling, auth-config, and Express checks; `git diff --check`. `npm run verify` previously stopped before build/tests because Electron runtime download failed in the sandbox. Node 22.22.3 was used; release CI requires Node 24. |
+| Latest PR-head CI | PASS (unsigned; physical install unverified) | [Run 38126406179](https://github.com/vsv2014/MockMate/actions/runs/38126406179) passed `verify-desktop`, `windows-tests`, and Vercel checks on PR head `e34229089c12807fbddd8255dcbdde4f58795604`. |
+| Home / Interview Kits / Ready Room | CODE + UNIT VERIFIED; PACKAGED UI UNVERIFIED | App shell navigation, Kit persistence/profile mapping and Kit-scoped history/drafts are wired. Per-Kit PDF/TXT/Markdown storage, selection, account/Kit isolation, retrieval ownership, and cleanup on Kit deletion have unit coverage. Exercise upload, selection, Ready Room → Live, and Solo flows in the packaged candidate. |
+| Accessibility and form feedback remediation | CODE/BUILD VERIFIED; SCREEN-READER UNVERIFIED | Accessible labels, keyboard tabs/choice groups, upload controls, and status/error announcements are implemented. Validate with keyboard-only and screen-reader use on the packaged app. |
+| Click-through recovery | CODE VERIFIED; DESKTOP RUNTIME UNVERIFIED | Main-process results and Alt+C recovery checks are wired with stale-region protection. Verify mouse recovery and overlay hit regions on Windows/macOS; this code-level check does not replace desktop runtime testing. |
+| Provider connection test | UNIT/CODE VERIFIED; LIVE KEYS UNVERIFIED | The explicit one-request local-key probe has mocked unit coverage and is exposed only in Electron. No live provider credentials were used; confirm per-provider behavior and any usage charge before relying on it. |
+| Packaged Windows React launch/navigation | CI PASS (unsigned); physical install unverified | [Run 38126406179](https://github.com/vsv2014/MockMate/actions/runs/38126406179) passed Windows validation-installer/runtime smoke on the latest PR head. It is not a physical signed-install certification. |
+| Windows Authenticode signature/publisher | NOT VERIFIED | Public release requires `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`, and `MOCKMATE_WINDOWS_PUBLISHER`, plus signature verification on installer and executable. |
+| Physical Windows clean install / updater | NOT VERIFIED | Test a signed v1.6.0 over the last published v1.5.3, including the unsigned-to-signed transition and local-data preservation. No v1.5.4 public release exists. |
+| Packaged Solo practice / evaluation soak | NOT VERIFIED | Test with actual speaker/microphone/provider, complete evaluation, and restart on Windows. |
+| Packaged Live mic/system audio soak | NOT VERIFIED | Test real devices, noisy interviews, source changes, sleep/wake, reconnect, pause/Stop, turn commit, hints, and a sustained session. |
+| Live interrupted renderer notes recovery | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | Recovery is read-only and must not automatically resume audio, transcription, generation, or billing. Kill/relaunch physical app and verify it. |
+| Managed Live gateway + metering | CODE/UNIT VERIFIED; HOSTED UNVERIFIED | Real Mongo/TLS/WSS/Deepgram E2E, provider-usage reconciliation, and abrupt-crash ledger recovery remain outstanding if Managed AI is shipped. |
+| Account-switch and RAG privacy | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | Account-scope tests block stale account auth/embedding responses and preserve corrupt document/history bytes. New coverage confirms Kit attachments with the same Kit ID stay isolated between accounts and retrieval excludes shared/other-Kit content. Test physical multi-account upgrade. |
+| Saved jobs / Resume Studio migration | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | PR #79 scope v3→v4; verify first-account legacy-global ownership, A/B sign-in, Guest, logout/relogin, and account deletion on a real upgrade. |
+| Diagnostics export / redaction / Product Intelligence | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | Verify physical export contains no keys/tokens, prompts, transcripts, or screenshots. Product Intelligence remains local/runtime adaptive telemetry only. |
+| Meeting share-preview / content protection | NOT VERIFIED | Record actual Zoom/Meet/Teams window and full-display previews. Content protection is platform/mode-dependent and does not guarantee invisibility. Linux protection is unsupported. |
+| Default desktop backend | CODE VERIFIED | `managedApiBase` is empty by default. The local UI/AI service is expected; Guest mode bypasses account authentication, not the local service. |
+| Hosted Vercel / WSS deployment | HOSTED UNVERIFIED | Deployment shape is constrained to 12 Vercel functions; validate production HTTPS/WSS routing, Mongo, and provider use before enabling Managed AI. |
+| 120-minute continuous usage | NOT VERIFIED | Do not claim a two-hour session without timed packaged evidence. |
 | macOS/Linux public installers | NOT IN CURRENT RELEASE WORKFLOW | Public workflow builds signed Windows NSIS only; do not claim macOS DMG or Linux AppImage publication. |
-| Release freeze | OPEN | Freeze only after the evidence gates, update signer/release metadata, tag/release, then post-publish smoke. |
+| Release freeze | OPEN | Candidate is unmerged and untagged. Complete all checklist/evidence gates on reviewed `main` before creating a v1.6.0 tag or publishing. |
 
-**Release decision as recorded here: BLOCKED pending physical Windows, trusted signing, and—if Managed AI is published—hosted WebSocket/Mongo/Deepgram reconciliation.**
+**Release decision: BLOCKED pending physical Windows checks and trusted signing, plus hosted WSS/Mongo/Deepgram reconciliation if Managed AI is shipped. CI passes but does not satisfy these production gates.**
 
 Evidence templates: [Live dry run](LIVE_DRY_RUN_TEMPLATE.md), [Live audit](LIVE_BUG_AUDIT.md), [release checklist](../RELEASE_CHECKLIST.md), [screen-share matrix](../STEALTH_BROWSER_MATRIX.md).

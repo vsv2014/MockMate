@@ -221,7 +221,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     activeSocketRef.current = null
     ws.current = null
 
-    const { ok, tokenStatus, tokenRes, networkError } = await requestDeepgramToken({
+    const { ok, tokenStatus, tokenRes, retryAfterMs, networkError } = await requestDeepgramToken({
       mode: 'system_audio',
       generation: gen,
       reconnectAttempt: reconnectAttempts.current,
@@ -241,7 +241,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       connecting.current = false
       diagnostic('stt', 'token_failed', { status: tokenStatus || 0, reconnectAttempt: reconnectAttempts.current }, 'error')
       if (PERMANENT_TOKEN_STATUSES.has(tokenStatus)) return fail(tokenRes?.error || 'Deepgram auth failed — check your API key')
-      return scheduleReconnect(`token grant ${tokenStatus || 'error'}`)
+      return scheduleReconnect(`token grant ${tokenStatus || 'error'}`, retryAfterMs)
     }
 
     const model = degradedAudio.current ? 'nova-2' : 'nova-3'
@@ -424,16 +424,16 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     fail(reason)
   }
 
-  function scheduleReconnect(reason) {
+  function scheduleReconnect(reason, retryAfterMs = 0) {
     if (userStop.current || suspendPaused.current) return
     reconnectAttempts.current += 1
-    diagnostic('stt', 'reconnect_scheduled', { attempt: reconnectAttempts.current, reason }, 'warn')
+    diagnostic('stt', 'reconnect_scheduled', { attempt: reconnectAttempts.current, reason, retryAfterMs: retryAfterMs || null }, 'warn')
     try { onReconnectRef.current?.(reconnectAttempts.current, reason) } catch {}
     if (reconnectAttempts.current > MAX_RECONNECTS) {
       return failOrDegrade(`${reason} — gave up after ${MAX_RECONNECTS} consecutive reconnect attempts`)
     }
     setActive(false); setReconnecting(true)
-    const delay = computeReconnectDelayMs(reconnectAttempts.current)
+    const delay = computeReconnectDelayMs(reconnectAttempts.current, retryAfterMs)
     clearTimeout(reconnectTimer.current)
     reconnectTimer.current = setTimeout(() => { connectSocket() }, delay)
   }

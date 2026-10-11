@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { loadSessions, saveSession } from './history.js'
+import { clearSoloDraft, loadSessions, loadSoloDraft, saveSession, saveSoloDraft } from './history.js'
 
 const store = new Map()
 vi.stubGlobal('localStorage', {
@@ -29,6 +29,37 @@ describe('session history persistence', () => {
       language: 'English', responseStyle: 'balanced', modelStrategy: null,
     })
     expect(loadSessions()[0].company).toBe('Acme')
+  })
+
+  it('isolates interrupted Solo drafts by Kit while preserving the shared-profile draft key', () => {
+    saveSoloDraft({ transcript: [{ text: 'shared draft' }], sessionId: 's-shared' })
+    saveSoloDraft({ transcript: [{ text: 'kit draft' }], sessionId: 's-kit' }, 'kit-1')
+    expect(loadSoloDraft().sessionId).toBe('s-shared')
+    expect(loadSoloDraft('kit-1').sessionId).toBe('s-kit')
+    clearSoloDraft('kit-1')
+    expect(loadSoloDraft('kit-1')).toBeNull()
+    expect(loadSoloDraft().sessionId).toBe('s-shared')
+  })
+
+  it('keeps a local immutable Kit context snapshot with a completed session', () => {
+    const entry = saveSession({
+      report: { overallScore: 91 },
+      transcript: [{ role: 'candidate', text: 'A specific answer' }],
+      config: { interviewSetup: {
+        source: 'solo', kitId: 'kit-1', kitName: 'Backend at Acme',
+        targetCompany: 'Acme', targetRole: 'Backend Engineer', candidateName: 'Ada',
+        selectedDocumentIds: ['d1'], resumeText: 'Snapshot resume',
+        jobDescriptionText: 'Snapshot JD', customInstructions: 'Probe tradeoffs',
+        createdAt: '2026-01-02T00:00:00.000Z',
+      } },
+    })
+    expect(entry.kitSnapshot).toMatchObject({
+      id: 'kit-1', name: 'Backend at Acme', candidateName: 'Ada',
+      targetRole: 'Backend Engineer', targetCompany: 'Acme',
+      resumeText: 'Snapshot resume', jobDescriptionText: 'Snapshot JD',
+      customInstructions: 'Probe tradeoffs', selectedDocumentIds: ['d1'],
+    })
+    expect(loadSessions()[0].kitSnapshot.resumeText).toBe('Snapshot resume')
   })
 
   it('drops oldest history first to preserve the newest session under quota pressure', () => {

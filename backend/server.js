@@ -65,6 +65,7 @@ function sendToDesktop(message) {
     else process.parentPort?.postMessage(message)
   } catch {}
 }
+
 const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS || 0)
 if (PUBLIC_BIND && Number.isInteger(trustProxyHops) && trustProxyHops > 0) app.set('trust proxy', trustProxyHops)
 

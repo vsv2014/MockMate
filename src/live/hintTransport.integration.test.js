@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiFetch } from '../lib/apiClient.js'
-import { streamLiveHint, splitSseBuffer } from './hintTransport.js'
+import { formatLiveError, streamLiveHint, splitSseBuffer } from './hintTransport.js'
 
 vi.mock('../lib/apiClient.js', () => ({ apiFetch: vi.fn() }))
 
@@ -36,6 +36,38 @@ describe('Live hint stream completion safety', () => {
     const result = await streamLiveHint({ body: { question: 'Q' }, onEvent: ev => { events.push(ev) } })
     expect(result.mode).toBe('stream')
     expect(events.map(ev => ev.event)).toEqual(['token', 'done'])
+  })
+
+  it('preserves structured provider errors after partial tokens without replaying the paid request', async () => {
+    const providerError = {
+      error: 'Provider reports exhausted usage or credits.',
+      code: 'insufficient_quota',
+      retryAfterMs: 60_000,
+    }
+    apiFetch.mockResolvedValue(streamedResponse([
+      'event: token\ndata: "partial answer"\n\n',
+      `event: error\ndata: ${JSON.stringify(providerError)}\n\n`,
+    ]))
+    const events = []
+    const onFallback = vi.fn()
+    const result = await streamLiveHint({
+      body: { question: 'Q' },
+      onEvent: ev => { events.push(ev); return ev.event === 'error' ? 'stop' : null },
+      onFallback,
+    })
+    expect(result.mode).toBe('stopped')
+    expect(events[1]).toMatchObject({ event: 'error', data: providerError })
+    expect(apiFetch).toHaveBeenCalledTimes(1)
+    expect(onFallback).not.toHaveBeenCalled()
+  })
+
+  it('adds a bounded, actionable retry estimate only for rate/cooldown errors', () => {
+    expect(formatLiveError({
+      message: 'The provider is rate-limiting requests.', code: 'rate_limit', retryAfterMs: 1501,
+    })).toBe('The provider is rate-limiting requests. Earliest retry window: about 2 seconds.')
+    expect(formatLiveError({
+      message: 'Usage credits exhausted.', code: 'insufficient_quota', retryAfterMs: 60_000,
+    })).toBe('Usage credits exhausted.')
   })
 
   it('returns stopped on explicit skip, never falling back', async () => {

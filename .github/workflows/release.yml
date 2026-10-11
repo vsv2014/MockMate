@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'New release tag (e.g. v1.5.5); must equal v + package.json.version'
+        description: 'New release tag (e.g. v1.6.0); must equal v + package.json.version'
         required: true
 
 permissions:

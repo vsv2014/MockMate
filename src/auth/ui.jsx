@@ -33,6 +33,7 @@ export function Field({
           id={id} type={type} value={value} onChange={onChange} placeholder={placeholder}
           autoFocus={autoFocus} autoComplete={autoComplete} inputMode={inputMode}
           aria-invalid={invalid || undefined}
+          aria-describedby={invalid ? `${id}-error` : undefined}
           className="mm-input"
           style={{
             ...inputStyle,
@@ -52,7 +53,7 @@ export function Field({
           ><EyeIcon off={!revealed} /></button>
         )}
       </div>
-      {invalid && <div style={{ marginTop: 6, fontSize: 11, fontWeight: 400, color: T.danger }}>{error}</div>}
+      {invalid && <div id={`${id}-error`} style={{ marginTop: 6, fontSize: 11, fontWeight: 400, color: T.danger }}>{error}</div>}
     </div>
   )
 }
@@ -97,9 +98,10 @@ export function TextLink({ onClick, children, strong }) {
 export function ProgressSteps({ step, total, label }) {
   return (
     <div style={{ marginBottom: 22 }}>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+      <div role="progressbar" aria-label={label || 'Setup progress'} aria-valuemin={1} aria-valuemax={total} aria-valuenow={step}
+        style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
         {Array.from({ length: total }, (_, i) => (
-          <div key={i} style={{
+          <span key={i} aria-hidden="true" style={{
             flex: 1, height: 3, borderRadius: 2,
             background: i < step ? T.accent : T.surface2,
           }} />
@@ -122,7 +124,7 @@ export function EyeIcon({ off }) {
 
 export function Spinner() {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ animation: 'mm-spin 0.7s linear infinite' }}>
+    <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ animation: 'mm-spin 0.7s linear infinite' }}>
       <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
       <path d="M21 12a9 9 0 0 0-9-9" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
     </svg>

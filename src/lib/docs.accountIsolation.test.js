@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const { apiFetchMock } = vi.hoisted(() => ({ apiFetchMock: vi.fn() }))
 vi.mock('./apiClient', () => ({ apiFetch: (...args) => apiFetchMock(...args) }))
 
-import { listDocs, retrieveContext } from './docs.js'
+import { addDoc, getKitSelectedDocIds, listDocs, listKitDocs, retrieveContext } from './docs.js'
 import { activeAccountScope } from './accountScope.js'
 
 const local = new Map()
@@ -82,6 +82,22 @@ describe('N06: never reuse RAG document embeddings or delayed results across acc
     })
     expect(own).toContain('ACCOUNT B UNIQUE')
     expect(own).not.toContain('ACCOUNT-A-PRIVATE')
+  })
+
+  it('keeps same-ID Kit attachments isolated between accounts', () => {
+    asUser('account-a', '')
+    const a = addDoc({ kitId: 'same-kit-id', name: 'Account A interview notes', type: 'knowledge', text: 'PRIVATE ACCOUNT A KIT MATERIAL.' })
+    expect(listKitDocs('same-kit-id').map(doc => doc.id)).toEqual([a.id])
+
+    asUser('account-b', '')
+    expect(listKitDocs('same-kit-id')).toEqual([])
+    const b = addDoc({ kitId: 'same-kit-id', name: 'Account B interview notes', type: 'knowledge', text: 'PRIVATE ACCOUNT B KIT MATERIAL.' })
+    expect(b.id).not.toBe(a.id)
+    expect(getKitSelectedDocIds('same-kit-id')).toEqual([b.id])
+
+    asUser('account-a', '')
+    expect(listKitDocs('same-kit-id').map(doc => doc.id)).toEqual([a.id])
+    expect(getKitSelectedDocIds('same-kit-id')).toEqual([a.id])
   })
 
   it('rebuilds same-ID, same-signature in-memory vectors for a different account', async () => {

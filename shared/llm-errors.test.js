@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isTransient, isRateLimit, isQuotaExhausted } from './llm-errors.js'
+import { getRetryAfterMs, isTransient, isRateLimit, isQuotaExhausted } from './llm-errors.js'
 
 describe('isTransient', () => {
   it('flags transient HTTP statuses', () => {
@@ -15,19 +15,52 @@ describe('isTransient', () => {
   })
 })
 
-describe('isRateLimit', () => {
-  it('flags 429 + rate-limit/quota messages', () => {
-    expect(isRateLimit({ status: 429 })).toBe(true)
+describe('LLM limit classification', () => {
+  it('identifies request-rate limits without calling them exhausted credits', () => {
+    expect(isRateLimit({ status: 429, message: 'Too many requests' })).toBe(true)
     expect(isRateLimit({ message: 'rate limit exceeded' })).toBe(true)
     expect(isRateLimit({ message: 'resource exhausted' })).toBe(true)
+    expect(isQuotaExhausted({ status: 429, code: 'rate_limit_exceeded', message: 'Too many requests' })).toBe(false)
   })
-  it('does not flag a 503', () => expect(isRateLimit({ status: 503 })).toBe(false))
+
+  it('classifies exhausted usage as quota even when the provider returns HTTP 429', () => {
+    const error = { status: 429, code: 'insufficient_quota', message: 'You exceeded your current quota; check billing.' }
+    expect(isQuotaExhausted(error)).toBe(true)
+    expect(isRateLimit(error)).toBe(false)
+    expect(isRateLimit({ message: 'Your quota has been exhausted' })).toBe(false)
+  })
+
+  it('does not label a plain 503 as a rate limit', () => {
+    expect(isRateLimit({ status: 503 })).toBe(false)
+  })
 })
 
-describe('isQuotaExhausted', () => {
-  it('flags insufficient-quota / billing', () => {
-    expect(isQuotaExhausted({ code: 'insufficient_quota' })).toBe(true)
-    expect(isQuotaExhausted({ message: 'exceeded your current quota' })).toBe(true)
+describe('getRetryAfterMs', () => {
+  const now = Date.parse('2026-10-11T12:00:00Z')
+
+  it('reads seconds, milliseconds, and composite reset headers', () => {
+    expect(getRetryAfterMs({ headers: { 'Retry-After': '2.5' } }, now)).toBe(2500)
+    expect(getRetryAfterMs({ headers: { 'retry-after-ms': '1250' } }, now)).toBe(1250)
+    expect(getRetryAfterMs({ headers: { 'x-ratelimit-reset-tokens': '1m30s' } }, now)).toBe(90_000)
   })
-  it('does not flag a generic rate-limit', () => expect(isQuotaExhausted({ status: 429, message: 'slow down' })).toBe(false))
+
+  it('reads HTTP-date Retry-After and SDK response headers', () => {
+    expect(getRetryAfterMs({ response: { headers: new Headers({ 'retry-after': 'Sun, 11 Oct 2026 12:00:10 GMT' }) } }, now)).toBe(10_000)
+  })
+
+  it('interprets numeric reset headers as Unix timestamps when appropriate', () => {
+    expect(getRetryAfterMs({ headers: { 'x-ratelimit-reset': String((now + 7_000) / 1000) } }, now)).toBe(7_000)
+    expect(getRetryAfterMs({ headers: { 'x-ratelimit-reset': String(now + 9_000) } }, now)).toBe(9_000)
+    expect(getRetryAfterMs({ headers: { 'x-ratelimit-reset': String((now - 7_000) / 1000) } }, now)).toBe(0)
+  })
+
+  it('uses the longest active reset and ignores invalid or expired values', () => {
+    expect(getRetryAfterMs({ headers: {
+      'retry-after': '3',
+      'x-ratelimit-reset-requests': '5s',
+      'x-ratelimit-reset-tokens': 'nope',
+    } }, now)).toBe(5000)
+    expect(getRetryAfterMs({ headers: { 'retry-after': 'not a date' } }, now)).toBe(0)
+    expect(getRetryAfterMs({ headers: { 'retry-after': 'Sun, 11 Oct 2026 11:59:50 GMT' } }, now)).toBe(0)
+  })
 })
