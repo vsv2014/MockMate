@@ -5,7 +5,7 @@ MockMate is an interview-performance OS: prepare, practice, perform and learn ac
 
 `docs/ARCHITECTURE.md` is the source of truth for **current implementation**. This roadmap contains future work and release gates only.
 
-## Current v1.5.5 source candidate (not published)
+## Current v1.6.0 source candidate (not published)
 
 ### Desktop
 - [x] Windows multi-monitor overlay and 760×240 camera-anchored Teleprompter.
@@ -17,7 +17,9 @@ MockMate is an interview-performance OS: prepare, practice, perform and learn ac
 - [x] Account-safe in-flight RAG/auth handling and corrupt document/session-data recovery backup (PR #77).
 - [x] ARCH policy plane with operation-scoped adaptive routing.
 - [x] Product Intelligence as **local/runtime adaptive telemetry** with privacy-safe behavioral signals.
-- [ ] Hosted closed-loop Product Intelligence / tenant-scoped analytics. This is **not** a v1.5.5 capability.
+- [x] Home, Interview Kits, and Ready Room integrated with the desktop shell; Kit-scoped context, Solo drafts, Live/Solo launch handoffs, and saved-session snapshots.
+- [x] Live/provider retry/error classification, partial-hint retention, Deepgram grant retry, and bounded local-service readiness/restart handling (PR #85; packaged `child_process.fork()` retained).
+- [ ] Hosted closed-loop Product Intelligence / tenant-scoped analytics. This is **not** a v1.6.0 capability.
 
 ### Managed backend and billing
 - [x] Hosted-capable auth/JWT backend with Mongo support.
@@ -42,18 +44,18 @@ MockMate is an interview-performance OS: prepare, practice, perform and learn ac
 - [ ] Real second-device pairing / Duo remote companion.
 - [ ] Store-ready PDF/DOCX mobile upload/extraction path.
 
-## Release gates for v1.5.5 (not yet published)
+## Release gates for v1.6.0 (not yet published)
 
-- [x] Pre-documentation candidate PR #79: 80 application test files / 567 tests, backend checks, Linux/Windows CI green; [run 37877818087](https://github.com/vsv2014/MockMate/actions/runs/37877818087).
-- [x] `npm run build` and `npm run smoke:api`.
-- [x] Ubuntu and Windows CI.
+- [x] Local v1.6.0 candidate checks: 83 test files / 627 tests; API smoke (4 tests), production Vite build/output check, and `git diff --check` passed on 2026-10-11.
+- [x] PR #85 reliability-only head: Linux/Windows CI passed; [run 38116194648](https://github.com/vsv2014/MockMate/actions/runs/38116194648).
+- [ ] Fresh Linux/Windows CI for the v1.6.0 screens, package version, and release docs on the final pushed candidate.
 - [x] Version-generic Windows release workflow.
 - [x] Vercel deployment constrained to Hobby's 12-function limit.
 - [ ] One clean hosted deployment on the final public head.
-- [ ] Physical signed Windows v1.5.5 clean-install smoke; PR smoke uses an unsigned validation-only installer.
+- [ ] Physical signed Windows v1.6.0 clean-install smoke; PR smoke uses an unsigned validation-only installer.
 - [ ] Packaged Live: `Alt+T → drag → Alt+T`, mic/system first question, `F7` repeat/display memory.
 - [ ] Real Zoom/Meet/Teams share-preview confirmation.
-- [ ] Real v1.5.3 → signed v1.5.5 update/install migration, including previously unsigned installers.
+- [ ] Real v1.5.3 → signed v1.6.0 update/install migration, including previously unsigned installers.
 - [ ] Diagnostics export/redaction click-through on the packaged build.
 - [ ] Two-account v3→v4 saved jobs and Resume Studio migration check on physical Windows, including Guest and account deletion.
 - [ ] Hosted managed WSS/Mongo/Deepgram E2E, session settlement and abrupt crash accounting.
@@ -63,7 +65,7 @@ See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
 
 ## P0 — Public release reliability
 
-- [ ] Complete the packaged Windows release checklist before creating the **v1.5.5** tag.
+- [ ] Complete the packaged Windows release checklist before creating the **v1.6.0** tag.
 - [ ] Add automated coverage for deployment-shape constraints so Hobby/serverless limits cannot regress silently.
 - [x] Guard local startup against killing unknown processes on ports 3002/4000 (PR #63).
 - [x] Signed Windows release/publisher validation gate enforced in workflow (PR #68).

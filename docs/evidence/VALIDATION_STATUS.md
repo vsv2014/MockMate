@@ -1,34 +1,36 @@
-# Validation status — v1.5.5 release candidate
+# Validation status — v1.6.0 release candidate
 
-**As of 2026-10-10. Status is evidence-based; do not infer a physical PASS from unit tests, code review, or an unsigned CI installer.**
+**As of 2026-10-11. Evidence is version- and commit-specific; do not infer a physical PASS from unit tests, code review, or an unsigned CI installer.**
 
-- **Source version:** `1.5.5` in both root package manifests. The candidate is **not** a published GitHub Release. Latest published GitHub Release: `v1.5.3`; v1.5.4 was an untagged interim fix.
-- **Reviewed source baseline:** merged `main` at `69fd857a79f47d81925b7554116f15d8fd1650b2` (PR #79) before release-documentation changes.
-- **CI evidence:** [run 37877818087](https://github.com/vsv2014/MockMate/actions/runs/37877818087), Linux + Windows success. 80 application test files / 567 tests, backend tests, API smoke, build, unsigned validation Windows installer, packaged runtime and real React renderer/navigation smoke.
-- **Production readiness:** **NOT CERTIFIED.** Signed public workflow and physical host/device coverage were not observed.
+- **Candidate source:** branch `arena/b60e7f0c-mockmate` / PR #85; version `1.6.0` in root `package.json` and `package-lock.json`. It is not merged to `main`, tagged, or published.
+- **Latest stable public Windows release:** `v1.5.3`. The v1.5.4 hotfix and v1.5.5 source candidate were not stable releases.
+- **Local candidate checks (2026-10-11):** `npm test` — **83 files / 627 tests passed**; `npm run smoke:api` — **4 tests passed**; `npm run build`, `npm run verify:vite-output`, `git diff --check`, and the platform, React 19, Vitest 5, dev-tooling, auth/config, and Express 5 contract checks passed. These ran under the sandbox's Node 22.22.3; the release workflow pins Node 24, as required by `package.json`.
+- **Prior PR #85 CI (reliability-only head `a2da47ca`):** [run 38116194648](https://github.com/vsv2014/MockMate/actions/runs/38116194648), Linux and Windows jobs passed before the v1.6.0 screens/version/docs were added. CI must run again against the pushed candidate commit.
+- **Production readiness:** **NOT CERTIFIED.** This source verification does not include a signed public build, physical Windows install/audio/share-preview test, or a real hosted WSS/Mongo/Deepgram usage reconciliation.
 
 | Item | Status | Evidence / remaining requirement |
 |---|---|---|
-| Package/lock version | CODE VERIFIED | `package.json.version` and root `package-lock.json.version` / root package entry are `1.5.5`. |
-| Latest merged desktop code CI | CI PASS | [Run 37877818087](https://github.com/vsv2014/MockMate/actions/runs/37877818087): 80 application files/567 tests, backend tests, smoke/build, Linux and Windows jobs succeeded. Re-run for any changed candidate commit. |
-| Packaged Windows React launch/navigation | CI PASS (unsigned) | PR #70 added actual renderer smoke; latest PR #79 Windows CI passed. **This is not a clean physical signed-install certification.** |
-| Windows Authenticode signature/publisher | NOT VERIFIED | Production release requires `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`, `MOCKMATE_WINDOWS_PUBLISHER`; no signed v1.5.5 public workflow result recorded. |
-| Physical Windows clean install / updater | NOT VERIFIED | Verify signed `v1.5.5` over the last published `v1.5.3`, including unsigned-to-signed transition. No v1.5.4 public release exists. |
-| Packaged Solo practice / evaluation soak | NOT VERIFIED | Physical Windows speaker/microphone/provider session, report and restart; attach build ID and evidence. |
-| Packaged Live mic/system audio soak | NOT VERIFIED | Use real devices, noisy interviews, source changes, sleep/wake, reconnect, pause/Stop, turn commit, hints, and long session. |
-| Live interrupted renderer notes recovery | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | PR #75 account-scoped read-only checkpoint. Kill/relaunch physical app and verify recovered question/hint notes; no provider calls automatically resume. |
-| Managed Live streaming gateway + metering | CODE/UNIT VERIFIED; HOSTED UNVERIFIED | PR #72 authenticated backend WSS, per-segment cap and reservation; PR #74 graceful settlement drain. Need Mongo/TLS/WSS/Deepgram E2E, real provider-usage reconciliation, abrupt-crash ledger recovery. |
-| Account-switch and RAG privacy | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | PR #77 blocks stale account auth/embedding responses and preserves corrupt document/history bytes; physical multi-account check outstanding. |
-| Saved jobs / Resume Studio migration | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | PR #79 scope v3→v4 + per-account data; first-account legacy-global ownership and A/B sign-in/Guest/delete-account must be checked on real upgrade. |
-| Diagnostics export, redaction, Product Intelligence | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | Sanitizer tests pass; verify physical export contains no tokens, prompts, transcript raw content or screenshots. Product Intelligence is local/runtime adaptive telemetry only. |
-| Windows overlay content protection | UNKNOWN | Actual Zoom / Meet / Teams full-display and window share previews not recorded. Content protection is OS/capture-mode-dependent. |
-| Linux overlay content protection | NOT SUPPORTED | Linux has no equivalent implemented OS content-protection API. |
-| Hosted Vercel build/deployment | CODE SHAPE FIXED; HOSTED VERIFY | Vercel Hobby 12-function shape (PR #46); production HTTPS deployments, gateway WS routing and end-to-end provider/auth checks not certified. |
-| 120-minute continuous usage | NOT VERIFIED | Code handles recovery paths; cannot claim a two-hour session without recorded timed test. |
-| Electron / React / Vite / Vitest platform upgrades | CODE/CI VERIFIED; DEVICE UNVERIFIED | Electron 44, React 19, Vite 8, Vitest 5; include packaged real-device check for audio, drag, modal, copy, updater. |
+| Package/lock version | CODE VERIFIED | Root `package.json.version` and `package-lock.json` root version are `1.6.0`. No stable v1.6.0 tag/release has been created. |
+| Local candidate checks | PASS (sandbox) | 83 test files / 627 tests; API smoke 4/4; Vite production build/output check; platform/React 19/Vitest 5/dev-tooling/auth-config/Express 5 contracts; `git diff --check`. Re-run CI on exact pushed commit with supported Node 24. |
+| PR #85 reliability CI | PASS (prior head only) | [Run 38116194648](https://github.com/vsv2014/MockMate/actions/runs/38116194648) passed Linux and Windows before v1.6.0 screen/version changes. Fresh CI pending. |
+| Home / Interview Kits / Ready Room | CODE + UNIT VERIFIED; PACKAGED UI UNVERIFIED | App shell navigation, Kit persistence/profile mapping and Kit-scoped history/drafts are wired and covered by library/history tests. Exercise all flows in the packaged candidate, including Ready Room → Live. |
+| Packaged Windows React launch/navigation | CI PASS (prior head, unsigned); current head pending | Earlier PR #85 CI built and smoke-tested a Windows validation artifact. It is not the current candidate CI result or a physical signed-install certification. |
+| Windows Authenticode signature/publisher | NOT VERIFIED | Public release requires `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`, and `MOCKMATE_WINDOWS_PUBLISHER`, plus signature verification on installer and executable. |
+| Physical Windows clean install / updater | NOT VERIFIED | Test a signed v1.6.0 over the last published v1.5.3, including the unsigned-to-signed transition and local-data preservation. No v1.5.4 public release exists. |
+| Packaged Solo practice / evaluation soak | NOT VERIFIED | Test with actual speaker/microphone/provider, complete evaluation, and restart on Windows. |
+| Packaged Live mic/system audio soak | NOT VERIFIED | Test real devices, noisy interviews, source changes, sleep/wake, reconnect, pause/Stop, turn commit, hints, and a sustained session. |
+| Live interrupted renderer notes recovery | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | Recovery is read-only and must not automatically resume audio, transcription, generation, or billing. Kill/relaunch physical app and verify it. |
+| Managed Live gateway + metering | CODE/UNIT VERIFIED; HOSTED UNVERIFIED | Real Mongo/TLS/WSS/Deepgram E2E, provider-usage reconciliation, and abrupt-crash ledger recovery remain outstanding if Managed AI is shipped. |
+| Account-switch and RAG privacy | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | PR #77 coverage blocks stale account auth/embedding responses and preserves corrupt document/history bytes; test physical multi-account upgrade. |
+| Saved jobs / Resume Studio migration | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | PR #79 scope v3→v4; verify first-account legacy-global ownership, A/B sign-in, Guest, logout/relogin, and account deletion on a real upgrade. |
+| Diagnostics export / redaction / Product Intelligence | CODE/UNIT VERIFIED; DEVICE UNVERIFIED | Verify physical export contains no keys/tokens, prompts, transcripts, or screenshots. Product Intelligence remains local/runtime adaptive telemetry only. |
+| Meeting share-preview / content protection | NOT VERIFIED | Record actual Zoom/Meet/Teams window and full-display previews. Content protection is platform/mode-dependent and does not guarantee invisibility. Linux protection is unsupported. |
+| Default desktop backend | CODE VERIFIED | `managedApiBase` is empty by default. The local UI/AI service is expected; Guest mode bypasses account authentication, not the local service. |
+| Hosted Vercel / WSS deployment | HOSTED UNVERIFIED | Deployment shape is constrained to 12 Vercel functions; validate production HTTPS/WSS routing, Mongo, and provider use before enabling Managed AI. |
+| 120-minute continuous usage | NOT VERIFIED | Do not claim a two-hour session without timed packaged evidence. |
 | macOS/Linux public installers | NOT IN CURRENT RELEASE WORKFLOW | Public workflow builds signed Windows NSIS only; do not claim macOS DMG or Linux AppImage publication. |
-| Release freeze | OPEN | Freeze only after the evidence gates, update signer/release metadata, tag/release, then post-publish smoke. |
+| Release freeze | OPEN | Candidate is unmerged and untagged. Complete all checklist/evidence gates on reviewed `main` before creating a v1.6.0 tag or publishing. |
 
-**Release decision as recorded here: BLOCKED pending physical Windows, trusted signing, and—if Managed AI is published—hosted WebSocket/Mongo/Deepgram reconciliation.**
+**Release decision: BLOCKED pending fresh CI on the final candidate, physical Windows checks, trusted signing, and—if Managed AI is shipped—hosted WSS/Mongo/Deepgram reconciliation.**
 
 Evidence templates: [Live dry run](LIVE_DRY_RUN_TEMPLATE.md), [Live audit](LIVE_BUG_AUDIT.md), [release checklist](../RELEASE_CHECKLIST.md), [screen-share matrix](../STEALTH_BROWSER_MATRIX.md).

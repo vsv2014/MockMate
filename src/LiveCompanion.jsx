@@ -144,8 +144,9 @@ function stopSpeaking() { window.speechSynthesis?.cancel() }
 
 
 // ── Setup screen ──────────────────────────────────────────────────────────────
-function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardLive, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity }) {
-  const [profile, setProfile] = useState(loadProfile)
+function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardLive, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, initialProfile, initialKit, onProfileChange }) {
+  const kitScoped = Boolean(initialKit?.id && initialProfile)
+  const [profile, setProfile] = useState(() => initialProfile ? { ...loadProfile(), ...initialProfile } : loadProfile())
   const [audioSources, setAudioSources] = useState([])
   const [sourceId, setSourceId] = useState('microphone')
   const [providers, setProviders] = useState([])       // configured only (for default + validation)
@@ -192,7 +193,12 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
 
   useEffect(() => { persistModelSelection(provider) }, [provider])
 
-  function patch(p) { const next = { ...profile, ...p }; setProfile(next); saveProfile(next) }
+  function patch(p) {
+    const next = { ...profile, ...p }
+    setProfile(next)
+    if (kitScoped) onProfileChange?.(next)
+    else saveProfile(next)
+  }
   const managed = isManaged()   // managed → hide model picker, let the server auto-route
   const [pdfMsg, setPdfMsg] = useState('')
   const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
@@ -226,7 +232,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   // Mic preflight is amber (may hear you); SysAudio on Win/mac is green.
   const micMode = sourceId === 'microphone'
   const audioPreflightColor = micMode ? '#fbbf24' : (isLinux ? '#fbbf24' : '#4ade80')
-  const selectedExtraCount = documentMeta.filter(d => d.type !== 'resume' && d.type !== 'jd' && d.selected !== false).length
+  const selectedExtraCount = kitScoped ? 0 : documentMeta.filter(d => d.type !== 'resume' && d.type !== 'jd' && d.selected !== false).length
   const contextSourceCount = Number(!!profile.resume?.trim()) + Number(!!profile.jobDescription?.trim()) + selectedExtraCount
 
   const inp = { width: '100%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text1, padding: '10px 12px', borderRadius: T.rCtrl, fontSize: 13, boxSizing: 'border-box', fontFamily: T.font }
@@ -471,7 +477,9 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           </div>
         </Field>
         <Field label="Knowledge & notes (checked = used for retrieval)">
-          <Documents hideBioTypes onLibraryChange={setDocumentMeta} />
+          {kitScoped
+            ? <div style={{ background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, padding: '10px 12px', color: T.text3, fontSize: 11.5, lineHeight: 1.5 }}>The account-wide document library is not attached to this Kit session. Its resume, job description, and focus notes stay isolated to this opportunity.</div>
+            : <Documents hideBioTypes onLibraryChange={setDocumentMeta} />}
         </Field>
         </Section>
 
@@ -516,11 +524,18 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
         </Section>
 
         <button disabled={!canStart} onClick={() => {
-          if (profile.resume?.trim()) addDoc({ name: 'Resume', type: 'resume', text: profile.resume })
-          if (profile.jobDescription?.trim()) addDoc({ name: 'Job Description', type: 'jd', text: profile.jobDescription })
-          const selectedDocumentIds = getSelectedDocIds()
+          // Kit-owned materials remain separate from the shared profile/document library.
+          if (!kitScoped) {
+            if (profile.resume?.trim()) addDoc({ name: 'Resume', type: 'resume', text: profile.resume })
+            if (profile.jobDescription?.trim()) addDoc({ name: 'Job Description', type: 'jd', text: profile.jobDescription })
+          }
+          const selectedDocumentIds = kitScoped ? [] : getSelectedDocIds()
           const interviewConfig = buildInterviewConfig({ profile, selectedDocumentIds, source: 'live' })
-          onStart({ profile, sourceId, provider: managed ? '' : provider, interviewConfig })
+          if (kitScoped) {
+            interviewConfig.kitId = initialKit.id
+            interviewConfig.kitName = initialKit.name || 'Interview Kit'
+          }
+          onStart({ profile, sourceId, provider: managed ? '' : provider, interviewConfig, kitId: initialKit?.id, kitName: initialKit?.name })
         }}
           style={{ position: 'sticky', bottom: 0, zIndex: 3, height: 52, background: canStart ? T.accent : T.surface2, color: canStart ? '#fff' : T.text3, border: `1px solid ${canStart ? 'rgba(103,232,249,0.45)' : T.border}`, borderRadius: T.rCtrl, boxShadow: '0 -10px 24px rgba(6,12,22,0.78)', fontSize: 15, fontWeight: 700, cursor: canStart ? 'pointer' : 'default', fontFamily: T.font }}>
           Start Live →
@@ -2260,7 +2275,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, onSessionEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId }) {
+export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, onSessionEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId, initialProfile, initialKit, onProfileChange }) {
   const [phase, setPhase] = useState('setup')
   const [sessionConfig, setSessionConfig] = useState(null)
   const [sessionNotes, setSessionNotes] = useState(null)
@@ -2316,6 +2331,9 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
   if (phase === 'setup') return (
     <SetupScreen
       recoveredLive={recoveredLive}
+      initialProfile={initialProfile}
+      initialKit={initialKit}
+      onProfileChange={onProfileChange}
       onRecoverLive={() => {
         setSessionNotes({ recovered: true, checkpoint: recoveredLive })
         setPhase('notes')
@@ -2355,7 +2373,7 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
           const stored = saveSession({
             report: data.report,
             transcript: data.conversation,
-            config: { domainLabel: (sessionConfig?.profile?.targetRole) || 'Live interview', interviewSetup: sessionConfig?.interviewConfig },
+            config: { domainLabel: (sessionConfig?.profile?.targetRole) || 'Live interview', kitId: sessionConfig?.kitId, kitName: sessionConfig?.kitName, interviewSetup: sessionConfig?.interviewConfig },
             profile: sessionConfig?.profile || {},
           })
           if (!stored) nextData = { ...data, report: { ...data.report, _storageWarning: 'This session could not be saved. Copy the transcript before leaving this screen.' } }

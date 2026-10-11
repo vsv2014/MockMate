@@ -1,6 +1,25 @@
 # Changelog
 
-## v1.5.5 — 2026-10-10 (release candidate; not published)
+## v1.6.0 — 2026-10-11 (release candidate; not published)
+
+Feature-release candidate on PR #85’s branch. Not merged, tagged, or published. The latest published stable release remains v1.5.3; v1.5.5 was an unpublished source candidate. Full notes and release gates: [`docs/RELEASE_NOTES_v1.6.0.md`](docs/RELEASE_NOTES_v1.6.0.md).
+
+### Interview preparation workspace
+- Add Home, Interview Kits, and Ready Room screens to the desktop shell, including Kit creation/editing, active-Kit selection, and Ready Room handoffs.
+- Keep opportunity context, Solo drafts, and saved-session snapshots Kit-scoped; prevent Kit sessions from attaching the shared document library or overwriting the shared profile.
+- Show honest pre-flight states for local services, configured providers, real AI/voice checks, and screen-share privacy; disclose possible provider usage. The demo preview uses synthetic data and disables external tests.
+
+### Live and provider reliability
+- Distinguish quota, rate-limit, transient, and mixed provider errors; honor retry metadata and preserve cooling-down/failover behavior.
+- Preserve partial Live answers on stream failure without silently replaying a paid request; retry Deepgram token-grant rate limits and keep quota/auth errors actionable.
+- Preserve the Live failover budget on Windows, wait for the local API service before key-reload restart, and improve bounded local-service/renderer lifecycle handling while retaining packaged `child_process.fork()`.
+
+### Candidate verification and release boundary
+- Local v1.6.0 candidate checks passed: 83 test files / 627 tests, API smoke 4/4, production build, Vite-output verification, platform/React 19/Vitest 5/dev-tooling/auth-config/Express 5 contract checks, and `git diff --check`. These ran under Node 22.22.3; release CI pins Node 24.
+- The PR #85 reliability-only head passed Linux/Windows Desktop CI; fresh CI is required for the final pushed candidate.
+- Physical Windows installation/audio, signed updater, actual meeting share-preview, and hosted WSS/Mongo/Deepgram usage reconciliation remain release gates. See [`docs/evidence/VALIDATION_STATUS.md`](docs/evidence/VALIDATION_STATUS.md).
+
+## v1.5.5 — 2026-10-10 (superseded release candidate; never published)
 
 Windows desktop release candidate incorporating the previously untagged v1.5.4 packaged-process hotfix and the October 4–9 reliability, privacy, metering, and platform updates. **This entry describes code merged into `main`, not a published or real-device-certified installer.**
 

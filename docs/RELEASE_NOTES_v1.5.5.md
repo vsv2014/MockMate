@@ -1,6 +1,6 @@
-# MockMate v1.5.5 — Release Candidate Notes
+# MockMate v1.5.5 — Superseded Release Candidate Notes
 
-**Status (2026-10-10): prepared in source, not published or certified.** This is a Windows-first candidate. `package.json` and `package-lock.json` have version `1.5.5`; the latest actual public GitHub release remains `v1.5.3`. The v1.5.4 packaged-service hotfix was committed but not separately released.
+**Historical status (2026-10-10): prepared in source, never published or certified. Superseded by the v1.6.0 candidate on 2026-10-11.** This is a Windows-first candidate. `package.json` and `package-lock.json` have version `1.5.5`; the latest actual public GitHub release remains `v1.5.3`. The v1.5.4 packaged-service hotfix was committed but not separately released.
 
 The normal public release workflow builds **signed Windows x64 NSIS** and publishes `MockMate-Setup-1.5.5.exe`, `latest.yml`, and a blockmap only after signing/signature and packaged-runtime checks pass. The GitHub Actions PR installer is an **unsigned validation artifact**, not a trusted production update. The current workflow does not create macOS DMG or Linux AppImage releases.
 

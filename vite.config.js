@@ -6,10 +6,27 @@ import { readFileSync } from 'fs'
 // App version injected at build time so the renderer (What's New modal) can show it without an
 // IPC round-trip — works in the browser dev server and the packaged app alike.
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url)))
+const additionalServerAllowedHosts = String(process.env.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS || '')
+  .split(/[\\s,]+/).map(host => host.trim()).filter(Boolean)
+const journeyPreviewMode = process.env.MOCKMATE_JOURNEY_PREVIEW === '1'
+
+const journeyPreviewEntry = {
+  name: 'mockmate-journey-preview-entry',
+  configureServer(server) {
+    if (!journeyPreviewMode) return
+    server.middlewares.use((request, _response, next) => {
+      if (String(request.url || '').split('?')[0] === '/') {
+        const query = String(request.url || '').includes('?') ? String(request.url).slice(String(request.url).indexOf('?')) : ''
+        request.url = `/journey-preview.html${query}`
+      }
+      next()
+    })
+  },
+}
 
 export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
-  plugins: [react()],
+  plugins: [react(), journeyPreviewEntry],
   build: {
     chunkSizeWarningLimit: 550,
     rolldownOptions: {
@@ -44,9 +61,9 @@ export default defineConfig({
   },
   server: {
     port: 5174,
-    // Keep Vite's safe default host policy. Controlled preview hosts can be
-    // added through __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS rather than opening
-    // the dev server to every Host header.
+    // Keep Vite's safe default host policy. Add only explicit preview host
+    // suffixes through __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS; never open all hosts.
+    ...(additionalServerAllowedHosts.length ? { allowedHosts: additionalServerAllowedHosts } : {}),
     // In dev, proxy /api/* to the local Express shim (server.js). In production
     // on Vercel, /api/* is served by the serverless functions directly.
     proxy: {

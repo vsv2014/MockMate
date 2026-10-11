@@ -87,11 +87,12 @@ const TIPS_BY_TYPE = {
   Mixed: ['Structure the answer before you dive in', 'Be specific — numbers and examples land', 'Pause to think; silence is fine'],
 }
 
-export default function Solo({ onHome, noProviders }) {
+export default function Solo({ onHome, noProviders, initialProfile, kitId, kitName, draftScope, onProfileChange }) {
+  const kitScoped = Boolean(kitId && initialProfile)
   const [phase, setPhase] = useState('setup')   // setup | live | evaluating | report
-  const [profile, setProfile] = useState(loadProfile())
-  const [interviewType, setInterviewType] = useState(() => loadProfile().interviewType || 'Technical')
-  const [voiceStyle, setVoiceStyle] = useState(() => loadProfile().voiceStyle || 'Professional')
+  const [profile, setProfile] = useState(() => initialProfile ? { ...initialProfile } : loadProfile())
+  const [interviewType, setInterviewType] = useState(() => initialProfile?.interviewType || loadProfile().interviewType || 'Technical')
+  const [voiceStyle, setVoiceStyle] = useState(() => initialProfile?.voiceStyle || loadProfile().voiceStyle || 'Professional')
   const [followupDepth, setFollowupDepth] = useState('normal')   // Follow-ups: light|normal|deep
   const [pdfMsg, setPdfMsg] = useState('')
   const [relentless, setRelentless] = useState(false)
@@ -105,7 +106,7 @@ export default function Solo({ onHome, noProviders }) {
   const modelOptions = curateModelOptions(models)
   const providerNames = configuredProviderNames(models, providers)
   const [setupError, setSetupError] = useState('')
-  const [resumeDraft, setResumeDraft] = useState(() => loadSoloDraft())
+  const [resumeDraft, setResumeDraft] = useState(() => loadSoloDraft(draftScope))
   // Voice = Deepgram ONLY. The browser SpeechRecognition API silently fails inside
   // Electron, which is what made the mic "not work". No Deepgram key → type your answers.
 
@@ -185,9 +186,9 @@ export default function Solo({ onHome, noProviders }) {
       elapsedMs: Math.max(0, Date.now() - startedAt.current),
       profile, interviewConfig: interviewConfigRef.current,
       interviewType, voiceStyle, followupDepth, relentless, tts,
-    }), 250)
+    }, draftScope), 250)
     return () => clearTimeout(timer)
-  }, [phase, transcript, answer, practiceQ, currentQuestion, profile, interviewType, voiceStyle, followupDepth, relentless, tts])
+  }, [phase, transcript, answer, practiceQ, currentQuestion, profile, interviewType, voiceStyle, followupDepth, relentless, tts, draftScope])
 
   // Unmount: invalidate all in-flight work
   useEffect(() => () => {
@@ -323,14 +324,23 @@ export default function Solo({ onHome, noProviders }) {
   )
   const nudge = liveStats ? liveNudge(liveStats, { spoken: !!answerSpokenRef.current }) : null
 
-  function saveProfile(p) { setProfile(p); persistProfile(p) }
+  function saveProfile(p) {
+    setProfile(p)
+    if (kitScoped) onProfileChange?.(p)
+    else persistProfile(p)
+  }
   function patchProfile(patch) { saveProfile({ ...profile, ...patch }) }
 
   const [selectedDocIds, setSelectedDocIds] = useState(() => getSelectedDocIds())
   const isDevLocal = Boolean(import.meta.env?.DEV)
     && typeof window !== 'undefined'
     && /^(localhost|127\.0\.0\.1)$/i.test(window.location?.hostname || '')
-  const hasContext = !!(String(profile.resume || '').trim().length > 40 || String(profile.jobDescription || '').trim().length > 40 || selectedDocIds.length > 0)
+  const hasContext = !!(
+    String(profile.resume || '').trim().length > 40
+    || String(profile.jobDescription || '').trim().length > 40
+    || (!kitScoped && selectedDocIds.length > 0)
+    || (kitScoped && [profile.targetRole, profile.targetCompany, profile.customPrompt].some(value => String(value || '').trim()))
+  )
   const canStartSolo = !noProviders && (hasContext || isDevLocal)
 
   async function requestTurn(current, attempt = 0, gen = null) {
@@ -417,15 +427,19 @@ export default function Solo({ onHome, noProviders }) {
 
   function resumeInterrupted() {
     const draft = resumeDraft
-    if (!draft?.transcript?.length) { clearSoloDraft(); setResumeDraft(null); return }
+    if (!draft?.transcript?.length) { clearSoloDraft(draftScope); setResumeDraft(null); return }
     const restoredProfile = { ...profile, ...(draft.profile || {}) }
-    setProfile(restoredProfile); persistProfile(restoredProfile)
+    saveProfile(restoredProfile)
     setInterviewType(draft.interviewType || restoredProfile.interviewType || 'Technical')
     setVoiceStyle(draft.voiceStyle || restoredProfile.voiceStyle || 'Professional')
     setFollowupDepth(draft.followupDepth || 'normal')
     setRelentless(!!draft.relentless); setTts(draft.tts !== false)
     sessionIdRef.current = draft.sessionId || createSessionId()
-    interviewConfigRef.current = draft.interviewConfig || buildInterviewConfig({ profile: restoredProfile, selectedDocumentIds: getSelectedDocIds(), source: 'solo' })
+    interviewConfigRef.current = draft.interviewConfig || buildInterviewConfig({ profile: restoredProfile, selectedDocumentIds: kitScoped ? [] : getSelectedDocIds(), source: 'solo' })
+    if (kitScoped && !draft.interviewConfig) {
+      interviewConfigRef.current.kitId = kitId
+      interviewConfigRef.current.kitName = kitName || 'Interview Kit'
+    }
     sessionActiveRef.current = true
     startLockRef.current = false; submitLockRef.current = false
     const restored = draft.transcript.slice(-300)
@@ -450,7 +464,7 @@ export default function Solo({ onHome, noProviders }) {
       return
     }
     startLockRef.current = true
-    clearSoloDraft(); setResumeDraft(null)
+    clearSoloDraft(draftScope); setResumeDraft(null)
     sessionIdRef.current = createSessionId()
     sessionActiveRef.current = true
     turnGen.current.bump()
@@ -470,13 +484,21 @@ export default function Solo({ onHome, noProviders }) {
 
     const resume = String(profile.resume || '').trim()
     const jd = String(profile.jobDescription || '').trim()
-    if (resume.length > 40) addDoc({ name: 'Resume (pasted)', type: 'resume', text: resume })
-    if (jd.length > 40) addDoc({ name: 'Job Description (pasted)', type: 'jd', text: jd })
+    // Shared-profile Solo may mirror pasted materials into the shared local doc library.
+    // A Kit session keeps its materials Kit-owned and snapshots them without that side effect.
+    if (!kitScoped) {
+      if (resume.length > 40) addDoc({ name: 'Resume (pasted)', type: 'resume', text: resume })
+      if (jd.length > 40) addDoc({ name: 'Job Description (pasted)', type: 'jd', text: jd })
+    }
     interviewConfigRef.current = buildInterviewConfig({
       profile,
-      selectedDocumentIds: getSelectedDocIds(),
+      selectedDocumentIds: kitScoped ? [] : getSelectedDocIds(),
       source: 'solo',
     })
+    if (kitScoped) {
+      interviewConfigRef.current.kitId = kitId
+      interviewConfigRef.current.kitName = kitName || 'Interview Kit'
+    }
     warmDocs(interviewConfigRef.current.selectedDocumentIds)
 
     setPhase('live')
@@ -574,7 +596,7 @@ export default function Solo({ onHome, noProviders }) {
         return
       }
       sessionActiveRef.current = false
-      clearSoloDraft()
+      clearSoloDraft(draftScope)
       onHome()
       return
     }
@@ -608,7 +630,7 @@ export default function Solo({ onHome, noProviders }) {
       phaseRef.current = 'report'
     }
     sessionActiveRef.current = false
-    clearSoloDraft()
+    clearSoloDraft(draftScope)
     setResumeDraft(null)
     setEvaluating(false)
     trackProductEvent('solo_evaluated', { ok: true })
@@ -623,7 +645,7 @@ export default function Solo({ onHome, noProviders }) {
     voiceRef.current = false
     try { speech.stop() } catch {}
     sessionActiveRef.current = false
-    clearSoloDraft(); setResumeDraft(null)
+    clearSoloDraft(draftScope); setResumeDraft(null)
     sessionIdRef.current = null
     turnGen.current.bump()
     ttsGen.current.bump()
@@ -668,7 +690,7 @@ export default function Solo({ onHome, noProviders }) {
           <strong style={{ color: '#5eead4' }}>Interrupted practice found.</strong> {resumeDraft.transcript.length} saved turn{resumeDraft.transcript.length === 1 ? '' : 's'} can be recovered.
           <span style={{ float: 'right', display: 'inline-flex', gap: 6 }}>
             <button onClick={resumeInterrupted} style={{ ...textInput, width: 'auto', padding: '5px 10px', cursor: 'pointer' }}>Resume</button>
-            <button onClick={() => { clearSoloDraft(); setResumeDraft(null) }} style={{ ...textInput, width: 'auto', padding: '5px 10px', cursor: 'pointer' }}>Discard</button>
+            <button onClick={() => { clearSoloDraft(draftScope); setResumeDraft(null) }} style={{ ...textInput, width: 'auto', padding: '5px 10px', cursor: 'pointer' }}>Discard</button>
           </span>
         </div>
       )}
@@ -692,7 +714,7 @@ export default function Solo({ onHome, noProviders }) {
 
       <Section title="Your materials" hint="Resume + JD for the interviewer · optional knowledge bank for grounding.">
         <div style={{ fontSize: 11.5, color: T.text3, lineHeight: 1.45, marginBottom: 4 }}>
-          Paste resume &amp; JD here (required for good questions). Extra knowledge banks go below — checked items are retrieved during the session.
+          {kitScoped ? 'Use this Kit’s role, resume, JD, and focus notes for practice. The shared document library is intentionally not attached.' : 'Paste resume & JD here (required for good questions). Extra knowledge banks go below — checked items are retrieved during the session.'}
         </div>
         <div>
           <Label>Resume</Label>
@@ -724,7 +746,9 @@ export default function Solo({ onHome, noProviders }) {
         )}
         <div>
           <Label>Knowledge & notes (optional)</Label>
-          <Documents hideBioTypes onLibraryChange={() => setSelectedDocIds(getSelectedDocIds())} />
+          {kitScoped
+            ? <div style={{ fontSize: 11.5, color: T.text3, lineHeight: 1.5 }}>The shared document library is not attached to this Kit session, so materials from another opportunity cannot bleed in. Add role-specific notes to the Kit’s Interview focus field.</div>
+            : <Documents hideBioTypes onLibraryChange={() => setSelectedDocIds(getSelectedDocIds())} />}
         </div>
       </Section>
 

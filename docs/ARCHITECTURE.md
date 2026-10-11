@@ -1,6 +1,6 @@
 # MockMate — Architecture
 
-This document describes the implementation on the **v1.5.5 source candidate**, not a published or device-certified v1.5.5 release. Roadmap items live in `docs/ROADMAP.md`; release evidence lives in `docs/evidence/VALIDATION_STATUS.md`.
+This document describes the implementation on the **v1.6.0 source candidate**, not a published or device-certified v1.6.0 release. Roadmap items live in `docs/ROADMAP.md`; release evidence lives in `docs/evidence/VALIDATION_STATUS.md`.
 
 ## 1. System shape
 
@@ -20,7 +20,11 @@ Window modes include dashboard/app, overlay, camera-anchored teleprompter and pi
 
 Windows/macOS use Electron content protection where supported. This is a partial protection mechanism, not a universal invisibility guarantee; meeting-app share preview must still be verified. Linux does not provide the same protected-overlay guarantee.
 
-Latest actually published Windows installer: **v1.5.3**. Source/manifests target **v1.5.5**, but the signed public v1.5.5 installer is not yet published. The automated release workflow emits Windows x64 NSIS only; macOS/Linux source and packaging code are not claimed as current public DMG/AppImage artifacts.
+Latest actually published Windows installer: **v1.5.3**. Source/manifests target **v1.6.0**, but the signed public v1.6.0 installer is not yet published. The automated release workflow emits Windows x64 NSIS only; macOS/Linux source and packaging code are not claimed as current public DMG/AppImage artifacts.
+
+### Interview preparation screens and Kit context
+
+The desktop shell includes Home, Interview Kits, and Ready Room. Interview Kits keep opportunity-specific role/company, resume/JD, preferences, and focus notes in account-scoped local storage. Solo drafts and saved session snapshots can be Kit-scoped; Kit sessions do not attach the account-wide document library or overwrite the shared profile. Ready Room reports local service/provider/test/privacy states separately and does not equate a configured key with a successful provider response. Its browser design preview uses synthetic sample data and disables provider, microphone, and OS-capture tests.
 
 ## 3. Live interview pipeline
 
@@ -129,6 +133,6 @@ Still private-beta gated: PDF/DOCX mobile extraction, real Duo pairing/remote co
 
 ## 12. Release/validation boundaries
 
-Code review and green CI do not equal a field-proven public release. The **v1.5.5 candidate** requires a trusted Authenticode signed installer, physical Windows Solo/Live/reconnect/updater tests, two-account migration, actual Zoom/Meet/Teams share-preview evidence, and real hosted WSS/Mongo/Deepgram billing validation if shipping Managed AI. See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
+Code review and green CI do not equal a field-proven public release. The **v1.6.0 candidate** requires a trusted Authenticode signed installer, physical Windows Solo/Live/reconnect/updater tests, two-account migration, actual Zoom/Meet/Teams share-preview evidence, and real hosted WSS/Mongo/Deepgram billing validation if shipping Managed AI. See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
 
-Latest pre-documentation code CI: PR #79, **80 application test files / 567 tests**, backend tests, API smoke, production build, and Linux/Windows packaged-runtime/React-renderer checks green ([run 37877818087](https://github.com/vsv2014/MockMate/actions/runs/37877818087)). No signed production v1.5.5 or physical certification is implied.
+The PR #85 reliability-only head passed Linux/Windows Desktop CI ([run 38116194648](https://github.com/vsv2014/MockMate/actions/runs/38116194648)) before the v1.6.0 screen/version changes. The current local candidate passed 83 test files / 627 tests, API smoke, production build/output verification, and `git diff --check`; CI must be rerun on the final pushed candidate. No signed production v1.6.0 or physical certification is implied.

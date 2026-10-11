@@ -14,7 +14,8 @@ const isLinuxUA = typeof navigator !== 'undefined' && /linux/i.test(navigator.us
 
 const NAV = [
   { id: 'home', icon: '🏠', label: 'Home' },
-  { id: 'companion', icon: '🎯', label: 'Live Interview' },
+  { id: 'kits', icon: '▤', label: 'Interview Kits' },
+  { id: 'ready-room', icon: '🎯', label: 'Ready Room' },
   { id: 'solo', icon: '🤖', label: 'Solo Practice' },
   { id: 'duo', icon: '👥', label: 'Duo (Beta)' },
   { id: 'jobs', icon: '💼', label: 'Jobs' },
@@ -165,8 +166,8 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
                     }}>
                     <span style={{ fontSize: 15, width: sidebarIcons ? 'auto' : 18, textAlign: 'center' }}>{n.icon}</span>
                     {!sidebarIcons && <span style={{ flex: 1 }}>{n.label}</span>}
-                    {!sidebarIcons && n.id === 'companion' && meetingActive && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444' }} />}
-                    {sidebarIcons && n.id === 'companion' && meetingActive && (
+                    {!sidebarIcons && n.id === 'ready-room' && meetingActive && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444' }} />}
+                    {sidebarIcons && n.id === 'ready-room' && meetingActive && (
                       <span style={{ position: 'absolute', top: 8, right: 10, width: 6, height: 6, borderRadius: '50%', background: '#ef4444' }} />
                     )}
                   </button>
