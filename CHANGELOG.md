@@ -16,7 +16,7 @@ Feature-release candidate on PR #85’s branch. Not merged, tagged, or published
 
 ### Candidate verification and release boundary
 - Local v1.6.0 candidate checks passed: 83 test files / 627 tests, API smoke 4/4, production build, Vite-output verification, platform/React 19/Vitest 5/dev-tooling/auth-config/Express 5 contract checks, and `git diff --check`. These ran under Node 22.22.3; release CI pins Node 24.
-- The PR #85 reliability-only head passed Linux/Windows Desktop CI; fresh CI is required for the final pushed candidate.
+- Current PR #85 candidate passed Linux/Windows Desktop CI and Vercel checks ([run 38118183667](https://github.com/vsv2014/MockMate/actions/runs/38118183667)).
 - Physical Windows installation/audio, signed updater, actual meeting share-preview, and hosted WSS/Mongo/Deepgram usage reconciliation remain release gates. See [`docs/evidence/VALIDATION_STATUS.md`](docs/evidence/VALIDATION_STATUS.md).
 
 ## v1.5.5 — 2026-10-10 (superseded release candidate; never published)

@@ -27,7 +27,7 @@ This is a feature release: it adds the Home → Interview Kits → Ready Room pr
 
 ## Verification and release gates
 
-The PR #85 reliability-only head previously passed Linux/Windows Desktop CI ([run 38116194648](https://github.com/vsv2014/MockMate/actions/runs/38116194648)). The v1.6.0 candidate has since passed local checks: **83 test files / 627 tests**, API smoke **4/4**, production build, Vite-output verification, platform/React 19/Vitest 5/dev-tooling/auth-config/Express 5 contract checks, and `git diff --check`. These ran under Node 22.22.3 in the sandbox; the release workflow pins Node 24. Fresh CI for the final pushed candidate is still required. Full evidence is in `docs/evidence/VALIDATION_STATUS.md`.
+The PR #85 reliability-only head previously passed Linux/Windows Desktop CI ([run 38116194648](https://github.com/vsv2014/MockMate/actions/runs/38116194648)). The v1.6.0 candidate has since passed local checks: **83 test files / 627 tests**, API smoke **4/4**, production build, Vite-output verification, platform/React 19/Vitest 5/dev-tooling/auth-config/Express 5 contract checks, and `git diff --check`. These ran under Node 22.22.3 in the sandbox; the release workflow pins Node 24. The final pushed candidate passed Linux/Windows Desktop CI and Vercel checks in [run 38118183667](https://github.com/vsv2014/MockMate/actions/runs/38118183667). Full evidence is in `docs/evidence/VALIDATION_STATUS.md`.
 
 Before a public release, still required:
 - Trusted Authenticode signing and publisher verification for the Windows installer and app executable.

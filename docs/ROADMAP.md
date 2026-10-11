@@ -48,7 +48,7 @@ MockMate is an interview-performance OS: prepare, practice, perform and learn ac
 
 - [x] Local v1.6.0 candidate checks: 83 test files / 627 tests; API smoke (4 tests), production Vite build/output check, and `git diff --check` passed on 2026-10-11.
 - [x] PR #85 reliability-only head: Linux/Windows CI passed; [run 38116194648](https://github.com/vsv2014/MockMate/actions/runs/38116194648).
-- [ ] Fresh Linux/Windows CI for the v1.6.0 screens, package version, and release docs on the final pushed candidate.
+- [x] Fresh Linux/Windows CI for the v1.6.0 screens, package version, and release docs passed on the pushed candidate; [run 38118183667](https://github.com/vsv2014/MockMate/actions/runs/38118183667).
 - [x] Version-generic Windows release workflow.
 - [x] Vercel deployment constrained to Hobby's 12-function limit.
 - [ ] One clean hosted deployment on the final public head.
