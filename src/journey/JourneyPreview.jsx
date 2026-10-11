@@ -71,6 +71,7 @@ function JourneyPreview() {
       onStartPractice={() => setView('practice-preview')}
       onOpenHistory={() => setView('history-preview')}
       onSettings={() => setView('settings-preview')}
+      previewMode
     />
   )
   else if (view === 'kits') content = (
@@ -83,6 +84,7 @@ function JourneyPreview() {
       onDelete={deleteKit}
       onActivate={activateKit}
       onOpenReadyRoom={kit => openReadyRoom(kit || activeKit)}
+      previewMode
     />
   )
   else if (view === 'ready-room') content = (

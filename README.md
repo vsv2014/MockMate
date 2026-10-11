@@ -34,7 +34,7 @@ Use the [latest published GitHub Release](https://github.com/vsv2014/MockMate/re
 ## What v1.6.0 adds over the last published installer
 
 - **Interview workspace:** new Home, Interview Kits and Ready Room screens, integrated with the existing desktop shell and navigation.
-- **Opportunity-safe preparation:** account-scoped Kits hold role/company, resume/JD, experience and interview preferences. Solo drafts and saved sessions can be Kit-scoped; Kit practice avoids shared-profile/document-library leakage.
+- **Opportunity-safe preparation:** account-scoped Kits hold role/company, resume/JD, experience, preferences, focus notes, and selected local supporting files. Kit attachments are used only by that Kit in practice/Live; the shared document library and shared profile remain separate.
 - **Pre-flight clarity:** Ready Room separates service availability, configured providers, real AI/voice tests and meeting share-preview/privacy checks, and discloses possible provider usage.
 - **Live/provider resilience:** better quota/rate-limit classification, retry timing and failover; partial streamed hints survive errors without a silent second paid request; Deepgram grant retry and local-service restart/readiness handling are improved.
 - **Privacy and platform updates carried forward from the unpublished v1.5.5 candidate:** account-scoped saved jobs/Resume Studio drafts, stale-auth/RAG isolation, read-only Live recovery notes, authenticated bounded managed-STT gateway, and refreshed desktop stack.

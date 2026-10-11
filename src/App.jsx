@@ -26,6 +26,7 @@ import ApiKeysPanel from './ApiKeys'
 import { getAiMode } from './lib/aiMode'
 import { getAnswerStyle, setAnswerStyle, getScreenshotSpeed, setScreenshotSpeed, screenshotStyle, getAutoSkip, setAutoSkip, getDocThreshold, setDocThreshold } from './lib/aiSettings'
 import { loadSessions, deleteSession } from './history'
+import { removeKitDocs } from './lib/docs'
 import { scoreColor, TYPE_LABEL } from './lib/ui'
 import { CODING_LANGUAGES } from './lib/languages'
 import { loadProfile, saveProfile } from './lib/profile'
@@ -171,7 +172,13 @@ function ElectronShell({ auth }) {
     const remaining = kits.filter(kit => kit.id !== id)
     const next = { ...kitState, kits: remaining, activeKitId: kitState.activeKitId === id ? (remaining[0]?.id || null) : kitState.activeKitId }
     const ok = commitKitState(next)
-    if (ok) setLaunchKitId(current => current === id ? null : current)
+    if (ok) {
+      if (!removeKitDocs(id)) {
+        diagnostic('kits', 'material_cleanup_failed', {}, 'warn')
+        window.alert('The Kit was deleted, but its local attachments could not be cleared. Check device storage and remove them before sharing this device.')
+      }
+      setLaunchKitId(current => current === id ? null : current)
+    }
     return ok
   }
 

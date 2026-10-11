@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { T } from './auth/tokens'
 import {
-  listDocs, addDoc, removeDoc, inferDocType, setDocSelected, setDocType,
+  listDocs, listKitDocs, addDoc, removeDoc, removeKitDoc, inferDocType,
+  setDocSelected, setKitDocSelected, setDocType, setKitDocType,
   DOC_TYPES, DOC_TYPE_LABELS,
 } from './lib/docs'
 import { extractPdfText, MAX_LOCAL_PDF_BYTES } from './pdf'
@@ -10,10 +11,10 @@ const MAX_LOCAL_TEXT_BYTES = 10 * 1024 * 1024
 
 /**
  * Documents panel — RAG library.
- * @param {{ hideBioTypes?: boolean, onLibraryChange?: (docs: object[]) => void }} props
+ * @param {{ hideBioTypes?: boolean, onLibraryChange?: (docs: object[]) => void, kitId?: string|null }} props
  */
-export default function Documents({ hideBioTypes = false, onLibraryChange } = {}) {
-  const [docs, setDocs] = useState(() => listDocs())
+export default function Documents({ hideBioTypes = false, onLibraryChange, kitId = null } = {}) {
+  const [docs, setDocs] = useState(() => kitId ? listKitDocs(kitId) : listDocs())
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const fileRef = useRef(null)
@@ -21,10 +22,17 @@ export default function Documents({ hideBioTypes = false, onLibraryChange } = {}
   useEffect(() => () => { try { readControllerRef.current?.abort() } catch {} }, [])
 
   const refresh = () => {
-    const next = listDocs()
+    const next = kitId ? listKitDocs(kitId) : listDocs()
     setDocs(next)
     onLibraryChange?.(next)
   }
+
+  useEffect(() => {
+    const next = kitId ? listKitDocs(kitId) : listDocs()
+    setDocs(next)
+    onLibraryChange?.(next)
+    setMsg('')
+  }, [kitId])
 
   const visible = hideBioTypes ? docs.filter(d => d.type !== 'resume' && d.type !== 'jd') : docs
   const selectedCount = visible.filter(d => d.selected !== false).length
@@ -47,8 +55,8 @@ export default function Documents({ hideBioTypes = false, onLibraryChange } = {}
       if (controller.signal.aborted) return
       if (text && text.trim().length > 20) {
         let type = inferDocType(file.name)
-        if (hideBioTypes && (type === 'resume' || type === 'jd')) type = 'document'
-        const added = addDoc({ name: file.name, type, text, selected: true, source: 'upload' })
+        if (hideBioTypes && (type === 'resume' || type === 'jd')) type = kitId ? 'supporting' : 'document'
+        const added = addDoc({ name: file.name, type, text, selected: true, source: 'upload', kitId })
         if (!added) throw new Error('Could not save the document. Local storage may be full.')
         refresh()
         setMsg(`✓ Added as ${DOC_TYPE_LABELS[type] || type} — ${text.length.toLocaleString()} chars.${added.retrievalCoverage === 'representative' ? ' Long file: representative sections across the document will be indexed.' : ''} Set the category if wrong.`)
@@ -62,9 +70,22 @@ export default function Documents({ hideBioTypes = false, onLibraryChange } = {}
     }
   }
 
-  function del(id) { if (!window.confirm('Remove this document?')) return; removeDoc(id); refresh(); setMsg('') }
-  function toggle(id, selected) { setDocSelected(id, selected); refresh() }
-  function changeType(id, type) { setDocType(id, type); refresh(); setMsg('✓ Category changed. Existing documents were kept.') }
+  function del(id) {
+    if (!window.confirm('Remove this document?')) return
+    const removed = kitId ? removeKitDoc(kitId, id) : removeDoc(id)
+    if (!removed) { setMsg('⚠ Could not remove the document from local storage.'); return }
+    refresh(); setMsg('')
+  }
+  function toggle(id, selected) {
+    if (kitId) setKitDocSelected(kitId, id, selected)
+    else setDocSelected(id, selected)
+    refresh()
+  }
+  function changeType(id, type) {
+    if (kitId) setKitDocType(kitId, id, type)
+    else setDocType(id, type)
+    refresh(); setMsg('✓ Category changed. Existing documents were kept.')
+  }
 
   const typeChoices = hideBioTypes ? DOC_TYPES.filter(t => t !== 'resume' && t !== 'jd') : DOC_TYPES
 
@@ -72,7 +93,9 @@ export default function Documents({ hideBioTypes = false, onLibraryChange } = {}
     <div style={{ background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, padding: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: visible.length ? 8 : 0 }}>
         <span style={{ fontSize: 11, color: T.text2 }}>
-          {visible.length ? `${selectedCount}/${visible.length} selected — knowledge banks / notes for this interview` : hideBioTypes ? 'Add a knowledge bank or notes (resume & JD are above)' : 'No documents yet — add resume, JD, knowledge bank, or notes'}
+          {visible.length
+            ? `${selectedCount}/${visible.length} selected — ${kitId ? 'materials for this Kit' : 'knowledge banks / notes for this interview'}`
+            : hideBioTypes ? 'Add a knowledge bank or notes (resume & JD are above)' : 'No documents yet — add resume, JD, knowledge bank, or notes'}
         </span>
         <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} aria-label="Upload a PDF, text, or Markdown document"
           style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#5eead4', cursor: busy ? 'default' : 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 10px', opacity: busy ? 0.6 : 1, fontFamily: T.font }}>
@@ -80,9 +103,12 @@ export default function Documents({ hideBioTypes = false, onLibraryChange } = {}
         </button>
         <input ref={fileRef} type="file" accept=".pdf,.txt,.md,application/pdf,text/plain" disabled={busy} aria-label="Choose a PDF, text, or Markdown document" style={{ display: 'none' }} onChange={onFile} />
       </div>
+      {kitId && <div style={{ color: T.text3, fontSize: 10.5, lineHeight: 1.5, margin: '5px 2px 7px' }}>
+        PDF, TXT, or Markdown · up to 10 MB each. Stored locally and isolated to this Kit; selected content may be sent to the configured AI provider for retrieval and grounded answers.
+      </div>}
       {visible.map(d => (
         <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', borderTop: `1px solid ${T.border}`, fontSize: 12 }}>
-          <input type="checkbox" checked={d.selected !== false} onChange={e => toggle(d.id, e.target.checked)} title="Include in next Live / Solo retrieval" aria-label={`Select ${d.name}`} />
+          <input type="checkbox" checked={d.selected !== false} onChange={e => toggle(d.id, e.target.checked)} title={kitId ? 'Include in this Kit’s practice and Live retrieval' : 'Include in next Live / Solo retrieval'} aria-label={`Select ${d.name}`} />
           <span style={{ color: T.text1, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>📄 {d.name}</span>
           <select value={d.type} onChange={e => changeType(d.id, e.target.value)} title="Category affects when this is retrieved" aria-label={`Category for ${d.name}`} style={{ fontSize: 10, color: T.text2, background: 'rgba(255,255,255,0.05)', border: `1px solid ${T.border}`, borderRadius: 6, padding: '2px 4px', maxWidth: 130, fontFamily: T.font }}>
             {typeChoices.map(t => <option key={t} value={t}>{DOC_TYPE_LABELS[t] || t}</option>)}

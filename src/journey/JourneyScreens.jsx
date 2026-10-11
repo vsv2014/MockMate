@@ -5,6 +5,8 @@ import { isManaged } from '../lib/aiMode'
 import { LANGUAGES, STT_LANG } from '../lib/languages'
 import { trackProductEvent } from '../lib/productIntelligence'
 import { useDeepgram } from '../useDeepgram'
+import { getKitSelectedDocIds } from '../lib/docs'
+import Documents from '../Documents'
 
 const panelStyle = {
   background: T.surface1,
@@ -83,18 +85,19 @@ function formatDate(value) {
   try { return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) } catch { return '' }
 }
 
-function kitContextCount(kit) {
+function kitContextCount(kit, includeAttachments = true) {
   if (!kit) return 0
-  return [kit.targetRole, kit.targetCompany, kit.resume, kit.jobDescription, kit.customPrompt]
+  const fields = [kit.targetRole, kit.targetCompany, kit.resume, kit.jobDescription, kit.customPrompt]
     .filter(value => String(value || '').trim()).length
+  return fields + (includeAttachments ? getKitSelectedDocIds(kit.id).length : 0)
 }
 
-function kitContextReady(kit) {
-  return !!kit && kitContextCount(kit) > 0
+function kitContextReady(kit, includeAttachments = true) {
+  return !!kit && kitContextCount(kit, includeAttachments) > 0
 }
 
-function KitMiniCard({ kit, active = false, onSelect, onEdit }) {
-  const contextCount = kitContextCount(kit)
+function KitMiniCard({ kit, active = false, onSelect, onEdit, previewMode = false }) {
+  const contextCount = kitContextCount(kit, !previewMode)
   return (
     <div style={{ ...panelStyle, padding: 15, borderColor: active ? 'rgba(20,184,166,0.44)' : T.border, background: active ? 'linear-gradient(150deg, rgba(20,184,166,0.11), rgba(18,21,27,0.98) 62%)' : T.surface1 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
@@ -123,7 +126,7 @@ function KitMiniCard({ kit, active = false, onSelect, onEdit }) {
 
 export function JourneyHome({
   auth, sessions = [], kits = [], activeKit, onSelectKit, onOpenKits,
-  onOpenReadyRoom, onStartPractice, onOpenHistory, onSettings,
+  onOpenReadyRoom, onStartPractice, onOpenHistory, onSettings, previewMode = false,
 }) {
   const firstName = String(auth?.user?.name || '').trim().split(/\s+/)[0]
   const displayName = firstName ? `, ${firstName}` : ''
@@ -176,7 +179,7 @@ export function JourneyHome({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 15 }}>
                 <Pill>{activeKit.interviewType || 'Technical'}</Pill>
                 {activeKit.yearsExp && <Pill>{activeKit.yearsExp}</Pill>}
-                <span style={{ color: T.text3, fontSize: 11 }}>{kitContextCount(activeKit)} context item{kitContextCount(activeKit) === 1 ? '' : 's'} saved</span>
+                <span style={{ color: T.text3, fontSize: 11 }}>{kitContextCount(activeKit, !previewMode)} context item{kitContextCount(activeKit, !previewMode) === 1 ? '' : 's'} saved</span>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                   <Button variant="quiet" onClick={onOpenKits}>Edit Kit</Button>
                   <Button variant="secondary" onClick={onStartPractice}>Practice</Button>
@@ -273,11 +276,12 @@ function TextAreaField({ label, value, onChange, placeholder = '', maxLength, ro
 }
 
 export function InterviewKitsScreen({
-  kits = [], activeKitId, onCreate, onSave, onDelete, onActivate, onOpenReadyRoom,
+  kits = [], activeKitId, onCreate, onSave, onDelete, onActivate, onOpenReadyRoom, previewMode = false,
 }) {
   const [selectedId, setSelectedId] = useState(activeKitId || kits[0]?.id || '')
   const [draft, setDraft] = useState(null)
   const [saveMessage, setSaveMessage] = useState('')
+  const [, setDocumentsRevision] = useState(0)
   const selectedKit = kits.find(kit => kit.id === selectedId) || null
   const dirty = !!draft && !!selectedKit && JSON.stringify(draft) !== JSON.stringify(selectedKit)
 
@@ -313,7 +317,10 @@ export function InterviewKitsScreen({
     if (!selectedKit) return
     const ok = window.confirm(`Delete “${selectedKit.title}”? Completed session snapshots remain in history.`)
     if (!ok) return
-    onDelete?.(selectedKit.id)
+    if (onDelete?.(selectedKit.id) === false) {
+      setSaveMessage('Could not delete the Kit. Check available device storage and try again.')
+      return
+    }
     setSelectedId('')
     setDraft(null)
     setSaveMessage('Kit deleted. Existing session snapshots were not changed.')
@@ -333,7 +340,7 @@ export function InterviewKitsScreen({
             {kits.length > 0 && <Pill tone="teal">{kits.length} ACTIVE OPTION{kits.length === 1 ? '' : 'S'}</Pill>}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-            {kits.map(kit => <KitMiniCard key={kit.id} kit={kit} active={kit.id === activeKitId} onSelect={() => { onActivate?.(kit.id); selectKit(kit.id) }} onEdit={() => selectKit(kit.id)} />)}
+            {kits.map(kit => <KitMiniCard key={kit.id} kit={kit} active={kit.id === activeKitId} previewMode={previewMode} onSelect={() => { onActivate?.(kit.id); selectKit(kit.id) }} onEdit={() => selectKit(kit.id)} />)}
             {kits.length === 0 && <div style={{ padding: '22px 13px', textAlign: 'center', color: T.text3, fontSize: 12, lineHeight: 1.55 }}>No Kits yet. Create one for an upcoming role; your shared profile stays untouched.</div>}
           </div>
           <div style={{ color: T.text3, fontSize: 10.5, lineHeight: 1.5, borderTop: `1px solid ${T.border}`, padding: '12px 2px 2px', marginTop: 12 }}>Completed sessions store a local snapshot of this Kit’s role, resume, job description, notes, and selected document IDs alongside the transcript. Deleting the Kit won’t rewrite past sessions.</div>
@@ -360,6 +367,13 @@ export function InterviewKitsScreen({
                 <TextAreaField label="Resume / candidate background" value={draft.resume} maxLength={40_000} rows={7} placeholder="Paste the version of your resume you want this Kit to use…" onChange={value => patch('resume', value)} help="Used as Kit context for this interview. Stored locally on this device." />
                 <TextAreaField label="Job description" value={draft.jobDescription} maxLength={40_000} rows={6} placeholder="Paste the job description for this opportunity…" onChange={value => patch('jobDescription', value)} help="This stays in this Kit; it does not replace your shared profile’s job description." />
                 <TextAreaField label="Interview focus / notes" value={draft.customPrompt} maxLength={3_000} rows={3} placeholder="Optional: areas to probe, important constraints, or coaching focus…" onChange={value => patch('customPrompt', value)} help="Optional instructions for this Kit’s practice/live session." />
+              </div>
+              <div style={{ marginTop: 15 }}>
+                <div style={{ color: T.text1, fontSize: 12.5, fontWeight: 700, marginBottom: 5 }}>Supporting materials for this Kit</div>
+                <div style={{ color: T.text3, fontSize: 11, lineHeight: 1.5, marginBottom: 8 }}>Attach project notes, case studies, or role-specific knowledge. Checked files are available only to this Kit in practice and Live.</div>
+                {previewMode
+                  ? <div role="note" style={{ padding: '10px 12px', border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text3, fontSize: 11, lineHeight: 1.5 }}>File upload and selection are available in the desktop app. This design preview does not read or save attachments.</div>
+                  : <Documents key={draft.id} kitId={draft.id} hideBioTypes onLibraryChange={() => setDocumentsRevision(revision => revision + 1)} />}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', borderTop: `1px solid ${T.border}`, paddingTop: 14, marginTop: 17 }}>
                 <Button variant="primary" disabled={!dirty} onClick={save}>Save Kit</Button>
@@ -597,7 +611,8 @@ export function ReadyRoom({
     } finally { setPrivacyBusy(false) }
   }
 
-  const contextReady = kitContextReady(kit)
+  const contextReady = kitContextReady(kit, !previewMode)
+  const selectedKitMaterialCount = previewMode ? 0 : getKitSelectedDocIds(kit?.id).length
   const providerReady = service.status === 'ready' && service.providers.length > 0
   const voiceConfigured = service.status === 'ready' && service.deepgram
   const privacyReady = isLinux ? linuxAcknowledged : protectionStatus === 'passed' && sharePreviewConfirmed
@@ -680,8 +695,8 @@ export function ReadyRoom({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <CheckCard number="01" title="Interview context" status={contextReady ? 'passed' : 'missing'} statusText={contextReady ? 'Kit context found' : 'Needs context'} action={<Button variant="quiet" onClick={() => onEditKit?.(kit)}>{contextReady ? 'Review Kit' : 'Add role or materials'}</Button>}>
                 {contextReady
-                  ? `${kit.targetRole || 'Role not set'}${kit.targetCompany ? ` · ${kit.targetCompany}` : ''}. Session context will be copied into a snapshot; it won’t update your shared profile.`
-                  : 'This Kit has no role, company, resume, job description, or focus notes yet. Add context to keep the session grounded.'}
+                  ? `${kit.targetRole || 'Role not set'}${kit.targetCompany ? ` · ${kit.targetCompany}` : ''}. ${selectedKitMaterialCount ? `${selectedKitMaterialCount} selected Kit-only attachment${selectedKitMaterialCount === 1 ? '' : 's'} can ground Live answers. ` : ''}Session context will be copied into a snapshot; it won’t update your shared profile.`
+                  : 'This Kit has no role, company, resume, job description, focus notes, or selected attachments yet. Add context to keep the session grounded.'}
               </CheckCard>
 
               <CheckCard number="02" title="AI answer service" status={aiStatus} statusText={aiStatusText} action={

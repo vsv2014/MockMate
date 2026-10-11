@@ -24,7 +24,7 @@ Latest actually published Windows installer: **v1.5.3**. Source/manifests target
 
 ### Interview preparation screens and Kit context
 
-The desktop shell includes Home, Interview Kits, and Ready Room. Interview Kits keep opportunity-specific role/company, resume/JD, preferences, and focus notes in account-scoped local storage. Solo drafts and saved session snapshots can be Kit-scoped; Kit sessions do not attach the account-wide document library or overwrite the shared profile. Ready Room reports local service/provider/test/privacy states separately and does not equate a configured key with a successful provider response. Its browser design preview uses synthetic sample data and disables provider, microphone, and OS-capture tests.
+The desktop shell includes Home, Interview Kits, and Ready Room. Interview Kits keep opportunity-specific role/company, resume/JD, preferences, focus notes, and supporting attachments in account-scoped local storage. Attachments belong to one Kit; retrieval requires both the selected document IDs and matching Kit ID. Shared-library retrieval excludes Kit files, and Kit retrieval excludes other Kits and the shared library. Solo drafts and saved session snapshots can be Kit-scoped; Kit edits do not overwrite the shared profile. Ready Room reports local service/provider/test/privacy states separately and does not equate a configured key with a successful provider response. Its browser design preview uses synthetic sample data and disables provider, microphone, and OS-capture tests.
 
 ## 3. Live interview pipeline
 

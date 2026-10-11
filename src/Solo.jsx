@@ -11,7 +11,7 @@ import { LANGUAGES, STT_LANG } from './lib/languages'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { createSessionId, createGeneration, hasEnoughAnswerLength } from './lib/sessionGen'
-import { retrieveContext, warmDocs, addDoc, getSelectedDocIds } from './lib/docs'
+import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, getKitSelectedDocIds } from './lib/docs'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import Documents from './Documents'
 import CustomPromptStudio from './components/CustomPromptStudio'
@@ -339,15 +339,17 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
     else persistProfile(p)
   }
   function patchProfile(patch) { saveProfile({ ...profile, ...patch }) }
+  function currentSelectedDocIds() { return kitScoped ? getKitSelectedDocIds(kitId) : getSelectedDocIds() }
 
-  const [selectedDocIds, setSelectedDocIds] = useState(() => getSelectedDocIds())
+  const [selectedDocIds, setSelectedDocIds] = useState(() => currentSelectedDocIds())
+  useEffect(() => { setSelectedDocIds(currentSelectedDocIds()) }, [kitId, kitScoped])
   const isDevLocal = Boolean(import.meta.env?.DEV)
     && typeof window !== 'undefined'
     && /^(localhost|127\.0\.0\.1)$/i.test(window.location?.hostname || '')
   const hasContext = !!(
     String(profile.resume || '').trim().length > 40
     || String(profile.jobDescription || '').trim().length > 40
-    || (!kitScoped && selectedDocIds.length > 0)
+    || selectedDocIds.length > 0
     || (kitScoped && [profile.targetRole, profile.targetCompany, profile.customPrompt].some(value => String(value || '').trim()))
   )
   const canStartSolo = !noProviders && (hasContext || isDevLocal)
@@ -393,7 +395,8 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
       const cfg = interviewConfigRef.current
       const extraContext = await retrieveContext(lastAsk, {
         budgetMs: 1800,
-        docIds: Array.isArray(cfg?.selectedDocumentIds) ? cfg.selectedDocumentIds : getSelectedDocIds(),
+        docIds: Array.isArray(cfg?.selectedDocumentIds) ? cfg.selectedDocumentIds : currentSelectedDocIds(),
+        kitId: cfg?.kitId || (kitScoped ? kitId : null),
       }).catch(() => '')
       if (!isCurrent()) return null
 
@@ -444,7 +447,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
     setFollowupDepth(draft.followupDepth || 'normal')
     setRelentless(!!draft.relentless); setTts(draft.tts !== false)
     sessionIdRef.current = draft.sessionId || createSessionId()
-    interviewConfigRef.current = draft.interviewConfig || buildInterviewConfig({ profile: restoredProfile, selectedDocumentIds: kitScoped ? [] : getSelectedDocIds(), source: 'solo' })
+    interviewConfigRef.current = draft.interviewConfig || buildInterviewConfig({ profile: restoredProfile, selectedDocumentIds: currentSelectedDocIds(), source: 'solo' })
     if (kitScoped && !draft.interviewConfig) {
       interviewConfigRef.current.kitId = kitId
       interviewConfigRef.current.kitName = kitName || 'Interview Kit'
@@ -501,14 +504,14 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
     }
     interviewConfigRef.current = buildInterviewConfig({
       profile,
-      selectedDocumentIds: kitScoped ? [] : getSelectedDocIds(),
+      selectedDocumentIds: currentSelectedDocIds(),
       source: 'solo',
     })
     if (kitScoped) {
       interviewConfigRef.current.kitId = kitId
       interviewConfigRef.current.kitName = kitName || 'Interview Kit'
     }
-    warmDocs(interviewConfigRef.current.selectedDocumentIds)
+    warmDocs(interviewConfigRef.current.selectedDocumentIds, { kitId: kitScoped ? kitId : null })
 
     setPhase('live')
     phaseRef.current = 'live'
@@ -723,7 +726,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
 
       <Section title="Your materials" hint="Resume + JD for the interviewer · optional knowledge bank for grounding.">
         <div style={{ fontSize: 11.5, color: T.text3, lineHeight: 1.45, marginBottom: 4 }}>
-          {kitScoped ? 'Use this Kit’s role, resume, JD, and focus notes for practice. The shared document library is intentionally not attached.' : 'Paste resume & JD here (required for good questions). Extra knowledge banks go below — checked items are retrieved during the session.'}
+          {kitScoped ? 'Use this Kit’s role, resume, JD, focus notes, and checked Kit-only materials for practice.' : 'Paste resume & JD here (required for good questions). Extra knowledge banks go below — checked items are retrieved during the session.'}
         </div>
         <div>
           <Label htmlFor={`${soloFormId}-resume`}>Resume</Label>
@@ -756,9 +759,12 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
         )}
         <div>
           <Label>Knowledge & notes (optional)</Label>
-          {kitScoped
-            ? <div style={{ fontSize: 11.5, color: T.text3, lineHeight: 1.5 }}>The shared document library is not attached to this Kit session, so materials from another opportunity cannot bleed in. Add role-specific notes to the Kit’s Interview focus field.</div>
-            : <Documents hideBioTypes onLibraryChange={() => setSelectedDocIds(getSelectedDocIds())} />}
+          <Documents
+            key={kitScoped ? `kit:${kitId}` : 'shared-library'}
+            kitId={kitScoped ? kitId : null}
+            hideBioTypes
+            onLibraryChange={() => setSelectedDocIds(currentSelectedDocIds())}
+          />
         </div>
       </Section>
 

@@ -5,7 +5,7 @@ import SoloFeedback from './SoloFeedback'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { getAutoSkip, getAnswerStyle, setAnswerStyle as persistAnswerStyle } from './lib/aiSettings'
-import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, listDocs, canReuseSpeculativeRag } from './lib/docs'
+import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, getKitSelectedDocIds, listDocs, listKitDocs, canReuseSpeculativeRag } from './lib/docs'
 import Documents from './Documents'
 import CustomPromptStudio from './components/CustomPromptStudio'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
@@ -53,6 +53,7 @@ function liveRagOpts(_classification, interviewConfig, budgetMs = 600) {
   return {
     budgetMs: ms,
     docIds: Array.isArray(ids) ? ids : undefined,
+    kitId: interviewConfig?.kitId || null,
     // Soft policy: do not hard-filter by classifier ragTypes (that hid knowledge banks).
   }
 }
@@ -158,7 +159,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   const providerNames = configuredProviderNames(models, providers)
   // Inline API-key entry — same keys are also editable globally (Home → Settings).
   const [showKeys, setShowKeys] = useState(false)
-  const [documentMeta, setDocumentMeta] = useState(() => listDocs())
+  const [documentMeta, setDocumentMeta] = useState(() => kitScoped && initialKit?.id ? listKitDocs(initialKit.id) : listDocs())
 
   function refetchProviders() {
     return apiFetch('/api/providers').then(r => r.json()).then(d => {
@@ -192,6 +193,9 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   }, [])
 
   useEffect(() => { persistModelSelection(provider) }, [provider])
+  useEffect(() => {
+    setDocumentMeta(kitScoped && initialKit?.id ? listKitDocs(initialKit.id) : listDocs())
+  }, [kitScoped, initialKit?.id])
 
   function patch(p) {
     const next = { ...profile, ...p }
@@ -235,7 +239,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   // Mic preflight is amber (may hear you); SysAudio on Win/mac is green.
   const micMode = sourceId === 'microphone'
   const audioPreflightColor = micMode ? '#fbbf24' : (isLinux ? '#fbbf24' : '#4ade80')
-  const selectedExtraCount = kitScoped ? 0 : documentMeta.filter(d => d.type !== 'resume' && d.type !== 'jd' && d.selected !== false).length
+  const selectedExtraCount = documentMeta.filter(d => d.type !== 'resume' && d.type !== 'jd' && d.selected !== false).length
   const contextSourceCount = Number(!!profile.resume?.trim()) + Number(!!profile.jobDescription?.trim()) + selectedExtraCount
 
   const inp = { width: '100%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text1, padding: '10px 12px', borderRadius: T.rCtrl, fontSize: 13, boxSizing: 'border-box', fontFamily: T.font }
@@ -438,7 +442,9 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
 
         <Section n={3} title="Interview Documents" subtitle={`${contextSourceCount} source${contextSourceCount === 1 ? '' : 's'} ready · choose exactly what AI may use`} defaultOpen={false}>
         <div style={{ fontSize: 11, color: T.text3, lineHeight: 1.45, marginBottom: 4 }}>
-          Resume &amp; JD below feed identity answers. Knowledge banks / notes go in the library — check what to use. They are not duplicated in the list.
+          {kitScoped
+            ? 'Resume & JD below feed identity answers. Supporting files belong to this Kit; check only the material you want used for this opportunity.'
+            : 'Resume & JD below feed identity answers. Knowledge banks / notes go in the library — check what to use. They are not duplicated in the list.'}
         </div>
         <Field label="Resume (optional — answers reference your projects)" htmlFor="live-profile-resume">
           <textarea id="live-profile-resume" rows={3} style={{ ...inp, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste resume text…" onChange={e => patch({ resume: e.target.value })} />
@@ -482,10 +488,13 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
             {jdPdfMsg && <span role={jdPdfMsg.startsWith('⚠') ? 'alert' : 'status'} aria-live={jdPdfMsg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: 10, color: jdPdfMsg.startsWith('⚠') ? '#fca5a5' : '#86efac' }}>{jdPdfMsg}</span>}
           </div>
         </Field>
-        <Field label="Knowledge & notes (checked = used for retrieval)">
-          {kitScoped
-            ? <div style={{ background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, padding: '10px 12px', color: T.text3, fontSize: 11.5, lineHeight: 1.5 }}>The account-wide document library is not attached to this Kit session. Its resume, job description, and focus notes stay isolated to this opportunity.</div>
-            : <Documents hideBioTypes onLibraryChange={setDocumentMeta} />}
+        <Field label={kitScoped ? 'Kit-only knowledge & notes (checked = used for retrieval)' : 'Knowledge & notes (checked = used for retrieval)'}>
+          <Documents
+            key={kitScoped ? `kit:${initialKit.id}` : 'shared-library'}
+            kitId={kitScoped ? initialKit.id : null}
+            hideBioTypes
+            onLibraryChange={setDocumentMeta}
+          />
         </Field>
         </Section>
 
@@ -535,7 +544,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
             if (profile.resume?.trim()) addDoc({ name: 'Resume', type: 'resume', text: profile.resume })
             if (profile.jobDescription?.trim()) addDoc({ name: 'Job Description', type: 'jd', text: profile.jobDescription })
           }
-          const selectedDocumentIds = kitScoped ? [] : getSelectedDocIds()
+          const selectedDocumentIds = kitScoped ? getKitSelectedDocIds(initialKit.id) : getSelectedDocIds()
           const interviewConfig = buildInterviewConfig({ profile, selectedDocumentIds, source: 'live' })
           if (kitScoped) {
             interviewConfig.kitId = initialKit.id
@@ -598,12 +607,15 @@ function Section({ n, title, subtitle, defaultOpen = true, highlight = false, ch
 }
 
 // ── Live overlay ──────────────────────────────────────────────────────────────
-function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, pip: initialPip, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId, interviewConfig: initialInterviewConfig }) {
-  const interviewConfigRef = useRef(initialInterviewConfig || buildInterviewConfig({
-    profile,
-    selectedDocumentIds: getSelectedDocIds(),
-    source: 'live',
-  }))
+function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, pip: initialPip, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId, interviewConfig: initialInterviewConfig, kitId }) {
+  const interviewConfigRef = useRef(initialInterviewConfig || {
+    ...buildInterviewConfig({
+      profile,
+      selectedDocumentIds: kitId ? getKitSelectedDocIds(kitId) : getSelectedDocIds(),
+      source: 'live',
+    }),
+    ...(kitId ? { kitId } : {}),
+  })
   const [transcript, setTranscript] = useState([])
   const [hint, setHint] = useState(null)
   const [hintLoading, setHintLoading] = useState(false)
@@ -1698,7 +1710,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   useEffect(() => {
     finalizeOffOnceRef.current = false
     audio.start(liveSourceId, audioOpts())
-    warmDocs(interviewConfigRef.current?.selectedDocumentIds)   // pre-embed selected docs only
+    warmDocs(interviewConfigRef.current?.selectedDocumentIds, { kitId: interviewConfigRef.current?.kitId || kitId })   // pre-embed selected docs only
     metricsRef.current = createSessionMetrics('live')
     hintTimingRef.current = null
     if (initialPip && !initialPip.closed) {

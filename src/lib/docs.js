@@ -1,6 +1,6 @@
-// Client-side document RAG. Docs live LOCALLY (privacy); server only embeds text.
-// Session selection: each doc has `selected` (default true). Live/Solo pass selected IDs into
-// retrieveContext so unchecked library docs cannot pollute a new interview.
+// Client-side document RAG. Source files/text live in account-scoped local storage.
+// Session selection: each doc has `selected` (default true). Kit docs also carry an owner Kit ID;
+// retrieval requires both selected IDs and that owner ID, while shared sessions exclude Kit docs.
 import { apiFetch } from './apiClient'
 import { chunkText, topK, lexicalTopK, groundingBlock } from '../../shared/retrieval.js'
 import { getDocThreshold } from './aiSettings'
@@ -65,28 +65,53 @@ export function normalizeDocType(type) {
 function toMeta(d) {
   return {
     id: d.id, name: d.name, type: d.type, source: d.source || 'local', addedAt: d.addedAt,
+    ...(d.kitId ? { kitId: d.kitId } : {}),
     chars: (d.text || '').length,
     retrievalCoverage: (d.text || '').length > LONG_DOC_CHARS ? 'representative' : 'full',
     selected: d.selected !== false,
   }
 }
 
-export function listDocs() { return load().map(toMeta) }
-export function getSelectedDocIds() { return load().filter(d => d.selected !== false).map(d => d.id) }
+function belongsToScope(doc, kitId = null) {
+  return kitId
+    ? String(doc?.kitId || '') === String(kitId)
+    : !doc?.kitId
+}
 
-export function setDocSelected(id, selected) {
-  const docs = load(); const i = docs.findIndex(d => d.id === id)
+export function listDocs() { return load().filter(doc => !doc.kitId).map(toMeta) }
+export function listKitDocs(kitId) {
+  if (!kitId) return []
+  return load().filter(doc => belongsToScope(doc, kitId)).map(toMeta)
+}
+export function getSelectedDocIds() { return load().filter(d => !d.kitId && d.selected !== false).map(d => d.id) }
+export function getKitSelectedDocIds(kitId) {
+  if (!kitId) return []
+  return load().filter(d => belongsToScope(d, kitId) && d.selected !== false).map(d => d.id)
+}
+
+function setDocSelectedInScope(kitId, id, selected) {
+  const docs = load(); const i = docs.findIndex(d => d.id === id && belongsToScope(d, kitId))
   if (i < 0) return null
   docs[i] = { ...docs[i], selected: !!selected }
   return save(docs) ? toMeta(docs[i]) : null
 }
 
-export function setDocType(id, type) {
-  const docs = load(); const i = docs.findIndex(d => d.id === id)
+export function setDocSelected(id, selected) { return setDocSelectedInScope(null, id, selected) }
+export function setKitDocSelected(kitId, id, selected) {
+  return kitId ? setDocSelectedInScope(kitId, id, selected) : null
+}
+
+function setDocTypeInScope(kitId, id, type) {
+  const docs = load(); const i = docs.findIndex(d => d.id === id && belongsToScope(d, kitId))
   if (i < 0) return null
   docs[i] = { ...docs[i], type: normalizeDocType(type) }
   invalidateDocIndex(id)
   return save(docs) ? toMeta(docs[i]) : null
+}
+
+export function setDocType(id, type) { return setDocTypeInScope(null, id, type) }
+export function setKitDocType(kitId, id, type) {
+  return kitId ? setDocTypeInScope(kitId, id, type) : null
 }
 
 function inferredSource(name, source) {
@@ -94,13 +119,15 @@ function inferredSource(name, source) {
   return /\(pasted\)/i.test(String(name || '')) ? 'profile' : 'upload'
 }
 
-export function addDoc({ name, type = 'document', text, selected = true, source } = {}) {
+export function addDoc({ name, type = 'document', text, selected = true, source, kitId } = {}) {
   if (!text || !String(text).trim()) return null
   const docs = load(); const body = String(text); const t = normalizeDocType(type); const src = inferredSource(name, source)
+  const ownerKitId = kitId ? String(kitId) : null
+  const inScope = doc => belongsToScope(doc, ownerKitId)
   const upsert = t === 'resume' || t === 'jd'
   if (upsert) {
-    const profileIndex = docs.findIndex(d => d.type === t && (d.source || inferredSource(d.name)) === 'profile')
-    const uploadedIndex = docs.findIndex(d => d.type === t && (d.source || inferredSource(d.name)) !== 'profile')
+    const profileIndex = docs.findIndex(d => inScope(d) && d.type === t && (d.source || inferredSource(d.name)) === 'profile')
+    const uploadedIndex = docs.findIndex(d => inScope(d) && d.type === t && (d.source || inferredSource(d.name)) !== 'profile')
     const i = src === 'profile' ? profileIndex : (uploadedIndex >= 0 ? uploadedIndex : profileIndex)
     if (src === 'profile' && uploadedIndex >= 0 && profileIndex < 0) return toMeta(docs[uploadedIndex])
     if (i >= 0) {
@@ -114,20 +141,41 @@ export function addDoc({ name, type = 'document', text, selected = true, source 
       return save(docs) ? toMeta(doc) : null
     }
   }
-  const doc = { id: `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, name: name || 'Untitled', type: t, text: body, source: src, selected: selected !== false, addedAt: new Date().toISOString() }
+  const doc = {
+    id: `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+    name: name || 'Untitled', type: t, text: body, source: src, selected: selected !== false,
+    ...(ownerKitId ? { kitId: ownerKitId } : {}),
+    addedAt: new Date().toISOString(),
+  }
   docs.push(doc)
   return save(docs) ? toMeta(doc) : null
 }
 
-export function removeDoc(id) {
-  const ok = save(load().filter(d => d.id !== id))
+function removeDocFromScope(kitId, id) {
+  const docs = load()
+  const target = docs.find(doc => doc.id === id && belongsToScope(doc, kitId))
+  if (!target) return save(docs)
+  const ok = save(docs.filter(doc => !(doc.id === id && belongsToScope(doc, kitId))))
   if (ok) {
-    // Privacy (blast-radius review fix): the persisted vector cache stores the
-    // ORIGINAL chunk text; deleting the visible document must also delete its
-    // persisted index entry — and invalidate any in-flight indexing task so a
-    // still-running embed cannot resurrect the deleted text after we purge it.
+    // Privacy: persisted vectors contain original chunk text. Removing an attachment
+    // also purges its cached index and cancels any in-flight embedding task.
     invalidateDocIndex(id)
   }
+  return ok
+}
+
+export function removeDoc(id) { return removeDocFromScope(null, id) }
+export function removeKitDoc(kitId, id) {
+  return kitId ? removeDocFromScope(kitId, id) : false
+}
+export function removeKitDocs(kitId) {
+  if (!kitId) return false
+  const docs = load()
+  const removed = docs.filter(doc => belongsToScope(doc, kitId))
+  if (!removed.length) return true
+  const ids = new Set(removed.map(doc => doc.id))
+  const ok = save(docs.filter(doc => !belongsToScope(doc, kitId)))
+  if (ok) for (const id of ids) invalidateDocIndex(id)
   return ok
 }
 
@@ -284,13 +332,15 @@ async function embed(texts, signal) {
   return vectors
 }
 
-export function warmDocs(docIds) {
+export function warmDocs(docIds, { kitId } = {}) {
   ensureCurrentScope()
-  const docs = filterDocs(load(), { docIds })
+  const docs = filterDocs(load(), { docIds, scope: kitId ? 'kit' : 'shared', kitId })
   if (docs.length) ensureIndexed(docs).catch(() => {})
 }
-function filterDocs(docs, { docIds, types } = {}) {
+function filterDocs(docs, { docIds, types, scope, kitId } = {}) {
   let out = docs
+  if (scope === 'shared') out = out.filter(d => !d.kitId)
+  else if (scope === 'kit') out = out.filter(d => belongsToScope(d, kitId))
   if (Array.isArray(docIds)) { const allow = new Set(docIds.map(String)); out = out.filter(d => allow.has(String(d.id))) }
   if (Array.isArray(types) && types.length) { const allowT = new Set(types.map(normalizeDocType)); out = out.filter(d => allowT.has(normalizeDocType(d.type))) }
   return out
@@ -420,12 +470,14 @@ export function canReuseSpeculativeRag(specQuery = '', committedQuery = '') {
   return overlap / wordsB.length >= 0.7
 }
 
-export async function retrieveContext(question, { k = 4, minScore, budgetMs = 2000, docIds, types, signal: externalSignal } = {}) {
+export async function retrieveContext(question, { k = 4, minScore, budgetMs = 2000, docIds, types, kitId, signal: externalSignal } = {}) {
   const origin = ensureCurrentScope()
   if (!question || !String(question).trim()) return ''
   if (externalSignal?.aborted) return ''
   if (Array.isArray(docIds) && docIds.length === 0) return ''
-  const docs = filterDocs(load(), { docIds, types }); if (!docs.length) return ''
+  // A Kit retrieval is restricted twice: by its selected IDs and by owner Kit.
+  // Non-Kit interviews can only retrieve from the shared library, never Kit files.
+  const docs = filterDocs(load(), { docIds, types, scope: kitId ? 'kit' : 'shared', kitId }); if (!docs.length) return ''
   const threshold = typeof minScore === 'number' ? minScore : getDocThreshold()
   const startedAt = performance.now(); const ac = new AbortController(); let timeoutId
   const onExternalAbort = () => {

@@ -71,7 +71,8 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 
 ## 7. Regression sweep
 - [ ] Home → Interview Kits → Ready Room → Live works in the packaged v1.6.0 candidate; active Kit selection, create/edit/delete, and no-Kit fallback states behave correctly.
-- [ ] Kit Solo and Live sessions retain the correct role/JD/preferences in their session snapshot, keep drafts per Kit, and do not attach account-wide selected-document IDs or overwrite the shared profile.
+- [ ] Kit Solo and Live sessions retain the correct role/JD/preferences and selected Kit-document IDs in their session snapshot, keep drafts per Kit, exclude the shared document library, and do not overwrite the shared profile.
+- [ ] Upload/select PDF, TXT, and Markdown supporting materials in a Kit; verify they remain account-local and visible only to that Kit, selected files alone ground its Solo/Live retrieval, removal clears the cached index, and deleting the Kit leaves shared documents unchanged.
 - [ ] Ready Room distinguishes local service availability, configured providers, successful AI/voice tests, and OS/share-preview checks; provider-test usage is disclosed before any potentially billable call.
 - [ ] Over the LLM cap: managed LLM routes 402 with the upgrade message
 - [ ] Over the STT cap: managed WSS ticket/stream and uploaded `/transcribe` reject **before provider spend** with `stt_quota_exhausted`; failed reservation/provider attempts settle or refund correctly, including graceful shutdown

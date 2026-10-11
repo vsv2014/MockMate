@@ -6,7 +6,7 @@ Feature-release candidate on PR #85’s branch. Not merged, tagged, or published
 
 ### Interview preparation workspace
 - Add Home, Interview Kits, and Ready Room screens to the desktop shell, including Kit creation/editing, active-Kit selection, and Ready Room handoffs.
-- Keep opportunity context, Solo drafts, and saved-session snapshots Kit-scoped; prevent Kit sessions from attaching the shared document library or overwriting the shared profile.
+- Keep opportunity context, Solo drafts, and saved-session snapshots Kit-scoped; add locally stored, per-Kit supporting-document attachments for practice and Live while keeping the shared document library and profile isolated.
 - Show honest pre-flight states for local services, configured providers, real AI/voice checks, and screen-share privacy; disclose possible provider usage. The demo preview uses synthetic data and disables external tests.
 
 ### Live and provider reliability
@@ -20,8 +20,8 @@ Feature-release candidate on PR #85’s branch. Not merged, tagged, or published
 - Add an explicit, one-request provider connection test for configured local keys. The route is mounted only by the loopback desktop service (not the hosted managed backend), is offered only in the desktop app, and warns that the request may incur provider usage; it is not run automatically during routing.
 
 ### Candidate verification and release boundary
-- Current audit-remediation checks on this branch: 84 test files / 630 tests, API smoke 5/5, production build, Vite-output verification, Electron syntax checks, and `git diff --check`. These ran under Node 22.22.3; release CI pins Node 24. The aggregate `npm run verify` is blocked in this sandbox because `scripts/doctor.mjs` cannot download the Electron runtime binary; see `docs/evidence/VALIDATION_STATUS.md`.
-- The previous v1.6.0 candidate passed Linux/Windows Desktop CI and Vercel checks ([run 38118183667](https://github.com/vsv2014/MockMate/actions/runs/38118183667)); those checks predate the audit-remediation changes and are not evidence for this updated head. The current branch remains unmerged and unpublished.
+- Current per-Kit attachment worktree checks: 86 test files / 644 tests, API smoke 5/5, production build, Vite-output verification, platform/React/Vitest/dev-tooling/auth-config/Express checks, and `git diff --check`. These ran under Node 22.22.3; release CI pins Node 24. The aggregate `npm run verify` previously stopped before build/tests because `scripts/doctor.mjs` could not download the Electron runtime binary; see `docs/evidence/VALIDATION_STATUS.md`.
+- The latest pushed candidate passed `verify-desktop`, `windows-tests`, and Vercel checks ([run 38124920431](https://github.com/vsv2014/MockMate/actions/runs/38124920431)) on commit `828678c18acd219e22254c2b0336cfb948a47229`. That CI predates the per-Kit changes; fresh CI is required after push. The branch remains unmerged and unpublished.
 - Physical Windows installation/audio, signed updater, actual meeting share-preview, and hosted WSS/Mongo/Deepgram usage reconciliation remain release gates. See [`docs/evidence/VALIDATION_STATUS.md`](docs/evidence/VALIDATION_STATUS.md).
 
 ## v1.5.5 — 2026-10-10 (superseded release candidate; never published)

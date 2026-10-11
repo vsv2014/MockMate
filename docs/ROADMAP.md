@@ -17,7 +17,7 @@ MockMate is an interview-performance OS: prepare, practice, perform and learn ac
 - [x] Account-safe in-flight RAG/auth handling and corrupt document/session-data recovery backup (PR #77).
 - [x] ARCH policy plane with operation-scoped adaptive routing.
 - [x] Product Intelligence as **local/runtime adaptive telemetry** with privacy-safe behavioral signals.
-- [x] Home, Interview Kits, and Ready Room integrated with the desktop shell; Kit-scoped context, Solo drafts, Live/Solo launch handoffs, and saved-session snapshots.
+- [x] Home, Interview Kits, and Ready Room integrated with the desktop shell; Kit-scoped context, local supporting attachments, Solo drafts, Live/Solo launch handoffs, and saved-session snapshots.
 - [x] Live/provider retry/error classification, partial-hint retention, Deepgram grant retry, and bounded local-service readiness/restart handling (PR #85; packaged `child_process.fork()` retained).
 - [ ] Hosted closed-loop Product Intelligence / tenant-scoped analytics. This is **not** a v1.6.0 capability.
 

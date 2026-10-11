@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 const { apiFetchMock } = vi.hoisted(() => ({ apiFetchMock: vi.fn() }))
 vi.mock('./apiClient', () => ({ apiFetch: (...args) => apiFetchMock(...args) }))
 import {
-  addDoc, listDocs, removeDoc, inferDocType, getSelectedDocIds, setDocSelected,
-  setDocType, filterDocsForRetrieve, DOC_TYPES,
+  addDoc, listDocs, listKitDocs, removeDoc, removeKitDoc, removeKitDocs, inferDocType,
+  getSelectedDocIds, getKitSelectedDocIds, setDocSelected, setKitDocSelected,
+  setDocType, setKitDocType, filterDocsForRetrieve, DOC_TYPES,
   sampleChunksForIndex, retrieveContext, canReuseSpeculativeRag,
 } from './docs.js'
 
@@ -111,6 +112,77 @@ describe('addDoc upsert + selection', () => {
     setDocType(d.id, 'training')
     expect(listDocs().find(x => x.id === d.id).type).toBe('training')
     expect(DOC_TYPES).toContain('training')
+  })
+})
+
+describe('Kit-owned supporting documents', () => {
+  beforeEach(() => { store.clear(); apiFetchMock.mockReset() })
+
+  it('keeps Kit files out of the shared library and other Kits', () => {
+    const shared = addDoc({ name: 'Shared notes', type: 'knowledge', text: 'Shared account notes for general interviews.' })
+    const kitA = addDoc({ name: 'Acme architecture.md', type: 'knowledge', text: 'Acme-specific architecture notes and constraints.', kitId: 'kit-a' })
+    const kitB = addDoc({ name: 'Northstar case study.pdf', type: 'supporting', text: 'Northstar-only case study and project outcomes.', kitId: 'kit-b' })
+
+    expect(listDocs().map(doc => doc.id)).toEqual([shared.id])
+    expect(listKitDocs('kit-a').map(doc => doc.id)).toEqual([kitA.id])
+    expect(listKitDocs('kit-b').map(doc => doc.id)).toEqual([kitB.id])
+    expect(getSelectedDocIds()).toEqual([shared.id])
+    expect(getKitSelectedDocIds('kit-a')).toEqual([kitA.id])
+    expect(getKitSelectedDocIds('kit-b')).toEqual([kitB.id])
+
+    setKitDocSelected('kit-a', kitA.id, false)
+    expect(getKitSelectedDocIds('kit-a')).toEqual([])
+    expect(getKitSelectedDocIds('kit-b')).toEqual([kitB.id])
+    expect(setKitDocSelected('kit-a', kitB.id, false)).toBeNull()
+    expect(setKitDocType('kit-a', kitA.id, 'training').type).toBe('training')
+    expect(listKitDocs('kit-b')[0].type).toBe('supporting')
+  })
+
+  it('scopes resume/JD upserts and deletion to the owning Kit', () => {
+    const shared = addDoc({ name: 'Resume', type: 'resume', text: 'Shared profile resume with enough details to persist.' })
+    const kitA = addDoc({ name: 'Resume', type: 'resume', text: 'Acme Kit resume with separate role-specific details.', kitId: 'kit-a' })
+    addDoc({ name: 'Resume', type: 'resume', text: 'Northstar Kit resume with separate role-specific details.', kitId: 'kit-b' })
+    const updatedKitA = addDoc({ name: 'Resume v2', type: 'resume', text: 'Updated Acme Kit resume with different details.', kitId: 'kit-a' })
+
+    expect(updatedKitA.id).toBe(kitA.id)
+    expect(listDocs().map(doc => doc.id)).toEqual([shared.id])
+    expect(listKitDocs('kit-a')).toHaveLength(1)
+    expect(listKitDocs('kit-a')[0].name).toBe('Resume v2')
+    expect(listKitDocs('kit-b')).toHaveLength(1)
+
+    removeKitDoc('kit-b', kitA.id)
+    expect(listKitDocs('kit-a')).toHaveLength(1)
+    expect(removeKitDocs('kit-a')).toBe(true)
+    expect(listKitDocs('kit-a')).toEqual([])
+    expect(listKitDocs('kit-b')).toHaveLength(1)
+    expect(listDocs().map(doc => doc.id)).toEqual([shared.id])
+  })
+
+  it('enforces Kit ownership again at retrieval, even if an ID list is mixed', () => {
+    const docs = [
+      { id: 'shared', type: 'knowledge', text: 'shared' },
+      { id: 'kit-a', kitId: 'kit-a', type: 'knowledge', text: 'a' },
+      { id: 'kit-b', kitId: 'kit-b', type: 'knowledge', text: 'b' },
+    ]
+    expect(filterDocsForRetrieve(docs, { scope: 'kit', kitId: 'kit-a', docIds: ['shared', 'kit-a', 'kit-b'] }).map(doc => doc.id)).toEqual(['kit-a'])
+    expect(filterDocsForRetrieve(docs, { scope: 'shared', docIds: ['shared', 'kit-a', 'kit-b'] }).map(doc => doc.id)).toEqual(['shared'])
+  })
+
+  it('retrieves only the selected Kit’s content when given mixed document IDs', async () => {
+    const shared = addDoc({ name: 'Shared notes', type: 'knowledge', text: 'Shared-only context for a general interview.' })
+    const kitA = addDoc({ name: 'Acme private notes', type: 'knowledge', text: 'Acme-specific architecture and project context.', kitId: 'kit-a' })
+    const kitB = addDoc({ name: 'Northstar private notes', type: 'knowledge', text: 'Northstar-only product and strategy context.', kitId: 'kit-b' })
+    apiFetchMock.mockImplementation(async (_path, options) => {
+      const input = JSON.parse(options.body).input
+      return { ok: true, json: async () => ({ vectors: input.map(() => [1, 0]), embeddingModel: 'openai:text-embedding-3-small' }) }
+    })
+
+    const result = await retrieveContext('How did you design the platform?', {
+      docIds: [shared.id, kitA.id, kitB.id], kitId: 'kit-a', minScore: 0, budgetMs: 500,
+    })
+    expect(result).toContain('Acme private notes')
+    expect(result).not.toContain('Shared notes')
+    expect(result).not.toContain('Northstar private notes')
   })
 })
 
