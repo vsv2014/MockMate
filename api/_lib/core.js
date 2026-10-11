@@ -25,7 +25,8 @@ import {
 function providerDiagnostic(event, fields = {}, level = 'info') {
   const row = { component: 'llm', event, level, ...fields }
   try {
-    if (process.send) process.send({ type: 'diagnostic', row })
+    if (typeof process.send === 'function') process.send({ type: 'diagnostic', row })
+    else if (process.parentPort) process.parentPort.postMessage({ type: 'diagnostic', row })
     else if (process.env.MOCKMATE_HOSTED === '1') console.log(JSON.stringify({ ts: new Date().toISOString(), ...row }))
   } catch {}
 }
