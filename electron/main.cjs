@@ -1029,7 +1029,12 @@ ipcMain.on('set-ignore-mouse-events', (_, { ignore, forward } = {}) => {
 })
 ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  const [x, y] = mainWindow.getPosition(); mainWindow.setPosition(x + dx, y + dy)
+  const moveX = Math.round(Number(dx) || 0)
+  const moveY = Math.round(Number(dy) || 0)
+  if (moveX || moveY) {
+    const [x, y] = mainWindow.getPosition()
+    mainWindow.setPosition(x + moveX, y + moveY)
+  }
   // Dragging out of the top-center teleprompter dock exits teleprompter mode.
   // IMPORTANT (PR review fix): notify the renderer in the same transition — otherwise
   // Electron thinks 'overlay' while React still renders teleprompter typography/state,
@@ -1037,13 +1042,18 @@ ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (lastWindowMode === 'teleprompter') {
     lastWindowMode = 'overlay'
     try { mainWindow.webContents.send('overlay-command', { type: 'teleprompter', active: false, width: lastOverlaySize.w, height: lastOverlaySize.h }) } catch {}
-  } else if (lastWindowMode !== 'overlay') {
-    if (lastWindowMode === 'pill' || lastWindowMode == null) lastWindowMode = 'overlay'
+  } else if (lastWindowMode == null) {
+    // A pill remains a pill while it is repositioned. Changing its mode to overlay
+    // here allowed stale renderer resize events to expand its transparent OS window.
+    lastWindowMode = 'overlay'
   }
   syncOverlayShortcuts()
 })
 ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
+  // The pill has fixed geometry. A stale pointer-resize event must never turn the
+  // 72×72 badge into an expanding transparent/black window while it is dragged.
+  if (lastWindowMode === 'pill') return
   const nw = Math.max(240, Math.round(Number(w) || 280))
   const nh = Math.max(180, Math.round(Number(h) || 200))
   try {
