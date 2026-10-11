@@ -33,6 +33,7 @@ import { createTranscriptBuffer } from '../shared/transcriptBuffer.js'
 import { createQuestionCaptureController, formatCaptureDebugLine } from '../shared/questionCapture.js'
 import { createLiveSessionController } from './live/LiveSessionController.js'
 import { computeLiveCanStart, resolveAnswerNowCandidate } from './live/liveGate.js'
+import { formatLiveError } from './live/hintTransport.js'
 import { copyText } from './lib/clipboard'
 import { trackProductEvent } from './lib/productIntelligence'
 import { nid } from '../shared/id.js'
@@ -1332,7 +1333,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             incomplete = true
             hintIncompleteRef.current = true
             metricsRef.current?.markIncomplete?.()
+            const message = data?.error
+              ? formatLiveError(data)
+              : 'The answer stream failed after partial output; the partial answer was kept and not retried automatically.'
             if (isCurrent()) {
+              clearTimers()
+              hintInFlight.current = false
+              setHintLoading(false); setStreaming(false); setBuyTimePhrase('')
+              metricsRef.current?.markError?.(message)
+              setError(message)
               const layers = glanceLayers(answer, hintObj || {})
               upsert({
                 answer: answer.trimEnd() + '\n\n[incomplete — connection/provider error]',
@@ -1348,7 +1357,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             hintInFlight.current = false
             hintIncompleteRef.current = true
             setHintLoading(false); setStreaming(false); setBuyTimePhrase('')
-            const message = data?.error || 'The answer stream ended before a response arrived.'
+            const message = data?.error ? formatLiveError(data) : 'The answer stream ended before a response arrived.'
             metricsRef.current?.markError?.(message)
             setError(message)
             gen.fail('sse_error')
@@ -1397,7 +1406,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       hintInFlight.current = false
       hintIncompleteRef.current = true
       setBuyTimePhrase('')
-      const message = e?.message || 'Unable to complete the Live answer.'
+      const message = formatLiveError(e) || 'Unable to complete the Live answer.'
       metricsRef.current?.markError?.(message)
       setError(message)
       gen.fail(message)
@@ -1873,7 +1882,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         )}
         {error && (
           <div role="alert" style={{ background: '#450a0a', border: '1px solid #ef4444', borderRadius: 5, padding: '5px 8px', fontSize: 10, color: '#fca5a5', marginBottom: 6, lineHeight: 1.4 }}>
-            ⚠ {error.includes('rate-limit') || error.includes('quota') ? 'API rate limited — try again or check Settings' : error}
+            ⚠ {error}
             <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center' }}>
               {/transcription|deepgram|connection|captur|token grant|audio/i.test(error) && (
                 <>

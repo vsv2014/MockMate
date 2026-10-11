@@ -3,7 +3,7 @@
 import OpenAI from 'openai'
 import { analyze } from '../../shared/delivery.js'
 import { fetchWithTimeout } from './http.js'
-import { isRateLimit, isQuotaExhausted, isTransient } from '../../shared/llm-errors.js'
+import { getRetryAfterMs, isRateLimit, isQuotaExhausted, isTransient } from '../../shared/llm-errors.js'
 import {
   filterVisionProviders,
   markVision429Family,
@@ -21,11 +21,13 @@ import {
 } from './visionPolicy.js'
 
 // Forward metadata-only provider events to Electron's local diagnostic store when running in
-// the forked API process. Hosted/serverless runtimes have no IPC channel and simply skip it.
+// its local API service (Node fork in development, utility process in packaged builds).
+// Hosted/serverless runtimes have no IPC channel and simply skip it.
 function providerDiagnostic(event, fields = {}, level = 'info') {
   const row = { component: 'llm', event, level, ...fields }
   try {
-    if (process.send) process.send({ type: 'diagnostic', row })
+    if (typeof process.send === 'function') process.send({ type: 'diagnostic', row })
+    else if (process.parentPort) process.parentPort.postMessage({ type: 'diagnostic', row })
     else if (process.env.MOCKMATE_HOSTED === '1') console.log(JSON.stringify({ ts: new Date().toISOString(), ...row }))
   } catch {}
 }
@@ -350,12 +352,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 // visionPolicy.js — a screen 429 must not reorder or ban text providers, and a text success
 // must not prefer a vision-only slot on the next hint.
 let lastWorkingTextProvider = null
-const textBannedUntil = {}   // baseProvId → timestamp when ban expires
+const textBannedUntil = {}   // provider id → timestamp when its family cooldown expires
+const textBannedReason = {}  // provider id → quota | rate_limit | transient | hard_failure
 let lastWorkingVisionProvider = null
-// A 429 is "slow down for a bit", not "this model is dead". Keep the ban short so the
-// user's CHOSEN model comes back within the same interview instead of being switched
-// away for 5 minutes after one transient burst.
+// Cooldowns are scoped by provider family: a 429 is brief, transient outages are shorter,
+// and credential/model failures are benched longer. Provider Retry-After metadata can extend
+// a rate/quota cooldown; it never causes an automatic second request for the current stream.
 const RATE_LIMIT_BAN_MS = 90 * 1000
+const TRANSIENT_BAN_MS = 30 * 1000
 const HARD_FAILURE_BAN_MS = 15 * 60 * 1000
 const QUOTA_BAN_MS = 5 * 60 * 1000
 
@@ -377,23 +381,62 @@ export function shouldFailoverTextError(e, { emitted = false } = {}) {
   return false
 }
 
-function banTextProvider(provId, ms = RATE_LIMIT_BAN_MS) {
+function banTextProvider(provId, ms = RATE_LIMIT_BAN_MS, reason = 'rate_limit') {
   if (!provId) return
-  // Aliases sharing one key/endpoint are one provider family. If gemini-2.5 is rejected,
-  // immediately trying two more hard-coded Gemini aliases only adds latency and repeats the
-  // same account/key failure. Store the cooldown against every sibling in that family.
+  // Aliases sharing one key/endpoint are one provider family. If a Gemini model is rejected,
+  // immediately trying other hard-coded Gemini aliases repeats the same account/key failure.
   const base = baseOf(provId)
   const familyURL = baseUrlFor(base)
+  const expiresAt = Date.now() + Math.max(0, ms)
   for (const id of availableProviders().map(p => p.id)) {
-    if (baseUrlFor(id) === familyURL) textBannedUntil[id] = Date.now() + ms
+    if (baseUrlFor(id) === familyURL) {
+      textBannedUntil[id] = expiresAt
+      textBannedReason[id] = reason
+    }
   }
-  textBannedUntil[base] = Date.now() + ms
+  textBannedUntil[base] = expiresAt
+  textBannedReason[base] = reason
 }
 
 function noteTextProviderFailure(provId, e) {
-  if (isQuotaExhausted(e)) banTextProvider(provId, QUOTA_BAN_MS)
-  else if (isProviderHardFail(e)) banTextProvider(provId, HARD_FAILURE_BAN_MS)
-  else if (isRateLimit(e)) banTextProvider(provId, RATE_LIMIT_BAN_MS)
+  const retryAfterMs = getRetryAfterMs(e)
+  if (isQuotaExhausted(e)) banTextProvider(provId, Math.max(QUOTA_BAN_MS, retryAfterMs), 'quota')
+  else if (isProviderHardFail(e)) banTextProvider(provId, HARD_FAILURE_BAN_MS, 'hard_failure')
+  else if (isRateLimit(e)) banTextProvider(provId, Math.max(RATE_LIMIT_BAN_MS, retryAfterMs), 'rate_limit')
+  else if (isTransient(e)) banTextProvider(provId, TRANSIENT_BAN_MS, 'transient')
+}
+
+function activeTextCooldowns(now = Date.now()) {
+  return availableProviders()
+    .map(({ id }) => ({ id, until: textBannedUntil[id], reason: textBannedReason[id] || 'unknown' }))
+    .filter(row => Number.isFinite(row.until) && row.until > now)
+}
+
+function textProviderCoolingError() {
+  const now = Date.now()
+  const active = activeTextCooldowns(now)
+  const reasons = new Set(active.map(row => row.reason))
+  const retryAfterMs = active.length ? Math.max(0, Math.min(...active.map(row => row.until)) - now) : 0
+  let kind = 'provider_cooling'
+  let status = 503
+  if (reasons.size === 1 && reasons.has('rate_limit')) { kind = 'rate'; status = 429 }
+  else if (reasons.size === 1 && reasons.has('quota')) { kind = 'quota'; status = 402 }
+  else if (reasons.size === 1 && reasons.has('transient')) { kind = 'transient'; status = 503 }
+  else if (reasons.size > 1 && [...reasons].some(reason => reason !== 'unknown')) kind = 'provider_mixed'
+
+  const error = aiError(kind, status)
+  if (kind === 'quota') error.code = 'insufficient_quota'
+  else if (kind === 'rate') error.code = 'rate_limit'
+  else if (kind === 'transient') error.code = 'transient'
+  else if (kind === 'provider_mixed') error.code = 'provider_limits'
+  else error.code = 'provider_cooling'
+  if (retryAfterMs > 0) error.retryAfterMs = retryAfterMs
+  providerDiagnostic('all_providers_cooling', {
+    activeProviderCount: active.length,
+    reasons: [...reasons].filter(reason => reason !== 'unknown'),
+    retryAfterMs: error.retryAfterMs || null,
+  }, 'warn')
+  return error
 }
 
 /** Test helper — reset text/vision preference + text bans (vision cooldowns: visionPolicy). */
@@ -402,6 +445,7 @@ export function _resetProviderHealthForTests() {
   lastWorkingVisionProvider = null
   discoveredModels.clear()
   for (const k of Object.keys(textBannedUntil)) delete textBannedUntil[k]
+  for (const k of Object.keys(textBannedReason)) delete textBannedReason[k]
 }
 
 export function _getProviderHealthForTests() {
@@ -409,15 +453,19 @@ export function _getProviderHealthForTests() {
     lastWorkingTextProvider,
     lastWorkingVisionProvider,
     textBannedUntil: { ...textBannedUntil },
+    textBannedReason: { ...textBannedReason },
   }
 }
 
 /** Test-only: seed text/vision preference without calling providers. */
-export function _setProviderHealthForTests({ text, vision, banText } = {}) {
+export function _setProviderHealthForTests({ text, vision, banText, banTextReason } = {}) {
   if (text !== undefined) lastWorkingTextProvider = text
   if (vision !== undefined) lastWorkingVisionProvider = vision
   if (banText) {
     for (const [id, until] of Object.entries(banText)) textBannedUntil[id] = until
+  }
+  if (banTextReason) {
+    for (const [id, reason] of Object.entries(banTextReason)) textBannedReason[id] = reason
   }
 }
 
@@ -430,36 +478,44 @@ const managedMode = () => process.env.MOCKMATE_MANAGED === '1'
 // Each entry: [ byokMessage, managedMessage ]. Same status code either way.
 const AI_ERRORS = {
   no_provider: [
-    'No AI provider key found. Open Settings (⚙) and add a key — OpenAI, Anthropic (Claude), Gemini, or Groq (Gemini & Groq have free tiers).',
+    'No AI provider key found. Open Settings (⚙) and add a supported provider key. Provider billing and usage limits still apply.',
     'MockMate AI is temporarily unavailable. Please try again in a moment, or switch to your own API key in Settings (⚙).',
   ],
   quota: [
-    'Your AI provider is out of credits (insufficient quota). Add billing/credits, switch to another model, or set a free GEMINI_API_KEY as a fallback.',
-    'MockMate AI has hit a temporary capacity limit. Please try again shortly, or switch to your own API key in Settings (⚙) for uninterrupted use.',
+    'Your AI provider reported exhausted usage or credits, not a temporary request-rate limit. Add billing/credits or switch to a separately provisioned provider with available usage. Changing models or adding another key under the same provider account may not help.',
+    'MockMate AI has hit an upstream usage or credit limit. Please try again later, or switch to your own funded API key in Settings (⚙).',
   ],
   rate: [
-    'All your AI provider keys are rate-limited right now. Add a second key (Gemini or Groq — free) in ⚙ Settings for automatic failover, or try again in a moment.',
-    'MockMate AI is busy right now. Please try again in a moment, or switch to your own API key in Settings (⚙).',
+    'Your AI provider is temporarily rate-limiting requests or tokens. Wait for its reset or configure a separately provisioned provider in Settings → API Keys; keys in the same provider account may share limits.',
+    'MockMate AI is temporarily rate-limited upstream. Please retry after the provider reset, or switch to your own separately provisioned API key in Settings (⚙).',
   ],
   transient: [
-    'The AI provider is temporarily unavailable (503/overloaded). It usually clears in a few seconds — please try again, or add a second provider key (e.g. GEMINI) for automatic failover.',
-    'MockMate AI is temporarily unavailable. It usually clears in a few seconds — please try again.',
+    'The AI provider had a temporary outage or network error (this is not a quota diagnosis). Please retry shortly, or configure an independently provisioned fallback in Settings → API Keys.',
+    'MockMate AI is temporarily unavailable because of an upstream service or network error. Please try again shortly.',
+  ],
+  provider_cooling: [
+    'All configured AI providers are cooling after recent failures, so MockMate did not send another request. Check provider keys, model access, billing, and limits in Settings → API Keys, then retry shortly.',
+    'MockMate AI is temporarily unavailable after upstream provider failures. Please retry shortly, or switch to your own API key in Settings (⚙).',
+  ],
+  provider_mixed: [
+    'All configured AI providers failed for different reasons: one or more may have exhausted usage, be rate-limited, be temporarily unavailable, or have a key/model-access problem. Check billing, limits, credentials, and model access; use a separately provisioned backup if available.',
+    'Some upstream AI providers are rate-limited, out of usage, temporarily unavailable, or could not authenticate or access the selected model. Please retry later, or switch to your own separately provisioned API key in Settings (⚙).',
   ],
   generic: [
-    'Couldn\'t reach your AI right now. Check your API key in ⚙ Settings — some free keys hit limits or reject models during long sessions; a funded OpenAI key runs reliably.',
-    'Couldn\'t reach MockMate AI right now. Please try again, or switch to your own API key in Settings (⚙).',
+    'Could not reach the configured AI provider. Check the provider key, model access, and current provider status in Settings (⚙), then try again or use another supported provider.',
+    'Could not reach MockMate AI right now. Please try again shortly, or switch to your own API key in Settings (⚙).',
   ],
   vision_none: [
     'Screen analysis needs a vision model — add an OPENAI_API_KEY (GPT-4o) or GEMINI_API_KEY in ⚙ Settings.',
     'Screen analysis is temporarily unavailable. Please try again, or add your own OpenAI/Gemini key in Settings (⚙).',
   ],
   vision_quota: [
-    'Your vision provider is out of credits. Add billing, or add a free GEMINI_API_KEY as a fallback.',
-    'Screen analysis has hit a temporary capacity limit. Please try again shortly, or add your own key in Settings (⚙).',
+    'Your vision provider reports exhausted usage or credits. Check billing or switch to a separately provisioned vision provider; another key in the same account may share the limit.',
+    'Screen analysis has hit an upstream usage or credit limit. Please try again later, or use your own provider key in Settings (⚙).',
   ],
   vision_rate: [
-    'Vision model is rate-limited. Add a second vision key (e.g. a free GEMINI_API_KEY) so screen analysis can fail over, or try again in a moment.',
-    'Screen analysis is busy right now. Please try again in a moment.',
+    'Your vision provider is temporarily rate-limiting requests. Wait for its reset or configure a separately provisioned vision provider in Settings (⚙).',
+    'Screen analysis is temporarily rate-limited upstream. Please try again after the provider reset.',
   ],
 }
 // Build a user-facing Error with the wording that matches the current deployment mode.
@@ -467,6 +523,17 @@ function aiError(kind, status) {
   const pair = AI_ERRORS[kind] || AI_ERRORS.generic
   const e = new Error(managedMode() ? pair[1] : pair[0])
   e.status = status
+  e.kind = kind
+  e.code = ({
+    no_provider: 'no_provider',
+    quota: 'insufficient_quota',
+    rate: 'rate_limit',
+    transient: 'transient',
+    provider_cooling: 'provider_cooling',
+    provider_mixed: 'provider_limits',
+    vision_quota: 'insufficient_quota',
+    vision_none: 'vision_unavailable',
+  })[kind] || 'provider_error'
   return e
 }
 
@@ -528,13 +595,41 @@ export function getFallbackProviders(requestedId) {
   if (lastWorkingTextProvider && available.includes(lastWorkingTextProvider)) {
     return [lastWorkingTextProvider, ...available.filter(id => id !== lastWorkingTextProvider)]
   }
-  return available.length ? available : [requestedId]
+  // Do not resurrect the requested provider when every configured family is cooling.
+  // The caller will return a typed cooldown error without spending another request.
+  return available
+}
+
+function exhaustedProviderError({ sawQuota, sawRate, sawTransient, retryAfterMs = 0 } = {}) {
+  const kinds = [sawQuota && 'quota', sawRate && 'rate', sawTransient && 'transient'].filter(Boolean)
+  const kind = kinds.length > 1 ? 'provider_mixed' : kinds[0] || 'provider_cooling'
+  const status = kind === 'quota' ? 402 : kind === 'rate' ? 429 : kind === 'transient' ? 503 : 503
+  const error = aiError(kind, status)
+  if (retryAfterMs > 0) error.retryAfterMs = retryAfterMs
+  return error
+}
+
+function userFacingPartialStreamError(error) {
+  let kind = null
+  let status = Number(error?.status || error?.statusCode || 502)
+  if (isQuotaExhausted(error)) { kind = 'quota'; status = 402 }
+  else if (isRateLimit(error)) { kind = 'rate'; status = 429 }
+  else if (isTransient(error)) { kind = 'transient'; status = 503 }
+  if (!kind) return error
+
+  const visibleError = aiError(kind, status)
+  const retryAfterMs = getRetryAfterMs(error)
+  if (retryAfterMs > 0) visibleError.retryAfterMs = retryAfterMs
+  visibleError.partial = true
+  visibleError.message += ' Part of the answer was already shown; MockMate kept it and did not restart the provider request. Use the question\'s Retry control only if you want a fresh answer.'
+  return visibleError
 }
 
 export async function completeJSON({ messages, maxTokens = 1600, provider }) {
   assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
-  let lastError, sawQuota = false, sawRate = false, sawTransient = false
+  if (!providerQueue.length) throw textProviderCoolingError()
+  let lastError, sawQuota = false, sawRate = false, sawTransient = false, retryAfterMs = 0
 
   for (const provId of providerQueue) {
     let prov
@@ -607,12 +702,15 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
       if (isQuotaExhausted(e)) { sawQuota = true; noteTextProviderFailure(provId, e); console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
       if (isRateLimit(e)) {
         sawRate = true
+        const providerWaitMs = Math.max(RATE_LIMIT_BAN_MS, getRetryAfterMs(e))
+        retryAfterMs = retryAfterMs > 0 ? Math.min(retryAfterMs, providerWaitMs) : providerWaitMs
         noteTextProviderFailure(provId, e)
         console.warn(`[MockMate] ${provId} rate-limited → trying next provider`)
         continue
       }
       if (isTransient(e)) {
         sawTransient = true
+        noteTextProviderFailure(provId, e)
         console.warn(`[MockMate] ${provId} transient error (${e?.status || ''}) → trying next provider`)
         continue
       }
@@ -626,11 +724,11 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
     }
   }
 
-  // All providers exhausted — surface the MOST actionable error seen across ALL of them
-  // (not just the last), so an earlier out-of-credits/rate-limit isn't masked by a later 400.
-  if (sawQuota) { const e = aiError('quota', 402); e.code = 'insufficient_quota'; throw e }
-  if (sawRate) throw aiError('rate', 429)
-  if (sawTransient) throw aiError('transient', 503)
+  // Preserve the distinct cause when only one class failed. If different configured
+  // providers failed for different reasons, say so rather than disguising every outcome as quota.
+  if (sawQuota || sawRate || sawTransient) {
+    throw exhaustedProviderError({ sawQuota, sawRate, sawTransient, retryAfterMs })
+  }
   // Every configured provider hit a genuine error. Keep the technical detail in the LOG (already
   // logged per-provider above), but show the USER a human message — never a raw "400 no body".
   console.error(`[llm] all providers failed — last: ${lastError?.status || ''} ${lastError?.message || lastError}`)
@@ -827,6 +925,7 @@ async function visionCompleteOnce({
 export async function completeTextQuick({ prompt, maxTokens = 1200, signal, requestId } = {}) {
   assertProviderConfigured()
   const providerQueue = getFallbackProviders('auto')
+  if (!providerQueue.length) throw textProviderCoolingError()
   let lastError
   const debug = process.env.MOCKMATE_DEBUG_VISION === '1'
   for (const provId of providerQueue) {
@@ -861,13 +960,23 @@ export async function completeTextQuick({ prompt, maxTokens = 1200, signal, requ
         markVision429Family(baseOf(provId))
         continue
       }
+      if (kind === 'quota') {
+        noteTextProviderFailure(provId, e)
+        continue
+      }
       if (kind === 'auth' || kind === 'bad_request') {
         if (isProviderHardFail(e)) noteTextProviderFailure(provId, e)
         continue
       }
-      if (!isRateLimit(e) && !isTransient(e)) throw e
+      if (isTransient(e)) {
+        noteTextProviderFailure(provId, e)
+        continue
+      }
+      if (!isRateLimit(e)) throw e
     }
   }
+  if (isQuotaExhausted(lastError)) throw aiError('vision_quota', 402)
+  if (isRateLimit(lastError)) throw makeVisionRateLimitedError(process.env.MOCKMATE_MANAGED === '1')
   throw lastError || new Error('Could not repair screen-analysis response')
 }
 
@@ -896,7 +1005,8 @@ function withDeadline(upstreamSignal, ms) {
 export async function streamText({ messages, maxTokens = 700, provider, onToken, onUsage, onProviderEvent, signal }) {
   assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
-  let lastError, emitted = false, sawQuota = false, sawRate = false, sawTransient = false
+  if (!providerQueue.length) throw textProviderCoolingError()
+  let lastError, emitted = false, sawQuota = false, sawRate = false, sawTransient = false, retryAfterMs = 0
   for (let attemptIndex = 0; attemptIndex < providerQueue.length; attemptIndex++) {
     const provId = providerQueue[attemptIndex]
     let prov
@@ -946,18 +1056,26 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       if (timedOut && !e?.status) e.status = 504
       providerDiagnostic(timedOut ? 'attempt_timed_out' : 'attempt_failed', { attemptId, operation: 'stream', provider: provId, model, status: e?.status || 0, emitted, durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
       try { onProviderEvent?.({ type: timedOut ? 'timed_out' : 'failed', attemptId, attemptIndex, provider: provId, status: e?.status || 0, emitted }) } catch {}
-      if (emitted) throw e   // already streamed partial output — don't restart elsewhere
+      if (emitted) {
+        // Keep the partial answer visible and never restart this paid generation. Cool the
+        // failed provider for a later question and send a classified, actionable error to UI.
+        noteTextProviderFailure(provId, e)
+        throw userFacingPartialStreamError(e)
+      }
       // Before any token: same failover classes as completeJSON (rate / transient / hard fail / quota).
       if (!shouldFailoverTextError(e, { emitted: false })) throw e
       if (isQuotaExhausted(e)) { sawQuota = true; noteTextProviderFailure(provId, e); console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
       if (isRateLimit(e)) {
         sawRate = true
+        const providerWaitMs = Math.max(RATE_LIMIT_BAN_MS, getRetryAfterMs(e))
+        retryAfterMs = retryAfterMs > 0 ? Math.min(retryAfterMs, providerWaitMs) : providerWaitMs
         noteTextProviderFailure(provId, e)
         console.warn(`[MockMate] ${provId} rate-limited → trying next provider`)
         continue
       }
       if (isTransient(e)) {
         sawTransient = true
+        noteTextProviderFailure(provId, e)
         console.warn(`[MockMate] ${provId} transient error (${e?.status || ''}) → trying next provider`)
         continue
       }
@@ -967,10 +1085,10 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       deadline.cleanup()
     }
   }
-  if (sawQuota) { const e = aiError('quota', 402); e.code = 'insufficient_quota'; throw e }
-  if (sawRate) throw aiError('rate', 429)
-  if (sawTransient) throw aiError('transient', 503)
-  if (isQuotaExhausted(lastError)) { const e = aiError('quota', 402); e.code = 'insufficient_quota'; throw e }
+  if (sawQuota || sawRate || sawTransient) {
+    throw exhaustedProviderError({ sawQuota, sawRate, sawTransient, retryAfterMs })
+  }
+  if (isQuotaExhausted(lastError)) throw aiError('quota', 402)
   throw lastError || new Error('No LLM provider could stream a response')
 }
 
@@ -1016,11 +1134,20 @@ export async function deepgramToken(opts = {}) {
   }
 
   const e = new Error(
-    r.status === 403 || r.status === 401
-      ? `Deepgram token grant failed (${r.status}). Use an Owner-scoped API key that can mint grants (Deepgram Console → API Keys), or ensure local key fallback is enabled on this machine.`
-      : `Deepgram token grant failed (${r.status}). Check your Deepgram key in Settings → Voice.`
+    r.status === 429
+      ? 'Deepgram is rate-limiting token grants. MockMate will retry the connection with backoff; if it continues, wait for the Deepgram reset and check Settings → Voice.'
+      : r.status === 402
+        ? 'Deepgram reports exhausted transcription usage or credits. Check Deepgram billing and audio-minute allowance in Settings → Voice; this is separate from LLM answer-generation limits.'
+        : r.status === 403 || r.status === 401
+          ? `Deepgram token grant failed (${r.status}). Use an Owner-scoped API key that can mint grants (Deepgram Console → API Keys), or ensure local key fallback is enabled on this machine.`
+          : `Deepgram token grant failed (${r.status}). Check your Deepgram key in Settings → Voice.`
   )
   e.status = r.status
+  if (r.status === 429) e.code = 'deepgram_rate_limit'
+  else if (r.status === 402) e.code = 'deepgram_quota'
+  else if (r.status === 401 || r.status === 403) e.code = 'deepgram_auth'
+  const retryAfterMs = getRetryAfterMs({ headers: r.headers })
+  if (retryAfterMs > 0) e.retryAfterMs = retryAfterMs
   throw e
 }
 

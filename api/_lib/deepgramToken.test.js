@@ -77,4 +77,27 @@ describe('deepgramToken key-fallback policy', () => {
     vi.mocked(fetchWithTimeout).mockResolvedValue({ ok: false, status: 401 })
     await expect(deepgramToken({ allowApiKeyFallback: true })).rejects.toMatchObject({ status: 401 })
   })
+
+  it('distinguishes a temporary Deepgram grant rate limit and preserves Retry-After', async () => {
+    vi.mocked(fetchWithTimeout).mockResolvedValue({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'retry-after': '3' }),
+    })
+    await expect(deepgramToken({ allowApiKeyFallback: true })).rejects.toMatchObject({
+      status: 429,
+      code: 'deepgram_rate_limit',
+      retryAfterMs: 3000,
+      message: expect.stringContaining('rate-limiting token grants'),
+    })
+  })
+
+  it('reports exhausted Deepgram usage separately from an auth failure', async () => {
+    vi.mocked(fetchWithTimeout).mockResolvedValue({ ok: false, status: 402 })
+    await expect(deepgramToken({ allowApiKeyFallback: true })).rejects.toMatchObject({
+      status: 402,
+      code: 'deepgram_quota',
+      message: expect.stringContaining('transcription usage or credits'),
+    })
+  })
 })

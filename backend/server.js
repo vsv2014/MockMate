@@ -58,6 +58,14 @@ if (hostedConfig?.hosted) process.env.MOCKMATE_HOSTED = '1'
 process.env.MOCKMATE_MANAGED = '1'
 
 const app = express()
+
+function sendToDesktop(message) {
+  try {
+    if (typeof process.send === 'function') process.send(message)
+    else process.parentPort?.postMessage(message)
+  } catch {}
+}
+
 const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS || 0)
 if (PUBLIC_BIND && Number.isInteger(trustProxyHops) && trustProxyHops > 0) app.set('trust proxy', trustProxyHops)
 
@@ -167,19 +175,19 @@ initStore()
     server = app.listen(PORT, HOST, () => {
       processReady = true
       console.log(`[backend] auth${storeMode() === 'mongo' ? '+managed AI' : ''} API on http://${HOST}:${PORT} (store: ${storeMode()})`)
-      process.send?.({ type: 'ready', port: PORT })
+      sendToDesktop({ type: 'ready', port: PORT })
     })
     server.on('upgrade', (req, socket, head) => managedSttGateway.handleUpgrade(req, socket, head))
     server.on('error', e => {
       processReady = false
       console.error('[backend] listen failed:', e.message)
-      process.send?.({ type: 'server-error', code: e.code, message: e.message })
+      sendToDesktop({ type: 'server-error', code: e.code, message: e.message })
       process.exit(1)
     })
   })
   .catch(e => {
     processReady = false
     console.error('[backend] startup failed:', e.message)
-    process.send?.({ type: 'server-error', message: e.message })
+    sendToDesktop({ type: 'server-error', message: e.message })
     process.exit(1)
   })

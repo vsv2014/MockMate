@@ -4,6 +4,8 @@ import {
   isProviderHardFail,
   isLoopbackAddress,
   getFallbackProviders,
+  availableProviders,
+  streamText,
   pickFastProvider,
   pickStrongProvider,
   pickBestProvider,
@@ -97,6 +99,18 @@ describe('text vs vision provider health', () => {
     const q = getFallbackProviders('openai')
     expect(q).not.toContain('openai')
     expect(q.length).toBeGreaterThan(0)
+  })
+
+  it('does not resurrect a requested provider when every configured provider is cooling', async () => {
+    const until = Date.now() + 90_000
+    const ids = availableProviders().map(({ id }) => id)
+    _setProviderHealthForTests({
+      banText: Object.fromEntries(ids.map(id => [id, until])),
+      banTextReason: Object.fromEntries(ids.map(id => [id, 'rate_limit'])),
+    })
+    expect(getFallbackProviders('auto')).toEqual([])
+    await expect(streamText({ messages: [{ role: 'user', content: 'Q' }], provider: 'auto' }))
+      .rejects.toMatchObject({ status: 429, code: 'rate_limit', retryAfterMs: expect.any(Number) })
   })
 
   it('uses the QA-verified Gemini Flash-Lite model for automatic fast answers', () => {

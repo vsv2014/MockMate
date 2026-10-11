@@ -1,13 +1,14 @@
 // Electron main — overlay window with setContentProtection(true):
 //   Windows → WDA_EXCLUDEFROMCAPTURE,  macOS → NSWindowSharingNone
 //   (Linux has no equivalent — overlay IS visible in screen share there.)
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut, Notification, shell, dialog, safeStorage, powerMonitor } = require('electron')
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut, Notification, shell, dialog, safeStorage, powerMonitor, utilityProcess } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
 const net = require('net')
 const { fork } = require('child_process')
 const { DiagnosticStore } = require('./diagnostics.cjs')
+const { attachRequiredServiceLifecycle, waitForOptionalServiceReady, classifyRendererLoadFailure } = require('./service-lifecycle.cjs')
 
 // Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
 // so a candidate's resume/transcript never leaves the device via Sentry (privacy-first).
@@ -223,43 +224,90 @@ async function ensurePortFree(port, label) {
   throw error
 }
 
+// Packaged services use Electron's utility process rather than respawning MockMate.exe with
+// child_process.fork(). Development keeps Node fork so local tooling remains unchanged. This
+// removes one Windows child-launch failure path; port conflicts, damaged installs, blocked helpers,
+// and other startup failures still need the explicit readiness/error handling below.
+function startLocalService(modulePath, env, serviceName, developmentCwd) {
+  let service
+  if (isProd) {
+    if (typeof utilityProcess?.fork !== 'function') {
+      throw new Error('This Electron build cannot start MockMate local services safely. Please reinstall the latest build.')
+    }
+    const runtimeCwd = path.join(app.getPath('userData'), 'runtime')
+    fs.mkdirSync(runtimeCwd, { recursive: true })
+    service = utilityProcess.fork(modulePath, [], {
+      env,
+      cwd: runtimeCwd,
+      stdio: 'pipe',
+      serviceName,
+    })
+    service._mockMateUtilityProcess = true
+  } else {
+    service = fork(modulePath, [], { env, cwd: developmentCwd, stdio: 'pipe' })
+  }
+
+  // UtilityProcess.kill() takes no signal; normalize calls from shutdown/key-reload paths.
+  const originalKill = service.kill.bind(service)
+  service.kill = function stopLocalService(signal) {
+    service._mockMateIntentionalStop = true
+    return service._mockMateUtilityProcess ? originalKill() : originalKill(signal)
+  }
+  return service
+}
+
 function startApiServer(onReady) {
+  if (quitDrainStarted) return
   const serverEntry = path.join(app.getAppPath(), 'server-entry.cjs')
+  diag('api', 'service_starting', { mode: isProd ? 'utility_process' : 'child_process' })
   // Refuse to start if :3002 is occupied; never kill an unknown port owner.
   ensurePortFree(3002, 'API').then(() => {
-  apiServer = fork(serverEntry, [], {
-    env: { ...process.env, PORT: '3002', NODE_ENV: 'production' },
-    cwd: app.getAppPath(), stdio: 'pipe'
-  })
-  apiServer.stdout?.on('data', d => console.log('[API]', d.toString().trim()))
-  apiServer.stderr?.on('data', d => console.error('[API]', d.toString().trim()))
-  apiServer.on('error', e => console.error('[API] fork error:', e.message))
+    // The port probe is async; do not spawn a child after app shutdown has begun.
+    if (quitDrainStarted) return
+    const service = startLocalService(
+      serverEntry,
+      { ...process.env, PORT: '3002', NODE_ENV: 'production' },
+      'MockMate Local UI and AI',
+      app.getAppPath(),
+    )
+    apiServer = service
+    diag('api', 'service_started', { mode: service._mockMateUtilityProcess ? 'utility_process' : 'child_process', pid: service.pid || null })
+    service.stdout?.on('data', d => console.log('[API]', d.toString().trim()))
+    service.stderr?.on('data', d => console.error('[API]', d.toString().trim()))
 
-  let done = false
-  const fire = () => { if (!done) { done = true; onReady() } }
-  apiServer.on('message', msg => {
-    if (msg?.type === 'ready') fire()
-    else if (msg?.type === 'diagnostic' && msg.row) diagnostics?.ingest(msg.row)
-    // The server couldn't bind the port (e.g. a stale process is holding it). Don't
-    // silently fall through to loading a dead URL — tell the user what happened.
-    else if (msg?.type === 'server-error') {
-      const hint = msg.code === 'EADDRINUSE'
+    attachRequiredServiceLifecycle(service, {
+      timeoutMs: 15_000,
+      timeoutMessage: 'The local UI service did not become ready within 15 seconds.',
+      exitBeforeReadyMessage: code => `The local UI service exited before startup completed (${code ?? 'unknown'}).`,
+      exitAfterReadyMessage: code => `The local UI service stopped unexpectedly (${code ?? 'unknown'}). MockMate will close so it can restart cleanly.`,
+      serverErrorMessage: msg => msg.code === 'EADDRINUSE'
         ? 'Port 3002 is already in use — another MockMate may still be running. Quit it (or reboot) and reopen MockMate.'
-        : `The local server failed to start: ${msg.message || msg.code || 'unknown error'}`
-      dialog.showErrorBox('MockMate could not start', hint)
-      app.quit()
-    }
-  })
-  // Do not declare readiness by elapsed time. The child must explicitly emit {type:'ready'}.
+        : `The local server failed to start: ${msg.message || msg.code || 'unknown error'}`,
+      onReady: message => {
+        diag('api', 'service_ready', { port: message?.port || 3002 })
+        onReady?.()
+      },
+      onDiagnostic: row => diagnostics?.ingest(row),
+      onFatal: error => {
+        const message = error?.message || String(error || 'unknown startup error')
+        diag('api', 'service_failed', { message }, 'error')
+        console.error('[API] service failed:', message)
+        dialog.showErrorBox('MockMate could not start', `${message}\n\nClose MockMate completely and reopen it. If this repeats, reinstall the latest build; your locally saved API keys and history are preserved.`)
+        app.quit()
+      },
+    })
   }).catch(e => {
-    console.error('[API] ensurePortFree failed:', e.message)
-    dialog.showErrorBox('MockMate could not start', e.message || 'The local API port could not be prepared.')
+    if (quitDrainStarted) return
+    const message = e?.message || 'The local API port could not be prepared.'
+    diag('api', 'service_start_failed', { code: e?.code || null, message }, 'error')
+    console.error('[API] local UI service startup failed:', message)
+    dialog.showErrorBox('MockMate could not start', message)
     app.quit()
   })
 }
 
 // Persistent per-install JWT secret. Generated once, kept in userData (0600),
-// and handed to the forked backend so tokens stay valid across app restarts.
+// and handed to the local account service so tokens stay valid across app restarts.
 function getJwtSecret() {
   const f = path.join(app.getPath('userData'), '.jwt-secret')
   try { if (fs.existsSync(f)) return fs.readFileSync(f, 'utf8').trim() } catch {}
@@ -268,22 +316,20 @@ function getJwtSecret() {
   return secret
 }
 
-// Fork the auth backend (Express). File-backed by default (offline-safe, no
+// Start the local account/auth backend (Express). File-backed by default (offline-safe, no
 // MongoDB needed); set MONGO_URI to switch to Mongo. Data lives in userData.
 function startBackend() {
+  if (quitDrainStarted) return Promise.resolve({ type: 'stopped' })
   const entry = path.join(app.getAppPath(), 'backend', 'server-entry.cjs')
   if (!fs.existsSync(entry)) return Promise.reject(new Error(`backend entry not found: ${entry}`))
-  return ensurePortFree(Number(BACKEND_PORT) || 4000, 'backend').then(() => new Promise((resolve, reject) => {
-    let settled = false
-    const finish = (fn, value) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      fn(value)
-    }
-    backendServer = fork(entry, [], {
-      cwd: path.join(app.getAppPath(), 'backend'),
-      env: {
+  const port = Number(BACKEND_PORT) || 4000
+  diag('backend', 'service_starting', { mode: isProd ? 'utility_process' : 'child_process', port })
+  return ensurePortFree(port, 'backend').then(() => {
+    // The port probe is async; do not spawn a child after app shutdown has begun.
+    if (quitDrainStarted) return { type: 'stopped' }
+    const service = startLocalService(
+      entry,
+      {
         ...process.env,
         PORT: BACKEND_PORT,
         JWT_SECRET: getJwtSecret(),
@@ -291,21 +337,27 @@ function startBackend() {
         MOCKMATE_DATA_DIR: app.getPath('userData'),   // file store lives beside the user's keys
         NODE_ENV: 'production',
       },
-      stdio: 'pipe',
-    })
-    const timer = setTimeout(() => finish(reject, new Error(`auth backend did not become ready on port ${BACKEND_PORT}`)), 10_000)
-    backendServer.stdout?.on('data', d => console.log('[backend]', d.toString().trim()))
-    backendServer.stderr?.on('data', d => console.error('[backend]', d.toString().trim()))
-    backendServer.on('message', msg => {
-      if (msg?.type === 'ready') finish(resolve, msg)
-      else if (msg?.type === 'server-error') finish(reject, new Error(msg.message || msg.code || 'backend startup failed'))
-    })
-    backendServer.on('error', e => finish(reject, e))
-    backendServer.on('exit', code => {
+      'MockMate Local Account Service',
+      path.join(app.getAppPath(), 'backend'),
+    )
+    backendServer = service
+    diag('backend', 'service_started', { mode: service._mockMateUtilityProcess ? 'utility_process' : 'child_process', port, pid: service.pid || null })
+    service.stdout?.on('data', d => console.log('[backend]', d.toString().trim()))
+    service.stderr?.on('data', d => console.error('[backend]', d.toString().trim()))
+    service.on('exit', code => {
+      if (service._mockMateIntentionalStop) return
+      diag('backend', 'service_exited', { code: code ?? null }, 'warn')
       if (code) console.error('[backend] exited with code', code)
-      if (!settled) finish(reject, new Error(`auth backend exited before ready (${code ?? 'unknown'})`))
     })
-  }))
+    return waitForOptionalServiceReady(service, {
+      timeoutMs: 10_000,
+      timeoutMessage: `Local account service did not become ready on port ${port} within 10 seconds.`,
+      serverErrorMessage: msg => msg.message || msg.code || 'Local account service startup failed.',
+    }).then(result => {
+      if (result?.type === 'ready') diag('backend', 'service_ready', { port: result.port || port })
+      return result
+    })
+  })
 }
 
 function createSetupWindow() {
@@ -331,6 +383,7 @@ function createSetupWindow() {
 }
 
 let rendererLoadFailures = 0
+let rendererRetryTimer = null
 function createMainWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize
   // Linux compositors often render transparent frameless windows as fully invisible,
@@ -402,15 +455,32 @@ function createMainWindow() {
     if (/^https?:\/\//.test(url) && !sameOrigin) { e.preventDefault(); shell.openExternal(url) }
   })
 
-  mainWindow.webContents.on('did-finish-load', () => { rendererLoadFailures = 0 })
-  mainWindow.webContents.on('did-fail-load', (_e, code) => {
-    if (code === -3) return
-    rendererLoadFailures += 1
-    if (rendererLoadFailures > 5) {
-      dialog.showErrorBox('MockMate could not load', 'The desktop UI failed to load after several retries. Please restart MockMate.')
+  mainWindow.webContents.on('did-finish-load', () => {
+    clearTimeout(rendererRetryTimer)
+    rendererRetryTimer = null
+    rendererLoadFailures = 0
+  })
+  mainWindow.webContents.on('did-fail-load', (_e, code, _description, _validatedURL, isMainFrame) => {
+    const decision = classifyRendererLoadFailure(rendererLoadFailures, code, isMainFrame)
+    if (decision.action === 'ignore') return
+    rendererLoadFailures = decision.attempts
+    clearTimeout(rendererRetryTimer)
+    if (decision.action === 'fatal') {
+      const message = 'The desktop UI failed to load after several retries. MockMate will close so the next launch can start cleanly.'
+      diag('renderer', 'load_failed_exhausted', { code, attempts: rendererLoadFailures }, 'error')
+      dialog.showErrorBox('MockMate could not load', message)
+      app.quit()
       return
     }
-    setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(isProd ? PROD_URL : DEV_URL) }, Math.min(4000, 500 * rendererLoadFailures))
+    const attempts = decision.attempts
+    rendererRetryTimer = setTimeout(() => {
+      rendererRetryTimer = null
+      if (rendererLoadFailures === attempts && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.loadURL(isProd ? PROD_URL : DEV_URL).catch(error => {
+          diag('renderer', 'retry_navigation_failed', { attempts, message: error?.message || 'navigation failed' }, 'warn')
+        })
+      }
+    }, decision.delayMs)
   })
 
   if (isProd) {
@@ -421,7 +491,12 @@ function createMainWindow() {
     startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(DEV_URL) })
   }
 
-  mainWindow.on('closed', () => { mainWindow = null; app.quit() })
+  mainWindow.on('closed', () => {
+    clearTimeout(rendererRetryTimer)
+    rendererRetryTimer = null
+    mainWindow = null
+    app.quit()
+  })
 }
 
 function launchTrayAndShortcuts() {
@@ -741,15 +816,16 @@ if (!gotTheLock) {
       v8Version: process.versions.v8,
     })
     loadEnv()
-    // Fork a LOCAL auth backend only when NOT pointed at a hosted one. With MOCKMATE_API_BASE set
-    // (production / Mongo-backed), the desktop talks to the hosted backend over HTTPS — no local
-    // fork, and DB credentials (MONGO_URI) never ship on the client.
+    // managedApiBase is empty by default, so normal desktop installs use the local account service.
+    // Only an explicit hosted API base skips this local process; DB credentials never ship on client.
     if (!process.env.MOCKMATE_API_BASE && !BUILT_MANAGED_API_BASE) {
       try {
-        await startBackend()
+        const backendStart = await startBackend()
+        if (backendStart?.type === 'stopped' && quitDrainStarted) return
         diag('backend', 'started', { mode: 'local' })
       } catch (e) {
-        diag('backend', 'startup_failed', { mode: 'local', message: e.message }, 'error')
+        if (quitDrainStarted) return
+        diag('backend', 'service_start_failed', { mode: 'local', code: e?.code || null, message: e?.message || 'startup failed' }, 'error')
         console.error('[backend] startup failed:', e.message)
         // Authentication is optional: BYOK/guest interview modes use the local AI
         // server and must remain available when the account service is unhealthy.
@@ -764,9 +840,11 @@ if (!gotTheLock) {
         }).catch(() => {})
       }
     }
+    if (quitDrainStarted) return
     // ALWAYS open the single overlay window — no separate setup window. With the
     // local developer/BYOK keys present it goes straight to work; if no keys are found the
     // overlay shows its inline "Add your API keys" form. One window, never two.
+    // This required local UI/AI service still starts for guests; guest mode bypasses account auth only.
     createMainWindow()
     launchTrayAndShortcuts()
     setupAutoUpdate()

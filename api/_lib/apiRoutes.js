@@ -17,6 +17,21 @@ export function isProviderFailureError(e, { closed = false, signal = null } = {}
   return isQuotaExhausted(e) || isRateLimit(e) || isTransient(e)
 }
 
+function errorPayload(error) {
+  const payload = { error: error?.message || 'The request failed.' }
+  if (error?.code || error?.kind) payload.code = error.code || error.kind
+  const retryAfterMs = Number(error?.retryAfterMs)
+  if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) payload.retryAfterMs = Math.ceil(retryAfterMs)
+  return payload
+}
+
+function setRetryAfterHeader(res, error) {
+  const retryAfterMs = Number(error?.retryAfterMs)
+  if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+    res.setHeader('Retry-After', String(Math.max(1, Math.ceil(retryAfterMs / 1000))))
+  }
+}
+
 export const API_ROUTE_CONTRACT = [
   { method: 'GET', path: '/api/providers' }, { method: 'GET', path: '/api/models' },
   { method: 'GET', path: '/api/arch' },
@@ -110,13 +125,13 @@ export function registerApiRoutes(app, opts = {}) {
       res.json(await deepgramToken({ allowApiKeyFallback }))
     } catch (e) {
       if (onSttRelease) { try { await onSttRelease(req) } catch {} }
-      report(e); res.status(e.status || 500).json({ error: e.message })
+      report(e); setRetryAfterHeader(res, e); res.status(e.status || 500).json(errorPayload(e))
     }
   })
 
   app.post('/api/token', ...guardLight, async (req, res) => {
     try { res.json(await mintToken({ ...(req.body || {}), requesterId: req.userId || null })) }
-    catch (e) { report(e); res.status(e.status || 500).json({ error: e.message }) }
+    catch (e) { report(e); setRetryAfterHeader(res, e); res.status(e.status || 500).json(errorPayload(e)) }
   })
 
   // Embeddings consume a provider request too. Managed deployments use the full guard so document
@@ -136,7 +151,7 @@ export function registerApiRoutes(app, opts = {}) {
       })
     } catch (e) {
       if (onLlmFailure) { try { await onLlmFailure(req, '/api/embed') } catch {} }
-      report(e); res.status(e.status || 500).json({ error: e.message })
+      report(e); setRetryAfterHeader(res, e); res.status(e.status || 500).json(errorPayload(e))
     }
   })
 
@@ -160,7 +175,7 @@ export function registerApiRoutes(app, opts = {}) {
       }
       report(e)
       console.error(`[api] POST ${path} → ${e.status || 500}: ${e.message}`)
-      res.status(e.status || 500).json({ error: e.message })
+      setRetryAfterHeader(res, e); res.status(e.status || 500).json(errorPayload(e))
     }
   })
 
@@ -187,7 +202,7 @@ export function registerApiRoutes(app, opts = {}) {
       }
       report(e)
       console.error(`[api] POST /api/analyze-screen → ${e.status || 500}: ${e.message}`)
-      res.status(e.status || 500).json({ error: e.message, code: e.code || undefined })
+      setRetryAfterHeader(res, e); res.status(e.status || 500).json(errorPayload(e))
     }
   })
 
@@ -251,7 +266,7 @@ export function registerApiRoutes(app, opts = {}) {
           recordArchMetric('provider_failure_count', 1)
         }
         report(e)
-        send('error', { error: e.message })
+        send('error', errorPayload(e))
       }
     }
     if (!closed) res.end()
