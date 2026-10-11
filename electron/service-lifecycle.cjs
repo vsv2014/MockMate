@@ -134,6 +134,35 @@ function waitForOptionalServiceReady(child, {
   })
 }
 
+/**
+ * Stop a local service and wait for its exit before a replacement probes the
+ * same port. Process termination is asynchronous on Windows; restarting
+ * immediately can otherwise mistake the old service for an unrelated owner.
+ */
+function stopServiceAndWait(child, { timeoutMs = 5_000 } = {}) {
+  if (!child) return Promise.resolve({ type: 'missing' })
+  return new Promise(resolve => {
+    let settled = false
+    let timer
+    const finish = result => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      child.removeListener?.('exit', onExit)
+      resolve(result)
+    }
+    const onExit = code => finish({ type: 'exited', code: code ?? null })
+
+    child.once('exit', onExit)
+    timer = setTimeout(() => finish({ type: 'timeout' }), Math.max(1, timeoutMs))
+    try {
+      if (child.kill() === false) finish({ type: 'not_running' })
+    } catch (error) {
+      finish({ type: 'kill_error', error })
+    }
+  })
+}
+
 /** Pure retry/fatal policy for the main-frame renderer load guard. */
 function classifyRendererLoadFailure(previousAttempts, errorCode, isMainFrame = true) {
   const attempts = Math.max(0, Number(previousAttempts) || 0)
@@ -146,5 +175,6 @@ function classifyRendererLoadFailure(previousAttempts, errorCode, isMainFrame = 
 module.exports = {
   attachRequiredServiceLifecycle,
   waitForOptionalServiceReady,
+  stopServiceAndWait,
   classifyRendererLoadFailure,
 }

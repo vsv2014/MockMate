@@ -8,7 +8,7 @@ const crypto = require('crypto')
 const net = require('net')
 const { fork } = require('child_process')
 const { DiagnosticStore } = require('./diagnostics.cjs')
-const { attachRequiredServiceLifecycle, waitForOptionalServiceReady, classifyRendererLoadFailure } = require('./service-lifecycle.cjs')
+const { attachRequiredServiceLifecycle, waitForOptionalServiceReady, stopServiceAndWait, classifyRendererLoadFailure } = require('./service-lifecycle.cjs')
 
 // Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
 // so a candidate's resume/transcript never leaves the device via Sentry (privacy-first).
@@ -1258,16 +1258,20 @@ ipcMain.handle('remove-provider-key', (_, provider) => {
 // It also races the single-instance lock in prod. Instead we transition live:
 // writeEnv already pushed the keys into process.env, so we just open the overlay
 // (first run) or restart the API server (keys changed while running).
-ipcMain.handle('apply-keys', () => {
+ipcMain.handle('apply-keys', async () => {
   loadEnv()   // safety net: make sure file values are in process.env
   if (!mainWindow || mainWindow.isDestroyed()) {
     createMainWindow()
     launchTrayAndShortcuts()
     setupAutoUpdate()
   } else if (apiServer) {
-    // Prod: forked server read its env at fork time — restart it to pick up new keys.
-    try { apiServer.kill() } catch {}
+    // The local service read its environment at launch. Wait for the old process
+    // to exit and release :3002 before probing that port for its replacement.
+    const previousApiServer = apiServer
     apiServer = null
+    const stopped = await stopServiceAndWait(previousApiServer, { timeoutMs: 5_000 })
+    diag('api', 'service_stopped_for_key_reload', { result: stopped?.type || 'unknown' }, stopped?.type === 'exited' || stopped?.type === 'not_running' ? 'info' : 'warn')
+    if (quitDrainStarted) return { ok: false, error: 'MockMate is closing.' }
     startApiServer(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(isProd ? PROD_URL : DEV_URL) })
   } else {
     mainWindow.webContents.reload()   // dev: server is separate; just refresh providers

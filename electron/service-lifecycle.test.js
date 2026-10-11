@@ -14,6 +14,7 @@ const require = createRequire(import.meta.url)
 const {
   attachRequiredServiceLifecycle,
   waitForOptionalServiceReady,
+  stopServiceAndWait,
   classifyRendererLoadFailure,
 } = require('./service-lifecycle.cjs')
 
@@ -150,5 +151,44 @@ describe('Windows/local desktop service lifecycle', () => {
     child.kill()
     child.emit('exit', 0)
     await expect(waiting).resolves.toEqual({ type: 'stopped' })
+  })
+
+  it('waits for the old local service to exit before a key-reload restart', async () => {
+    vi.useFakeTimers()
+    try {
+      const child = fakeService()
+      child.kill = () => {
+        child.killCount += 1
+        child._mockMateIntentionalStop = true
+        setTimeout(() => child.emit('exit', 0), 25)
+        return true
+      }
+      const waiting = stopServiceAndWait(child, { timeoutMs: 5_000 })
+      expect(child.killCount).toBe(1)
+      await vi.advanceTimersByTimeAsync(24)
+      let settled = false
+      waiting.then(() => { settled = true })
+      await Promise.resolve()
+      expect(settled).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      await expect(waiting).resolves.toEqual({ type: 'exited', code: 0 })
+      expect(main).toContain('await stopServiceAndWait(previousApiServer, { timeoutMs: 5_000 })')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('bounds key-reload shutdown waiting when a child never emits exit', async () => {
+    vi.useFakeTimers()
+    try {
+      const child = fakeService()
+      const waiting = stopServiceAndWait(child, { timeoutMs: 100 })
+      const assertion = expect(waiting).resolves.toEqual({ type: 'timeout' })
+      await vi.advanceTimersByTimeAsync(100)
+      await assertion
+      expect(child.killCount).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
