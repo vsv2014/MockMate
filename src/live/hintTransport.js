@@ -3,6 +3,7 @@
  * Does not own GenerationManager / InterviewState / classification.
  */
 import { apiFetch } from '../lib/apiClient.js'
+import { getRetryAfterMs } from '../../shared/llm-errors.js'
 
 export function splitSseBuffer(buf = '') {
   const events = []
@@ -26,16 +27,33 @@ export function splitSseBuffer(buf = '') {
   return { events, rest }
 }
 
-function httpError(status, data) {
+function httpError(status, data, headers) {
   const error = new Error(data?.error || `MockMate request failed (${status}).`)
   error.status = status
+  if (data?.code) error.code = data.code
+  const retryAfterMs = getRetryAfterMs({ retryAfterMs: data?.retryAfterMs, headers })
+  if (retryAfterMs > 0) error.retryAfterMs = retryAfterMs
   return error
 }
 
 async function responseError(res) {
   let data = null
   try { data = await res.clone().json() } catch {}
-  return httpError(res.status, data)
+  return httpError(res.status, data, res.headers)
+}
+
+export function formatLiveError(error) {
+  const message = typeof error === 'string'
+    ? error
+    : error?.message || error?.error || 'The Live request could not be completed.'
+  const code = String(error?.code || '').toLowerCase()
+  const retryAfterMs = Number(error?.retryAfterMs)
+  if (!Number.isFinite(retryAfterMs) || retryAfterMs <= 0) return message
+  const seconds = Math.max(1, Math.ceil(retryAfterMs / 1000))
+  if (['rate_limit', 'provider_limits', 'provider_cooling', 'deepgram_rate_limit'].includes(code) || error?.status === 429) {
+    return `${message} Earliest retry window: about ${seconds} seconds.`
+  }
+  return message
 }
 
 const STREAM_UNAVAILABLE = new Set([404, 405, 501])

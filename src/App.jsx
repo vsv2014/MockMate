@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react'
 import { apiFetch } from './lib/apiClient'
 import LiveCompanion from './LiveCompanion'
 import AuthGate from './auth/AuthGate'
@@ -9,7 +9,17 @@ const Jobs = lazy(() => import('./Jobs'))
 const Career = lazy(() => import('./Career'))
 const Account = lazy(() => import('./Account'))
 import { T } from './auth/tokens'
-import { AppShell, DashboardHome, SessionsTable } from './Dashboard'
+import { AppShell, SessionsTable } from './Dashboard'
+import { JourneyHome, InterviewKitsScreen, ReadyRoom } from './journey/JourneyScreens'
+import {
+  activeInterviewKit,
+  createInterviewKit,
+  interviewKitFromProfile,
+  loadInterviewKitState,
+  normalizeInterviewKit,
+  profileFromInterviewKit,
+  saveInterviewKitState,
+} from './lib/interviewKits'
 import SoloFeedback from './SoloFeedback'
 import WhatsNew from './WhatsNew'
 import ApiKeysPanel from './ApiKeys'
@@ -49,7 +59,7 @@ const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform ==
 // Views that render in the full windowed app shell (large window + sidebar). Solo runs
 // here too — there's no interviewer watching, so it gets the roomy dashboard, not the
 // overlay. ONLY the Live companion drops to the compact always-on-top overlay.
-const SHELL_VIEWS = ['home', 'solo', 'duo', 'jobs', 'career', 'settings', 'account', 'history']
+const SHELL_VIEWS = ['home', 'kits', 'ready-room', 'solo', 'duo', 'jobs', 'career', 'settings', 'account', 'history']
 
 function StealthSafetyPrompt({ confirmOff, notice, onCancel, onConfirmOff }) {
   if (!confirmOff && !notice) return null
@@ -82,6 +92,11 @@ function BrowserGate() {
 // ── Electron shell — wraps every screen in the floating overlay ───────────────
 function ElectronShell({ auth }) {
   const [view, setView] = useState('home')
+  const [kitState, setKitState] = useState(() => loadInterviewKitState(loadProfile()))
+  const [launchKitId, setLaunchKitId] = useState(null)
+  const kits = kitState.kits || []
+  const activeKit = useMemo(() => activeInterviewKit(kitState), [kitState])
+  const launchKit = kits.find(kit => kit.id === launchKitId) || null
   const [careerSeed, setCareerSeed] = useState(null)       // one-shot Jobs → Resume Studio handoff
   const [whatsNewSignal, setWhatsNewSignal] = useState(0)   // bump to re-open the What's New modal
   const [report, setReport] = useState(null)
@@ -117,6 +132,90 @@ function ElectronShell({ auth }) {
   const profileRef = useRef({})
   const resizing = useRef(false)
   const resizeStart = useRef({})
+
+  function commitKitState(next) {
+    if (!saveInterviewKitState(next)) return false
+    setKitState(next)
+    return true
+  }
+
+  function activateKit(id) {
+    if (!kits.some(kit => kit.id === id)) return false
+    return commitKitState({ ...kitState, activeKitId: id })
+  }
+
+  function createKit() {
+    if (kits.length >= 30) {
+      window.alert('You can save up to 30 Interview Kits on this device.')
+      return null
+    }
+    const kit = createInterviewKit({}, { title: 'New interview kit' })
+    const next = { ...kitState, kits: [kit, ...kits], activeKitId: kit.id }
+    if (!commitKitState(next)) return null
+    setLaunchKitId(kit.id)
+    return kit.id
+  }
+
+  function saveKit(value) {
+    const existing = kits.find(kit => kit.id === value?.id)
+    if (!existing) return false
+    const updated = normalizeInterviewKit({ ...existing, ...value, updatedAt: new Date().toISOString() })
+    const next = { ...kitState, kits: kits.map(kit => kit.id === updated.id ? updated : kit) }
+    return commitKitState(next)
+  }
+
+  function deleteKit(id) {
+    const remaining = kits.filter(kit => kit.id !== id)
+    const next = { ...kitState, kits: remaining, activeKitId: kitState.activeKitId === id ? (remaining[0]?.id || null) : kitState.activeKitId }
+    const ok = commitKitState(next)
+    if (ok) setLaunchKitId(current => current === id ? null : current)
+    return ok
+  }
+
+  function saveKitProfile(id, profile) {
+    const kit = kits.find(item => item.id === id)
+    return kit ? saveKit(interviewKitFromProfile(kit, profile)) : false
+  }
+
+  function openKitEditor(kit) {
+    if (kit?.id) activateKit(kit.id)
+    setView('kits')
+  }
+
+  function openReadyRoom(kit = activeKit) {
+    if (kit?.id) activateKit(kit.id)
+    setView('ready-room')
+  }
+
+  function startPractice() {
+    if (!activeKit) { setView('kits'); return }
+    setLaunchKitId(activeKit.id)
+    setView('solo')
+  }
+
+  function continueToLive(kit = activeKit) {
+    if (!kit) { setView('kits'); return }
+    activateKit(kit.id)
+    setLaunchKitId(kit.id)
+    setView('companion')
+  }
+
+  function handleNav(destination) {
+    if (destination === 'companion') { setView('ready-room'); return }
+    if (destination === 'solo') setLaunchKitId(activeKit?.id || null)
+    setView(destination)
+  }
+
+  async function applyReadyRoomProtection() {
+    if (!window.electronAPI?.setContentProtection) return { ok: false, unsupported: true, error: 'Electron capture protection is unavailable.' }
+    try {
+      const result = await window.electronAPI.setContentProtection(true)
+      if (result?.ok) setStealth(true)
+      return result || { ok: false, error: 'No protection status was returned.' }
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Capture protection request failed.' }
+    }
+  }
 
   useEffect(() => {
     // Transparent body — no dark rectangle if panel is hidden
@@ -653,6 +752,8 @@ function ElectronShell({ auth }) {
     try {
       const next = applyInterviewJobSeed(loadProfile(), seed)
       saveProfile(next)
+      // Explicit Jobs/Career handoff is the shared-profile route, not an active Kit launch.
+      setLaunchKitId(null)
       setView(destination === 'live' ? 'companion' : 'solo')
     } catch (e) {
       window.alert(e?.message || 'Could not apply that job description.')
@@ -728,18 +829,35 @@ function ElectronShell({ auth }) {
     const shellHeader = { fontSize: 20, fontWeight: 600, color: T.text1, marginBottom: 4 }
     let content = null
     if (view === 'home') content = (
-      <>
-        {auth?.guest && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCard, padding: '11px 14px', marginBottom: 14 }}>
-            <span style={{ fontSize: 12.5, color: '#5eead4', flex: 1 }}>You're exploring as a guest — BYOK on this device (sessions save locally). <strong>Sign in</strong> for an account and Managed AI when the hosted proxy is available.</span>
-            <button onClick={() => auth.signIn?.()} style={{ height: 34, padding: '0 16px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Sign in</button>
-          </div>
-        )}
-        <DashboardHome auth={auth} sessions={sessions} noProviders={noProviders}
-          onNav={setView} />
-      </>
+      <JourneyHome auth={auth} sessions={sessions} kits={kits} activeKit={activeKit}
+        onSelectKit={activateKit}
+        onOpenKits={() => setView('kits')}
+        onOpenReadyRoom={() => openReadyRoom(activeKit)}
+        onStartPractice={startPractice}
+        onOpenHistory={openHistory}
+        onSettings={() => setView('settings')} />
     )
-    else if (view === 'solo') content = <Solo onHome={goHome} noProviders={noProviders} />
+    else if (view === 'kits') content = (
+      <InterviewKitsScreen key={activeKit?.id || 'no-active-kit'} kits={kits} activeKitId={activeKit?.id || null}
+        onCreate={createKit} onSave={saveKit} onDelete={deleteKit} onActivate={activateKit}
+        onOpenReadyRoom={kit => openReadyRoom(kit || activeKit)} />
+    )
+    else if (view === 'ready-room') content = (
+      <ReadyRoom key={activeKit?.id || 'no-active-kit'} kit={activeKit}
+        onOpenKits={() => setView('kits')}
+        onEditKit={openKitEditor}
+        onSettings={() => setView('settings')}
+        onContinueLive={continueToLive}
+        onApplyProtection={applyReadyRoomProtection}
+        isLinux={isLinux} stealth={stealth} />
+    )
+    else if (view === 'solo') {
+      const soloKit = launchKit
+      const initialProfile = soloKit ? profileFromInterviewKit(soloKit, loadProfile()) : undefined
+      content = <Solo key={soloKit?.id || 'shared-profile'} onHome={goHome} noProviders={noProviders}
+        initialProfile={initialProfile} kitId={soloKit?.id} kitName={soloKit?.title} draftScope={soloKit?.id}
+        onProfileChange={profile => soloKit && saveKitProfile(soloKit.id, profile)} />
+    }
     else if (view === 'duo') content = <Duo onHome={goHome} />
     else if (view === 'jobs') content = (
       <div style={{ maxWidth: 820, margin: '0 auto' }}>
@@ -833,7 +951,7 @@ function ElectronShell({ auth }) {
           />
         )}
         <div style={shellPill ? { display: 'none' } : undefined} aria-hidden={shellPill || undefined}>
-          <AppShell active={view} onNav={setView} auth={auth} meetingActive={meetingActive}
+          <AppShell active={view} onNav={handleNav} auth={auth} meetingActive={meetingActive}
             stealth={stealth} onStealth={requestStealthToggle}
             onMinimize={collapseToPill} onClose={() => window.close?.()}>
             <WhatsNew openSignal={whatsNewSignal} />
@@ -851,7 +969,11 @@ function ElectronShell({ auth }) {
   if (view === 'companion') return (
     <>
     {stealthSafety}
-    <LiveCompanion onHome={goHome} onPhaseChange={setCompanionPhase} panelSize={panelSize} stealth={stealth} opacity={opacity} onOpacity={setOverlayOpacity} minimized={minimized}
+    <LiveCompanion key={launchKit?.id || 'shared-profile'}
+      initialProfile={launchKit ? profileFromInterviewKit(launchKit, loadProfile()) : undefined}
+      initialKit={launchKit ? { id: launchKit.id, name: launchKit.title } : null}
+      onProfileChange={profile => launchKit && saveKitProfile(launchKit.id, profile)}
+      onHome={goHome} onPhaseChange={setCompanionPhase} panelSize={panelSize} stealth={stealth} opacity={opacity} onOpacity={setOverlayOpacity} minimized={minimized}
       onSessionStart={resetLiveSessionContext} onSessionEnd={resetLiveSessionContext}
       onStealth={requestStealthToggle}
       onMinimize={() => {

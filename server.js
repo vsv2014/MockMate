@@ -33,6 +33,14 @@ const appOrigins = new Set([
 function localOriginAllowed(origin) { return !origin || appOrigins.has(origin) }
 
 const app = express()
+
+function sendToDesktop(message) {
+  try {
+    if (typeof process.send === 'function') process.send(message)
+    else process.parentPort?.postMessage(message)
+  } catch {}
+}
+
 app.use(helmet({
   contentSecurityPolicy: {
     useDefaults: true,
@@ -80,12 +88,12 @@ app.use((req, res, next) => {
 })
 
 const server = app.listen(PORT, '127.0.0.1', () => {
-  process.send?.({ type: 'ready' })
+  sendToDesktop({ type: 'ready' })
   console.log(`MockMate server on 127.0.0.1:${PORT} (UI + /api/*)`)
 })
 server.on('error', err => {
   console.error(`MockMate server failed to start on :${PORT} — ${err.code || err.message}`)
-  process.send?.({ type: 'server-error', code: err.code, message: err.message })
+  sendToDesktop({ type: 'server-error', code: err.code, message: err.message })
   process.exit(1)
 })
 

@@ -97,8 +97,8 @@ export function makeVisionRateLimitedError(managed = false) {
   return visionError(
     'VISION_RATE_LIMITED',
     managed
-      ? 'Screen analysis is busy right now. Please try again in a moment.'
-      : 'Vision model is rate-limited. Add a second vision key (e.g. a free GEMINI_API_KEY) so screen analysis can fail over, or try again in a moment.',
+      ? 'Screen analysis is temporarily rate-limited upstream. Please try again after the provider reset.'
+      : 'Your vision provider is temporarily rate-limiting requests. Wait for its reset or configure a separately provisioned vision provider in Settings (⚙). Keys in the same provider account may share limits.',
     429,
   )
 }

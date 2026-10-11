@@ -1,6 +1,6 @@
 # MockMate release checklist
 
-**Current target: v1.5.5 (unpublished as of 2026-10-10).** The last actually published Windows installer is v1.5.3; v1.5.4 was an interim source-only hotfix. Check `package.json` and `package-lock.json` versions and use a new matching tag only after all gates pass.
+**Current target: v1.6.0 (unpublished as of 2026-10-11).** The last actually published Windows installer is v1.5.3; v1.5.4 was an interim source-only hotfix. Check `package.json` and `package-lock.json` versions and use a new matching tag only after all gates pass.
 
 **Rule: no `git tag` / no upload until every box below is checked on a REAL packaged build.**
 Every 1.4.2 defect (CSP broke Solo+Live, STT coupled to the LLM cap, dangling `mintToken` import,
@@ -70,6 +70,9 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] `LIVEKIT_*` unset → Duo shows a clean "not configured" state, **does not crash the app**
 
 ## 7. Regression sweep
+- [ ] Home → Interview Kits → Ready Room → Live works in the packaged v1.6.0 candidate; active Kit selection, create/edit/delete, and no-Kit fallback states behave correctly.
+- [ ] Kit Solo and Live sessions retain the correct role/JD/preferences in their session snapshot, keep drafts per Kit, and do not attach account-wide selected-document IDs or overwrite the shared profile.
+- [ ] Ready Room distinguishes local service availability, configured providers, successful AI/voice tests, and OS/share-preview checks; provider-test usage is disclosed before any potentially billable call.
 - [ ] Over the LLM cap: managed LLM routes 402 with the upgrade message
 - [ ] Over the STT cap: managed WSS ticket/stream and uploaded `/transcribe` reject **before provider spend** with `stt_quota_exhausted`; failed reservation/provider attempts settle or refund correctly, including graceful shutdown
 - [ ] Near the STT cap: a long upload cannot pass on “1 second remaining”; server-probed duration must reserve atomically before Deepgram is called
@@ -90,7 +93,7 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 
 ## 9. Ship
 - [ ] `package.json` version matches a **new** release tag and CHANGELOG/release notes match the final implementation
-- [ ] For this candidate, run the version-generic release workflow from reviewed current `main` with new `v1.5.5` tag **only after signing secrets, real Windows certification, and (for Managed AI) hosted WSS/Mongo/Deepgram verification are complete**
+- [ ] For this candidate, run the version-generic release workflow from reviewed current `main` with new `v1.6.0` tag **only after signing secrets, real Windows certification, and (for Managed AI) hosted WSS/Mongo/Deepgram verification are complete**
 - [ ] Post-publish: download the published Windows installer on a clean machine and repeat §1–§4
 - [ ] Keep the last published Windows version **v1.5.3** installed → Check for updates → Downloading → Ready → Restart & install; **do not uninstall** during this test. For unsigned-to-signed migration, verify the safe manual signed-installer path if the legacy updater cannot verify provenance.
 - [ ] Settings → Diagnostics → Export logs; verify updater/provider/STT/session events exist and no key/token/transcript/prompt/screenshot content appears

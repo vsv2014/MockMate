@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'New tag, e.g. v1.5.5-personal.1 (lowercase)'
+        description: 'New tag, e.g. v1.6.0-personal.1 (lowercase)'
         type: string
         required: true
 
@@ -185,7 +185,7 @@ jobs:
           - CI verifies code, API, packaged Windows startup and React renderer, NOT real audio devices, share-preview privacy or hosted billing.
           - Verify the EXE SHA256 hash with the included SHA256SUMS.txt.
 
-          Scope and known gates: https://github.com/vsv2014/MockMate/blob/main/docs/RELEASE_NOTES_v1.5.5.md
+          Scope and known gates: https://github.com/vsv2014/MockMate/blob/main/docs/RELEASE_NOTES_v1.6.0.md
           NOTES
           printf '\nTag: %s\nCommit: %s\n' "$RELEASE_TAG" "$GITHUB_SHA" >> notes.md
       - name: Publish unsigned personal pre-release only

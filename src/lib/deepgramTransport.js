@@ -1,5 +1,6 @@
 import { apiFetch, managedSttGatewayUrl } from './apiClient'
 import { diagnostic } from './diagnostics'
+import { getRetryAfterMs } from '../../shared/llm-errors.js'
 import { toPCM16 } from '../audio-pcm'
 
 export const MAX_RECONNECTS = 150
@@ -7,14 +8,20 @@ export const KEEPALIVE_MS = 4000
 export const FATAL_CLOSE = new Set([1008, 4001, 4003, 4008])
 // 4009 signals server-side 300-second segment completion; request a new
 // metered gateway ticket and continue the same Live interview.
-export const PERMANENT_TOKEN_STATUSES = new Set([401, 402, 403, 429])
+// 429 is a temporary provider rate limit; the reconnect policy backs off and retries it.
+// Authentication and exhausted-usage statuses still need user intervention.
+export const PERMANENT_TOKEN_STATUSES = new Set([401, 402, 403])
 export const BYTES_PER_SEC = 16000 * 2
 // Cover the maximum 8s reconnect backoff plus token and handshake latency.
 export const MAX_QUEUE_BYTES = 15 * BYTES_PER_SEC
 
-export function computeReconnectDelayMs(attempt = 1) {
+export function computeReconnectDelayMs(attempt = 1, retryAfterMs = 0) {
   const n = Math.max(1, Number(attempt) || 1)
-  return Math.min(8000, 500 * 2 ** Math.min(n - 1, 4))
+  const backoffMs = Math.min(8000, 500 * 2 ** Math.min(n - 1, 4))
+  const providerWaitMs = Number(retryAfterMs)
+  return Number.isFinite(providerWaitMs) && providerWaitMs > 0
+    ? Math.max(backoffMs, providerWaitMs)
+    : backoffMs
 }
 
 export function buildDeepgramListenUrl({
@@ -179,7 +186,7 @@ export async function requestDeepgramToken({
     && cached.expiresAt > Date.now() + TOKEN_REFRESH_SAFETY_MS
   ) {
     diagnostic('stt', 'token_reused', { mode, generation, reconnectAttempt })
-    return { ok: true, tokenStatus: 200, tokenRes: cached.tokenRes, networkError: false, reused: true }
+    return { ok: true, tokenStatus: 200, tokenRes: cached.tokenRes, retryAfterMs: 0, networkError: false, reused: true }
   }
 
   clearDeepgramTokenCache(cacheRef)
@@ -192,6 +199,7 @@ export async function requestDeepgramToken({
     const r = await apiFetch('/api/deepgram-token', { method: 'POST' })
     const tokenStatus = r.status
     const tokenRes = await r.json().catch(() => null)
+    const retryAfterMs = getRetryAfterMs({ retryAfterMs: tokenRes?.retryAfterMs, headers: r.headers })
     const ok = Boolean(r.ok && (tokenRes?.access_token || (tokenRes?.gateway && tokenRes?.gateway_ticket)))
     const ttlSeconds = Number(tokenRes?.expires_in)
     // Raw local BYOK API keys are intentionally never retained in the grant cache.
@@ -204,9 +212,9 @@ export async function requestDeepgramToken({
         expiresAt: Date.now() + Math.min(ttlSeconds, 3600) * 1000,
       }
     }
-    return { ok, tokenStatus, tokenRes, networkError: false, reused: false }
+    return { ok, tokenStatus, tokenRes, retryAfterMs, networkError: false, reused: false }
   } catch {
-    return { ok: false, tokenStatus: 0, tokenRes: null, networkError: true, reused: false }
+    return { ok: false, tokenStatus: 0, tokenRes: null, retryAfterMs: 0, networkError: true, reused: false }
   }
 }
 
