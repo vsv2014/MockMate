@@ -92,7 +92,7 @@ jobs:
           set -euo pipefail
           node scripts/configure-personal-preview.mjs "$NUMBER"
           npm run verify:platform
-          node -e "const p=require('./package.json'); if(p.personalPreviewBuild!==true || p.build.appId!=='com.mockmate.personal.preview' || p.managedApiBase || p.build.publish || p.build.win.verifyUpdateCodeSignature!==true) process.exit(1)"
+          node -e "const p=require('./package.json'); if(p.personalPreviewBuild!==true || p.build.appId!=='com.mockmate.personal.preview' || p.managedApiBase || p.build.publish!==null || p.build.win.verifyUpdateCodeSignature!==true) process.exit(1)"
       - name: Application tests, API smoke and production renderer
         run: npm test && npm run smoke:api && npm run build && npm run verify:vite-output
       - name: Bootstrap Electron runtime
@@ -109,6 +109,12 @@ jobs:
       - name: Real packaged runtime / React renderer smoke
         shell: pwsh
         run: ./scripts/windows-packaged-smoke.ps1
+      # Diagnostics run before the gate. If the assertion below fails, the
+      # packaged app-update.yml is already in the job log, because release/
+      # disappears with the runner as soon as the job ends.
+      - name: Inspect packaged updater metadata
+        if: always()
+        run: node scripts/inspect-packaged-updater-metadata.mjs
       - name: Verify unsigned identity, stage EXE only and write SHA256
         shell: pwsh
         run: |
@@ -124,7 +130,7 @@ jobs:
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
           if ($pkg.personalPreviewBuild -ne $true) { throw 'Preview build marker missing' }
           if ($pkg.build.productName -ne 'MockMate Personal Preview') { throw 'Stable product identity leaked into preview' }
-          if ($pkg.build.publish) { throw 'Preview must not contain a GitHub updater publisher' }
+          if ($null -ne $pkg.build.publish) { throw "Preview must not contain a GitHub updater publisher, got: $(ConvertTo-Json -InputObject $pkg.build.publish -Compress -Depth 5)" }
           if ($pkg.version -ne '${{ needs.provenance.outputs.version }}') { throw 'Preview package version differs from tag' }
           New-Item staged -ItemType Directory -Force | Out-Null
           Copy-Item $exe.FullName staged/
@@ -148,6 +154,14 @@ jobs:
           name: unsigned-personal-preview-windows
           path: staged/*
           if-no-files-found: error
+          retention-days: 7
+      - name: Upload updater metadata diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-updater-metadata-preview-${{ github.run_number }}
+          path: release/updater-metadata-diagnostics/
+          if-no-files-found: ignore
           retention-days: 7
 
   publish-personal-preview:

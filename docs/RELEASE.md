@@ -109,6 +109,35 @@ The unsigned pre-release is **not** shown on GitHub's `releases/latest` stable
 download endpoint. Future production builds still require the trusted signer,
 real-device evidence, and a future signed version tag.
 
+## Diagnosing an embedded `app-update.yml`
+
+Unsigned gates assert that `release/win-unpacked/resources/app-update.yml` does
+not exist. Only one `build.publish` value actually suppresses that file, because
+`app-builder-lib` resolves the embedded update feed in three steps:
+
+| `build.publish` | electron-builder behaviour | `app-update.yml` |
+| --- | --- | --- |
+| deleted / absent | `PublishManager` infers a provider from `GH_TOKEN`/`GITHUB_TOKEN`, then falls back to repository info | **written** |
+| `[]` | `getPublishConfigsForUpdateInfo()` treats an empty list as unconfigured and re-derives a GitHub feed from `package.json "repository"` or `.git/config` | **written** |
+| `null` | `getPublishConfigs()` returns `null`, which is the only value that skips the file | not written |
+
+`--publish never` does not help: it controls artifact uploading, not feed
+generation, and it never reaches `config.publish`.
+
+`scripts/configure-unsigned-release.mjs` and
+`scripts/configure-personal-preview.mjs` therefore set `publish` to `null`.
+`electron/updater-feed-suppression.test.js` drives the real `app-builder-lib`
+resolution for all three cases so a regression fails in seconds rather than in a
+45-minute Windows packaging job.
+
+When a gate does fail, the packaged output dies with the runner, so every
+unsigned/preview job runs `node scripts/inspect-packaged-updater-metadata.mjs`
+**before** the assertion. It prints the embedded `app-update.yml` with its
+SHA-256, the resolved publish configuration and the reason for it, and which CI
+token variables are set (values are always redacted). Findings are copied to
+`release/updater-metadata-diagnostics/` and uploaded as an artifact when the job
+fails. Add `--fail-on-metadata` to use it as a gate instead of a diagnostic.
+
 ## Scope limits
 
 - macOS signed/notarized DMG and Linux AppImage are **not** built by this public workflow.

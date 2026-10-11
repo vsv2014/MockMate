@@ -85,7 +85,7 @@ jobs:
           const fs = require('fs')
           const pkg = JSON.parse(fs.readFileSync('package.json','utf8'))
           pkg.managedApiBase = ''
-          pkg.build.publish = []
+          pkg.build.publish = null
           fs.writeFileSync('package.json',JSON.stringify(pkg,null,2)+'\n')
           fs.writeFileSync('.env.production.local','VITE_MANAGED_AI_AVAILABLE=false\n')
           NODE
@@ -95,6 +95,12 @@ jobs:
         run: npx electron-builder --win --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+      # Diagnostics run before the gate. If the assertion below fails, the
+      # packaged app-update.yml is already in the job log, because release/
+      # disappears with the runner as soon as the job ends.
+      - name: Inspect packaged updater metadata
+        if: always()
+        run: node scripts/inspect-packaged-updater-metadata.mjs
       - name: Validate unsigned installer and no app-update feed
         shell: pwsh
         run: |
@@ -105,9 +111,19 @@ jobs:
             $status = (Get-AuthenticodeSignature $file).Status
             if ($status -ne 'NotSigned') { throw "Expected unsigned binary: $file, got $status" }
           }
-          if (Test-Path 'release/win-unpacked/resources/app-update.yml') {
-            throw 'Personal build must not embed updater metadata.'
+          $appUpdateYml = 'release/win-unpacked/resources/app-update.yml'
+          if (Test-Path $appUpdateYml) {
+            $embedded = (Get-Content $appUpdateYml -Raw).Trim()
+            throw "Personal build must not embed updater metadata. $appUpdateYml contains:`n$embedded"
           }
+      - name: Upload updater metadata diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-updater-metadata-prerelease-${{ github.run_number }}
+          path: release/updater-metadata-diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Packaged Windows runtime and React renderer smoke
         shell: pwsh
         run: ./scripts/windows-packaged-smoke.ps1

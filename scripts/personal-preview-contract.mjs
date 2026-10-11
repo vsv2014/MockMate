@@ -20,7 +20,9 @@ test('preview keeps versioned install isolated, unsigned and manual-update-only'
   assert.equal(p.build.nsis.shortcutName, 'MockMate Personal Preview')
   assert.equal(p.build.nsis.deleteAppDataOnUninstall, false)
   assert.equal(p.build.nsis.include, undefined)
-  assert.equal(p.build.publish, undefined)
+  // Strict null, not []: an empty publish array makes electron-builder fall
+  // back to repository info and embed resources/app-update.yml anyway.
+  assert.equal(p.build.publish, null)
   assert.equal(p.build.win.verifyUpdateCodeSignature, true)
   assert.equal(p.build.win.signtoolOptions, undefined)
   assert.equal(p.build.win.artifactName, 'MockMate-Personal-Preview-${version}-UNSIGNED.${ext}')
@@ -41,7 +43,7 @@ test('unsigned version release keeps the exact tag version but isolates app and 
   assert.equal(p.build.appId, 'com.mockmate.personal.preview')
   assert.equal(p.build.productName, 'MockMate Personal Preview')
   assert.equal(p.build.executableName, 'MockMatePersonalPreview')
-  assert.equal(p.build.publish, undefined)
+  assert.equal(p.build.publish, null)
   assert.equal(p.build.win.verifyUpdateCodeSignature, true)
   assert.equal(p.build.win.signtoolOptions, undefined)
   assert.equal(p.build.win.artifactName, 'MockMate-Personal-Preview-${version}-UNSIGNED.${ext}')
@@ -58,4 +60,7 @@ test('reject malformed numbers, mismatched versions and weakened stable signatur
   const unsafe = structuredClone(pkg)
   unsafe.build.win.verifyUpdateCodeSignature = false
   assert.throws(() => createPersonalPreviewConfig(unsafe, lock, '1'))
+  const missingPublisher = structuredClone(pkg)
+  delete missingPublisher.build.win.signtoolOptions
+  assert.throws(() => createPersonalPreviewConfig(missingPublisher, lock, '1'))
 })
