@@ -104,7 +104,7 @@ export default function Account({ auth, onManageKeys }) {
             <button onClick={manageSubscription} disabled={billingBusy} style={{ width: '100%', marginTop: 10, padding: '9px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderStrong}`, color: T.text1, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: billingBusy ? 'default' : 'pointer', opacity: billingBusy ? 0.6 : 1 }}>{billingBusy ? 'Opening…' : 'Manage subscription'}</button>
           </>
         )}
-        {billingMsg && <div style={{ fontSize: 11, color: '#fbbf24', textAlign: 'center', marginTop: 8 }}>{billingMsg}</div>}
+        {billingMsg && <div role="alert" aria-live="assertive" style={{ fontSize: 11, color: '#fbbf24', textAlign: 'center', marginTop: 8 }}>{billingMsg}</div>}
       </div>
       )}
 
@@ -124,7 +124,7 @@ export default function Account({ auth, onManageKeys }) {
           {deleting ? 'Deleting account…' : 'Delete account and hosted data'}
         </button>
       )}
-      {accountMsg && <div style={{ fontSize: 11, color: '#f87171', textAlign: 'center' }}>{accountMsg}</div>}
+      {accountMsg && <div role="alert" aria-live="assertive" style={{ fontSize: 11, color: '#f87171', textAlign: 'center' }}>{accountMsg}</div>}
     </div>
   )
 }
@@ -140,8 +140,10 @@ function UsageBar({ label, used, limit, unit }) {
         <span style={{ fontSize: 12, color: T.text1 }}>{label}</span>
         <span style={{ fontSize: 11, color: T.text2, fontVariantNumeric: 'tabular-nums' }}>{used} / {limit} {unit}</span>
       </div>
-      <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: color, transition: 'width 0.3s' }} />
+      <div role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={limit > 0 ? limit : 100}
+        aria-valuenow={limit > 0 ? Math.min(used, limit) : 0} aria-valuetext={`${used} of ${limit} ${unit}${over ? ', limit reached' : ''}`}
+        style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+        <div aria-hidden="true" style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: color, transition: 'width 0.3s' }} />
       </div>
     </div>
   )

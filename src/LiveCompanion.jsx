@@ -200,7 +200,10 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
     else saveProfile(next)
   }
   const managed = isManaged()   // managed → hide model picker, let the server auto-route
-  const [pdfMsg, setPdfMsg] = useState('')
+  const [resumePdfMsg, setResumePdfMsg] = useState('')
+  const [jdPdfMsg, setJdPdfMsg] = useState('')
+  const resumePdfRef = useRef(null)
+  const jdPdfRef = useRef(null)
   const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
   const inElectron = typeof window !== 'undefined' && !!window.electronAPI
   const isDevLocal = Boolean(import.meta.env?.DEV)
@@ -355,7 +358,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
               <span style={{ color: meetingContext.active ? '#86efac' : '#fbbf24' }}>
                 {meetingContext.active ? `✓ Detected ${meetingContext.label || 'meeting app'}` : '⚠ No supported meeting app detected'}
               </span>
-              <select value={shareMode} onChange={e => { setShareMode(e.target.value); setShareVerified(false) }}
+              <select aria-label="Meeting share preview type" value={shareMode} onChange={e => { setShareMode(e.target.value); setShareVerified(false) }}
                 style={{ marginLeft: 'auto', background: T.surface2, color: T.text1, border: `1px solid ${T.border}`, borderRadius: 5, padding: '4px 7px', fontSize: 11 }}>
                 <option value="entire-screen">Entire screen</option>
                 <option value="window">Window</option>
@@ -412,9 +415,9 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
         </div>
 
         <Section n={1} title="Interview" subtitle="Optional — name, role, company" defaultOpen={false}>
-        <Field label="Your name"><input style={inp} value={profile.name || ''} placeholder="e.g. Charan" onChange={e => patch({ name: e.target.value })} /></Field>
-        <Field label="Target role"><input style={inp} value={profile.targetRole || ''} placeholder="e.g. Senior AI Engineer" onChange={e => patch({ targetRole: e.target.value })} /></Field>
-        <Field label="Target company (sharpens 'why us' answers + web search)"><input style={inp} value={profile.targetCompany || ''} placeholder="e.g. Stripe" onChange={e => patch({ targetCompany: e.target.value })} /></Field>
+        <Field label="Your name" htmlFor="live-profile-name"><input id="live-profile-name" style={inp} value={profile.name || ''} autoComplete="name" placeholder="e.g. Charan" onChange={e => patch({ name: e.target.value })} /></Field>
+        <Field label="Target role" htmlFor="live-target-role"><input id="live-target-role" style={inp} value={profile.targetRole || ''} placeholder="e.g. Senior AI Engineer" onChange={e => patch({ targetRole: e.target.value })} /></Field>
+        <Field label="Target company (sharpens 'why us' answers + web search)" htmlFor="live-target-company"><input id="live-target-company" style={inp} value={profile.targetCompany || ''} placeholder="e.g. Stripe" onChange={e => patch({ targetCompany: e.target.value })} /></Field>
         </Section>
 
         <Section
@@ -437,43 +440,46 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
         <div style={{ fontSize: 11, color: T.text3, lineHeight: 1.45, marginBottom: 4 }}>
           Resume &amp; JD below feed identity answers. Knowledge banks / notes go in the library — check what to use. They are not duplicated in the list.
         </div>
-        <Field label="Resume (optional — answers reference your projects)">
-          <textarea rows={3} style={{ ...inp, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste resume text…" onChange={e => patch({ resume: e.target.value })} />
+        <Field label="Resume (optional — answers reference your projects)" htmlFor="live-profile-resume">
+          <textarea id="live-profile-resume" rows={3} style={{ ...inp, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste resume text…" onChange={e => patch({ resume: e.target.value })} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px' }}>
+            <button type="button" onClick={() => resumePdfRef.current?.click()} aria-label="Upload resume PDF"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px', fontFamily: T.font }}>
               📄 Upload PDF
-              <input type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
-                onChange={async e => {
-                  const file = e.target.files?.[0]; e.target.value = ''
-                  if (!file) return
-                  setPdfMsg('Reading PDF…')
-                  try {
-                    const text = await extractPdfText(file)
-                    if (text && text.length > 20) { patch({ resume: text }); setPdfMsg(`✓ Loaded ${text.length.toLocaleString()} chars`) }
-                    else setPdfMsg('⚠ No text found (scanned image?) — paste it instead')
-                  } catch { setPdfMsg('⚠ Could not read that PDF — please paste the text') }
-                }} />
-            </label>
-            {pdfMsg && <span style={{ fontSize: 10, color: pdfMsg.startsWith('⚠') ? '#fca5a5' : '#86efac' }}>{pdfMsg}</span>}
+            </button>
+            <input ref={resumePdfRef} type="file" accept="application/pdf,.pdf" aria-label="Choose a resume PDF" style={{ display: 'none' }}
+              onChange={async e => {
+                const file = e.target.files?.[0]; e.target.value = ''
+                if (!file) return
+                setResumePdfMsg('Reading resume PDF…')
+                try {
+                  const text = await extractPdfText(file)
+                  if (text && text.length > 20) { patch({ resume: text }); setResumePdfMsg(`✓ Loaded ${text.length.toLocaleString()} chars`) }
+                  else setResumePdfMsg('⚠ No text found (scanned image?) — paste it instead')
+                } catch { setResumePdfMsg('⚠ Could not read that PDF — please paste the text') }
+              }} />
+            {resumePdfMsg && <span role={resumePdfMsg.startsWith('⚠') ? 'alert' : 'status'} aria-live={resumePdfMsg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: 10, color: resumePdfMsg.startsWith('⚠') ? '#fca5a5' : '#86efac' }}>{resumePdfMsg}</span>}
           </div>
         </Field>
-        <Field label="Job description (optional — sharpens answers to this role)">
-          <textarea rows={2} style={{ ...inp, resize: 'vertical' }} value={profile.jobDescription || ''} placeholder="Paste job description…" onChange={e => patch({ jobDescription: e.target.value })} />
+        <Field label="Job description (optional — sharpens answers to this role)" htmlFor="live-profile-job-description">
+          <textarea id="live-profile-job-description" rows={2} style={{ ...inp, resize: 'vertical' }} value={profile.jobDescription || ''} placeholder="Paste job description…" onChange={e => patch({ jobDescription: e.target.value })} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px' }}>
+            <button type="button" onClick={() => jdPdfRef.current?.click()} aria-label="Upload job description PDF"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px', fontFamily: T.font }}>
               📄 Upload PDF
-              <input type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
-                onChange={async e => {
-                  const file = e.target.files?.[0]; e.target.value = ''
-                  if (!file) return
-                  setPdfMsg('Reading JD PDF…')
-                  try {
-                    const text = await extractPdfText(file)
-                    if (text && text.length > 20) { patch({ jobDescription: text }); setPdfMsg(`✓ JD loaded ${text.length.toLocaleString()} chars`) }
-                    else setPdfMsg('⚠ No text found (scanned image?) — paste it instead')
-                  } catch { setPdfMsg('⚠ Could not read that PDF — please paste the text') }
-                }} />
-            </label>
+            </button>
+            <input ref={jdPdfRef} type="file" accept="application/pdf,.pdf" aria-label="Choose a job description PDF" style={{ display: 'none' }}
+              onChange={async e => {
+                const file = e.target.files?.[0]; e.target.value = ''
+                if (!file) return
+                setJdPdfMsg('Reading job description PDF…')
+                try {
+                  const text = await extractPdfText(file)
+                  if (text && text.length > 20) { patch({ jobDescription: text }); setJdPdfMsg(`✓ JD loaded ${text.length.toLocaleString()} chars`) }
+                  else setJdPdfMsg('⚠ No text found (scanned image?) — paste it instead')
+                } catch { setJdPdfMsg('⚠ Could not read that PDF — please paste the text') }
+              }} />
+            {jdPdfMsg && <span role={jdPdfMsg.startsWith('⚠') ? 'alert' : 'status'} aria-live={jdPdfMsg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: 10, color: jdPdfMsg.startsWith('⚠') ? '#fca5a5' : '#86efac' }}>{jdPdfMsg}</span>}
           </div>
         </Field>
         <Field label="Knowledge & notes (checked = used for retrieval)">
@@ -485,8 +491,8 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
 
         <Section n={4} title="More options" subtitle="Model, language, coding" defaultOpen={false}>
         {!managed && (
-          <Field label="AI model">
-            <select style={inp} value={provider} onChange={e => setProvider(e.target.value)} disabled={!providers.length && !models.length}>
+          <Field label="AI model" htmlFor="live-ai-model">
+            <select id="live-ai-model" style={inp} value={provider} onChange={e => setProvider(e.target.value)} disabled={!providers.length && !models.length}>
               {!providers.length && !models.length && <option value="">No models yet — add a key in Settings</option>}
               {(providers.length > 0 || models.length > 0) && <option value="">Automatic — recommended</option>}
               {modelOptions.length > 0
@@ -499,8 +505,8 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           </Field>
         )}
 
-        <Field label="Answer intelligence">
-          <select style={inp} value={profile.modelStrategy || 'balanced'} onChange={e => patch({ modelStrategy: e.target.value })}>
+        <Field label="Answer intelligence" htmlFor="live-answer-intelligence">
+          <select id="live-answer-intelligence" style={inp} value={profile.modelStrategy || 'balanced'} onChange={e => patch({ modelStrategy: e.target.value })}>
             <option value="balanced">Balanced — fast normally, strongest for hard questions</option>
             <option value="quality">Maximum quality — strongest model for every answer</option>
             <option value="fast">Fast — lowest response latency</option>
@@ -510,14 +516,14 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           </div>
         </Field>
 
-        <Field label="Interview language">
-          <select style={inp} value={profile.language || 'English'} onChange={e => patch({ language: e.target.value })}>
+        <Field label="Interview language" htmlFor="live-interview-language">
+          <select id="live-interview-language" style={inp} value={profile.language || 'English'} onChange={e => patch({ language: e.target.value })}>
             {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
         </Field>
 
-        <Field label="Coding language (for screen-capture solutions)">
-          <select style={inp} value={profile.codingLanguage || 'Python'} onChange={e => patch({ codingLanguage: e.target.value })}>
+        <Field label="Coding language (for screen-capture solutions)" htmlFor="live-coding-language">
+          <select id="live-coding-language" style={inp} value={profile.codingLanguage || 'Python'} onChange={e => patch({ codingLanguage: e.target.value })}>
             {CODING_LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
         </Field>
@@ -555,10 +561,12 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   )
 }
 
-function Field({ label, children }) {
+function Field({ label, children, htmlFor }) {
   return (
     <div>
-      <div style={{ fontSize: 11.5, color: T.text2, marginBottom: 6, fontFamily: T.font }}>{label}</div>
+      {htmlFor
+        ? <label htmlFor={htmlFor} style={{ display: 'block', fontSize: 11.5, color: T.text2, marginBottom: 6, fontFamily: T.font }}>{label}</label>
+        : <div style={{ fontSize: 11.5, color: T.text2, marginBottom: 6, fontFamily: T.font }}>{label}</div>}
       {children}
     </div>
   )
@@ -2264,7 +2272,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                 </span>
               )}
             </div>
-            <textarea value={extraContext} onChange={e => setExtraContext(e.target.value)}
+            <textarea aria-label="Extra context for AI interview hints" value={extraContext} onChange={e => setExtraContext(e.target.value)}
               placeholder="Extra context — e.g. 'Focus on Python' · 'System design round'"
               style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(20,184,166,0.25)', borderRadius: 5, color: T.text1, fontSize: 10, padding: '5px 7px', resize: 'vertical', minHeight: 44, fontFamily: T.font, lineHeight: 1.5, boxSizing: 'border-box' }} rows={2} />
           </div>

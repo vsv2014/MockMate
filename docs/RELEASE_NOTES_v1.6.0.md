@@ -20,6 +20,11 @@ This is a feature release: it adds the Home → Interview Kits → Ready Room pr
 - Keep the Live hard deadline above sequential provider attempt budgets, and wait for the local AI service to release its port before a key-change restart.
 - Improve local service readiness, bounded renderer recovery and shutdown coordination while retaining packaged `child_process.fork()`; optional account-service startup remains separate from the required local UI/AI service.
 
+### Accessibility and operational feedback
+- Associate visible labels with Solo, Live, Career, Jobs, and provider-setting fields; add keyboard-operable tab groups, named choice groups, accessible upload buttons, and announced upload/error/progress states.
+- Preserve native keyboard navigation for the AI-mode choice, surface updater/external-link and click-through failures, and prevent stale mouse-region IPC results from re-enabling click-through after it is switched off. Click-through will not enable if its Alt+C recovery shortcut is unavailable.
+- Add an explicit one-request connection test for configured local AI keys. Its route is mounted only by the loopback desktop service, not the hosted managed backend; it is offered only in the desktop app, may incur provider usage, and is never called by normal routing.
+
 ### Carried forward from the unpublished v1.5.5 candidate
 - More robust Live audio capture/reconnect, account-scoped read-only recovery notes, and the authenticated bounded managed-STT gateway.
 - Account isolation for saved jobs, Resume Studio drafts, authentication responses and document/RAG work; safer recovery of corrupt local session/document data.
@@ -27,7 +32,7 @@ This is a feature release: it adds the Home → Interview Kits → Ready Room pr
 
 ## Verification and release gates
 
-The PR #85 reliability-only head previously passed Linux/Windows Desktop CI ([run 38116194648](https://github.com/vsv2014/MockMate/actions/runs/38116194648)). The v1.6.0 candidate has since passed local checks: **83 test files / 627 tests**, API smoke **4/4**, production build, Vite-output verification, platform/React 19/Vitest 5/dev-tooling/auth-config/Express 5 contract checks, and `git diff --check`. These ran under Node 22.22.3 in the sandbox; the release workflow pins Node 24. The final pushed candidate passed Linux/Windows Desktop CI and Vercel checks in [run 38118183667](https://github.com/vsv2014/MockMate/actions/runs/38118183667). Full evidence is in `docs/evidence/VALIDATION_STATUS.md`.
+The PR #85 reliability-only head previously passed Linux/Windows Desktop CI ([run 38116194648](https://github.com/vsv2014/MockMate/actions/runs/38116194648)). The current audit-remediation branch passes **84 test files / 630 tests**, API smoke **5/5**, production build, Vite-output verification, Electron syntax checks, and `git diff --check`. These ran under Node 22.22.3 in the sandbox; the release workflow pins Node 24. The aggregate `npm run verify` could not reach its build/test steps because `scripts/doctor.mjs` could not download the Electron runtime binary; this is an environment limitation, not a passing packaged-runtime check. The previous pushed v1.6.0 candidate passed Linux/Windows Desktop CI and Vercel checks in [run 38118183667](https://github.com/vsv2014/MockMate/actions/runs/38118183667), before these audit-remediation edits. Full current evidence and outstanding device checks are in `docs/evidence/VALIDATION_STATUS.md`.
 
 Before a public release, still required:
 - Trusted Authenticode signing and publisher verification for the Windows installer and app executable.

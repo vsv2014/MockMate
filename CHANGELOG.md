@@ -14,9 +14,14 @@ Feature-release candidate on PR #85’s branch. Not merged, tagged, or published
 - Preserve partial Live answers on stream failure without silently replaying a paid request; retry Deepgram token-grant rate limits and keep quota/auth errors actionable.
 - Preserve the Live failover budget on Windows, wait for the local API service before key-reload restart, and improve bounded local-service/renderer lifecycle handling while retaining packaged `child_process.fork()`.
 
+### Accessibility and operational feedback
+- Associate visible labels with Solo, Live, Career, Jobs, and provider-setting fields; add keyboard-operable tab groups, named choice groups, accessible upload buttons, and announced upload/error/progress states.
+- Preserve native keyboard navigation for the AI-mode choice, report updater and external-link failures, and prevent stale mouse-region IPC results from re-enabling click-through after it is switched off. Click-through now reports failures and refuses to enable without its recovery shortcut.
+- Add an explicit, one-request provider connection test for configured local keys. The route is mounted only by the loopback desktop service (not the hosted managed backend), is offered only in the desktop app, and warns that the request may incur provider usage; it is not run automatically during routing.
+
 ### Candidate verification and release boundary
-- Local v1.6.0 candidate checks passed: 83 test files / 627 tests, API smoke 4/4, production build, Vite-output verification, platform/React 19/Vitest 5/dev-tooling/auth-config/Express 5 contract checks, and `git diff --check`. These ran under Node 22.22.3; release CI pins Node 24.
-- Current PR #85 candidate passed Linux/Windows Desktop CI and Vercel checks ([run 38118183667](https://github.com/vsv2014/MockMate/actions/runs/38118183667)).
+- Current audit-remediation checks on this branch: 84 test files / 630 tests, API smoke 5/5, production build, Vite-output verification, Electron syntax checks, and `git diff --check`. These ran under Node 22.22.3; release CI pins Node 24. The aggregate `npm run verify` is blocked in this sandbox because `scripts/doctor.mjs` cannot download the Electron runtime binary; see `docs/evidence/VALIDATION_STATUS.md`.
+- The previous v1.6.0 candidate passed Linux/Windows Desktop CI and Vercel checks ([run 38118183667](https://github.com/vsv2014/MockMate/actions/runs/38118183667)); those checks predate the audit-remediation changes and are not evidence for this updated head. The current branch remains unmerged and unpublished.
 - Physical Windows installation/audio, signed updater, actual meeting share-preview, and hosted WSS/Mongo/Deepgram usage reconciliation remain release gates. See [`docs/evidence/VALIDATION_STATUS.md`](docs/evidence/VALIDATION_STATUS.md).
 
 ## v1.5.5 — 2026-10-10 (superseded release candidate; never published)

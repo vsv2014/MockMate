@@ -32,6 +32,18 @@ let diagnostics = null
 function diag(component, event, fields = {}, level = 'info') {
   try { diagnostics?.event(component, event, fields, level) } catch {}
 }
+let clickThroughRecoveryRegistered = false
+let clickThroughForcedOff = true
+function registerGlobalShortcut(accelerator, callback) {
+  try {
+    const registered = globalShortcut.register(accelerator, callback)
+    if (!registered) diag('shortcuts', 'registration_failed', { accelerator }, 'warn')
+    return !!registered
+  } catch (e) {
+    diag('shortcuts', 'registration_failed', { accelerator, error: e?.message || 'unknown' }, 'warn')
+    return false
+  }
+}
 // Pin default ON — Live overlay stays when switching to Zoom; unpin → collapse to pill on blur.
 let pinnedState = true
 // Ignore blur-hide/collapse during screenshot, mode switches, and brief focus handoffs.
@@ -44,7 +56,7 @@ let lastOverlaySize = { w: 300, h: 360 }
 // overlay/teleprompter mode (syncOverlayShortcuts). A permanently registered
 // globalShortcut makes the OS reserve the accelerator for MockMate even when the
 // callback no-ops — that would hijack those keys from other applications.
-let overlayShortcutsRegistered = false
+const overlayShortcutsRegistered = new Set()
 let syncOverlayShortcuts = () => {}
 // F7 display memory: last display the user explicitly captured / selected via the
 // display picker, so F7 re-captures the interview screen instead of MockMate's monitor.
@@ -516,11 +528,12 @@ function launchTrayAndShortcuts() {
     if (!mainWindow.isVisible()) { showMain(); return }
     try { mainWindow.webContents.send('shortcut-stealth') } catch { toggleVisibility() }
   }
-  globalShortcut.register('Alt+H', stealthOrToggle)
-  globalShortcut.register('CommandOrControl+Shift+H', stealthOrToggle)
+  registerGlobalShortcut('Alt+H', stealthOrToggle)
+  registerGlobalShortcut('CommandOrControl+Shift+H', stealthOrToggle)
   // Force-disable click-through when the overlay traps the user (region miss / stuck ignore).
-  globalShortcut.register('Alt+C', () => {
+  clickThroughRecoveryRegistered = registerGlobalShortcut('Alt+C', () => {
     if (!mainWindow || mainWindow.isDestroyed()) return
+    clickThroughForcedOff = true
     try { mainWindow.setIgnoreMouseEvents(false) } catch {}
     try { mainWindow.webContents.send('shortcut-clickthrough-off') } catch {}
   })
@@ -547,8 +560,8 @@ function launchTrayAndShortcuts() {
   } catch {}
 
   // Screen solve: Ctrl+Shift+U (avoids Zoom/browser stealing lone F-keys) + F7 alias.
-  globalShortcut.register('CommandOrControl+Shift+U', captureScreen)
-  try { globalShortcut.register('F7', captureScreen) } catch {}
+  registerGlobalShortcut('CommandOrControl+Shift+U', captureScreen)
+  registerGlobalShortcut('F7', captureScreen)
 
   // Zero-mouse overlay navigation & Top-Center Camera Anchor (Teleprompter) mode.
   // PR #45 review fix: mode-scoped registration. The shortcuts are registered when the
@@ -559,33 +572,32 @@ function launchTrayAndShortcuts() {
   // controls that.)
   syncOverlayShortcuts = () => {
     const active = mainWindow && !mainWindow.isDestroyed() && (lastWindowMode === 'overlay' || lastWindowMode === 'teleprompter')
-    if (active && !overlayShortcutsRegistered) {
-      try {
-        globalShortcut.register('Alt+T', () => {
-          if (lastWindowMode === 'teleprompter') {
-            lastWindowMode = null
-            ipcMain.emit('set-window-mode', null, 'overlay')
-            try { mainWindow.webContents.send('overlay-command', { type: 'teleprompter', active: false, width: lastOverlaySize.w, height: lastOverlaySize.h }) } catch {}
-          } else {
-            applyTeleprompterGeometry()
-          }
-        })
-        globalShortcut.register('Alt+Up', () => {
-          try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-up' }) } catch {}
-        })
-        globalShortcut.register('Alt+Down', () => {
-          try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-down' }) } catch {}
-        })
-        globalShortcut.register('Alt+R', () => {
-          try { mainWindow?.webContents?.send('overlay-command', { type: 'answer-now' }) } catch {}
-        })
-        overlayShortcutsRegistered = true
-      } catch {}
-    } else if (!active && overlayShortcutsRegistered) {
-      for (const acc of ['Alt+T', 'Alt+R', 'Alt+Up', 'Alt+Down']) {
-        try { globalShortcut.unregister(acc) } catch {}
+    const shortcuts = [
+      ['Alt+T', () => {
+        if (lastWindowMode === 'teleprompter') {
+          lastWindowMode = null
+          ipcMain.emit('set-window-mode', null, 'overlay')
+          try { mainWindow?.webContents?.send('overlay-command', { type: 'teleprompter', active: false, width: lastOverlaySize.w, height: lastOverlaySize.h }) } catch {}
+        } else {
+          applyTeleprompterGeometry()
+        }
+      }],
+      ['Alt+Up', () => { try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-up' }) } catch {} }],
+      ['Alt+Down', () => { try { mainWindow?.webContents?.send('overlay-command', { type: 'scroll-down' }) } catch {} }],
+      ['Alt+R', () => { try { mainWindow?.webContents?.send('overlay-command', { type: 'answer-now' }) } catch {} }],
+    ]
+    if (active) {
+      for (const [accelerator, callback] of shortcuts) {
+        if (overlayShortcutsRegistered.has(accelerator)) continue
+        if (registerGlobalShortcut(accelerator, callback)) overlayShortcutsRegistered.add(accelerator)
       }
-      overlayShortcutsRegistered = false
+    } else {
+      for (const accelerator of [...overlayShortcutsRegistered]) {
+        try { globalShortcut.unregister(accelerator) } catch (e) {
+          diag('shortcuts', 'unregister_failed', { accelerator, error: e?.message || 'unknown' }, 'warn')
+        }
+        overlayShortcutsRegistered.delete(accelerator)
+      }
     }
   }
   syncOverlayShortcuts()
@@ -1050,22 +1062,36 @@ ipcMain.on('set-pin', (_, on) => {
   } catch {}
 })
 ipcMain.handle('get-pin', () => pinnedState)
-// Click-through: forward mouse events to apps underneath; pill/header still need
-// setIgnoreMouseEvents(false) when interacting — renderer toggles this.
-ipcMain.on('set-click-through', (_, on) => {
-  if (!mainWindow || mainWindow.isDestroyed()) return
+// Click-through: forward mouse events to apps underneath; report the actual main-process
+// result so the renderer can roll its toggle back instead of claiming a state IPC could not apply.
+ipcMain.handle('set-click-through', (_, on) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, error: 'Overlay window is unavailable.' }
+  if (on && !clickThroughRecoveryRegistered) {
+    return { ok: false, error: 'Alt+C recovery shortcut is unavailable, so click-through was left off.' }
+  }
   try {
+    clickThroughForcedOff = !on
     if (on) mainWindow.setIgnoreMouseEvents(true, { forward: true })
     else mainWindow.setIgnoreMouseEvents(false)
-  } catch {}
+    return { ok: true, enabled: !!on }
+  } catch (e) {
+    clickThroughForcedOff = true
+    diag('overlay', 'click_through_apply_failed', { enabled: !!on, error: e?.message || 'unknown' }, 'error')
+    return { ok: false, error: e?.message || 'Could not change click-through.' }
+  }
 })
 // Fine-grained region control while click-through is ON (hover interactive chrome → accept hits).
-ipcMain.on('set-ignore-mouse-events', (_, { ignore, forward } = {}) => {
-  if (!mainWindow || mainWindow.isDestroyed()) return
+ipcMain.handle('set-ignore-mouse-events', (_, { ignore, forward } = {}) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, error: 'Overlay window is unavailable.' }
+  if (ignore && clickThroughForcedOff) return { ok: false, error: 'Click-through is off; enable it again before forwarding mouse events.' }
   try {
     if (ignore) mainWindow.setIgnoreMouseEvents(true, { forward: forward !== false })
     else mainWindow.setIgnoreMouseEvents(false)
-  } catch {}
+    return { ok: true, ignored: !!ignore }
+  } catch (e) {
+    diag('overlay', 'mouse_region_apply_failed', { ignore: !!ignore, error: e?.message || 'unknown' }, 'error')
+    return { ok: false, error: e?.message || 'Could not change mouse handling.' }
+  }
 })
 ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
@@ -1287,10 +1313,15 @@ ipcMain.handle('relaunch-app', () => { app.relaunch(); app.exit(0) })
 // Strict URL validation lives in bootstrap.cjs (the process-wide navigation policy);
 // same rule as the shell.openExternal guard so IPC and navigation can never diverge.
 const { externalNavigationAllowed } = require('./bootstrap.cjs')
-ipcMain.handle('open-external', (_e, url) => {
-  if (typeof url !== 'string' || !externalNavigationAllowed(url)) return { ok: false }
-  shell.openExternal(url)
-  return { ok: true }
+ipcMain.handle('open-external', async (_e, url) => {
+  if (typeof url !== 'string' || !externalNavigationAllowed(url)) return { ok: false, error: 'That external URL is not allowed.' }
+  try {
+    await shell.openExternal(url)
+    return { ok: true }
+  } catch (e) {
+    diag('navigation', 'open_external_failed', { error: e?.message || 'unknown' }, 'warn')
+    return { ok: false, error: e?.message || 'Could not open the external URL.' }
+  }
 })
 // Open the API-key setup window on demand (e.g. "Add API keys" from the overlay).
 ipcMain.handle('open-key-setup', () => { if (!setupWindow) createSetupWindow(); else setupWindow.focus(); return { ok: true } })

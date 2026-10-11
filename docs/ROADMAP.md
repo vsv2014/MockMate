@@ -46,7 +46,7 @@ MockMate is an interview-performance OS: prepare, practice, perform and learn ac
 
 ## Release gates for v1.6.0 (not yet published)
 
-- [x] Local v1.6.0 candidate checks: 83 test files / 627 tests; API smoke (4 tests), production Vite build/output check, and `git diff --check` passed on 2026-10-11.
+- [x] Current audit-remediation checks: 84 test files / 630 tests; API smoke (5 tests), production Vite build/output check, Electron syntax checks, and `git diff --check` passed on 2026-10-11. `npm run verify` could not complete because the sandbox could not download the Electron runtime; fresh CI is required for this diff.
 - [x] PR #85 reliability-only head: Linux/Windows CI passed; [run 38116194648](https://github.com/vsv2014/MockMate/actions/runs/38116194648).
 - [x] Fresh Linux/Windows CI for the v1.6.0 screens, package version, and release docs passed on the pushed candidate; [run 38118183667](https://github.com/vsv2014/MockMate/actions/runs/38118183667).
 - [x] Version-generic Windows release workflow.

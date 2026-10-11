@@ -43,12 +43,13 @@ function saveRecentRoom(entry) {
   } catch { return [] }
 }
 
-function Field({ label, children }) {
-  return <div style={{ marginBottom: 12 }}><div style={{ fontSize: 11.5, color: T.text2, marginBottom: 6 }}>{label}</div>{children}</div>
+function Field({ label, htmlFor, children, group = false }) {
+  if (group) return <fieldset style={{ minWidth: 0, margin: '0 0 12px', padding: 0, border: 0 }}><legend style={{ fontSize: 11.5, color: T.text2, marginBottom: 6 }}>{label}</legend>{children}</fieldset>
+  return <div style={{ marginBottom: 12 }}><label htmlFor={htmlFor} style={{ display: 'block', fontSize: 11.5, color: T.text2, marginBottom: 6 }}>{label}</label>{children}</div>
 }
 function RoleBtn({ label, hint, active, onSelect }) {
   return (
-    <button type="button" onClick={onSelect}
+    <button type="button" onClick={onSelect} aria-pressed={active}
       style={{ flex: 1, textAlign: 'left', padding: '10px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
         background: active ? 'rgba(167,139,250,0.15)' : T.surface2,
         border: `1px solid ${active ? 'rgba(167,139,250,0.5)' : T.border}`, color: active ? '#c4b5fd' : T.text2 }}>
@@ -195,26 +196,26 @@ export default function Duo({ onHome }) {
         <button type="button" onClick={onHome} style={{ height: 38, padding: '0 16px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 13, cursor: 'pointer', fontFamily: T.font }}>← Back</button>
       </div>
 
-      {invited && <div style={{ background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#c4b5fd', marginBottom: 12 }}>🎟️ You were invited to room <strong>{invited}</strong>. Enter your name and join.</div>}
-      {err && <div style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fca5a5', marginBottom: 12 }}>{err}</div>}
+      {invited && <div role="status" style={{ background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#c4b5fd', marginBottom: 12 }}>🎟️ You were invited to room <strong>{invited}</strong>. Enter your name and join.</div>}
+      {err && <div role="alert" aria-live="assertive" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fca5a5', marginBottom: 12 }}>{err}</div>}
 
       <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: 18 }}>
-        <Field label="Your name"><input style={inp} value={name} placeholder="e.g. Charan" onChange={e => setName(e.target.value)} /></Field>
-        <Field label="Your role in the room"><div style={{ display: 'flex', gap: 8 }}>
+        <Field label="Your name" htmlFor="duo-name"><input id="duo-name" style={inp} value={name} autoComplete="name" placeholder="e.g. Charan" onChange={e => setName(e.target.value)} /></Field>
+        <Field label="Your role in the room" group><div role="group" aria-label="Your role in the room" style={{ display: 'flex', gap: 8 }}>
           <RoleBtn label="🎤 Candidate" hint="You interview — get private AI hints & RAG grounding" active={role === 'candidate'} onSelect={() => setRole('candidate')} />
           <RoleBtn label="🧑‍🏫 Helper / Interviewer" hint="Ask questions from the bank & send live coaching nudges" active={role === 'interviewer'} onSelect={() => setRole('interviewer')} />
         </div></Field>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <Field label="Target role"><input style={inp} value={targetRole} placeholder="e.g. Senior Backend Engineer" onChange={e => setTargetRole(e.target.value)} /></Field>
-          <Field label="Target company (optional)"><input style={inp} value={targetCompany} placeholder="e.g. Stripe" onChange={e => setTargetCompany(e.target.value)} /></Field>
+          <Field label="Target role" htmlFor="duo-target-role"><input id="duo-target-role" style={inp} value={targetRole} placeholder="e.g. Senior Backend Engineer" onChange={e => setTargetRole(e.target.value)} /></Field>
+          <Field label="Target company (optional)" htmlFor="duo-target-company"><input id="duo-target-company" style={inp} value={targetCompany} placeholder="e.g. Stripe" onChange={e => setTargetCompany(e.target.value)} /></Field>
         </div>
 
         {role === 'candidate' && (
           <>
-            <Field label="Job description / focus areas (grounds your private AI co-pilot)">
+            <Field label="Job description / focus areas (grounds your private AI co-pilot)" htmlFor="duo-job-description">
               <textarea
-                rows={3}
+                id="duo-job-description" rows={3}
                 style={{ ...inp, height: 'auto', padding: '8px 12px', resize: 'vertical' }}
                 value={jobDescription}
                 placeholder="Paste key JD requirements or topics you want your private AI co-pilot to emphasize…"
@@ -237,7 +238,7 @@ export default function Duo({ onHome }) {
           <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
             <button type="button" onClick={() => start(true)} style={{ flex: 1, minWidth: 160, height: 46, background: '#a78bfa', color: '#1a1033', border: 'none', borderRadius: T.rCtrl, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>Create a room →</button>
             <div style={{ display: 'flex', gap: 6, flex: 1.3, minWidth: 240 }}>
-              <input style={{ ...inp, height: 46 }} value={room} placeholder="join code e.g. mock-7f3a9c1d8b22e4aa10..." onChange={e => setRoom(e.target.value)} />
+              <input type="text" autoComplete="off" spellCheck={false} style={{ ...inp, height: 46 }} value={room} placeholder="join code e.g. mock-7f3a9c1d8b22e4aa10..." aria-label="Duo room code" onChange={e => setRoom(e.target.value)} />
               <button type="button" onClick={() => start(false)} style={{ height: 46, padding: '0 16px', background: 'transparent', color: T.text1, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Join</button>
             </div>
           </div>

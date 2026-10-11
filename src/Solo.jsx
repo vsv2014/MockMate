@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useId } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { curateModelOptions, configuredProviderNames, curateProviderFallbacks, loadModelSelection, persistModelSelection } from './lib/modelPicker'
 import { useDeepgram } from './useDeepgram'
@@ -43,20 +43,27 @@ function Section({ title, hint, children }) {
     </div>
   )
 }
-function Label({ children }) { return <div style={{ fontSize: 12, color: T.text2, marginBottom: 7 }}>{children}</div> }
-function Chips({ options, value, onChange }) {
+function Label({ children, htmlFor }) {
+  const style = { display: 'block', fontSize: 12, color: T.text2, marginBottom: 7 }
+  return htmlFor ? <label htmlFor={htmlFor} style={style}>{children}</label> : <div style={style}>{children}</div>
+}
+function Chips({ label, options, value, onChange }) {
+  const labelId = useId()
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-      {options.map(o => {
-        const [val, label] = Array.isArray(o) ? o : [o, o]
-        const on = value === val
-        return (
-          <button key={val} onClick={() => onChange(val)}
-            style={{ padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font, fontSize: 12.5, fontWeight: on ? 600 : 400,
-              background: on ? 'rgba(20,184,166,0.18)' : T.surface2, color: on ? T.text1 : T.text2,
-              border: `1px solid ${on ? 'rgba(20,184,166,0.5)' : T.border}` }}>{label}</button>
-        )
-      })}
+    <div>
+      <div id={labelId} style={{ fontSize: 12, color: T.text2, marginBottom: 7 }}>{label}</div>
+      <div role="group" aria-labelledby={labelId} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {options.map(o => {
+          const [val, text] = Array.isArray(o) ? o : [o, o]
+          const on = value === val
+          return (
+            <button key={val} type="button" aria-pressed={on} onClick={() => onChange(val)}
+              style={{ padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font, fontSize: 12.5, fontWeight: on ? 600 : 400,
+                background: on ? 'rgba(20,184,166,0.18)' : T.surface2, color: on ? T.text1 : T.text2,
+                border: `1px solid ${on ? 'rgba(20,184,166,0.5)' : T.border}` }}>{text}</button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -93,6 +100,8 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
   const [profile, setProfile] = useState(() => initialProfile ? { ...initialProfile } : loadProfile())
   const [interviewType, setInterviewType] = useState(() => initialProfile?.interviewType || loadProfile().interviewType || 'Technical')
   const [voiceStyle, setVoiceStyle] = useState(() => initialProfile?.voiceStyle || loadProfile().voiceStyle || 'Professional')
+  const soloFormId = useId()
+  const resumeFileRef = useRef(null)
   const [followupDepth, setFollowupDepth] = useState('normal')   // Follow-ups: light|normal|deep
   const [pdfMsg, setPdfMsg] = useState('')
   const [relentless, setRelentless] = useState(false)
@@ -717,29 +726,30 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
           {kitScoped ? 'Use this Kit’s role, resume, JD, and focus notes for practice. The shared document library is intentionally not attached.' : 'Paste resume & JD here (required for good questions). Extra knowledge banks go below — checked items are retrieved during the session.'}
         </div>
         <div>
-          <Label>Resume</Label>
-          <textarea rows={5} style={{ ...textInput, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste your resume text…" onChange={e => patchProfile({ resume: e.target.value })} />
+          <Label htmlFor={`${soloFormId}-resume`}>Resume</Label>
+          <textarea id={`${soloFormId}-resume`} rows={5} style={{ ...textInput, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste your resume text…" onChange={e => patchProfile({ resume: e.target.value })} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px' }}>
+            <button type="button" onClick={() => resumeFileRef.current?.click()} aria-label="Upload resume PDF"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px', fontFamily: T.font }}>
               Upload PDF
-              <input type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
-                onChange={async e => {
-                  const file = e.target.files?.[0]; e.target.value = ''
-                  if (!file) return
-                  setPdfMsg('Reading PDF…')
-                  try {
-                    const text = await extractPdfText(file)
-                    if (text && text.length > 20) { patchProfile({ resume: text }); setPdfMsg(`Loaded ${text.length.toLocaleString()} characters`) }
-                    else setPdfMsg('No text found (scanned image?) — paste instead')
-                  } catch { setPdfMsg('Could not read that PDF — paste the text instead') }
-                }} />
-            </label>
-            {pdfMsg && <span role="status" style={{ fontSize: 11, color: /No text|Could not|scanned/i.test(pdfMsg) ? '#fca5a5' : '#86efac' }}>{pdfMsg}</span>}
+            </button>
+            <input ref={resumeFileRef} type="file" accept="application/pdf,.pdf" aria-label="Choose a resume PDF" style={{ display: 'none' }}
+              onChange={async e => {
+                const file = e.target.files?.[0]; e.target.value = ''
+                if (!file) return
+                setPdfMsg('Reading PDF…')
+                try {
+                  const text = await extractPdfText(file)
+                  if (text && text.length > 20) { patchProfile({ resume: text }); setPdfMsg(`Loaded ${text.length.toLocaleString()} characters`) }
+                  else setPdfMsg('No text found (scanned image?) — paste instead')
+                } catch { setPdfMsg('Could not read that PDF — paste the text instead') }
+              }} />
+            {pdfMsg && <span role={/No text|Could not|scanned/i.test(pdfMsg) ? 'alert' : 'status'} aria-live={/No text|Could not|scanned/i.test(pdfMsg) ? 'assertive' : 'polite'} style={{ fontSize: 11, color: /No text|Could not|scanned/i.test(pdfMsg) ? '#fca5a5' : '#86efac' }}>{pdfMsg}</span>}
           </div>
         </div>
         <div>
-          <Label>Job description</Label>
-          <textarea rows={4} style={{ ...textInput, resize: 'vertical' }} value={profile.jobDescription || ''} placeholder="Paste the JD you’re practicing for…" onChange={e => patchProfile({ jobDescription: e.target.value })} />
+          <Label htmlFor={`${soloFormId}-job-description`}>Job description</Label>
+          <textarea id={`${soloFormId}-job-description`} rows={4} style={{ ...textInput, resize: 'vertical' }} value={profile.jobDescription || ''} placeholder="Paste the JD you’re practicing for…" onChange={e => patchProfile({ jobDescription: e.target.value })} />
         </div>
         {!hasContext && (
           <div role="status" style={{ fontSize: 12, color: '#fbbf24' }}>Add a resume or JD so questions stay practical and conversational.</div>
@@ -764,29 +774,27 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
 
       <Section title="Interview">
         <div>
-          <Label>Your name</Label>
-          <input style={textInput} value={profile.name || ''} placeholder="How should the interviewer address you?" onChange={e => patchProfile({ name: e.target.value })} />
+          <Label htmlFor={`${soloFormId}-name`}>Your name</Label>
+          <input id={`${soloFormId}-name`} autoComplete="name" style={textInput} value={profile.name || ''} placeholder="How should the interviewer address you?" onChange={e => patchProfile({ name: e.target.value })} />
         </div>
         <div>
-          <Label>Role</Label>
-          <input style={textInput} value={profile.targetRole || ''} placeholder="e.g. Senior Backend Engineer" onChange={e => patchProfile({ targetRole: e.target.value })} />
+          <Label htmlFor={`${soloFormId}-role`}>Role</Label>
+          <input id={`${soloFormId}-role`} style={textInput} value={profile.targetRole || ''} placeholder="e.g. Senior Backend Engineer" onChange={e => patchProfile({ targetRole: e.target.value })} />
         </div>
         <div>
-          <Label>Experience</Label>
-          <Chips options={['Student / New grad', '1–3 years', '4–6 years', '7+ years']} value={profile.yearsExp || ''} onChange={v => patchProfile({ yearsExp: v })} />
+          <Chips label="Experience" options={['Student / New grad', '1–3 years', '4–6 years', '7+ years']} value={profile.yearsExp || ''} onChange={v => patchProfile({ yearsExp: v })} />
         </div>
         <div>
-          <Label>Interview type</Label>
-          <Chips options={['Technical', 'Behavioral', 'System Design', 'Mixed']} value={interviewType} onChange={v => { setInterviewType(v); patchProfile({ interviewType: v }) }} />
+          <Chips label="Interview type" options={['Technical', 'Behavioral', 'System Design', 'Mixed']} value={interviewType} onChange={v => { setInterviewType(v); patchProfile({ interviewType: v }) }} />
         </div>
         <div>
-          <Label>Follow-ups</Label>
-          <Chips options={[['light', 'Light'], ['normal', 'Normal'], ['deep', 'Deep']]} value={followupDepth} onChange={setFollowupDepth} />
+          <Chips label="Follow-ups" options={[['light', 'Light'], ['normal', 'Normal'], ['deep', 'Deep']]} value={followupDepth} onChange={setFollowupDepth} />
         </div>
       </Section>
 
       <Section title="Target company" hint="Optional — every company and every attempt can use a different setup.">
-        <input style={textInput} value={profile.targetCompany || ''} placeholder="Type any company, e.g. RealPage, Teradata, Amazon…" onChange={e => patchProfile({ targetCompany: e.target.value })} />
+        <Label htmlFor={`${soloFormId}-company`}>Company</Label>
+        <input id={`${soloFormId}-company`} style={textInput} value={profile.targetCompany || ''} placeholder="Type any company, e.g. RealPage, Teradata, Amazon…" onChange={e => patchProfile({ targetCompany: e.target.value })} />
         <div style={{ fontSize: 11, color: T.text3, lineHeight: 1.45 }}>
           This does not restrict your account to one company. MockMate snapshots the active company, role, playbook and selected documents when the session begins.
         </div>
@@ -796,13 +804,12 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
         <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: T.text2 }}>Session options</summary>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 14 }}>
           <div>
-            <Label>Voice style</Label>
-            <Chips options={['Professional', 'Friendly', 'Concise', 'Detailed']} value={voiceStyle} onChange={v => { setVoiceStyle(v); patchProfile({ voiceStyle: v }) }} />
+            <Chips label="Voice style" options={['Professional', 'Friendly', 'Concise', 'Detailed']} value={voiceStyle} onChange={v => { setVoiceStyle(v); patchProfile({ voiceStyle: v }) }} />
           </div>
           {!managed && (providers.length > 0 || models.length > 0) && (
             <div>
-              <Label>AI model</Label>
-              <select value={provider} onChange={e => setProvider(e.target.value)} style={{ ...textInput, maxWidth: 380 }}>
+              <Label htmlFor={`${soloFormId}-model`}>AI model</Label>
+              <select id={`${soloFormId}-model`} value={provider} onChange={e => setProvider(e.target.value)} style={{ ...textInput, maxWidth: 380 }}>
                 <option value="">Automatic — recommended</option>
                 {modelOptions.length > 0
                   ? modelOptions.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
@@ -812,8 +819,8 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
             </div>
           )}
           <div>
-            <Label>Language</Label>
-            <select value={profile.language || 'English'} onChange={e => patchProfile({ language: e.target.value })} style={{ ...textInput, maxWidth: 340 }}>
+            <Label htmlFor={`${soloFormId}-language`}>Language</Label>
+            <select id={`${soloFormId}-language`} value={profile.language || 'English'} onChange={e => patchProfile({ language: e.target.value })} style={{ ...textInput, maxWidth: 340 }}>
               {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
           </div>
@@ -970,6 +977,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
           </form>
 
           <textarea rows={3} style={{ ...textInput, resize: 'none', flexShrink: 0 }}
+            aria-label="Your answer"
             placeholder={speech.active ? 'Listening…' : canSpeak ? 'Type your answer · Enter to submit' : 'Type your answer · Enter to submit'}
             value={answer}
             onChange={e => { setAnswer(e.target.value); if (endingEmpty) { endConfirmRef.current = false; setEndingEmpty(false) } }}

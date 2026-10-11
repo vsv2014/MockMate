@@ -10,7 +10,7 @@ MockMate is a desktop-first interview preparation and live-performance companion
 - **macOS/Linux:** source support exists; the current public release workflow only publishes Windows NSIS. Linux overlay content protection is not supported.
 - **Mobile:** iOS/Android remains a private beta foundation, not a store release.
 - **Hosted API:** the desktop default `managedApiBase` remains empty; the local UI/AI service is still required, and Guest mode bypasses account authentication only. Managed AI uses hosted configuration only when intentionally configured.
-- **Validation:** local v1.6.0 checks passed (83 test files / 627 tests, API smoke 4/4, build and Vite-output verification); current PR #85 head passed Linux/Windows Desktop CI and Vercel checks ([run 38118183667](https://github.com/vsv2014/MockMate/actions/runs/38118183667)). Physical Windows, signing, share-preview and hosted-provider checks remain release gates. See [validation evidence](docs/evidence/VALIDATION_STATUS.md).
+- **Validation:** the current audit-remediation branch passes 84 test files / 630 tests, API smoke 5/5, production build, Vite-output verification, Electron syntax checks, and `git diff --check`. The earlier CI run ([38118183667](https://github.com/vsv2014/MockMate/actions/runs/38118183667)) predates these edits; fresh CI is required. The aggregate `npm run verify` is blocked in this sandbox because the Electron runtime download failed. Physical Windows, screen-reader, signing, share-preview and live-provider checks remain release gates. See [validation evidence](docs/evidence/VALIDATION_STATUS.md).
 
 ## Optional unsigned personal test pre-release
 

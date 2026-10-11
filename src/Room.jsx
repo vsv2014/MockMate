@@ -67,8 +67,8 @@ export default function Room({ session, onEnd, onLeave }) {
   }, [session.room, session.identity, session.name, session.role])
 
   const narrow = { maxWidth: 720, margin: '0 auto', padding: '40px 24px', fontFamily: T.font, color: T.text1 }
-  if (err) return <div style={narrow}><div style={{ display: 'flex', gap: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: '#f5c66b', padding: '12px 16px', borderRadius: 10, marginBottom: 18, fontSize: 13 }}><span>⚠</span><span>{err}</span></div><button style={btnGhost} onClick={onLeave}>← Back</button></div>
-  if (!conn) return <div style={narrow}><p style={{ color: T.text2 }}>Connecting to room <strong style={{ color: T.text1 }}>{session.room}</strong>…</p></div>
+  if (err) return <div style={narrow}><div role="alert" aria-live="assertive" style={{ display: 'flex', gap: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: '#f5c66b', padding: '12px 16px', borderRadius: 10, marginBottom: 18, fontSize: 13 }}><span aria-hidden="true">⚠</span><span>{err}</span></div><button type="button" style={btnGhost} onClick={onLeave}>← Back</button></div>
+  if (!conn) return <div role="status" aria-live="polite" style={narrow}><p style={{ color: T.text2 }}>Connecting to room <strong style={{ color: T.text1 }}>{session.room}</strong>…</p></div>
 
   return (
     <LiveKitRoom serverUrl={conn.url} token={conn.token} connect audio video={false} onDisconnected={onLeave}>
@@ -306,10 +306,10 @@ function RoomInner({ session, onEnd }) {
       <style>{`@keyframes mm-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }`}</style>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0, fontSize: 17, fontWeight: 650, color: T.text1 }}>Room {session.room}</h2><span style={metaStyle}>· you are <strong style={{ color: T.text1 }}>{session.role}</strong></span><span style={{ flex: 1 }} />
-        {session.role === 'candidate' && pipSupported && <button style={meetingMode ? btnPrimary : btnGhost} title="Moves AI hints to a floating window; always verify the meeting share preview" onClick={toggleMeetingMode}>{meetingMode ? '🛡️ Meeting mode — on' : '🛡️ Meeting mode'}</button>}
-        <button style={sharing ? btnPrimary : btnGhost} onClick={toggleShare}>{sharing ? '🟢 Sharing — stop' : '🖥️ Share screen'}</button>
-        <button style={btnGhost} onClick={shareLink} title={`Room code ${session.room}`}>{copied ? `📋 Code: ${session.room}` : '🔗 Share room code'}</button>
-        <button style={{ ...btnDanger, opacity: ending ? 0.5 : 1 }} onClick={end} disabled={ending}>{ending ? 'Scoring…' : 'End & get feedback'}</button>
+        {session.role === 'candidate' && pipSupported && <button type="button" style={meetingMode ? btnPrimary : btnGhost} title="Moves AI hints to a floating window; always verify the meeting share preview" aria-pressed={meetingMode} onClick={toggleMeetingMode}>{meetingMode ? '🛡️ Meeting mode — on' : '🛡️ Meeting mode'}</button>}
+        <button type="button" style={sharing ? btnPrimary : btnGhost} aria-pressed={sharing} onClick={toggleShare}>{sharing ? '🟢 Sharing — stop' : '🖥️ Share screen'}</button>
+        <button type="button" style={btnGhost} onClick={shareLink} title={`Room code ${session.room}`}>{copied ? `📋 Code: ${session.room}` : '🔗 Share room code'}</button>
+        <button type="button" style={{ ...btnDanger, opacity: ending ? 0.5 : 1 }} onClick={end} disabled={ending}>{ending ? 'Scoring…' : 'End & get feedback'}</button>
       </div>
 
       {screenTracks.length > 0 && <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>{screenTracks.map(tr => <div style={{ position: 'relative', border: `1px solid ${T.border}`, borderRadius: 10, overflow: 'hidden', maxWidth: '100%' }} key={tr.publication.trackSid}><VideoTrack trackRef={tr} /><div style={{ position: 'absolute', bottom: 6, left: 6, fontSize: 10, background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '2px 6px', borderRadius: 6 }}>🖥️ {tr.participant?.name || tr.participant?.identity}{tr.participant?.isLocal ? ' (you)' : ''}</div></div>)}</div>}
@@ -319,7 +319,7 @@ function RoomInner({ session, onEnd }) {
           <div style={labelStyle}>In the room ({participants.length})</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{participants.map(p => <div key={p.identity} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', border: `1px solid ${p.isSpeaking ? T.success : T.border}`, borderRadius: 10, background: T.surface1 }}><span style={{ width: 9, height: 9, borderRadius: '50%', background: p.isSpeaking ? T.success : T.text3, boxShadow: p.isSpeaking ? '0 0 0 4px rgba(34,197,94,0.13)' : 'none' }} /><span style={{ fontWeight: 600 }}>{p.name || p.identity}{p.isLocal ? ' (you)' : ''}</span></div>)}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
-            {sttError ? <span style={metaStyle}>⚠ {sttError}. Fix Voice settings, then retry.</span> : speech.active ? <><span style={{ width: 9, height: 9, borderRadius: '50%', background: '#ff5b5b', animation: 'mm-pulse 1.2s infinite' }} /><span style={metaStyle}>Listening (Deepgram)</span><span style={{ flex: 1 }} /><button style={btnGhost} onClick={speech.stop}>Pause mic text</button></> : <><span style={metaStyle}>Mic transcription paused</span><span style={{ flex: 1 }} /><button style={btnGhost} onClick={() => { setSttError(''); speech.start() }}>Resume</button></>}
+            {sttError ? <span role="alert" aria-live="assertive" style={metaStyle}>⚠ {sttError}. Fix Voice settings, then retry.</span> : speech.active ? <><span style={{ width: 9, height: 9, borderRadius: '50%', background: '#ff5b5b', animation: 'mm-pulse 1.2s infinite' }} /><span style={metaStyle}>Listening (Deepgram)</span><span style={{ flex: 1 }} /><button style={btnGhost} onClick={speech.stop}>Pause mic text</button></> : <><span style={metaStyle}>Mic transcription paused</span><span style={{ flex: 1 }} /><button style={btnGhost} onClick={() => { setSttError(''); speech.start() }}>Resume</button></>}
           </div>
         </div>
 
@@ -334,6 +334,7 @@ function RoomInner({ session, onEnd }) {
           {session.role === 'candidate' && (
             <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
               <input
+                aria-label="Ask the private AI co-pilot"
                 value={manualPrompt}
                 onChange={e => setManualPrompt(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && manualPrompt.trim()) { requestHintForQuestion(manualPrompt); setManualPrompt('') } }}
@@ -363,6 +364,7 @@ function RoomInner({ session, onEnd }) {
                   <button
                     key={idx}
                     type="button"
+                    aria-label={`Ask this interview question: ${q}`}
                     onClick={() => sendInterviewerQuestion(q)}
                     style={{ ...smallGhost, textAlign: 'left', padding: '4px 8px', fontSize: 11 }}>
                     + Ask Q{idx + 1}
@@ -371,6 +373,7 @@ function RoomInner({ session, onEnd }) {
               </div>
               <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                 <input
+                  aria-label="Type an interview question to send to the room"
                   value={helperQuestion}
                   onChange={e => setHelperQuestion(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && helperQuestion.trim()) sendInterviewerQuestion(helperQuestion) }}
@@ -381,6 +384,7 @@ function RoomInner({ session, onEnd }) {
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <input
+                  aria-label="Send a private coaching nudge to the candidate"
                   value={helperNote}
                   onChange={e => setHelperNote(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && helperNote.trim()) broadcastHelperNote() }}
@@ -392,7 +396,7 @@ function RoomInner({ session, onEnd }) {
             </div>
           )}
 
-          {session.role === 'candidate' && !inElectron && pipSupported && !pipPrompted && (hintLoading || hint) && !pipWindow && <div style={{ background: '#1e1b4b', border: '1px solid #4338ca', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 12, display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ color: '#a5b4fc' }}>🛡️ <strong>Sharing your screen?</strong> Move hints to a floating window and verify your preview.</span><button style={{ ...smallGhost, marginLeft: 'auto', whiteSpace: 'nowrap' }} onClick={openPip}>🪟 Pop out</button><button style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 16 }} onClick={() => setPipPrompted(true)}>×</button></div>}
+          {session.role === 'candidate' && !inElectron && pipSupported && !pipPrompted && (hintLoading || hint) && !pipWindow && <div style={{ background: '#1e1b4b', border: '1px solid #4338ca', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 12, display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ color: '#a5b4fc' }}>🛡️ <strong>Sharing your screen?</strong> Move hints to a floating window and verify your preview.</span><button style={{ ...smallGhost, marginLeft: 'auto', whiteSpace: 'nowrap' }} onClick={openPip}>🪟 Pop out</button><button type="button" aria-label="Dismiss pop-out reminder" style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 16 }} onClick={() => setPipPrompted(true)}>×</button></div>}
 
           {session.role === 'candidate' && (hintLoading || hint) && (
             electronProtection ? <div style={{ background: '#0d1117', border: '1px solid #4338ca', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#a5b4fc' }}>🛡️ Hints are in the OS-protected Electron window — still verify the meeting share preview.</div>
@@ -401,8 +405,8 @@ function RoomInner({ session, onEnd }) {
                   : <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}><span style={{ fontWeight: 600, fontSize: 13 }}>🤖 AI Co-pilot <span style={{ color: T.text3, fontWeight: 400, fontSize: 12 }}>· private UI; verify share preview</span></span><div style={{ display: 'flex', gap: 6 }}>{pipSupported && <button style={smallGhost} onClick={openPip}>🪟 Pop out</button>}<button style={smallGhost} onClick={() => setHintOpen(v => !v)}>{hintOpen ? 'Hide' : 'Show'}</button></div></div>{hintOpen && (hintLoading ? <p style={{ color: T.text3, fontSize: 13, margin: 0 }}>Generating hints…</p> : hint && <div style={{ fontSize: 13 }}>{hint.resumeRelevant && <span style={{ display: 'inline-block', background: '#22c55e22', color: '#4ade80', borderRadius: 6, padding: '1px 8px', fontSize: 11, marginBottom: 8 }}>✓ Resume-relevant</span>}{hint.opener && <div style={{ fontWeight: 600, color: '#e2e8f0', marginBottom: 8, padding: '6px 9px', borderRadius: 6, background: 'rgba(20,184,166,0.10)', borderLeft: `3px solid ${T.accent}` }}>{hint.opener}</div>}<div style={{ fontWeight: 600, marginBottom: 4 }}>Key points to hit:</div><ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>{(hint.keyPoints || []).map((pt, i) => <li key={i}>{pt}</li>)}</ul>{(hint.fullAnswer || hint.sampleAnswer) && <div style={{ marginTop: 6 }}><button type="button" style={smallGhost} onClick={() => setShowFullHint(v => !v)}>{showFullHint ? 'Hide full answer' : 'Show full answer / code'}</button>{showFullHint && <div style={{ marginTop: 6, padding: 10, borderRadius: 8, background: T.surface2, fontSize: 12.5, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{hint.fullAnswer || hint.sampleAnswer}</div>}</div>}{hint.watchOut && <div style={{ color: '#f59e0b', fontSize: 12, marginTop: 6 }}>⚠ {hint.watchOut}</div>}</div>)}</div>
           )}
 
-          <div style={labelStyle}>Live transcript</div>
-          <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, background: T.surface1, padding: 14, height: 420, overflowY: 'auto' }}>
+          <div role="log" aria-label="Live transcript" aria-live="polite" aria-relevant="additions" style={{ border: `1px solid ${T.border}`, borderRadius: 10, background: T.surface1, padding: 14, height: 420, overflowY: 'auto' }}>
+            <div style={{ ...labelStyle, marginTop: 0 }}>Live transcript</div>
             {transcript.length === 0 && !speech.interim && <p style={metaStyle}>Start talking — finalized turns are synchronized with your partner.</p>}
             {transcript.map(s => <div key={s.id} style={{ marginBottom: 12 }}><div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}><span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px', color: s.role === 'candidate' ? '#7fb0ff' : '#f5c66b' }}>{s.speaker} · {s.role}</span>{session.role === 'candidate' && s.role === 'interviewer' && <button type="button" style={smallGhost} onClick={() => requestHintForQuestion(s.text, s.id)}>⚡ Hint</button>}</div><div>{s.text}</div></div>)}
             {speech.interim && <div style={{ marginBottom: 12 }}><div style={{ color: T.text3, fontStyle: 'italic' }}>{speech.interim}…</div></div>}<div ref={bottomRef} />

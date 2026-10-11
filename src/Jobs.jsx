@@ -113,6 +113,7 @@ function JobCard({ j, saved, resumeText, onToggleSave, onOpenCareer, onUseForInt
             ))}
           </div>
           <textarea
+            aria-label={`Notes for ${j.title || 'saved job'}`}
             rows={2}
             value={j.notes || ''}
             placeholder="Notes (local only)…"
@@ -276,6 +277,19 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
     if (sort === 'salary' && result && !hasSalaryData) setSort('fit')
   }, [sort, result, hasSalaryData])
 
+  function handleTabKeyDown(event, currentTab) {
+    const tabs = ['matches', 'saved']
+    const index = tabs.indexOf(currentTab)
+    const nextIndex = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? (index + 1) % tabs.length
+      : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? (index + tabs.length - 1) % tabs.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1
+    if (nextIndex < 0) return
+    event.preventDefault()
+    const nextTab = tabs[nextIndex]
+    setTab(nextTab)
+    document.getElementById(`jobs-tab-${nextTab}`)?.focus()
+  }
+
   return (
     <div style={{ padding: embedded ? 0 : '12px 14px 16px', fontFamily: T.font, color: T.text1 }}>
       {!embedded && (
@@ -290,12 +304,14 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
           ['matches', 'Matches'],
           ['saved', `Saved${savedJobs.length ? ` (${savedJobs.length})` : ''}`],
         ].map(([k, label]) => (
-          <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} style={tabStyle(tab === k)}>
+          <button key={k} id={`jobs-tab-${k}`} type="button" role="tab" aria-selected={tab === k} aria-controls="jobs-tabpanel"
+            tabIndex={tab === k ? 0 : -1} onClick={() => setTab(k)} onKeyDown={event => handleTabKeyDown(event, k)} style={tabStyle(tab === k)}>
             {label}
           </button>
         ))}
       </div>
 
+      <div id="jobs-tabpanel" role="tabpanel" aria-labelledby={`jobs-tab-${tab}`} tabIndex={0}>
       {tab === 'saved' ? (
         savedJobs.length === 0 ? (
           <div role="status" style={S.note}>
@@ -370,15 +386,15 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
           </div>
 
           <div style={S.panel}>
-            <label style={S.lbl}>Target role</label>
+            <label htmlFor="jobs-target-role" style={S.lbl}>Target role</label>
             <input
-              type="text" value={profile.targetRole || ''} placeholder="e.g. Senior Backend Engineer"
+              id="jobs-target-role" type="text" value={profile.targetRole || ''} placeholder="e.g. Senior Backend Engineer"
               onChange={e => patch({ targetRole: e.target.value })}
               style={S.input}
             />
-            <label style={S.lbl}>Location</label>
+            <label htmlFor="jobs-location" style={S.lbl}>Location</label>
             <input
-              type="text" value={profile.location || ''} placeholder="e.g. Hyderabad, India"
+              id="jobs-location" type="text" value={profile.location || ''} placeholder="e.g. Hyderabad, India"
               onChange={e => patch({ location: e.target.value })}
               style={S.input}
             />
@@ -400,24 +416,24 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
             </div>
             {(editingLoc || !!locOverride) && (
               <>
-                <label style={S.lbl}>Location override</label>
+                <label htmlFor="jobs-location-override" style={S.lbl}>Location override</label>
                 <input
-                  type="text" value={locOverride} placeholder="e.g. Hyderabad, India"
+                  id="jobs-location-override" type="text" value={locOverride} placeholder="e.g. Hyderabad, India"
                   onChange={e => { setLocOverride(e.target.value); try { localStorage.setItem(JOB_LOC_KEY, e.target.value) } catch {} }}
                   style={S.input}
                 />
               </>
             )}
-            <label style={S.lbl}>Target company career page (optional)</label>
+            <label htmlFor="jobs-company-url" style={S.lbl}>Target company career page (optional)</label>
             <input
-              type="text" value={companyUrl} placeholder="e.g. https://boards.greenhouse.io/zoom"
+              id="jobs-company-url" type="url" value={companyUrl} placeholder="e.g. https://boards.greenhouse.io/zoom"
               onChange={e => { setCompanyUrl(e.target.value); try { localStorage.setItem(JOB_COMPANY_KEY, e.target.value) } catch {} }}
               style={S.input}
             />
             <div style={{ fontSize: 11, color: T.text3, marginTop: 4, lineHeight: 1.4 }}>
               Greenhouse &amp; Lever public boards are read directly — no scraping — and merged on top of your matches.
             </div>
-            <label style={S.lbl}>Experience</label>
+            <div style={S.lbl}>Experience</div>
             <YearsChips value={profile.yearsExp || ''} onChange={v => patch({ yearsExp: v })} />
           </div>
 
@@ -515,7 +531,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
                       }}>{label}</button>
                   ))}
                   <input
-                    type="text"
+                    type="text" aria-label="Filter matching jobs by skill or company"
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     placeholder="Filter by skill or company…"
@@ -546,6 +562,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
           )}
         </>
       )}
+      </div>
     </div>
   )
 }

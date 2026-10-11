@@ -125,6 +125,9 @@ function ElectronShell({ auth }) {
   const [stealthNotice, setStealthNotice] = useState('')
   const stealthNoticeTimer = useRef(null)
   const [clickThrough, setClickThrough] = useState(false)
+  const onClickThrough = useCallback(enabled => {
+    setClickThrough(current => typeof enabled === 'boolean' ? enabled : !current)
+  }, [])
   const [minimized, setMinimized] = useState(false)
   const [screenAnalysis, setScreenAnalysis] = useState(null)   // vision analysis result
   const [screenAnalyzing, setScreenAnalyzing] = useState(false)
@@ -806,7 +809,7 @@ function ElectronShell({ auth }) {
   if (showWelcome) return (
     <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
       onDrag={startDrag} onResize={startResize}
-      onStealth={requestStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
+      onStealth={requestStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={onClickThrough}
       onClose={dismissWelcome} title="Connect your AI" autoHeight>
       {stealthSafety}
       <div style={{ padding: '14px 16px 16px', fontFamily: T.font }}>
@@ -980,7 +983,7 @@ function ElectronShell({ auth }) {
         if (minimized) expandFromPill()
         else collapseToPill()
       }}
-      clickThrough={clickThrough} onClickThrough={() => setClickThrough(c => !c)}
+      clickThrough={clickThrough} onClickThrough={onClickThrough}
       onResize={startResize} onDrag={startDrag}
       screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} screenFlowStatus={screenFlowStatus} onDismissScreen={dismissScreenAnalysis}
       codingDetected={codingDetected} onCaptureScreen={capturePreferredScreen}
@@ -1383,7 +1386,7 @@ function DocThreshold() {
         <div style={{ marginLeft: 'auto', fontSize: 12, color: T.text2, fontVariantNumeric: 'tabular-nums' }}>{v.toFixed(2)}</div>
       </div>
       <div style={{ fontSize: 11.5, color: T.text2, marginBottom: 8, lineHeight: 1.4 }}>How strictly to match uploaded docs when grounding Live answers. Higher = fewer, more-relevant snippets. Default 0.20.</div>
-      <input type="range" min="0" max="0.6" step="0.05" value={v}
+      <input type="range" min="0" max="0.6" step="0.05" value={v} aria-label="Document retrieval match threshold"
         onChange={e => { const n = parseFloat(e.target.value); setV(n); setDocThreshold(n) }}
         style={{ width: '100%', accentColor: T.accentFrom, cursor: 'pointer' }} />
     </div>
@@ -1392,6 +1395,7 @@ function DocThreshold() {
 
 export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, onResize, onStealth, onMinimize, onClose, title, extra, actions, opacity = 0.95, onOpacity, autoHeight, clickThrough, onClickThrough, confirmClose }) {
   const [confirming, setConfirming] = useState(false)
+  const [clickThroughError, setClickThroughError] = useState('')
   const confirmTimer = useRef(null)
   const pillDragged = useRef(false)
   // Drag the collapsed pill to reposition; a real drag suppresses the expand-click. Uses CUMULATIVE
@@ -1422,15 +1426,33 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
   })
   useEffect(() => { if (inElectron) window.electronAPI?.setPin?.(pinned) }, [pinned])
   useEffect(() => {
-    if (!inElectron) return
-    window.electronAPI?.setClickThrough?.(!!clickThrough)
-    return () => { window.electronAPI?.setClickThrough?.(false) }
-  }, [clickThrough])
+    if (!inElectron || typeof window.electronAPI?.setClickThrough !== 'function') return
+    let active = true
+    const requested = !!clickThrough
+    window.electronAPI.setClickThrough(requested).then(result => {
+      if (!active) return
+      if (result?.ok === false) {
+        setClickThroughError(`Could not ${requested ? 'enable' : 'disable'} click-through: ${result.error || 'the overlay window did not accept the change.'}`)
+        if (requested) onClickThrough?.(false)
+      } else if (requested) {
+        setClickThroughError('')
+      }
+    }).catch(error => {
+      if (!active) return
+      setClickThroughError(`Could not ${requested ? 'enable' : 'disable'} click-through: ${error?.message || 'IPC request failed.'}`)
+      if (requested) onClickThrough?.(false)
+    })
+    return () => {
+      active = false
+      if (requested) window.electronAPI?.setClickThrough?.(false)?.catch?.(() => {})
+    }
+  }, [clickThrough, onClickThrough])
   // Alt+C force-off click-through (global shortcut → renderer)
   useEffect(() => {
     if (!inElectron || !onClickThrough) return
     const off = window.electronAPI?.onShortcutClickThroughOff?.(() => {
-      if (clickThrough) onClickThrough()
+      setClickThroughError('')
+      if (clickThrough) onClickThrough(false)
     })
     return () => { try { off?.() } catch {} }
   }, [clickThrough, onClickThrough])
@@ -1446,10 +1468,24 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
       return !!el.closest?.('[data-mm-hit],button,a,input,textarea,select,label,[role="button"]')
     }
     let accepting = false
+    let active = true
     const setAccept = on => {
       if (on === accepting) return
       accepting = on
-      window.electronAPI?.setIgnoreMouseEvents?.(!on, { forward: true })
+      const pending = window.electronAPI?.setIgnoreMouseEvents?.(!on, { forward: true })
+      if (pending && typeof pending.then === 'function') {
+        pending.then(result => {
+          if (!active) return
+          if (result?.ok === false) {
+            setClickThroughError(`Mouse forwarding failed: ${result.error || 'the overlay could not update its hit region.'} Click-through has been turned off.`)
+            onClickThrough?.(false)
+          }
+        }).catch(error => {
+          if (!active) return
+          setClickThroughError(`Mouse forwarding failed: ${error?.message || 'IPC request failed.'} Click-through has been turned off.`)
+          onClickThrough?.(false)
+        })
+      }
     }
     const onMove = e => {
       // Prefer elementFromPoint — e.target is unreliable while ignore+forward is toggling.
@@ -1461,15 +1497,17 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
     root.addEventListener('mouseleave', onLeave, true)
     setAccept(false)
     return () => {
+      active = false
       root.removeEventListener('mousemove', onMove, true)
       root.removeEventListener('mouseleave', onLeave, true)
       // Do NOT re-enable click-through here — the companion setClickThrough(false) effect owns final state.
     }
-  }, [clickThrough])
+  }, [clickThrough, onClickThrough])
   function togglePin() {
     setPinned(p => { const v = !p; try { localStorage.setItem('mm-pinned', v ? '1' : '0') } catch {} ; return v })
   }
   function toggleClickThrough() {
+    setClickThroughError('')
     onClickThrough?.()
   }
   function handleClose() {
@@ -1577,6 +1615,17 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
               : <IconBtn icon={confirmClose ? 'stop' : 'close'} onClick={handleClose} danger title={confirmClose ? 'End interview' : 'Close'} />}
           </div>
         </div>
+
+        {clickThroughError && !minimized && (
+          <div role="alert" aria-live="assertive" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'rgba(127,29,29,0.92)', borderBottom: '1px solid rgba(248,113,113,0.4)', color: '#fee2e2', fontSize: 11, lineHeight: 1.45 }}>
+            <span style={{ flex: 1 }}>
+              {clickThroughError}
+              {!clickThroughError.includes('Alt+C recovery shortcut is unavailable') && ' Use Alt+C to restore mouse input if the overlay stops responding.'}
+            </span>
+            <button type="button" onClick={() => setClickThroughError('')} aria-label="Dismiss click-through warning"
+              style={{ background: 'transparent', color: 'inherit', border: 'none', cursor: 'pointer', padding: 2, fontSize: 15 }}>×</button>
+          </div>
+        )}
 
         {!minimized && children}
 

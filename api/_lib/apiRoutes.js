@@ -2,7 +2,7 @@
 // Deployments:
 //   - Local BYOK (server.js): no auth, loopback-only.
 //   - Managed backend (backend/server.js): auth + metering/model policy.
-import { makeReport, availableProviders, allProviders, listModels, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed, isLoopbackAddress } from './core.js'
+import { makeReport, availableProviders, allProviders, listModels, testProviderConnection, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed, isLoopbackAddress } from './core.js'
 import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen, streamHint } from './interview.js'
 import { findJobs } from './jobs.js'
 import { atsScore, tailorResume, referralMessage, resumeLatex } from './career.js'
@@ -42,6 +42,10 @@ export const API_ROUTE_CONTRACT = [
   { method: 'POST', path: '/api/jobs' }, { method: 'POST', path: '/api/ats-score' },
   { method: 'POST', path: '/api/tailor-resume' }, { method: 'POST', path: '/api/referral' },
   { method: 'POST', path: '/api/resume-latex' }, { method: 'POST', path: '/api/hint-stream' },
+]
+
+export const LOCAL_ONLY_API_ROUTE_CONTRACT = [
+  { method: 'POST', path: '/api/providers/test' },
 ]
 
 export const OPERATION_BY_PATH = {
@@ -92,6 +96,19 @@ export function registerApiRoutes(app, opts = {}) {
   const bodyWithPolicy = (path, raw = {}) => applyArchReasoningPolicy(path, raw, resolveReasoningPolicy)
 
   app.get('/api/providers', ...guardLight, (req, res) => res.json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured() }))
+  if (opts.enableLocalProviderTest === true) {
+    app.post('/api/providers/test', ...guardLight, async (req, res) => {
+      try {
+        res.json(await testProviderConnection(req.body?.provider))
+      } catch (e) {
+        const status = Number(e?.status || e?.statusCode) || 502
+        res.status(status >= 400 && status <= 599 ? status : 502).json({
+          ok: false,
+          error: String(e?.message || 'Provider test failed.').slice(0, 240),
+        })
+      }
+    })
+  }
   app.get('/api/models', ...guardLight, async (req, res) => {
     try { res.json({ models: await listModels() }) }
     catch (e) { console.error('[api] GET /api/models:', e.message); res.json({ models: [] }) }

@@ -451,6 +451,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
         <form onSubmit={handleSaveSlot} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <input
             type="text"
+            aria-label="Interview Playbook preset name"
             value={savingName}
             onChange={e => setSavingName(e.target.value)}
             placeholder="Preset name (e.g. Stripe Backend Round)"

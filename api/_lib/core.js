@@ -159,6 +159,37 @@ export function availableProviders() {
   return list
 }
 
+const PROVIDER_TEST_IDS = new Set(['groq', 'gemini', 'openai_mini', 'claude_haiku', 'cerebras'])
+/** Make one small, explicit probe against a selected saved key; this is never part of normal routing. */
+export async function testProviderConnection(providerId) {
+  const id = String(providerId || '')
+  if (!PROVIDER_TEST_IDS.has(id) || !availableProviders().some(provider => provider.id === id)) {
+    const error = aiError('no_provider', 404)
+    error.message = 'That provider is not configured on this device.'
+    throw error
+  }
+
+  const provider = resolveProvider(id)
+  const llm = clientFor(provider)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8_000)
+  try {
+    const response = await llm.chat.completions.create({
+      model: provider.model,
+      max_tokens: 8,
+      messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
+    }, { signal: controller.signal })
+    if (!response.choices?.[0]?.message) {
+      const error = new Error('The provider returned no answer. Check the key and model access.')
+      error.status = 502
+      throw error
+    }
+    return { ok: true, provider: id, model: provider.model }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // Tier-based provider preference (used for auto-escalation). Keeps provider/key policy in
 // core.js (with CATALOG) rather than re-derived from process.env in interview.js. Returns
 // null if nothing's configured — callers fall back to the requested provider.
