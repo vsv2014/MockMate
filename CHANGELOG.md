@@ -21,7 +21,7 @@ Feature-release candidate on PR #85’s branch. Not merged, tagged, or published
 
 ### Candidate verification and release boundary
 - Current per-Kit attachment worktree checks: 86 test files / 644 tests, API smoke 5/5, production build, Vite-output verification, platform/React/Vitest/dev-tooling/auth-config/Express checks, and `git diff --check`. These ran under Node 22.22.3; release CI pins Node 24. The aggregate `npm run verify` previously stopped before build/tests because `scripts/doctor.mjs` could not download the Electron runtime binary; see `docs/evidence/VALIDATION_STATUS.md`.
-- The latest pushed candidate passed `verify-desktop`, `windows-tests`, and Vercel checks ([run 38124920431](https://github.com/vsv2014/MockMate/actions/runs/38124920431)) on commit `828678c18acd219e22254c2b0336cfb948a47229`. That CI predates the per-Kit changes; fresh CI is required after push. The branch remains unmerged and unpublished.
+- Per-Kit feature commit `0445a894107289fe140129f4d6474aad6971a33d` passed `verify-desktop`, `windows-tests`, and Vercel checks in [run 38126143427](https://github.com/vsv2014/MockMate/actions/runs/38126143427). CI is unsigned validation, not physical-install certification; the branch remains unmerged and unpublished.
 - Physical Windows installation/audio, signed updater, actual meeting share-preview, and hosted WSS/Mongo/Deepgram usage reconciliation remain release gates. See [`docs/evidence/VALIDATION_STATUS.md`](docs/evidence/VALIDATION_STATUS.md).
 
 ## v1.5.5 — 2026-10-10 (superseded release candidate; never published)
