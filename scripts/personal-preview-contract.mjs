@@ -58,4 +58,7 @@ test('reject malformed numbers, mismatched versions and weakened stable signatur
   const unsafe = structuredClone(pkg)
   unsafe.build.win.verifyUpdateCodeSignature = false
   assert.throws(() => createPersonalPreviewConfig(unsafe, lock, '1'))
+  const missingPublisher = structuredClone(pkg)
+  delete missingPublisher.build.win.signtoolOptions
+  assert.throws(() => createPersonalPreviewConfig(missingPublisher, lock, '1'))
 })

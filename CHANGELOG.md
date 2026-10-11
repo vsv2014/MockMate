@@ -6,6 +6,7 @@
 - Keep unsigned installs separate from stable MockMate by using the Personal Preview app ID, executable, shortcuts, and user-data identity.
 - Publish unsigned builds as pre-releases that are never marked latest, with an `UNSIGNED` filename, SHA-256 checksum, and warning notice. Exclude `latest.yml`, `app-update.yml`, and blockmaps so unsigned builds cannot enter the stable updater channel.
 - Fix the personal-preview contract test so it derives the current package version instead of the obsolete hard-coded `1.5.5` value.
+- Make release-signing tests valid in both checked-in signed configuration and generated unsigned-preview configuration, then run the complete suite plus an exact unsigned Windows package/smoke after transformation in pull-request CI.
 
 ## v1.6.0 — 2026-10-11 (source release; no Windows installer assets)
 

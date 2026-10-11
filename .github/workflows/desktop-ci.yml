@@ -54,6 +54,16 @@ jobs:
           grep -Fxq '/server-entry.cjs' /tmp/mockmate-asar.txt
           grep -Fxq '/backend/server-entry.cjs' /tmp/mockmate-asar.txt
           grep -Fxq '/api/_lib/core.js' /tmp/mockmate-asar.txt
+      - name: Verify full suite after unsigned release transformation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/configure-unsigned-release.mjs
+          npm ci
+          npm test
+          npm run smoke:api
+          npm run build
+          npm run verify:vite-output
 
   # Windows validates both the runtime directory and the NSIS package we actually ship.
   # The unpacked executable is launched and both local services are probed so ASAR,
@@ -139,3 +149,53 @@ jobs:
             release/validation-baseline.json
           if-no-files-found: error
           retention-days: 7
+
+  # Exercise the same generated package state used by release.yml when this
+  # repository has no Windows certificate settings. This prevents normal PR CI
+  # from passing while the post-transformation release path is broken.
+  unsigned-release-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.21.0
+      - name: Verify checked-in signed source contract
+        run: node --test scripts/personal-preview-contract.mjs
+      - name: Generate exact isolated unsigned release configuration
+        run: node scripts/configure-unsigned-release.mjs
+      - run: npm ci
+      - run: npm --prefix backend ci
+      - name: Test and build transformed release state
+        run: npm test && npm run smoke:api && npm run build && npm run verify:vite-output
+      - name: Build isolated unsigned Windows installer
+        run: npx electron-builder --win --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          WIN_CSC_LINK: ''
+          WIN_CSC_KEY_PASSWORD: ''
+      - name: Verify unsigned identity and disabled update feed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem release -Filter 'MockMate-Personal-Preview-*-UNSIGNED.exe')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one isolated unsigned installer.' }
+          $appExe = Get-Item 'release/win-unpacked/MockMatePersonalPreview.exe'
+          foreach ($file in @($installers[0], $appExe)) {
+            $signature = Get-AuthenticodeSignature -FilePath $file.FullName
+            if ($signature.Status -ne 'NotSigned') {
+              throw "$($file.Name) must be explicitly unsigned: $($signature.Status)"
+            }
+          }
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          if ($pkg.personalPreviewBuild -ne $true) { throw 'Unsigned preview marker missing.' }
+          if ($pkg.build.appId -ne 'com.mockmate.personal.preview') { throw 'Stable app identity leaked into unsigned build.' }
+          if ($pkg.build.publish) { throw 'Unsigned build must not contain an updater publisher.' }
+          if ($pkg.build.win.signtoolOptions) { throw 'Unsigned build must not retain a signing identity.' }
+          if (Test-Path 'release/win-unpacked/resources/app-update.yml') {
+            throw 'Unsigned build must not embed updater metadata.'
+          }
+      - name: Smoke exact unsigned packaged runtime
+        shell: pwsh
+        run: ./scripts/windows-packaged-smoke.ps1

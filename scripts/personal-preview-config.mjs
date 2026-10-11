@@ -9,6 +9,9 @@ function assertStableSource(pkg, lock) {
   if (pkg.build?.win?.verifyUpdateCodeSignature !== true) {
     throw new Error('Do not weaken signature verification in the signed release configuration')
   }
+  if (!String(pkg.build?.win?.signtoolOptions?.publisherName || '').trim()) {
+    throw new Error('Stable release configuration must retain a Windows publisher identity')
+  }
 }
 
 function createIsolatedUnsignedConfig(pkg, lock, version) {

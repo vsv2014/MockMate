@@ -6,12 +6,18 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 const releaseWorkflow = fs.readFileSync(path.join(root, '.github/workflows/release.yml'), 'utf8')
+const desktopWorkflow = fs.readFileSync(path.join(root, '.github/workflows/desktop-ci.yml'), 'utf8')
 const previewConfig = fs.readFileSync(path.join(root, 'scripts/personal-preview-config.mjs'), 'utf8')
 
 describe('Windows release signing and unsigned isolation gates', () => {
-  it('requires verifying downloaded NSIS updates against the signing certificate', () => {
+  it('keeps signed updates verified or removes the updater identity in unsigned preview mode', () => {
     expect(pkg.build.win.verifyUpdateCodeSignature).toBe(true)
-    expect(pkg.build.win.signtoolOptions.publisherName).toBeTruthy()
+    if (pkg.personalPreviewBuild === true) {
+      expect(pkg.build.publish).toBeUndefined()
+      expect(pkg.build.win.signtoolOptions).toBeUndefined()
+    } else {
+      expect(pkg.build.win.signtoolOptions?.publisherName).toBeTruthy()
+    }
   })
 
   it('retains strict signature verification whenever all signing settings exist', () => {
@@ -38,6 +44,9 @@ describe('Windows release signing and unsigned isolation gates', () => {
     expect(previewConfig).toContain('delete preview.build.publish')
     expect(previewConfig).toContain('delete preview.build.win.signtoolOptions')
     expect(releaseWorkflow).toContain('Unsigned build must not retain a signing identity')
+    expect(desktopWorkflow).toContain('unsigned-release-windows:')
+    expect(desktopWorkflow).toContain('node scripts/configure-unsigned-release.mjs')
+    expect(desktopWorkflow).toContain('Smoke exact unsigned packaged runtime')
   })
 
   it('publishes either mode only after build verification and packaged smoke', () => {
