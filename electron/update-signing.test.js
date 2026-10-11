@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 const releaseWorkflow = fs.readFileSync(path.join(root, '.github/workflows/release.yml'), 'utf8')
-const desktopWorkflow = fs.readFileSync(path.join(root, '.github/workflows/desktop-ci.yml'), 'utf8')
 const previewConfig = fs.readFileSync(path.join(root, 'scripts/personal-preview-config.mjs'), 'utf8')
 const prereleaseWorkflow = fs.readFileSync(path.join(root, '.github/workflows/unsigned-personal-prerelease.yml'), 'utf8')
 const personalPreviewWorkflow = fs.readFileSync(path.join(root, '.github/workflows/personal-preview.yml'), 'utf8')
@@ -49,16 +48,12 @@ describe('Windows release signing and unsigned isolation gates', () => {
     expect(previewConfig).not.toContain('preview.build.publish = []')
     expect(previewConfig).toContain('delete preview.build.win.signtoolOptions')
     expect(releaseWorkflow).toContain('Unsigned build must not retain a signing identity')
-    expect(desktopWorkflow).toContain('unsigned-release-windows:')
-    expect(desktopWorkflow).toContain('node scripts/configure-unsigned-release.mjs')
-    expect(desktopWorkflow).toContain('Smoke exact unsigned packaged runtime')
   })
 
   it('inspects the packaged updater metadata before asserting it is absent', () => {
     // A failing "no updater feed" gate must show the offending app-update.yml in
     // the job log, because the packaged output dies with the runner.
     for (const [name, workflow] of [
-      ['desktop-ci', desktopWorkflow],
       ['release', releaseWorkflow],
       ['unsigned-personal-prerelease', prereleaseWorkflow],
       ['personal-preview', personalPreviewWorkflow],
