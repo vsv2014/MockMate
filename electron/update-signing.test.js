@@ -8,12 +8,16 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 const releaseWorkflow = fs.readFileSync(path.join(root, '.github/workflows/release.yml'), 'utf8')
 const desktopWorkflow = fs.readFileSync(path.join(root, '.github/workflows/desktop-ci.yml'), 'utf8')
 const previewConfig = fs.readFileSync(path.join(root, 'scripts/personal-preview-config.mjs'), 'utf8')
+const prereleaseWorkflow = fs.readFileSync(path.join(root, '.github/workflows/unsigned-personal-prerelease.yml'), 'utf8')
+const personalPreviewWorkflow = fs.readFileSync(path.join(root, '.github/workflows/personal-preview.yml'), 'utf8')
 
 describe('Windows release signing and unsigned isolation gates', () => {
   it('keeps signed updates verified or removes the updater identity in unsigned preview mode', () => {
     expect(pkg.build.win.verifyUpdateCodeSignature).toBe(true)
     if (pkg.personalPreviewBuild === true) {
-      expect(pkg.build.publish).toEqual([])
+      // Strictly null: an absent or empty-array publish makes electron-builder
+      // re-derive a GitHub feed and embed resources/app-update.yml.
+      expect(pkg.build.publish).toBeNull()
       expect(pkg.build.win.signtoolOptions).toBeUndefined()
     } else {
       expect(pkg.build.win.signtoolOptions?.publisherName).toBeTruthy()
@@ -41,12 +45,27 @@ describe('Windows release signing and unsigned isolation gates', () => {
     expect(releaseWorkflow).toContain('make_latest: false')
     expect(releaseWorkflow).toContain("-name 'latest*.yml' -o -name '*.blockmap' -o -name 'app-update.yml'")
     expect(previewConfig).toContain("preview.build.appId = 'com.mockmate.personal.preview'")
-    expect(previewConfig).toContain('preview.build.publish = []')
+    expect(previewConfig).toContain('preview.build.publish = null')
+    expect(previewConfig).not.toContain('preview.build.publish = []')
     expect(previewConfig).toContain('delete preview.build.win.signtoolOptions')
     expect(releaseWorkflow).toContain('Unsigned build must not retain a signing identity')
     expect(desktopWorkflow).toContain('unsigned-release-windows:')
     expect(desktopWorkflow).toContain('node scripts/configure-unsigned-release.mjs')
     expect(desktopWorkflow).toContain('Smoke exact unsigned packaged runtime')
+  })
+
+  it('inspects the packaged updater metadata before asserting it is absent', () => {
+    // A failing "no updater feed" gate must show the offending app-update.yml in
+    // the job log, because the packaged output dies with the runner.
+    for (const [name, workflow] of [
+      ['desktop-ci', desktopWorkflow],
+      ['release', releaseWorkflow],
+      ['unsigned-personal-prerelease', prereleaseWorkflow],
+      ['personal-preview', personalPreviewWorkflow],
+    ]) {
+      expect(workflow, `${name} must inspect packaged updater metadata`).toContain('scripts/inspect-packaged-updater-metadata.mjs')
+      expect(workflow, `${name} must inspect before gating`).toContain('Inspect packaged updater metadata')
+    }
   })
 
   it('publishes either mode only after build verification and packaged smoke', () => {

@@ -170,6 +170,13 @@ jobs:
           set -euo pipefail
           npx electron-builder --win --publish never
 
+      # Diagnostics run before the gate. If the unsigned assertion below fails,
+      # the packaged app-update.yml is already in the job log, because release/
+      # disappears with the runner as soon as the job ends.
+      - name: Inspect packaged updater metadata
+        if: always() && steps.release-mode.outputs.signed != 'true'
+        run: node scripts/inspect-packaged-updater-metadata.mjs
+
       - name: Verify Authenticode signatures and publisher
         if: steps.release-mode.outputs.signed == 'true'
         shell: pwsh
@@ -207,11 +214,21 @@ jobs:
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
           if ($pkg.personalPreviewBuild -ne $true) { throw 'Unsigned preview marker missing.' }
           if ($pkg.build.appId -ne 'com.mockmate.personal.preview') { throw 'Stable app identity leaked into unsigned build.' }
-          if ($pkg.build.publish) { throw 'Unsigned build must not contain an updater publisher.' }
+          if ($null -ne $pkg.build.publish) { throw "Unsigned build must not contain an updater publisher, got: $(ConvertTo-Json -InputObject $pkg.build.publish -Compress -Depth 5)" }
           if ($pkg.build.win.signtoolOptions) { throw 'Unsigned build must not retain a signing identity.' }
-          if (Test-Path 'release/win-unpacked/resources/app-update.yml') {
-            throw 'Unsigned build must not embed updater metadata.'
+          $appUpdateYml = 'release/win-unpacked/resources/app-update.yml'
+          if (Test-Path $appUpdateYml) {
+            $embedded = (Get-Content $appUpdateYml -Raw).Trim()
+            throw "Unsigned build must not embed updater metadata. $appUpdateYml contains:`n$embedded"
           }
+      - name: Upload updater metadata diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-updater-metadata-release-${{ github.run_number }}
+          path: release/updater-metadata-diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Smoke packaged Windows runtime before publication
         shell: pwsh

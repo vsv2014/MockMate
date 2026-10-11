@@ -12,4 +12,4 @@ fs.writeFileSync('package-lock.json', JSON.stringify(preview.lock, null, 2) + '\
 fs.writeFileSync('.env.production.local', 'VITE_MANAGED_AI_AVAILABLE=false\n')
 console.log('Configured isolated unsigned BYOK release:', preview.version)
 console.log('Distinct app ID:', preview.pkg.build.appId)
-console.log('No updater publisher:', Array.isArray(preview.pkg.build.publish) && preview.pkg.build.publish.length === 0)
+console.log('Updater feed suppressed (build.publish === null):', preview.pkg.build.publish === null)

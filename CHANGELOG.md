@@ -7,6 +7,8 @@
 - Publish unsigned builds as pre-releases that are never marked latest, with an `UNSIGNED` filename, SHA-256 checksum, and warning notice. Exclude `latest.yml`, `app-update.yml`, and blockmaps so unsigned builds cannot enter the stable updater channel.
 - Fix the personal-preview contract test so it derives the current package version instead of the obsolete hard-coded `1.5.5` value.
 - Make release-signing tests valid in both checked-in signed configuration and generated unsigned-preview configuration, then run the complete suite plus an exact unsigned Windows package/smoke after transformation in pull-request CI.
+- Suppress the unsigned build's embedded updater feed with `build.publish = null`. Deleting `publish` or setting it to `[]` does not work: electron-builder treats both as unconfigured and re-derives a GitHub feed from `GITHUB_TOKEN` or `.git/config`, then writes `resources/app-update.yml` anyway. A vitest gate now drives the real `app-builder-lib` resolution for all three cases, so the mistake fails in seconds instead of in a 45-minute Windows packaging job.
+- Add `scripts/inspect-packaged-updater-metadata.mjs`, run before every unsigned/preview "no updater feed" gate. It prints the packaged `app-update.yml`, its SHA-256, the publish configuration electron-builder resolved and the reason, with CI token values redacted, and uploads the findings as an artifact when the job fails.
 
 ## v1.6.0 — 2026-10-11 (source release; no Windows installer assets)
 

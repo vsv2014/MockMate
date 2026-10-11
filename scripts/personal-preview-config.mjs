@@ -37,9 +37,14 @@ function createIsolatedUnsignedConfig(pkg, lock, version) {
   // Stable NSIS hook deletes the stable updater cache on uninstall. The preview
   // must not run stable-product install/uninstall hooks.
   delete preview.build.nsis.include
-  // An explicit empty publisher list prevents electron-builder from inferring a
-  // GitHub feed from the CI repository environment and embedding app-update.yml.
-  preview.build.publish = []
+  // Suppress the embedded updater feed with an explicit null. Neither deleting
+  // `publish` nor setting it to `[]` works: electron-builder's
+  // getPublishConfigsForUpdateInfo() treats both as "unconfigured" and
+  // re-derives a GitHub feed from GH_TOKEN/GITHUB_TOKEN or from repository
+  // info, then writes resources/app-update.yml anyway. Only null makes
+  // getPublishConfigs() return null, which is the single value that skips the
+  // file. Verified against app-builder-lib 26.17.0.
+  preview.build.publish = null
 
   previewLock.version = version
   previewLock.packages[''].version = version
