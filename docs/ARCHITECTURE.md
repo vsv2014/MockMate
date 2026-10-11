@@ -1,6 +1,6 @@
 # MockMate — Architecture
 
-This document describes the implementation on the **v1.6.0 source candidate**, not a published or device-certified v1.6.0 release. Roadmap items live in `docs/ROADMAP.md`; release evidence lives in `docs/evidence/VALIDATION_STATUS.md`.
+This document describes the implementation carried by the **v1.6.0 source release** and the v1.6.1 delivery correction. The v1.6.0 GitHub Release has no Windows binary and neither version is implied to be physically certified. Roadmap items live in `docs/ROADMAP.md`; release evidence lives in `docs/evidence/VALIDATION_STATUS.md`.
 
 ## 1. System shape
 
@@ -20,7 +20,7 @@ Window modes include dashboard/app, overlay, camera-anchored teleprompter and pi
 
 Windows/macOS use Electron content protection where supported. This is a partial protection mechanism, not a universal invisibility guarantee; meeting-app share preview must still be verified. Linux does not provide the same protected-overlay guarantee.
 
-Latest actually published Windows installer: **v1.5.3**. Source/manifests target **v1.6.0**, but the signed public v1.6.0 installer is not yet published. The automated release workflow emits Windows x64 NSIS only; macOS/Linux source and packaging code are not claimed as current public DMG/AppImage artifacts.
+Latest usable signed Windows installer: **v1.5.3**. Source/manifests target **v1.6.1**; the `v1.6.0` release has no installer assets. The automated workflow emits Windows x64 NSIS only: trusted signed stable artifacts when all signing settings exist, otherwise an isolated unsigned BYOK pre-release with no updater feed. macOS/Linux source and packaging code are not claimed as current public DMG/AppImage artifacts.
 
 ### Interview preparation screens and Kit context
 
@@ -133,6 +133,6 @@ Still private-beta gated: PDF/DOCX mobile extraction, real Duo pairing/remote co
 
 ## 12. Release/validation boundaries
 
-Code review and green CI do not equal a field-proven public release. The **v1.6.0 candidate** requires a trusted Authenticode signed installer, physical Windows Solo/Live/reconnect/updater tests, two-account migration, actual Zoom/Meet/Teams share-preview evidence, and real hosted WSS/Mongo/Deepgram billing validation if shipping Managed AI. See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
+Code review and green CI do not equal a field-proven public release. A signed stable build still requires trusted Authenticode plus physical Windows Solo/Live/reconnect/updater tests, two-account migration, actual Zoom/Meet/Teams share-preview evidence, and real hosted WSS/Mongo/Deepgram billing validation if shipping Managed AI. An unsigned v1.6.1 artifact is explicitly a separate-identity manual preview, not a waiver of those gates. See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
 
-The current v1.6.0 candidate passed Linux/Windows Desktop CI and Vercel checks ([run 38118183667](https://github.com/vsv2014/MockMate/actions/runs/38118183667)). Local checks also passed: 83 test files / 627 tests, API smoke, production build/output verification, platform contracts, and `git diff --check`. No signed production v1.6.0 or physical certification is implied.
+The v1.6.0 candidate passed Linux/Windows Desktop CI and Vercel checks ([run 38118183667](https://github.com/vsv2014/MockMate/actions/runs/38118183667)); its later release run failed before building because signing settings were absent. No signed production v1.6.0 or physical certification is implied. The v1.6.1 correction must pass fresh CI.

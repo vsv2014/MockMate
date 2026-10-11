@@ -11,7 +11,7 @@ This directory is intentionally small. Prefer updating an existing canonical doc
 | [`DEPLOY_BACKEND.md`](DEPLOY_BACKEND.md) | Hosted backend/Vercel/Mongo deployment and verification |
 | [`RELEASE.md`](RELEASE.md) | Release process and workflow behavior |
 | [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) | Required pre-release/manual validation gates |
-| [`RELEASE_NOTES_v1.6.0.md`](RELEASE_NOTES_v1.6.0.md) | Current **unpublished release candidate** notes, supported scope, and remaining gates |
+| [`RELEASE_NOTES_v1.6.0.md`](RELEASE_NOTES_v1.6.0.md) | v1.6.0 source-release notes, missing-installer status, supported scope, and remaining gates |
 | [`RELEASE_NOTES_v1.5.5.md`](RELEASE_NOTES_v1.5.5.md) | Superseded, never-published source candidate notes retained for history |
 | [`RELEASE_NOTES_v1.5.2.md`](RELEASE_NOTES_v1.5.2.md) | Historical notes for v1.5.2; not the current release candidate |
 | [`MOBILE_BETA.md`](MOBILE_BETA.md) | Current mobile implementation/beta boundary |
