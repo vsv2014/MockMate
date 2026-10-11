@@ -1,7 +1,7 @@
 // Electron main — overlay window with setContentProtection(true):
 //   Windows → WDA_EXCLUDEFROMCAPTURE,  macOS → NSWindowSharingNone
 //   (Linux has no equivalent — overlay IS visible in screen share there.)
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut, Notification, shell, dialog, safeStorage, powerMonitor } = require('electron')
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut, Notification, shell, dialog, safeStorage, powerMonitor, utilityProcess } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
@@ -223,20 +223,70 @@ async function ensurePortFree(port, label) {
   throw error
 }
 
+// Packaged Electron must not use child_process.fork() for its two local Node
+// services. fork() launches process.execPath (MockMate.exe) again with
+// ELECTRON_RUN_AS_NODE, which is exactly the path that has repeatedly failed
+// with spawn ENOENT during Windows install/update handoff. utilityProcess uses
+// Chromium's Services API instead and is Electron's supported fork equivalent.
+// Development keeps ordinary child_process.fork() so CLI/test workflows remain
+// unchanged.
+function startLocalService(modulePath, env, serviceName, developmentCwd) {
+  let child
+  if (isProd && utilityProcess?.fork) {
+    const runtimeCwd = path.join(app.getPath('userData'), 'runtime')
+    fs.mkdirSync(runtimeCwd, { recursive: true })
+    child = utilityProcess.fork(modulePath, [], {
+      env,
+      cwd: runtimeCwd,
+      stdio: 'pipe',
+      serviceName,
+    })
+    child._mockMateUtilityProcess = true
+  } else {
+    child = fork(modulePath, [], { env, cwd: developmentCwd, stdio: 'pipe' })
+  }
+
+  // Normalize the one lifecycle difference used by the rest of main.cjs:
+  // UtilityProcess.kill() accepts no signal, while ChildProcess.kill() does.
+  const originalKill = child.kill.bind(child)
+  child.kill = function intentionalServiceKill(signal) {
+    child._mockMateIntentionalStop = true
+    return child._mockMateUtilityProcess ? originalKill() : originalKill(signal)
+  }
+  return child
+}
+
 function startApiServer(onReady) {
   const serverEntry = path.join(app.getAppPath(), 'server-entry.cjs')
   // Refuse to start if :3002 is occupied; never kill an unknown port owner.
   ensurePortFree(3002, 'API').then(() => {
-  apiServer = fork(serverEntry, [], {
-    env: { ...process.env, PORT: '3002', NODE_ENV: 'production' },
-    cwd: app.getAppPath(), stdio: 'pipe'
-  })
+  apiServer = startLocalService(
+    serverEntry,
+    { ...process.env, PORT: '3002', NODE_ENV: 'production' },
+    'MockMate Local UI and AI',
+    app.getAppPath(),
+  )
   apiServer.stdout?.on('data', d => console.log('[API]', d.toString().trim()))
   apiServer.stderr?.on('data', d => console.error('[API]', d.toString().trim()))
-  apiServer.on('error', e => console.error('[API] fork error:', e.message))
 
   let done = false
-  const fire = () => { if (!done) { done = true; onReady() } }
+  const timer = setTimeout(() => fail(new Error('The local UI service did not become ready within 15 seconds.')), 15_000)
+  const fire = () => {
+    if (done) return
+    done = true
+    clearTimeout(timer)
+    onReady()
+  }
+  const fail = error => {
+    if (done) return
+    done = true
+    clearTimeout(timer)
+    const message = error?.message || String(error || 'unknown startup error')
+    console.error('[API] startup failed:', message)
+    dialog.showErrorBox('MockMate could not start', `${message}\n\nClose MockMate completely and reopen it. If this repeats, reinstall the latest build; your locally saved API keys and history are preserved.`)
+    app.quit()
+  }
+  apiServer.on('error', e => fail(e))
   apiServer.on('message', msg => {
     if (msg?.type === 'ready') fire()
     else if (msg?.type === 'diagnostic' && msg.row) diagnostics?.ingest(msg.row)
@@ -246,9 +296,12 @@ function startApiServer(onReady) {
       const hint = msg.code === 'EADDRINUSE'
         ? 'Port 3002 is already in use — another MockMate may still be running. Quit it (or reboot) and reopen MockMate.'
         : `The local server failed to start: ${msg.message || msg.code || 'unknown error'}`
-      dialog.showErrorBox('MockMate could not start', hint)
-      app.quit()
+      fail(new Error(hint))
     }
+  })
+  apiServer.on('exit', code => {
+    if (apiServer?._mockMateIntentionalStop) return
+    if (!done) fail(new Error(`The local UI service exited before startup completed (${code ?? 'unknown'}).`))
   })
   // Do not declare readiness by elapsed time. The child must explicitly emit {type:'ready'}.
   }).catch(e => {
@@ -281,9 +334,9 @@ function startBackend() {
       clearTimeout(timer)
       fn(value)
     }
-    backendServer = fork(entry, [], {
-      cwd: path.join(app.getAppPath(), 'backend'),
-      env: {
+    backendServer = startLocalService(
+      entry,
+      {
         ...process.env,
         PORT: BACKEND_PORT,
         JWT_SECRET: getJwtSecret(),
@@ -291,8 +344,9 @@ function startBackend() {
         MOCKMATE_DATA_DIR: app.getPath('userData'),   // file store lives beside the user's keys
         NODE_ENV: 'production',
       },
-      stdio: 'pipe',
-    })
+      'MockMate Local Account Service',
+      path.join(app.getAppPath(), 'backend'),
+    )
     const timer = setTimeout(() => finish(reject, new Error(`auth backend did not become ready on port ${BACKEND_PORT}`)), 10_000)
     backendServer.stdout?.on('data', d => console.log('[backend]', d.toString().trim()))
     backendServer.stderr?.on('data', d => console.error('[backend]', d.toString().trim()))
