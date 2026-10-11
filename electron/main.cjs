@@ -8,6 +8,7 @@ const crypto = require('crypto')
 const net = require('net')
 const { fork } = require('child_process')
 const { DiagnosticStore } = require('./diagnostics.cjs')
+const { attachRequiredServiceLifecycle, waitForOptionalServiceReady } = require('./service-lifecycle.cjs')
 
 // Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
 // so a candidate's resume/transcript never leaves the device via Sentry (privacy-first).
@@ -232,7 +233,10 @@ async function ensurePortFree(port, label) {
 // unchanged.
 function startLocalService(modulePath, env, serviceName, developmentCwd) {
   let child
-  if (isProd && utilityProcess?.fork) {
+  if (isProd) {
+    if (typeof utilityProcess?.fork !== 'function') {
+      throw new Error('This Electron build cannot start MockMate local services safely. Please reinstall the latest MockMate build.')
+    }
     const runtimeCwd = path.join(app.getPath('userData'), 'runtime')
     fs.mkdirSync(runtimeCwd, { recursive: true })
     child = utilityProcess.fork(modulePath, [], {
@@ -260,50 +264,34 @@ function startApiServer(onReady) {
   const serverEntry = path.join(app.getAppPath(), 'server-entry.cjs')
   // Refuse to start if :3002 is occupied; never kill an unknown port owner.
   ensurePortFree(3002, 'API').then(() => {
-  apiServer = startLocalService(
+  const service = startLocalService(
     serverEntry,
     { ...process.env, PORT: '3002', NODE_ENV: 'production' },
     'MockMate Local UI and AI',
     app.getAppPath(),
   )
-  apiServer.stdout?.on('data', d => console.log('[API]', d.toString().trim()))
-  apiServer.stderr?.on('data', d => console.error('[API]', d.toString().trim()))
+  apiServer = service
+  service.stdout?.on('data', d => console.log('[API]', d.toString().trim()))
+  service.stderr?.on('data', d => console.error('[API]', d.toString().trim()))
 
-  let done = false
-  const timer = setTimeout(() => fail(new Error('The local UI service did not become ready within 15 seconds.')), 15_000)
-  const fire = () => {
-    if (done) return
-    done = true
-    clearTimeout(timer)
-    onReady()
-  }
-  const fail = error => {
-    if (done) return
-    done = true
-    clearTimeout(timer)
+  attachRequiredServiceLifecycle(service, {
+    timeoutMs: 15_000,
+    timeoutMessage: 'The local UI service did not become ready within 15 seconds.',
+    exitBeforeReadyMessage: code => `The local UI service exited before startup completed (${code ?? 'unknown'}).`,
+    exitAfterReadyMessage: code => `The local UI service stopped unexpectedly (${code ?? 'unknown'}). MockMate must close so it can restart cleanly.`,
+    serverErrorMessage: msg => msg.code === 'EADDRINUSE'
+      ? 'Port 3002 is already in use — another MockMate may still be running. Quit it (or reboot) and reopen MockMate.'
+      : `The local server failed to start: ${msg.message || msg.code || 'unknown error'}`,
+    onReady,
+    onDiagnostic: row => diagnostics?.ingest(row),
+    onFatal: error => {
     const message = error?.message || String(error || 'unknown startup error')
-    console.error('[API] startup failed:', message)
+    diag('api', 'service_failed', { message }, 'error')
+    console.error('[API] service failed:', message)
     dialog.showErrorBox('MockMate could not start', `${message}\n\nClose MockMate completely and reopen it. If this repeats, reinstall the latest build; your locally saved API keys and history are preserved.`)
     app.quit()
-  }
-  apiServer.on('error', e => fail(e))
-  apiServer.on('message', msg => {
-    if (msg?.type === 'ready') fire()
-    else if (msg?.type === 'diagnostic' && msg.row) diagnostics?.ingest(msg.row)
-    // The server couldn't bind the port (e.g. a stale process is holding it). Don't
-    // silently fall through to loading a dead URL — tell the user what happened.
-    else if (msg?.type === 'server-error') {
-      const hint = msg.code === 'EADDRINUSE'
-        ? 'Port 3002 is already in use — another MockMate may still be running. Quit it (or reboot) and reopen MockMate.'
-        : `The local server failed to start: ${msg.message || msg.code || 'unknown error'}`
-      fail(new Error(hint))
-    }
+    },
   })
-  apiServer.on('exit', code => {
-    if (apiServer?._mockMateIntentionalStop) return
-    if (!done) fail(new Error(`The local UI service exited before startup completed (${code ?? 'unknown'}).`))
-  })
-  // Do not declare readiness by elapsed time. The child must explicitly emit {type:'ready'}.
   }).catch(e => {
     console.error('[API] ensurePortFree failed:', e.message)
     dialog.showErrorBox('MockMate could not start', e.message || 'The local API port could not be prepared.')
@@ -326,15 +314,8 @@ function getJwtSecret() {
 function startBackend() {
   const entry = path.join(app.getAppPath(), 'backend', 'server-entry.cjs')
   if (!fs.existsSync(entry)) return Promise.reject(new Error(`backend entry not found: ${entry}`))
-  return ensurePortFree(Number(BACKEND_PORT) || 4000, 'backend').then(() => new Promise((resolve, reject) => {
-    let settled = false
-    const finish = (fn, value) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      fn(value)
-    }
-    backendServer = startLocalService(
+  return ensurePortFree(Number(BACKEND_PORT) || 4000, 'backend').then(() => {
+    const service = startLocalService(
       entry,
       {
         ...process.env,
@@ -347,19 +328,18 @@ function startBackend() {
       'MockMate Local Account Service',
       path.join(app.getAppPath(), 'backend'),
     )
-    const timer = setTimeout(() => finish(reject, new Error(`auth backend did not become ready on port ${BACKEND_PORT}`)), 10_000)
-    backendServer.stdout?.on('data', d => console.log('[backend]', d.toString().trim()))
-    backendServer.stderr?.on('data', d => console.error('[backend]', d.toString().trim()))
-    backendServer.on('message', msg => {
-      if (msg?.type === 'ready') finish(resolve, msg)
-      else if (msg?.type === 'server-error') finish(reject, new Error(msg.message || msg.code || 'backend startup failed'))
-    })
-    backendServer.on('error', e => finish(reject, e))
-    backendServer.on('exit', code => {
+    backendServer = service
+    service.stdout?.on('data', d => console.log('[backend]', d.toString().trim()))
+    service.stderr?.on('data', d => console.error('[backend]', d.toString().trim()))
+    service.on('exit', code => {
       if (code) console.error('[backend] exited with code', code)
-      if (!settled) finish(reject, new Error(`auth backend exited before ready (${code ?? 'unknown'})`))
     })
-  }))
+    return waitForOptionalServiceReady(service, {
+      timeoutMs: 10_000,
+      timeoutMessage: `auth backend did not become ready on port ${BACKEND_PORT}`,
+      serverErrorMessage: msg => msg.message || msg.code || 'backend startup failed',
+    })
+  })
 }
 
 function createSetupWindow() {
@@ -457,11 +437,15 @@ function createMainWindow() {
   })
 
   mainWindow.webContents.on('did-finish-load', () => { rendererLoadFailures = 0 })
-  mainWindow.webContents.on('did-fail-load', (_e, code) => {
+  mainWindow.webContents.on('did-fail-load', (_e, code, _description, _validatedURL, isMainFrame) => {
     if (code === -3) return
+    if (isMainFrame === false) return
     rendererLoadFailures += 1
     if (rendererLoadFailures > 5) {
-      dialog.showErrorBox('MockMate could not load', 'The desktop UI failed to load after several retries. Please restart MockMate.')
+      const message = 'The desktop UI failed to load after several retries. MockMate will close so the next launch can start cleanly.'
+      diag('renderer', 'load_failed_exhausted', { code, attempts: rendererLoadFailures }, 'error')
+      dialog.showErrorBox('MockMate could not load', message)
+      app.quit()
       return
     }
     setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(isProd ? PROD_URL : DEV_URL) }, Math.min(4000, 500 * rendererLoadFailures))
