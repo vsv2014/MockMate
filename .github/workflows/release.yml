@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'New release tag (e.g. v1.6.0); must equal v + package.json.version'
+        description: 'New release tag (e.g. v1.6.1); must equal v + package.json.version'
         required: true
 
 permissions:
@@ -51,6 +51,9 @@ jobs:
   build-windows:
     needs: provenance
     runs-on: windows-latest
+    outputs:
+      mode: ${{ steps.release-mode.outputs.mode }}
+      signed: ${{ steps.release-mode.outputs.signed }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
@@ -58,7 +61,8 @@ jobs:
           node-version: 24.21.0
           cache: npm
 
-      - name: Require production Windows signing identity
+      - name: Select signed or isolated unsigned release mode
+        id: release-mode
         shell: bash
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
@@ -66,10 +70,30 @@ jobs:
           SIGNING_PUBLISHER: ${{ vars.MOCKMATE_WINDOWS_PUBLISHER }}
         run: |
           set -euo pipefail
-          if [ -z "$WIN_CSC_LINK" ] || [ -z "$WIN_CSC_KEY_PASSWORD" ] || [ -z "$SIGNING_PUBLISHER" ]; then
-            echo "Public Windows releases require WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD secrets plus MOCKMATE_WINDOWS_PUBLISHER (exact certificate Subject)." >&2
+          present=0
+          for value in "$WIN_CSC_LINK" "$WIN_CSC_KEY_PASSWORD" "$SIGNING_PUBLISHER"; do
+            if [ -n "$value" ]; then present=$((present + 1)); fi
+          done
+          if [ "$present" -eq 3 ]; then
+            echo 'mode=signed' >> "$GITHUB_OUTPUT"
+            echo 'signed=true' >> "$GITHUB_OUTPUT"
+            echo 'Using signed stable-release mode.'
+          elif [ "$present" -eq 0 ]; then
+            echo 'mode=unsigned' >> "$GITHUB_OUTPUT"
+            echo 'signed=false' >> "$GITHUB_OUTPUT"
+            echo 'No signing settings are configured; using isolated unsigned BYOK pre-release mode.'
+          else
+            echo 'Windows signing is only partially configured. Set all three signing settings or remove all three.' >&2
             exit 1
           fi
+
+      - name: Configure trusted signing identity
+        if: steps.release-mode.outputs.signed == 'true'
+        shell: bash
+        env:
+          SIGNING_PUBLISHER: ${{ vars.MOCKMATE_WINDOWS_PUBLISHER }}
+        run: |
+          set -euo pipefail
           node <<'NODE'
           const fs = require('fs')
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
@@ -80,17 +104,13 @@ jobs:
           fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
           NODE
 
-      - name: Sync release version into lock metadata
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('fs')
-          const pkg = require('./package.json')
-          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
-          lock.version = pkg.version
-          if (lock.packages?.['']) lock.packages[''].version = pkg.version
-          fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n')
-          NODE
+      - name: Verify isolated unsigned-release configuration contract
+        if: steps.release-mode.outputs.signed != 'true'
+        run: node --test scripts/personal-preview-contract.mjs
+
+      - name: Configure isolated unsigned BYOK release
+        if: steps.release-mode.outputs.signed != 'true'
+        run: node scripts/configure-unsigned-release.mjs
 
       - run: npm run verify:platform
       - run: npm run verify:react19
@@ -113,7 +133,8 @@ jobs:
       - name: Unit, API smoke and production build
         run: npm test && npm run smoke:api && npm run build && npm run verify:vite-output
 
-      - name: Configure final release AI mode
+      - name: Configure final signed-release AI mode
+        if: steps.release-mode.outputs.signed == 'true'
         shell: bash
         env:
           MANAGED_API_BASE: ${{ vars.MOCKMATE_API_BASE }}
@@ -139,7 +160,7 @@ jobs:
       - name: Verify final configured application
         run: npm test && npm run build && npm run verify:vite-output
 
-      - name: Build signed Windows installer
+      - name: Build signed or isolated unsigned Windows installer
         shell: bash
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
@@ -150,6 +171,7 @@ jobs:
           npx electron-builder --win --publish never
 
       - name: Verify Authenticode signatures and publisher
+        if: steps.release-mode.outputs.signed == 'true'
         shell: pwsh
         env:
           SIGNING_PUBLISHER: ${{ vars.MOCKMATE_WINDOWS_PUBLISHER }}
@@ -168,27 +190,70 @@ jobs:
             }
           }
 
+      - name: Verify isolated unsigned installer and disabled update feed
+        if: steps.release-mode.outputs.signed != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem release -Filter 'MockMate-Personal-Preview-*-UNSIGNED.exe')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one isolated unsigned installer.' }
+          $appExe = Get-Item 'release/win-unpacked/MockMatePersonalPreview.exe'
+          foreach ($file in @($installers[0], $appExe)) {
+            $signature = Get-AuthenticodeSignature -FilePath $file.FullName
+            if ($signature.Status -ne 'NotSigned') {
+              throw "$($file.Name) must be explicitly unsigned in preview mode: $($signature.Status)"
+            }
+          }
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          if ($pkg.personalPreviewBuild -ne $true) { throw 'Unsigned preview marker missing.' }
+          if ($pkg.build.appId -ne 'com.mockmate.personal.preview') { throw 'Stable app identity leaked into unsigned build.' }
+          if ($pkg.build.publish) { throw 'Unsigned build must not contain an updater publisher.' }
+          if ($pkg.build.win.signtoolOptions) { throw 'Unsigned build must not retain a signing identity.' }
+          if (Test-Path 'release/win-unpacked/resources/app-update.yml') {
+            throw 'Unsigned build must not embed updater metadata.'
+          }
+
       - name: Smoke packaged Windows runtime before publication
         shell: pwsh
         run: ./scripts/windows-packaged-smoke.ps1
 
-      - name: Verify Windows release artifacts
+      - name: Stage exact release-mode artifacts
         shell: pwsh
         run: |
-          $exe = Get-ChildItem release -Filter *.exe | Select-Object -First 1
-          $yml = Get-ChildItem release -Filter latest.yml | Select-Object -First 1
-          $blockmap = Get-ChildItem release -Filter *.blockmap | Select-Object -First 1
-          if (-not $exe) { throw 'Windows installer missing' }
-          if (-not $yml) { throw 'latest.yml missing' }
-          if (-not $blockmap) { throw 'Windows blockmap missing' }
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path staged -Force | Out-Null
+          if ('${{ steps.release-mode.outputs.signed }}' -eq 'true') {
+            $exe = @(Get-ChildItem release -Filter 'MockMate-Setup-*.exe')
+            $yml = @(Get-ChildItem release -Filter latest.yml)
+            $blockmap = @(Get-ChildItem release -Filter '*.blockmap')
+            if ($exe.Count -ne 1 -or $yml.Count -ne 1 -or $blockmap.Count -ne 1) {
+              throw 'Signed release requires exactly one installer, latest.yml and blockmap.'
+            }
+            Copy-Item -Path $exe[0].FullName, $yml[0].FullName, $blockmap[0].FullName -Destination staged/
+          } else {
+            $exe = @(Get-ChildItem release -Filter 'MockMate-Personal-Preview-*-UNSIGNED.exe')
+            if ($exe.Count -ne 1) { throw 'Unsigned release requires exactly one preview installer.' }
+            Copy-Item $exe[0].FullName staged/
+            $hash = (Get-FileHash $exe[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash *$($exe[0].Name)" | Set-Content staged/SHA256SUMS.txt -Encoding utf8
+            @'
+          UNSIGNED PERSONAL PREVIEW — NOT A PRODUCTION-CERTIFIED RELEASE
+          Manual Windows installation only. SmartScreen / Smart App Control may warn or block this installer.
+          This app uses a separate identity and user-data directory from stable MockMate.
+          BYOK/local configuration only; no hosted Managed AI endpoint or provider keys are bundled.
+          Automatic updates are disabled. No latest.yml, app-update.yml or blockmap is published.
+          Verify the installer SHA-256 using SHA256SUMS.txt before installation.
+          Physical audio, meeting share-preview and long-session acceptance remain outstanding.
+          '@ | Set-Content staged/UNSIGNED-RELEASE-NOTICE.txt -Encoding utf8
+            if (@(Get-ChildItem staged -Include '*.yml','*.yaml','*.blockmap' -Recurse).Count -gt 0) {
+              throw 'Updater metadata must never be staged for an unsigned release.'
+            }
+          }
 
       - uses: actions/upload-artifact@v4
         with:
           name: release-win
-          path: |
-            release/*.exe
-            release/*.blockmap
-            release/latest.yml
+          path: staged/*
           if-no-files-found: error
           retention-days: 3
 
@@ -202,18 +267,54 @@ jobs:
           path: staged
       - name: Verify Windows artifacts are staged
         shell: bash
+        env:
+          SIGNED: ${{ needs.build-windows.outputs.signed }}
         run: |
           set -euo pipefail
-          test -n "$(find staged -maxdepth 1 -name '*.exe' -print -quit)"
-          test -n "$(find staged -maxdepth 1 -name 'latest.yml' -print -quit)"
-          test -n "$(find staged -maxdepth 1 -name '*.blockmap' -print -quit)"
-      - name: Publish Windows GitHub Release
+          if [ "$SIGNED" = true ]; then
+            test "$(find staged -maxdepth 1 -name 'MockMate-Setup-*.exe' | wc -l)" -eq 1
+            test "$(find staged -maxdepth 1 -name 'latest.yml' | wc -l)" -eq 1
+            test "$(find staged -maxdepth 1 -name '*.blockmap' | wc -l)" -eq 1
+          else
+            test "$(find staged -maxdepth 1 -name 'MockMate-Personal-Preview-*-UNSIGNED.exe' | wc -l)" -eq 1
+            test -s staged/SHA256SUMS.txt
+            test -s staged/UNSIGNED-RELEASE-NOTICE.txt
+            test -z "$(find staged -type f \( -name 'latest*.yml' -o -name '*.blockmap' -o -name 'app-update.yml' \) -print -quit)"
+            (cd staged && sha256sum -c SHA256SUMS.txt)
+          fi
+      - name: Publish signed stable Windows GitHub Release
+        if: needs.build-windows.outputs.signed == 'true'
         uses: softprops/action-gh-release@v2
         with:
           draft: false
           prerelease: false
+          make_latest: true
           generate_release_notes: true
           tag_name: ${{ needs.provenance.outputs.tag }}
           files: staged/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish isolated UNSIGNED Windows pre-release
+        if: needs.build-windows.outputs.signed != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: true
+          make_latest: false
+          generate_release_notes: false
+          tag_name: ${{ needs.provenance.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: MockMate Personal Preview ${{ needs.provenance.outputs.tag }} (UNSIGNED)
+          fail_on_unmatched_files: true
+          body: |
+            ⚠️ **UNSIGNED personal Windows preview — not a production-certified release.**
+
+            No Windows signing certificate is configured. This BYOK-only build uses a separate app identity and user-data directory from stable MockMate. Windows SmartScreen / Smart App Control may warn or block it. Automatic updates are disabled; no `latest.yml`, `app-update.yml`, or blockmap is published. Verify the included SHA-256 checksum before installation.
+
+            CI validates the code, API, production renderer, and packaged Windows runtime before publication. Physical microphone/system-audio, meeting share-preview, and long-session acceptance remain separate checks.
+          files: |
+            staged/MockMate-Personal-Preview-*-UNSIGNED.exe
+            staged/SHA256SUMS.txt
+            staged/UNSIGNED-RELEASE-NOTICE.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

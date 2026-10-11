@@ -1,8 +1,15 @@
 # Changelog
 
-## v1.6.0 — 2026-10-11 (release candidate; not published)
+## v1.6.1 — 2026-10-11 (unsigned delivery correction)
 
-Feature-release candidate on PR #85’s branch. Not merged, tagged, or published. The latest published stable release remains v1.5.3; v1.5.5 was an unpublished source candidate. Full notes and release gates: [`docs/RELEASE_NOTES_v1.6.0.md`](docs/RELEASE_NOTES_v1.6.0.md).
+- Make the Windows release workflow choose one of two explicit modes: trusted signed stable release when all three signing settings exist, or an isolated unsigned BYOK-only pre-release when all three are absent. A partial signing configuration still fails closed.
+- Keep unsigned installs separate from stable MockMate by using the Personal Preview app ID, executable, shortcuts, and user-data identity.
+- Publish unsigned builds as pre-releases that are never marked latest, with an `UNSIGNED` filename, SHA-256 checksum, and warning notice. Exclude `latest.yml`, `app-update.yml`, and blockmaps so unsigned builds cannot enter the stable updater channel.
+- Fix the personal-preview contract test so it derives the current package version instead of the obsolete hard-coded `1.5.5` value.
+
+## v1.6.0 — 2026-10-11 (source release; no Windows installer assets)
+
+PR #85 was merged and tag/release `v1.6.0` was created from commit `15133530c827d684941b27cf5160789026069f27`. Its Windows workflow stopped at the mandatory signing-settings gate because no Authenticode certificate was configured, so the release contains no installer assets. The latest usable signed Windows installer remains v1.5.3. Full feature notes: [`docs/RELEASE_NOTES_v1.6.0.md`](docs/RELEASE_NOTES_v1.6.0.md).
 
 ### Interview preparation workspace
 - Add Home, Interview Kits, and Ready Room screens to the desktop shell, including Kit creation/editing, active-Kit selection, and Ready Room handoffs.
@@ -21,7 +28,7 @@ Feature-release candidate on PR #85’s branch. Not merged, tagged, or published
 
 ### Candidate verification and release boundary
 - Current per-Kit attachment worktree checks: 86 test files / 644 tests, API smoke 5/5, production build, Vite-output verification, platform/React/Vitest/dev-tooling/auth-config/Express checks, and `git diff --check`. These ran under Node 22.22.3; release CI pins Node 24. The aggregate `npm run verify` previously stopped before build/tests because `scripts/doctor.mjs` could not download the Electron runtime binary; see `docs/evidence/VALIDATION_STATUS.md`.
-- Per-Kit feature commit `0445a894107289fe140129f4d6474aad6971a33d` passed `verify-desktop`, `windows-tests`, and Vercel checks in [run 38126143427](https://github.com/vsv2014/MockMate/actions/runs/38126143427). CI is unsigned validation, not physical-install certification; the branch remains unmerged and unpublished.
+- Per-Kit feature commit `0445a894107289fe140129f4d6474aad6971a33d` passed `verify-desktop`, `windows-tests`, and Vercel checks in [run 38126143427](https://github.com/vsv2014/MockMate/actions/runs/38126143427). CI was unsigned validation, not physical-install certification; PR #85 was later merged into `main`.
 - Physical Windows installation/audio, signed updater, actual meeting share-preview, and hosted WSS/Mongo/Deepgram usage reconciliation remain release gates. See [`docs/evidence/VALIDATION_STATUS.md`](docs/evidence/VALIDATION_STATUS.md).
 
 ## v1.5.5 — 2026-10-10 (superseded release candidate; never published)

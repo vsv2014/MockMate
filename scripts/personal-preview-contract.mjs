@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { createPersonalPreviewConfig } from './personal-preview-config.mjs'
+import { createPersonalPreviewConfig, createUnsignedReleaseConfig } from './personal-preview-config.mjs'
 
 const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url)))
 const lock = JSON.parse(fs.readFileSync(new URL('../package-lock.json', import.meta.url)))
@@ -9,8 +9,8 @@ const lock = JSON.parse(fs.readFileSync(new URL('../package-lock.json', import.m
 test('preview keeps versioned install isolated, unsigned and manual-update-only', () => {
   const src = structuredClone(pkg)
   const { pkg: p, lock: l, version, tag } = createPersonalPreviewConfig(pkg, lock, '1')
-  assert.equal(version, '1.5.5-personal.1')
-  assert.equal(tag, 'personal-v1.5.5-1')
+  assert.equal(version, `${pkg.version}-personal.1`)
+  assert.equal(tag, `personal-v${pkg.version}-1`)
   assert.equal(p.personalPreviewBuild, true)
   assert.equal(p.managedApiBase, '')
   assert.equal(p.build.appId, 'com.mockmate.personal.preview')
@@ -22,11 +22,32 @@ test('preview keeps versioned install isolated, unsigned and manual-update-only'
   assert.equal(p.build.nsis.include, undefined)
   assert.equal(p.build.publish, undefined)
   assert.equal(p.build.win.verifyUpdateCodeSignature, true)
+  assert.equal(p.build.win.signtoolOptions, undefined)
   assert.equal(p.build.win.artifactName, 'MockMate-Personal-Preview-${version}-UNSIGNED.${ext}')
   assert.equal(l.version, version)
   assert.equal(l.packages[''].version, version)
   assert.deepEqual(pkg, src, 'preview config must not mutate stable package')
   assert.equal(pkg.personalPreviewBuild, undefined)
+})
+
+test('unsigned version release keeps the exact tag version but isolates app and updater identity', () => {
+  const src = structuredClone(pkg)
+  const { pkg: p, lock: l, version, tag } = createUnsignedReleaseConfig(pkg, lock)
+  assert.equal(version, pkg.version)
+  assert.equal(tag, `v${pkg.version}`)
+  assert.equal(p.version, pkg.version)
+  assert.equal(p.personalPreviewBuild, true)
+  assert.equal(p.managedApiBase, '')
+  assert.equal(p.build.appId, 'com.mockmate.personal.preview')
+  assert.equal(p.build.productName, 'MockMate Personal Preview')
+  assert.equal(p.build.executableName, 'MockMatePersonalPreview')
+  assert.equal(p.build.publish, undefined)
+  assert.equal(p.build.win.verifyUpdateCodeSignature, true)
+  assert.equal(p.build.win.signtoolOptions, undefined)
+  assert.equal(p.build.win.artifactName, 'MockMate-Personal-Preview-${version}-UNSIGNED.${ext}')
+  assert.equal(l.version, pkg.version)
+  assert.equal(l.packages[''].version, pkg.version)
+  assert.deepEqual(pkg, src, 'unsigned release config must not mutate stable package')
 })
 
 test('reject malformed numbers, mismatched versions and weakened stable signature policy', () => {

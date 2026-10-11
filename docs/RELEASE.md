@@ -1,28 +1,28 @@
-# MockMate desktop release — signed Windows gate
+# MockMate desktop release — signed or isolated unsigned Windows delivery
 
-**Candidate version: v1.6.0 (not yet published). Latest published installer: v1.5.3.**
-**Do not tag or publicly publish until real Windows-device checks and trusted signing are complete.**
+**Current correction target: v1.6.1. Latest usable signed installer: v1.5.3.**
+**The v1.6.0 tag exists, but its release has no installer assets because the signing-only workflow failed before building.**
 
-The current [Release workflow](../.github/workflows/release.yml) publishes **Windows x64 NSIS only**. CI-generated PR installers are **unsigned, validation-only** artifacts; they are not production updates. This document describes the release process, not evidence that a signed v1.6.0 installer already exists.
+The [Release workflow](../.github/workflows/release.yml) publishes **Windows x64 NSIS only** and selects exactly one mode. When all three signing settings exist, it publishes a verified signed stable release with updater metadata. When all three are absent, it publishes a separate-identity, BYOK-only unsigned pre-release with no updater metadata. A partial signing configuration fails before the build.
 
-## Exception: unsigned personal-testing pre-release (no signing secrets)
+## Unsigned pre-release mode (no signing settings)
 
-For personal BYOK testing only, use the **separate** [Build Unsigned Personal Pre-release (Windows)](../.github/workflows/unsigned-personal-prerelease.yml) GitHub Actions workflow. This does **not** relax or alter the signed production release workflow described below.
+The owner has explicitly approved skipping Windows signing while no certificate is available. This does not turn an unsigned executable into a production-certified or auto-updating stable release.
 
-- Dispatch manually from the current `main` branch with a **new** `v1.6.0-personal.1` tag (or next unused `-personal.N` suffix). **Never use the stable `v1.6.0` tag** for this route; it is reserved for a future signed release.
-- All dependency audits, application/API tests, builds and Windows packaged runtime/renderer smoke must succeed. Personal builds set Managed AI unavailable and omit the packaged update-feed configuration.
-- Publication is a **public GitHub pre-release** with `make_latest: false`, not a stable update. Only the installer named with `UNSIGNED-PERSONAL` and `SHA256SUMS.txt` are released; no `latest.yml` or blockmap is published. No automatic updates are supported.
+- Trigger with a new version tag matching `package.json` (currently `v1.6.1`) or dispatch that tag from current `main`.
+- All dependency audits, application/API tests, builds and Windows packaged runtime/renderer smoke must succeed. Unsigned builds set Managed AI unavailable and omit the packaged update-feed configuration.
+- Publication is a **public GitHub pre-release** with `make_latest: false`, not a stable update. Only `MockMate-Personal-Preview-*-UNSIGNED.exe`, `SHA256SUMS.txt`, and `UNSIGNED-RELEASE-NOTICE.txt` are released; no `latest.yml`, `app-update.yml`, or blockmap is published.
 - These downloads lack Authenticode signatures and may be blocked by SmartScreen / Smart App Control. Windows device policy must be respected; manual test builds are **not certified** for audio/capture privacy or hosted billing. Back up local data before updating.
-- A versioned release/tag already created by this workflow is never overwritten or reused. Re-run with a fresh `-personal.N` value if a newly built candidate must be published.
+- The Personal Preview app ID, executable, shortcuts, and user-data directory are distinct from stable MockMate. Do not run both simultaneously because they share loopback service ports.
 
-This exception is **not** approval to call v1.6.0 a production-certified signed release. All formal release gates below still apply to the stable signed version.
+The separate manually numbered personal-preview workflows remain available for additional test iterations.
 
 ## Source and version prerequisites
 
-1. Select the reviewed, immutable `main` commit. Both `package.json` and the root `package-lock.json` version must equal the target version (currently `1.6.0`). Use a new `v1.6.0` tag exactly once; do not replace an existing tag.
-2. Confirm `CHANGELOG.md`, `README.md`, and [v1.6.0 candidate release notes](RELEASE_NOTES_v1.6.0.md) describe only the code actually present in the selected commit.
+1. Select the reviewed, immutable `main` commit. Both `package.json` and the root `package-lock.json` version must equal the target version (currently `1.6.1`). Use a new matching tag exactly once; do not replace an existing tag.
+2. Confirm `CHANGELOG.md`, `README.md`, and [v1.6.0 feature/source notes](RELEASE_NOTES_v1.6.0.md) describe only the code actually present in the selected commit.
 3. Confirm Linux and Windows Desktop CI passes: tests, API smoke, Vite build, packaged Windows renderer/runtime smoke. The latest pre-documentation baseline is [PR #79's successful CI](https://github.com/vsv2014/MockMate/actions/runs/37877818087): 80 application suites / 567 tests and packaged Windows validation.
-4. Run the [real-device checklist](RELEASE_CHECKLIST.md). Record the results in [validation evidence](evidence/VALIDATION_STATUS.md). An unsigned PR smoke cannot replace a signed, installed Windows check.
+4. For a signed stable release, complete the [real-device checklist](RELEASE_CHECKLIST.md) before publication. For an unsigned pre-release, use the published installer to perform and record those checks afterward; until then it remains explicitly unverified on physical hardware. An unsigned CI smoke cannot replace an installed Windows check.
 
 ## Physical Windows release gate
 
@@ -42,45 +42,46 @@ BYOK local/provider operation is a separate mode; do not imply it is subject to 
 
 | Setting | Type | Purpose |
 |---|---|---|
-| `WIN_CSC_LINK` | GitHub Actions secret | Base64-encoded Windows Authenticode PFX/P12 |
-| `WIN_CSC_KEY_PASSWORD` | GitHub Actions secret | Password for that certificate |
-| `MOCKMATE_WINDOWS_PUBLISHER` | GitHub Actions variable | **Exact** `SignerCertificate.Subject` of the trusted code-signing certificate |
+| `WIN_CSC_LINK` | Optional GitHub Actions secret | Base64-encoded Windows Authenticode PFX/P12; set together with the next two values |
+| `WIN_CSC_KEY_PASSWORD` | Optional GitHub Actions secret | Password for that certificate |
+| `MOCKMATE_WINDOWS_PUBLISHER` | Optional GitHub Actions variable | **Exact** `SignerCertificate.Subject` of the trusted code-signing certificate |
 | `MOCKMATE_API_BASE` | Optional Actions variable | Managed API HTTPS origin; omit for BYOK-only |
 
-The release workflow fails closed when required signing settings are absent. It signs the app and installer, verifies `Get-AuthenticodeSignature` is **Valid** and the publisher subject matches, checks the packaged runtime, and only then publishes the GitHub Release. The connection used for PR work cannot inspect GitHub secret values; never mark signing as verified without a real workflow run.
+All three signing values must be either present or absent. With all present, the workflow signs the app and installer, verifies `Get-AuthenticodeSignature` is **Valid** and the publisher subject matches, checks the packaged runtime, and only then publishes a stable release. With all absent, it verifies both binaries are **NotSigned**, enforces the isolated preview identity/no-updater contract, and publishes only a pre-release. The connection used for PR work cannot inspect secret values; never mark signing as verified without a real workflow run.
 
-## Triggering the v1.6.0 release
+## Triggering the v1.6.1 correction
 
-**Only after all gates pass:**
+**After this PR is merged and the source/automated gates pass:** A signed stable release additionally requires signing and physical acceptance before publication. The unsigned route may publish only as the limited pre-release described above, so the resulting installer can undergo physical acceptance.
 
 1. Open [Build & Release MockMate (Windows)](https://github.com/vsv2014/MockMate/actions/workflows/release.yml).
-2. Select **Run workflow** on current `main`, set the required tag input to **`v1.6.0`**, and run it.
+2. Select **Run workflow** on current `main`, set the required tag input to **`v1.6.1`**, and run it.
 3. Alternatively, push a new matching version tag on an eligible verified `main` commit. Do **not** do both.
-4. The `provenance` job checks `v1.6.0` matches `package.json.version` and the source commit belongs to `main`.
-5. Windows jobs install/check dependencies, run production audits/tests/build, configure the optional managed HTTPS API origin, sign the NSIS installer, verify signatures, smoke the packaged runtime, and stage `MockMate-Setup-1.6.0.exe`, `latest.yml`, and `*.blockmap`.
-6. Only after all required jobs pass does the workflow publish the GitHub Release.
+4. The `provenance` job checks `v1.6.1` matches `package.json.version` and the source commit belongs to `main`.
+5. Windows jobs select the mode, install/check dependencies, run production audits/tests/build, verify the resulting signed or unsigned identity, and smoke the packaged runtime.
+6. Signed mode stages the installer plus `latest.yml` and blockmap. Unsigned mode stages only the `UNSIGNED` Personal Preview installer, checksum, and warning notice.
+7. Only after all required jobs pass does the workflow publish the stable signed release or isolated unsigned pre-release.
 
-If the signing provider, hosted gateway, runtime smoke, or certificate checks fail, **fix and revalidate; do not upload an unsigned fallback or overwrite a release tag**.
+If signing is partially configured, the hosted gateway is invalid, runtime smoke fails, or signature/unsigned-isolation checks fail, **fix and revalidate; never overwrite an existing release tag**.
 
 ## Post-publication verification
 
-- Verify the published tag and artifact versions are `v1.6.0`, not merely the source `package.json` version.
-- Download the public installer on a clean Windows machine, verify its signer, install and exercise Solo and Live.
+- Verify the published tag and artifact versions are `v1.6.1`, not merely the source `package.json` version.
+- Download the public installer on a clean Windows machine. Verify the Authenticode signer for signed mode, or verify `SHA256SUMS.txt` plus the separate Personal Preview identity for unsigned mode; then install and exercise Solo and Live.
 - Repeat upgrade from v1.5.3 with preserved local account documents/history/keys where applicable, capture Logs/Diagnostics without secrets, and record the selected screen-share preview results.
 - Mark evidence rows PASS only with actual observation. Keep unresolved code/hardware/hosted billing issues open.
 
 ## Free, unsigned personal preview — separate distribution track
 
-When a trusted Windows code-signing certificate is unavailable, use the separate
+For additional numbered test iterations, the separate
 [`Unsigned Personal Preview (Windows)`](../.github/workflows/personal-preview.yml)
-workflow instead of weakening the signed release workflow. It is strictly a
+workflow remains available alongside the versioned unsigned fallback. It is strictly a
 **testing pre-release**, not a replacement for public, production-grade signed updates.
 
 - The first merge of the new workflow into `main` initiates preview iteration `1`
   automatically. For a manual retry or an additional candidate, use **Run workflow**
   on `main` and enter an **unused** `preview_number`.
-- For root version `1.6.0`, iteration `1` uses tag **`personal-v1.6.0-1`**
-  and internal app version **`1.6.0-personal.1`**. This tag deliberately cannot
+- For root version `1.6.1`, iteration `1` uses tag **`personal-v1.6.1-1`**
+  and internal app version **`1.6.1-personal.1`**. This tag deliberately cannot
   match the signed release workflow's `v*.*.*` trigger.
 - The build is **BYOK/local only**; it does not embed a managed hosted API or
   provider keys. It uses a different app ID, product name, executable, NSIS
@@ -90,8 +91,8 @@ workflow instead of weakening the signed release workflow. It is strictly a
   pre-release contains only an **unsigned NSIS EXE, SHA256SUMS.txt and notice**;
   never `latest.yml`, `app-update.yml` or blockmaps.
 - All normal code checks and the packaged Windows React renderer smoke run
-  **before** the unsigned pre-release publishes. Public signed release and
-  certificate checks in `release.yml` remain unchanged.
+  **before** the unsigned pre-release publishes. The signed branch of
+  `release.yml` retains its certificate and publisher checks.
 - Install the preview manually, and do not run it simultaneously with stable
   MockMate: the two desktop applications share loopback service ports.
 - The preview has separate local keys and history. It does **not** import existing
@@ -106,7 +107,7 @@ workflow instead of weakening the signed release workflow. It is strictly a
 
 The unsigned pre-release is **not** shown on GitHub's `releases/latest` stable
 download endpoint. Future production builds still require the trusted signer,
-real-device evidence, and the `v1.6.0` signed version tag.
+real-device evidence, and a future signed version tag.
 
 ## Scope limits
 

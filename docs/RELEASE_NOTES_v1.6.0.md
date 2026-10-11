@@ -1,8 +1,8 @@
-# MockMate v1.6.0 — Release Candidate Notes
+# MockMate v1.6.0 — Source Release Notes
 
-**Status (2026-10-11): release candidate prepared on PR #85's branch; not merged, tagged, or published.** The latest published stable Windows release remains **v1.5.3**. The prior v1.5.5 candidate and v1.5.4 source hotfix were not stable releases. The candidate uses root `package.json` and `package-lock.json` version `1.6.0`.
+**Status (2026-10-11): PR #85 was merged and `v1.6.0` was tagged from commit `15133530c827d684941b27cf5160789026069f27`.** Its Windows workflow failed at the unavailable signing-settings gate before building, so that GitHub Release has no installer assets. The latest usable signed Windows installer remains **v1.5.3**. Version `1.6.1` corrects delivery by providing a strictly isolated unsigned pre-release fallback when no signing configuration exists.
 
-This is a feature release: it adds the Home → Interview Kits → Ready Room preparation journey while carrying forward the unreleased v1.5.5 candidate work and the Live/provider reliability work in PR #85. Public distribution is still Windows x64 signed NSIS only. A green CI run is not a physical-device or hosted-provider certification.
+This source release adds the Home → Interview Kits → Ready Room preparation journey while carrying forward the unreleased v1.5.5 candidate work and the Live/provider reliability work in PR #85. Version `1.6.1` can publish either a verified signed Windows NSIS release or, when all signing settings are absent, a clearly isolated unsigned BYOK pre-release with no updater feed. A green CI run is not a physical-device or hosted-provider certification.
 
 ## What’s new since the last published stable release
 
@@ -34,11 +34,11 @@ This is a feature release: it adds the Home → Interview Kits → Ready Room pr
 
 The per-Kit attachment feature commit passes **86 test files / 644 tests**, API smoke **5/5**, production build, Vite-output verification, platform/React/Vitest/dev-tooling/auth-config/Express checks, and `git diff --check`. These ran under Node 22.22.3 in the sandbox; the release workflow pins Node 24. The aggregate `npm run verify` previously stopped before build/tests because `scripts/doctor.mjs` could not download the Electron runtime binary; this is an environment limitation, not a passing packaged-runtime check. Feature commit `0445a894107289fe140129f4d6474aad6971a33d` passed `verify-desktop`, `windows-tests`, and Vercel checks in [run 38126143427](https://github.com/vsv2014/MockMate/actions/runs/38126143427). CI is unsigned validation, not physical-install or signed-release certification. Full current evidence and outstanding device checks are in `docs/evidence/VALIDATION_STATUS.md`.
 
-Before a public release, still required:
-- Trusted Authenticode signing and publisher verification for the Windows installer and app executable.
-- Physical Windows clean-install/upgrade checks, including the transition from the last published v1.5.3 and real Solo/Live microphone/system-audio use.
+Before calling any build stable or production-certified, still required:
+- Trusted Authenticode signing and publisher verification for the Windows installer and app executable. The v1.6.1 delivery correction may instead publish only a clearly labeled unsigned pre-release with a separate identity and no updater feed.
+- Physical Windows clean-install/upgrade checks, including the transition from the last published v1.5.3 and real Solo/Live microphone/system-audio use. The unsigned pre-release can be used to perform these checks but is not certified by publication alone.
 - Actual Zoom/Meet/Teams share-preview checks; content protection is platform/mode-dependent and does not guarantee invisibility.
 - Real hosted WSS/Mongo/Deepgram and provider-usage reconciliation if Managed AI is offered. The default desktop `managedApiBase` remains empty; guest mode bypasses account authentication, not the local UI/AI service.
-- A final reviewed commit on `main` before running the release workflow. Do not create a release tag from this unmerged branch.
+- Merge and review the v1.6.1 delivery correction on `main` before creating its new tag; never move or reuse the existing v1.6.0 tag.
 
 See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md` for the authoritative gates and evidence.

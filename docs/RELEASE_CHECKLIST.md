@@ -1,8 +1,8 @@
 # MockMate release checklist
 
-**Current target: v1.6.0 (unpublished as of 2026-10-11).** The last actually published Windows installer is v1.5.3; v1.5.4 was an interim source-only hotfix. Check `package.json` and `package-lock.json` versions and use a new matching tag only after all gates pass.
+**Current target: v1.6.1.** The `v1.6.0` release exists without installer assets because its signing-only workflow failed before building. The last usable signed Windows installer is v1.5.3. Check `package.json` and `package-lock.json` versions and use a new matching tag only after the automated gates pass.
 
-**Rule: no `git tag` / no upload until every box below is checked on a REAL packaged build.**
+**Rule: do not describe any build as physically certified until every applicable box below is checked on a REAL packaged build.** The approved unsigned path may publish only as an isolated, manual-update pre-release after automated CI; it is not a substitute for these physical checks.
 Every 1.4.2 defect (CSP broke Solo+Live, STT coupled to the LLM cap, dangling `mintToken` import,
 no `.gitignore`, un-closeable login) was a "nobody ran the packaged build and clicked through it"
 bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a real browser window.
@@ -16,7 +16,7 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] `git status` shows no build artifacts tracked (dist/ ignored)
 
 ## 1. Packaged app boots (catches CSP / server-fork / dangling-import bugs)
-- [ ] the Release workflow produces a signed Windows installer (PR CI artifacts are unsigned validation-only)
+- [ ] the Release workflow produces either a verified signed installer or the isolated `UNSIGNED` Personal Preview artifact with no updater metadata
 - [ ] Install it fresh and launch — window appears, not blank
 - [ ] DevTools console: **zero red errors**, especially **no CSP `Refused to connect`** to `localhost:4000`
 - [ ] The auth/login window can be **moved, minimized, and closed** without Task Manager
@@ -70,7 +70,7 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] `LIVEKIT_*` unset → Duo shows a clean "not configured" state, **does not crash the app**
 
 ## 7. Regression sweep
-- [ ] Home → Interview Kits → Ready Room → Live works in the packaged v1.6.0 candidate; active Kit selection, create/edit/delete, and no-Kit fallback states behave correctly.
+- [ ] Home → Interview Kits → Ready Room → Live works in the packaged v1.6.1 candidate; active Kit selection, create/edit/delete, and no-Kit fallback states behave correctly.
 - [ ] Kit Solo and Live sessions retain the correct role/JD/preferences and selected Kit-document IDs in their session snapshot, keep drafts per Kit, exclude the shared document library, and do not overwrite the shared profile.
 - [ ] Upload/select PDF, TXT, and Markdown supporting materials in a Kit; verify they remain account-local and visible only to that Kit, selected files alone ground its Solo/Live retrieval, removal clears the cached index, and deleting the Kit leaves shared documents unchanged.
 - [ ] Ready Room distinguishes local service availability, configured providers, successful AI/voice tests, and OS/share-preview checks; provider-test usage is disclosed before any potentially billable call.
@@ -88,13 +88,14 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 ## 8b. Windows update signing and grant accounting
 - [ ] Public Release CI has `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` and `MOCKMATE_WINDOWS_PUBLISHER` set, with publisher matching the actual cert Subject.
 - [ ] `Get-AuthenticodeSignature` reports **Valid** on the NSIS installer and unpacked app executable; downloaded updates are publisher-verified.
+- [ ] If all signing settings are intentionally absent, CI instead reports **NotSigned** for both binaries, uses the Personal Preview app identity, publishes only an `UNSIGNED` pre-release plus checksum/notice, and publishes no updater metadata.
 - [ ] An old **unsigned** installation's upgrade path is tested explicitly; use the manually downloaded signed installer if the old updater cannot establish trusted provenance.
 - [ ] Managed mode: every one-use gateway ticket and bounded stream uses authenticated quota reservation/settlement; verify safe behavior across reconnect, duplicate ticket replay, stop and backend graceful shutdown. A host crash still requires durable reservation reconciliation; do not claim precise provider-billed per-second accounting without real E2E evidence.
 - [ ] Repeat an actual 10+ minute Live session with sleep/wake, device change, network flapping and diagnostics redaction on a Windows host.
 
 ## 9. Ship
 - [ ] `package.json` version matches a **new** release tag and CHANGELOG/release notes match the final implementation
-- [ ] For this candidate, run the version-generic release workflow from reviewed current `main` with new `v1.6.0` tag **only after signing secrets, real Windows certification, and (for Managed AI) hosted WSS/Mongo/Deepgram verification are complete**
+- [ ] Run the version-generic release workflow from reviewed current `main` with new `v1.6.1` tag. With signing configured, complete signing/physical/managed-host gates before stable publication claims; without signing, accept only the isolated BYOK unsigned pre-release and its explicit limitations.
 - [ ] Post-publish: download the published Windows installer on a clean machine and repeat §1–§4
 - [ ] Keep the last published Windows version **v1.5.3** installed → Check for updates → Downloading → Ready → Restart & install; **do not uninstall** during this test. For unsigned-to-signed migration, verify the safe manual signed-installer path if the legacy updater cannot verify provenance.
 - [ ] Settings → Diagnostics → Export logs; verify updater/provider/STT/session events exist and no key/token/transcript/prompt/screenshot content appears
