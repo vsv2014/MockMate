@@ -37,8 +37,9 @@ function createIsolatedUnsignedConfig(pkg, lock, version) {
   // Stable NSIS hook deletes the stable updater cache on uninstall. The preview
   // must not run stable-product install/uninstall hooks.
   delete preview.build.nsis.include
-  // Preview builds have no GitHub updater feed; only the installer is distributed.
-  delete preview.build.publish
+  // An explicit empty publisher list prevents electron-builder from inferring a
+  // GitHub feed from the CI repository environment and embedding app-update.yml.
+  preview.build.publish = []
 
   previewLock.version = version
   previewLock.packages[''].version = version

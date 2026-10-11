@@ -13,7 +13,7 @@ describe('Windows release signing and unsigned isolation gates', () => {
   it('keeps signed updates verified or removes the updater identity in unsigned preview mode', () => {
     expect(pkg.build.win.verifyUpdateCodeSignature).toBe(true)
     if (pkg.personalPreviewBuild === true) {
-      expect(pkg.build.publish).toBeUndefined()
+      expect(pkg.build.publish).toEqual([])
       expect(pkg.build.win.signtoolOptions).toBeUndefined()
     } else {
       expect(pkg.build.win.signtoolOptions?.publisherName).toBeTruthy()
@@ -41,7 +41,7 @@ describe('Windows release signing and unsigned isolation gates', () => {
     expect(releaseWorkflow).toContain('make_latest: false')
     expect(releaseWorkflow).toContain("-name 'latest*.yml' -o -name '*.blockmap' -o -name 'app-update.yml'")
     expect(previewConfig).toContain("preview.build.appId = 'com.mockmate.personal.preview'")
-    expect(previewConfig).toContain('delete preview.build.publish')
+    expect(previewConfig).toContain('preview.build.publish = []')
     expect(previewConfig).toContain('delete preview.build.win.signtoolOptions')
     expect(releaseWorkflow).toContain('Unsigned build must not retain a signing identity')
     expect(desktopWorkflow).toContain('unsigned-release-windows:')
