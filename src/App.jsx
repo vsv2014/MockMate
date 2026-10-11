@@ -598,15 +598,26 @@ function ElectronShell({ auth }) {
     const onUp = () => { resizing.current = false }
     // Alt+H in browser only (Electron handles it via global shortcut in main.cjs)
     const onKey = e => { if (e.altKey && e.key === 'h' && !inElectron) setMinimized(m => !m) }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', onUp)
+    window.addEventListener('blur', onUp)
     document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onUp)
+      window.removeEventListener('blur', onUp)
       document.removeEventListener('keydown', onKey)
     }
   }, [])
+
+  // A Windows pointer-up can be lost while a frameless window is moving or shrinking.
+  // Never carry a stale resize session into the 72×72 pill: the next pill drag would
+  // otherwise move and resize simultaneously, producing an expanding black rectangle.
+  useEffect(() => {
+    if (minimized) resizing.current = false
+  }, [minimized])
 
   function expandFromPill() {
     setMinimized(false)
@@ -621,7 +632,10 @@ function ElectronShell({ auth }) {
     setMinimized(true)
   }
 
-  const startDrag = startWindowDrag
+  const startDrag = e => {
+    resizing.current = false
+    startWindowDrag(e)
+  }
 
   function startResize(e, edge = 'se') {
     resizing.current = true
@@ -632,6 +646,7 @@ function ElectronShell({ auth }) {
       edge,
       _lastW: panelSize.w, _lastH: panelSize.h,
     }
+    try { e.currentTarget?.setPointerCapture?.(e.pointerId) } catch {}
     e.stopPropagation(); e.preventDefault()
   }
 
@@ -1472,7 +1487,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
               { edge: 'se', cursor: 'nwse-resize', style: { bottom: 0, right: 0, width: 18, height: 18, background: 'linear-gradient(135deg,transparent 50%,rgba(255,255,255,0.18) 50%)', borderRadius: '0 0 12px 0' } },
             ].map(h => (
               <div key={h.edge} data-mm-hit="1" title="Drag border to resize"
-                onMouseDown={e => { e.stopPropagation(); onResize(e, h.edge) }}
+                onPointerDown={e => { e.stopPropagation(); onResize(e, h.edge) }}
                 style={{
                   position: 'absolute', zIndex: 5, pointerEvents: 'all',
                   cursor: h.cursor, ...h.style,

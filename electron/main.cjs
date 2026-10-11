@@ -1,13 +1,14 @@
 // Electron main — overlay window with setContentProtection(true):
 //   Windows → WDA_EXCLUDEFROMCAPTURE,  macOS → NSWindowSharingNone
 //   (Linux has no equivalent — overlay IS visible in screen share there.)
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut, Notification, shell, dialog, safeStorage, powerMonitor } = require('electron')
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut, Notification, shell, dialog, safeStorage, powerMonitor, utilityProcess } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
 const net = require('net')
 const { fork } = require('child_process')
 const { DiagnosticStore } = require('./diagnostics.cjs')
+const { attachRequiredServiceLifecycle, waitForOptionalServiceReady } = require('./service-lifecycle.cjs')
 
 // Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
 // so a candidate's resume/transcript never leaves the device via Sentry (privacy-first).
@@ -223,34 +224,74 @@ async function ensurePortFree(port, label) {
   throw error
 }
 
+// Packaged Electron must not use child_process.fork() for its two local Node
+// services. fork() launches process.execPath (MockMate.exe) again with
+// ELECTRON_RUN_AS_NODE, which is exactly the path that has repeatedly failed
+// with spawn ENOENT during Windows install/update handoff. utilityProcess uses
+// Chromium's Services API instead and is Electron's supported fork equivalent.
+// Development keeps ordinary child_process.fork() so CLI/test workflows remain
+// unchanged.
+function startLocalService(modulePath, env, serviceName, developmentCwd) {
+  let child
+  if (isProd) {
+    if (typeof utilityProcess?.fork !== 'function') {
+      throw new Error('This Electron build cannot start MockMate local services safely. Please reinstall the latest MockMate build.')
+    }
+    const runtimeCwd = path.join(app.getPath('userData'), 'runtime')
+    fs.mkdirSync(runtimeCwd, { recursive: true })
+    child = utilityProcess.fork(modulePath, [], {
+      env,
+      cwd: runtimeCwd,
+      stdio: 'pipe',
+      serviceName,
+    })
+    child._mockMateUtilityProcess = true
+  } else {
+    child = fork(modulePath, [], { env, cwd: developmentCwd, stdio: 'pipe' })
+  }
+
+  // Normalize the one lifecycle difference used by the rest of main.cjs:
+  // UtilityProcess.kill() accepts no signal, while ChildProcess.kill() does.
+  const originalKill = child.kill.bind(child)
+  child.kill = function intentionalServiceKill(signal) {
+    child._mockMateIntentionalStop = true
+    return child._mockMateUtilityProcess ? originalKill() : originalKill(signal)
+  }
+  return child
+}
+
 function startApiServer(onReady) {
   const serverEntry = path.join(app.getAppPath(), 'server-entry.cjs')
   // Refuse to start if :3002 is occupied; never kill an unknown port owner.
   ensurePortFree(3002, 'API').then(() => {
-  apiServer = fork(serverEntry, [], {
-    env: { ...process.env, PORT: '3002', NODE_ENV: 'production' },
-    cwd: app.getAppPath(), stdio: 'pipe'
-  })
-  apiServer.stdout?.on('data', d => console.log('[API]', d.toString().trim()))
-  apiServer.stderr?.on('data', d => console.error('[API]', d.toString().trim()))
-  apiServer.on('error', e => console.error('[API] fork error:', e.message))
+  const service = startLocalService(
+    serverEntry,
+    { ...process.env, PORT: '3002', NODE_ENV: 'production' },
+    'MockMate Local UI and AI',
+    app.getAppPath(),
+  )
+  apiServer = service
+  service.stdout?.on('data', d => console.log('[API]', d.toString().trim()))
+  service.stderr?.on('data', d => console.error('[API]', d.toString().trim()))
 
-  let done = false
-  const fire = () => { if (!done) { done = true; onReady() } }
-  apiServer.on('message', msg => {
-    if (msg?.type === 'ready') fire()
-    else if (msg?.type === 'diagnostic' && msg.row) diagnostics?.ingest(msg.row)
-    // The server couldn't bind the port (e.g. a stale process is holding it). Don't
-    // silently fall through to loading a dead URL — tell the user what happened.
-    else if (msg?.type === 'server-error') {
-      const hint = msg.code === 'EADDRINUSE'
-        ? 'Port 3002 is already in use — another MockMate may still be running. Quit it (or reboot) and reopen MockMate.'
-        : `The local server failed to start: ${msg.message || msg.code || 'unknown error'}`
-      dialog.showErrorBox('MockMate could not start', hint)
-      app.quit()
-    }
+  attachRequiredServiceLifecycle(service, {
+    timeoutMs: 15_000,
+    timeoutMessage: 'The local UI service did not become ready within 15 seconds.',
+    exitBeforeReadyMessage: code => `The local UI service exited before startup completed (${code ?? 'unknown'}).`,
+    exitAfterReadyMessage: code => `The local UI service stopped unexpectedly (${code ?? 'unknown'}). MockMate must close so it can restart cleanly.`,
+    serverErrorMessage: msg => msg.code === 'EADDRINUSE'
+      ? 'Port 3002 is already in use — another MockMate may still be running. Quit it (or reboot) and reopen MockMate.'
+      : `The local server failed to start: ${msg.message || msg.code || 'unknown error'}`,
+    onReady,
+    onDiagnostic: row => diagnostics?.ingest(row),
+    onFatal: error => {
+    const message = error?.message || String(error || 'unknown startup error')
+    diag('api', 'service_failed', { message }, 'error')
+    console.error('[API] service failed:', message)
+    dialog.showErrorBox('MockMate could not start', `${message}\n\nClose MockMate completely and reopen it. If this repeats, reinstall the latest build; your locally saved API keys and history are preserved.`)
+    app.quit()
+    },
   })
-  // Do not declare readiness by elapsed time. The child must explicitly emit {type:'ready'}.
   }).catch(e => {
     console.error('[API] ensurePortFree failed:', e.message)
     dialog.showErrorBox('MockMate could not start', e.message || 'The local API port could not be prepared.')
@@ -273,17 +314,10 @@ function getJwtSecret() {
 function startBackend() {
   const entry = path.join(app.getAppPath(), 'backend', 'server-entry.cjs')
   if (!fs.existsSync(entry)) return Promise.reject(new Error(`backend entry not found: ${entry}`))
-  return ensurePortFree(Number(BACKEND_PORT) || 4000, 'backend').then(() => new Promise((resolve, reject) => {
-    let settled = false
-    const finish = (fn, value) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      fn(value)
-    }
-    backendServer = fork(entry, [], {
-      cwd: path.join(app.getAppPath(), 'backend'),
-      env: {
+  return ensurePortFree(Number(BACKEND_PORT) || 4000, 'backend').then(() => {
+    const service = startLocalService(
+      entry,
+      {
         ...process.env,
         PORT: BACKEND_PORT,
         JWT_SECRET: getJwtSecret(),
@@ -291,21 +325,21 @@ function startBackend() {
         MOCKMATE_DATA_DIR: app.getPath('userData'),   // file store lives beside the user's keys
         NODE_ENV: 'production',
       },
-      stdio: 'pipe',
-    })
-    const timer = setTimeout(() => finish(reject, new Error(`auth backend did not become ready on port ${BACKEND_PORT}`)), 10_000)
-    backendServer.stdout?.on('data', d => console.log('[backend]', d.toString().trim()))
-    backendServer.stderr?.on('data', d => console.error('[backend]', d.toString().trim()))
-    backendServer.on('message', msg => {
-      if (msg?.type === 'ready') finish(resolve, msg)
-      else if (msg?.type === 'server-error') finish(reject, new Error(msg.message || msg.code || 'backend startup failed'))
-    })
-    backendServer.on('error', e => finish(reject, e))
-    backendServer.on('exit', code => {
+      'MockMate Local Account Service',
+      path.join(app.getAppPath(), 'backend'),
+    )
+    backendServer = service
+    service.stdout?.on('data', d => console.log('[backend]', d.toString().trim()))
+    service.stderr?.on('data', d => console.error('[backend]', d.toString().trim()))
+    service.on('exit', code => {
       if (code) console.error('[backend] exited with code', code)
-      if (!settled) finish(reject, new Error(`auth backend exited before ready (${code ?? 'unknown'})`))
     })
-  }))
+    return waitForOptionalServiceReady(service, {
+      timeoutMs: 10_000,
+      timeoutMessage: `auth backend did not become ready on port ${BACKEND_PORT}`,
+      serverErrorMessage: msg => msg.message || msg.code || 'backend startup failed',
+    })
+  })
 }
 
 function createSetupWindow() {
@@ -403,11 +437,15 @@ function createMainWindow() {
   })
 
   mainWindow.webContents.on('did-finish-load', () => { rendererLoadFailures = 0 })
-  mainWindow.webContents.on('did-fail-load', (_e, code) => {
+  mainWindow.webContents.on('did-fail-load', (_e, code, _description, _validatedURL, isMainFrame) => {
     if (code === -3) return
+    if (isMainFrame === false) return
     rendererLoadFailures += 1
     if (rendererLoadFailures > 5) {
-      dialog.showErrorBox('MockMate could not load', 'The desktop UI failed to load after several retries. Please restart MockMate.')
+      const message = 'The desktop UI failed to load after several retries. MockMate will close so the next launch can start cleanly.'
+      diag('renderer', 'load_failed_exhausted', { code, attempts: rendererLoadFailures }, 'error')
+      dialog.showErrorBox('MockMate could not load', message)
+      app.quit()
       return
     }
     setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(isProd ? PROD_URL : DEV_URL) }, Math.min(4000, 500 * rendererLoadFailures))
@@ -991,7 +1029,12 @@ ipcMain.on('set-ignore-mouse-events', (_, { ignore, forward } = {}) => {
 })
 ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  const [x, y] = mainWindow.getPosition(); mainWindow.setPosition(x + dx, y + dy)
+  const moveX = Math.round(Number(dx) || 0)
+  const moveY = Math.round(Number(dy) || 0)
+  if (moveX || moveY) {
+    const [x, y] = mainWindow.getPosition()
+    mainWindow.setPosition(x + moveX, y + moveY)
+  }
   // Dragging out of the top-center teleprompter dock exits teleprompter mode.
   // IMPORTANT (PR review fix): notify the renderer in the same transition — otherwise
   // Electron thinks 'overlay' while React still renders teleprompter typography/state,
@@ -999,13 +1042,18 @@ ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (lastWindowMode === 'teleprompter') {
     lastWindowMode = 'overlay'
     try { mainWindow.webContents.send('overlay-command', { type: 'teleprompter', active: false, width: lastOverlaySize.w, height: lastOverlaySize.h }) } catch {}
-  } else if (lastWindowMode !== 'overlay') {
-    if (lastWindowMode === 'pill' || lastWindowMode == null) lastWindowMode = 'overlay'
+  } else if (lastWindowMode == null) {
+    // A pill remains a pill while it is repositioned. Changing its mode to overlay
+    // here allowed stale renderer resize events to expand its transparent OS window.
+    lastWindowMode = 'overlay'
   }
   syncOverlayShortcuts()
 })
 ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
+  // The pill has fixed geometry. A stale pointer-resize event must never turn the
+  // 72×72 badge into an expanding transparent/black window while it is dragged.
+  if (lastWindowMode === 'pill') return
   const nw = Math.max(240, Math.round(Number(w) || 280))
   const nh = Math.max(180, Math.round(Number(h) || 200))
   try {
