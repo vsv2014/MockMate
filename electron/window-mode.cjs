@@ -4,7 +4,9 @@ const PILL_SIZE = 72
 function prepareWindowMode(win, mode, platform = process.platform) {
   const pill = mode === 'pill'
   win.setMinimumSize(pill ? PILL_SIZE : 240, pill ? PILL_SIZE : 180)
-  win.setResizable(!pill)
+  // Keep Windows layered-window styles stable across collapse/expand.
+  // setSize/setBounds remain available to our custom resize handles.
+  win.setResizable(platform !== 'win32' && !pill)
   win.setHasShadow(!pill)
   win.setBackgroundColor(platform === 'linux' ? '#08090e' : '#00000000')
 }
