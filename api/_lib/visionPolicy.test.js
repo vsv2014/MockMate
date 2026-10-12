@@ -77,7 +77,7 @@ describe('vision provider configuration', () => {
     try {
       const configured = listVisionProviders()
       expect(configured.find(p => p.id === 'openai_mini')?.model).toBe('gpt-6-luna')
-      expect(configured.find(p => p.id === 'openai')?.model).toBe('gpt-6-sol')
+      expect(configured.find(p => p.id === 'openai')?.model).toBe('gpt-6.1-sol')
       expect(configured.find(p => p.id === 'gemini_flash_lite')?.model).toBe('gemini-3.5-flash-lite')
       expect(configured.find(p => p.id === 'gemini_3_flash')?.model).toBe('gemini-3.8-flash')
       expect(configured.some(p => /gpt-4o|gemini-2\.5/i.test(p.model))).toBe(false)
