@@ -791,18 +791,18 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
       providerDiagnostic('attempt_failed', { attemptId, operation: 'json', provider: provId, model, status: e?.status || 0, durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
       // Check quota BEFORE rate-limit: "insufficient_quota" also matches the rate-limit regex,
       // but out-of-credits is a different, more actionable problem.
-      if (isQuotaExhausted(e)) { sawQuota = true; noteTextProviderFailure(provId, e); console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
+      if (isQuotaExhausted(e)) { sawQuota = true; noteTextProviderFailure(provId, e, model); console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
       if (isRateLimit(e)) {
         sawRate = true
         const providerWaitMs = Math.max(RATE_LIMIT_BAN_MS, getRetryAfterMs(e))
         retryAfterMs = retryAfterMs > 0 ? Math.min(retryAfterMs, providerWaitMs) : providerWaitMs
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, model)
         console.warn(`[MockMate] ${provId} rate-limited → trying next provider`)
         continue
       }
       if (isTransient(e)) {
         sawTransient = true
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, model)
         console.warn(`[MockMate] ${provId} transient error (${e?.status || ''}) → trying next provider`)
         continue
       }
@@ -810,7 +810,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
       // next configured provider. A 400/401/403/404 won't self-heal this session, so BENCH the
       // provider briefly — otherwise a permanently-broken key (e.g. a Gemini model your key can't
       // use) gets retried on every single request, spamming logs and adding latency to each turn.
-      if (isProviderHardFail(e)) noteTextProviderFailure(provId, e)
+      if (isProviderHardFail(e)) noteTextProviderFailure(provId, e, model)
       console.error(`[llm] ${provId} (${model}) failed (${e?.status || ''}): ${e?.message || e} → trying next provider`)
       continue
     }
@@ -831,19 +831,17 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
 // Prefer current Gemini Flash-Lite / GPT-6 Luna before heavier models; skip cooling slots.
 export function listVisionProviders() {
   const list = []
-  if (process.env.GEMINI_API_KEY) {
-    list.push({ id: 'gemini_flash_lite', key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini_flash_lite.baseURL, model: CATALOG.gemini_flash_lite.model() })
-    list.push({ id: 'gemini', key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: CATALOG.gemini.model() })
-    list.push({ id: 'gemini_3_flash', key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini_3_flash.baseURL, model: CATALOG.gemini_3_flash.model() })
+  // Apply the same active/discovered/retired-model policy used by text.
+  // Vision and text still maintain independent rate-limit health/cooldowns.
+  for (const id of ['gemini_flash_lite', 'gemini', 'gemini_3_flash', 'openai_mini', 'openai']) {
+    const c = CATALOG[id]
+    const model = selectActiveModel(id)
+    if (model) list.push({ id, key: process.env[c.envKey], baseURL: c.baseURL, model })
   }
-  if (process.env.OPENAI_API_KEY) {
-    list.push({ id: 'openai_mini', key: process.env.OPENAI_API_KEY, baseURL: CATALOG.openai_mini.baseURL, model: CATALOG.openai_mini.model() })
-    list.push({ id: 'openai', key: process.env.OPENAI_API_KEY, baseURL: CATALOG.openai.baseURL, model: CATALOG.openai.model() })
-  }
-  // Groq and custom OpenAI-compatible gateways can expose vision models, but their
-  // default text models are not vision-capable. Opt in with an explicit model so a
-  // normal GROQ_API_KEY never produces a misleading 400 on image input.
-  if (process.env.GROQ_API_KEY && process.env.GROQ_VISION_MODEL) {
+  // Custom vision ids are not in the curated text catalog. These are explicit
+  // user overrides and remain permitted unless the provider rejects that exact model.
+  if (process.env.GROQ_API_KEY && process.env.GROQ_VISION_MODEL
+    && !isQuarantinedModel('groq_vision', process.env.GROQ_VISION_MODEL)) {
     list.push({
       id: 'groq_vision',
       key: process.env.GROQ_API_KEY,
@@ -851,7 +849,8 @@ export function listVisionProviders() {
       model: process.env.GROQ_VISION_MODEL,
     })
   }
-  if (process.env.VISION_API_KEY && process.env.VISION_MODEL && process.env.VISION_BASE_URL) {
+  if (process.env.VISION_API_KEY && process.env.VISION_MODEL && process.env.VISION_BASE_URL
+    && !isQuarantinedModel('custom_vision', process.env.VISION_MODEL)) {
     list.push({
       id: 'custom_vision',
       key: process.env.VISION_API_KEY,
@@ -974,6 +973,7 @@ async function visionCompleteOnce({
         return raw
       } catch (e) {
         lastError = e
+        quarantineModel(prov.id, prov.model, e)
         const kind = classifyVisionError(e)
         if (debug) {
           console.info('[vision]', visionTelemetry({
@@ -1047,21 +1047,21 @@ export async function completeTextQuick({ prompt, maxTokens = 1200, signal, requ
       const kind = classifyVisionError(e)
       if (kind === 'cancelled') throw e
       if (kind === 'rate') {
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, prov.model)
         // Same API key is rate-limited — cool vision siblings for this repair path only.
         markVision429Family(baseOf(provId))
         continue
       }
       if (kind === 'quota') {
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, prov.model)
         continue
       }
       if (kind === 'auth' || kind === 'bad_request') {
-        if (isProviderHardFail(e)) noteTextProviderFailure(provId, e)
+        if (isProviderHardFail(e)) noteTextProviderFailure(provId, e, prov.model)
         continue
       }
       if (isTransient(e)) {
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, prov.model)
         continue
       }
       if (!isRateLimit(e)) throw e
@@ -1151,27 +1151,27 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       if (emitted) {
         // Keep the partial answer visible and never restart this paid generation. Cool the
         // failed provider for a later question and send a classified, actionable error to UI.
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, model)
         throw userFacingPartialStreamError(e)
       }
       // Before any token: same failover classes as completeJSON (rate / transient / hard fail / quota).
       if (!shouldFailoverTextError(e, { emitted: false })) throw e
-      if (isQuotaExhausted(e)) { sawQuota = true; noteTextProviderFailure(provId, e); console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
+      if (isQuotaExhausted(e)) { sawQuota = true; noteTextProviderFailure(provId, e, model); console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
       if (isRateLimit(e)) {
         sawRate = true
         const providerWaitMs = Math.max(RATE_LIMIT_BAN_MS, getRetryAfterMs(e))
         retryAfterMs = retryAfterMs > 0 ? Math.min(retryAfterMs, providerWaitMs) : providerWaitMs
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, model)
         console.warn(`[MockMate] ${provId} rate-limited → trying next provider`)
         continue
       }
       if (isTransient(e)) {
         sawTransient = true
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, model)
         console.warn(`[MockMate] ${provId} transient error (${e?.status || ''}) → trying next provider`)
         continue
       }
-      if (isProviderHardFail(e)) noteTextProviderFailure(provId, e)
+      if (isProviderHardFail(e)) noteTextProviderFailure(provId, e, model)
       console.error(`[llm] ${provId} (${model}) stream failed (${e?.status || ''}): ${e?.message || e} → trying next provider`)
     } finally {
       deadline.cleanup()
