@@ -23,7 +23,7 @@ const PROVIDERS = [
     note: 'No credit card. Create a free key at', link: { href: 'https://console.groq.com/keys', label: 'console.groq.com/keys' } },
   { k: 'GEMINI_API_KEY', name: 'Google Gemini', hint: 'free tier', free: true, providerIds: ['gemini', 'gemini_flash_lite', 'gemini_3_flash'], testId: 'gemini',
     note: 'Free with a Google account at', link: { href: 'https://aistudio.google.com/apikey', label: 'aistudio.google.com/apikey' } },
-  { k: 'OPENAI_API_KEY', name: 'OpenAI', hint: 'GPT-6 Sol · Luna · Astra — paid API', providerIds: ['openai', 'openai_mini', 'gpt_6_astra'], testId: 'openai_mini',
+  { k: 'OPENAI_API_KEY', name: 'OpenAI', hint: 'GPT-6.1 Sol · Luna · Astra — paid API', providerIds: ['openai', 'openai_mini', 'gpt_6_astra'], testId: 'openai_mini',
     note: 'Needs billing credit (not ChatGPT Plus) at', link: { href: 'https://platform.openai.com/api-keys', label: 'platform.openai.com' } },
   { k: 'ANTHROPIC_API_KEY', name: 'Anthropic', hint: 'Claude — paid API', providerIds: ['claude_fable', 'claude_opus', 'claude_sonnet', 'claude_haiku'], testId: 'claude_haiku',
     note: 'Needs billing credit at', link: { href: 'https://console.anthropic.com/settings/keys', label: 'console.anthropic.com' } },
@@ -294,7 +294,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
         <div style={card}>
           <KeyField name="Custom OpenAI model id" hint="optional" secret={false}
             value={keyVals.OPENAI_MODEL} onChange={set('OPENAI_MODEL')}
-            note="Blank = GPT-6 Sol. Only enter an alternate OpenAI model ID if your API key supports it; for other providers, select models from the in-app picker." />
+            note="Blank = GPT-6.1 Sol. Only enter an alternate OpenAI model ID if your API key supports it; for other providers, select models from the in-app picker." />
           <button type="button" onClick={() => removeProvider('openai_model', 'OpenAI model overrides')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: 10.5, cursor: 'pointer' }}>Clear OpenAI model overrides</button>
           <KeyField name="Groq vision model id" hint="optional · screenshots" secret={false}
             value={keyVals.GROQ_VISION_MODEL} onChange={set('GROQ_VISION_MODEL')}
