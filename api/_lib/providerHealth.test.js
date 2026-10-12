@@ -10,12 +10,26 @@ import {
   pickStrongProvider,
   pickBestProvider,
   resolveEmbeddingProvider,
+  completionBudget,
   _resetProviderHealthForTests,
   _getProviderHealthForTests,
   _setProviderHealthForTests,
   _setDiscoveredModelsForTests,
 } from './core.js'
 import { markVision429Family, isVisionCooling, _resetVisionStateForTests } from './visionPolicy.js'
+
+describe('current chat-completions token budget', () => {
+  it('uses max_completion_tokens for GPT-6 API models', () => {
+    expect(completionBudget({ baseURL: 'https://api.openai.com/v1', model: 'gpt-6.1-sol' }, 160)).toEqual({ max_completion_tokens: 160 })
+    expect(completionBudget({ baseURL: 'https://api.openai.com/v1', model: 'gpt-6-luna' }, 64)).toEqual({ max_completion_tokens: 64 })
+    expect(completionBudget({ baseURL: 'https://api.openai.com/v1', model: 'gpt-6-astra' }, 900)).toEqual({ max_completion_tokens: 900 })
+  })
+  it('keeps max_tokens for Anthropic/Gemini/Groq compatibility', () => {
+    expect(completionBudget({ baseURL: 'https://api.anthropic.com/v1/', model: 'claude-sonnet-5' }, 160)).toEqual({ max_tokens: 160 })
+    expect(completionBudget({ baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/', model: 'gemini-3.6-flash' }, 200)).toEqual({ max_tokens: 200 })
+    expect(completionBudget({ baseURL: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b' }, 250)).toEqual({ max_tokens: 250 })
+  })
+})
 
 describe('unified text failover policy', () => {
   it('fails over a request-specific 400 without globally classifying the provider as hard-failed', () => {
@@ -113,27 +127,27 @@ describe('text vs vision provider health', () => {
       .rejects.toMatchObject({ status: 429, code: 'rate_limit', retryAfterMs: expect.any(Number) })
   })
 
-  it('uses the QA-verified Gemini Flash-Lite model for automatic fast answers', () => {
+  it('uses the current stable Gemini Flash-Lite model for automatic fast answers', () => {
     expect(pickFastProvider()).toBe('gemini_flash_lite')
   })
 
   it('routes maximum quality only to a model confirmed by the configured key', () => {
     _setDiscoveredModelsForTests('claude_sonnet', ['claude-fable-5', 'claude-sonnet-5'])
-    _setDiscoveredModelsForTests('openai', ['gpt-5.6-sol', 'gpt-5.6-luna'])
+    _setDiscoveredModelsForTests('openai', ['gpt-6-astra', 'gpt-6-luna'])
     expect(pickBestProvider()).toBe('claude_sonnet::claude-fable-5')
     expect(pickStrongProvider()).toBe('openai')
   })
 
   it('uses a discovered balanced OpenAI model for hard questions', () => {
-    _setDiscoveredModelsForTests('openai', ['gpt-5.6-terra', 'gpt-5.6-sol'])
-    expect(pickStrongProvider()).toBe('openai::gpt-5.6-terra')
+    _setDiscoveredModelsForTests('openai', ['gpt-6-sol', 'gpt-6-astra'])
+    expect(pickStrongProvider()).toBe('openai::gpt-6-sol')
   })
 
   it('offers only one automatic fallback per configured API-key family', () => {
     const q = getFallbackProviders('auto')
     expect(q.filter(id => id.startsWith('gemini'))).toEqual(['gemini_flash_lite'])
     expect(q.filter(id => id.startsWith('claude'))).toEqual(['claude_haiku'])
-    expect(q.filter(id => id.startsWith('openai') || id === 'gpt_5')).toEqual(['openai_mini'])
+    expect(q.filter(id => id.startsWith('openai') || id === 'gpt_6_astra')).toEqual(['openai_mini'])
   })
 
   it('uses a supported Gemini embedding model instead of retired text-embedding-004', () => {

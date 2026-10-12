@@ -14,8 +14,9 @@ describe('provider connection test', () => {
     process.env.OPENAI_API_KEY = 'unit-test-key'
     const fetchMock = vi.fn(async (_url, options) => {
       const request = JSON.parse(options.body)
-      expect(request.model).toBe('gpt-4o-mini')
-      expect(request.max_tokens).toBe(8)
+      expect(request.model).toBe('gpt-6-luna')
+      expect(request.max_completion_tokens).toBe(64)
+      expect(request.max_tokens).toBeUndefined()
       expect(request.messages).toEqual([{ role: 'user', content: 'Reply with exactly: OK' }])
       return new Response(JSON.stringify({
         id: 'chatcmpl-test',
@@ -26,7 +27,7 @@ describe('provider connection test', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(testProviderConnection('openai_mini')).resolves.toEqual({
-      ok: true, provider: 'openai_mini', model: 'gpt-4o-mini',
+      ok: true, provider: 'openai_mini', model: 'gpt-6-luna',
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })

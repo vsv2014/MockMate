@@ -1,34 +1,40 @@
 import { getScopedItem, setScopedItem, removeScopedItem } from './accountScope'
+import { isCurrentChatModel, isCurrentProviderChoice } from '../../shared/currentModels.js'
 
 const PROVIDER_LABELS = {
-  openai: 'OpenAI', claude_sonnet: 'Anthropic', gemini: 'Gemini', groq: 'Groq', cerebras: 'Cerebras', custom: 'Custom',
+  openai: 'OpenAI', claude_sonnet: 'Anthropic', gemini: 'Gemini',
+  groq: 'Groq', cerebras: 'Cerebras', custom: 'Custom',
 }
 
 const SCORE_RULES = {
-  openai: [[/gpt-5\.6-sol/i, 180], [/gpt-5\.6-terra/i, 170], [/gpt-5\.6-luna/i, 145], [/gpt-5\.5-pro/i, 165], [/gpt-5(?:\.\d+)?(?:$|-chat|-mini|-pro)/i, 130], [/gpt-4\.1/i, 80], [/gpt-4o-mini/i, 70], [/gpt-4o(?:$|-)/i, 60]],
-  claude_sonnet: [[/fable-5/i, 190], [/opus-5/i, 180], [/sonnet-5/i, 165], [/opus/i, 150], [/sonnet/i, 140], [/haiku/i, 100]],
-  gemini: [[/flash-lite/i, 100], [/flash/i, 90], [/pro/i, 70]],
-  groq: [[/llama.*70b/i, 100], [/llama/i, 80], [/qwen/i, 70], [/mixtral/i, 60]],
+  openai: [
+    [/^gpt-6-astra$/i, 240], [/^gpt-6\.1-sol$/i, 220],
+    [/^gpt-6-luna$/i, 210], [/^gpt-6-sol$/i, 190],
+  ],
+  claude_sonnet: [
+    [/^claude-fable-5$/i, 240], [/^claude-opus-5$/i, 220],
+    [/^claude-sonnet-5$/i, 200], [/^claude-haiku-4-5/i, 130],
+  ],
+  gemini: [
+    [/^gemini-3\.8-flash$/i, 220], [/^gemini-3\.7-flash$/i, 170],
+    [/^gemini-3\.6-flash$/i, 200], [/^gemini-3\.5-flash-lite$/i, 190],
+  ],
+  groq: [[/gpt-oss-120b/i, 180], [/qwen3\.8-27b/i, 160], [/gpt-oss-20b/i, 125]],
+  cerebras: [[/zai-glm-4\.7/i, 190], [/gpt-oss-120b/i, 170]],
 }
 
 function score(model) {
   const id = String(model.model || model.id || '')
   const rules = SCORE_RULES[model.provider] || []
-  const match = rules.find(([re]) => re.test(id))
-  let n = match?.[1] || 20
-  if (/gemini-3\.6-/i.test(id)) n += 36
-  else if (/gemini-3\.5-/i.test(id)) n += 35
-  else if (/gemini-3\.1-/i.test(id)) n += 31
-  if (/latest/i.test(id)) n += 4
-  if (/preview|experimental|exp-|deprecated|legacy|vision|image|audio|realtime/i.test(id)) n -= 100
-  if (/\b20\d{2}[-_]\d{2}[-_]\d{2}\b|[-_]20\d{6}\b/.test(id)) n -= 15
-  return n
+  return rules.find(([pattern]) => pattern.test(id))?.[1] || 20
 }
 
+// Show only current, key-discovered text models; audio/preview/deprecated
+// models never belong in the interview-answer picker.
 export function curateModelOptions(models = [], { maxPerProvider = 3 } = {}) {
   const groups = new Map()
   for (const model of models) {
-    if (!model?.id || !model?.provider) continue
+    if (!model?.id || !model?.provider || !isCurrentChatModel(model.provider, model.model)) continue
     if (!groups.has(model.provider)) groups.set(model.provider, [])
     groups.get(model.provider).push(model)
   }
@@ -42,11 +48,13 @@ export function curateModelOptions(models = [], { maxPerProvider = 3 } = {}) {
 
 export function configuredProviderNames(models = [], providers = []) {
   const names = new Set()
-  for (const model of models) names.add(PROVIDER_LABELS[model.provider] || model.provider)
+  for (const model of models) {
+    if (isCurrentChatModel(model.provider, model.model)) names.add(PROVIDER_LABELS[model.provider] || model.provider)
+  }
   if (!names.size) {
     for (const p of providers) {
       const id = String(p.id || '')
-      const family = id.startsWith('openai') || id === 'gpt_5' || id.startsWith('gpt_') ? 'OpenAI'
+      const family = id.startsWith('openai') || id === 'gpt_6_astra' ? 'OpenAI'
         : id.startsWith('claude') ? 'Anthropic'
           : id.startsWith('gemini') ? 'Gemini'
             : PROVIDER_LABELS[id] || p.label || id
@@ -58,27 +66,28 @@ export function configuredProviderNames(models = [], providers = []) {
 
 export function curateProviderFallbacks(providers = []) {
   const preferred = { openai: 'openai_mini', anthropic: 'claude_haiku', gemini: 'gemini_flash_lite' }
-  const ordered = [...providers].sort((a, b) => {
-    const family = id => String(id || '').startsWith('openai') || id === 'gpt_5' || String(id || '').startsWith('gpt_') ? 'openai'
-      : String(id || '').startsWith('claude') ? 'anthropic'
-        : String(id || '').startsWith('gemini') ? 'gemini' : String(id || '')
-    return Number(b.id === preferred[family(b.id)]) - Number(a.id === preferred[family(a.id)])
-  })
+  const family = id => String(id || '').startsWith('openai') || id === 'gpt_6_astra' ? 'openai'
+    : String(id || '').startsWith('claude') ? 'anthropic'
+      : String(id || '').startsWith('gemini') ? 'gemini' : String(id || '')
+  const ordered = [...providers].filter(p => isCurrentProviderChoice(p.id))
+    .sort((a, b) => Number(b.id === preferred[family(b.id)]) - Number(a.id === preferred[family(a.id)]))
   const seen = new Set(); const out = []
   for (const provider of ordered) {
-    const id = String(provider.id || '')
-    const family = id.startsWith('openai') || id === 'gpt_5' || id.startsWith('gpt_') ? 'openai'
-      : id.startsWith('claude') ? 'anthropic'
-        : id.startsWith('gemini') ? 'gemini'
-          : id
-    if (!family || seen.has(family)) continue
-    seen.add(family); out.push(provider)
+    const group = family(provider.id)
+    if (!group || seen.has(group)) continue
+    seen.add(group); out.push(provider)
   }
   return out
 }
 
-export function loadModelSelection() { return getScopedItem('llmProvider', '') || '' }
+export function loadModelSelection() {
+  const selected = getScopedItem('llmProvider', '') || ''
+  if (isCurrentProviderChoice(selected)) return selected
+  removeScopedItem('llmProvider')
+  return ''
+}
+
 export function persistModelSelection(value) {
-  if (value) setScopedItem('llmProvider', value)
+  if (value && isCurrentProviderChoice(value)) setScopedItem('llmProvider', value)
   else removeScopedItem('llmProvider')
 }
