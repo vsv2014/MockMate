@@ -1,22 +1,21 @@
 # Small trial and regression review — 2026-10-12
 
-## Recommendation
+## Recommendation (updated October 12)
 
-For 3–4 invited users, offer Managed AI backed by the existing authenticated backend, keeping BYOK as an optional alternative. Use one owner-funded paid Gemini project and Deepgram project initially. Do not distribute a shared master key in the installer. Provider keys identify accounts/projects; model access is resolved separately. Retiring a model normally requires a registry update, not generating another key.
+For one occasional personal user, retain direct BYOK and Deepgram. Do not add managed hosting or require a second paid account. Gemini is the proposed default; Anthropic is optional if separately configured. This recommendation does not change the provider registry or enable billing. OpenRouter remains a possible future optional connection, not a requirement.
 
-BYOK is the lowest-hosting-effort option today and costs the app owner nothing for provider usage, but every tester must configure and fund accounts. Managed access gives consistent routing, centralized rotation and better diagnosis. OpenRouter is a useful later model-comparison option with per-key USD limits; it adds another dependency and still needs separate STT. Local models add hardware variability and are a poor default for this small Windows trial.
+Provider choice cannot establish whether the reported answer regressions are fixed. First preserve the complete current question, carry previous suggestions as explicitly labelled AI context, and share history assembly and output budgets across streaming and blocking hints. Existing fallback and diagnostics should be extended rather than duplicated. Screenshots must retain a vision-capable route.
 
-## Existing implementation and missing work
+## Estimate, not a bill
 
-The backend already includes authentication, LLM usage metering and a Deepgram gateway with atomic audio quota reservations. Current plan caps are unsuitable for a focused trial: free allows only 30 minutes of STT, while pro/max allow 500 hours and 100,000 LLM units. Add an explicit invite-only trial entitlement, expiry, one active session per user and a total owner budget with admission reservations before enabling shared credentials. Call counts are not exact dollar budgets.
+For four 90-minute sessions, each with 40 questions at 1,500 input / 300 billed output tokens, three screenshots at an assumed 1,000 input tokens each, and 10% extra LLM usage: 277,200 input and 52,800 output tokens. At Gemini $0.75/M input and $3.75/M output, LLM usage is $0.4059. One 360-minute Nova-3 monolingual streaming channel at $0.0048/min is $1.728. Total is about $2.13 before taxes and fees. Diarization, if enabled, adds $0.72. Replacing 30% of LLM traffic with Sonnet at $2/M input and $10/M output adds about $0.20 under identical token assumptions. Sonnet is billed per token, not per audio minute. Reasoning tokens, longer answers, parallel audio streams, add-ons, and retries can change these totals. INR exchange rates and tax treatment are not verified here.
 
-The unsigned installer explicitly sets managedApiBase empty and VITE_MANAGED_AI_AVAILABLE=false. Managed trial needs an independently validated hosted configuration and a new package; existing public download cannot gain managed support merely by setting server keys. No hosted setup or paid account was provisioned during this review.
+## Context fixes added after the initial PR
 
-## Initial provider candidate and cost model
-
-Benchmark Gemini 3.8 Flash for answers; keep Deepgram Nova-3 for the first trial so speech and LLM changes can be measured separately. This is a candidate, not a claim of best measured quality. Use the paid Gemini tier for its documented training restriction; it is not a blanket zero-retention guarantee.
-
-At checked promotional rates, Gemini 3.8 Flash is $0.75/M input and $3.75/M output tokens through December 31, 2026. Nova-3 monolingual streaming is $0.0048/min before add-ons. For 40 questions/hour, 8,000 input tokens/question and 800 billed output tokens/question: LLM $0.36/hour plus STT $0.288/hour = $0.648/hour. Four users at ten hours each = $25.92 usage. Allow $30–50 as a planning envelope, excluding hosting, taxes, add-ons, search, extra reasoning tokens, retries and long context. This is not a spending authorization or a measured bill. Recalculate when promotions end.
+- The client requested includeLastAnswer but the state implementation ignored it. Completed suggestions are now included only when requested, clearly labelled as AI text, never candidate speech.
+- Both hint transports use the same context builder: complete current question, up to 12 recent speech turns plus one suggestion, and a 24,000-character history budget. Whole older turns are omitted when they do not fit; retained code is not clipped at 300 characters.
+- Both transports use the same style/tier output budgets.
+- Metadata-only diagnostics add assembled context character counts and attempt indexes. Blocking request usage is recorded when provided, including repair requests; missing streaming token usage is null rather than a misleading zero. No transcript, resume, question, or key is logged.
 
 ## Patches in this branch
 

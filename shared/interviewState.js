@@ -363,8 +363,14 @@ export function createInterviewState(opts = {}) {
   }
 
   /** History for LLM: only speech that actually occurred. AI suggestions are not candidate speech. */
-  function getLlmHistory({ limit = 12 } = {}) {
-    return speechTurns.slice(-limit).map(t => ({ role: t.role, text: t.text }))
+  function getLlmHistory({ limit = 12, includeLastAnswer = false } = {}) {
+    const history = speechTurns.slice(-limit).map(t => ({ role: t.role, text: t.text }))
+    // Suggestions are useful referents, but are never facts about candidate speech.
+    if (includeLastAnswer && lastAnswer?.text && !lastAnswer.incomplete) {
+      const question = getQuestion(lastAnswer.questionId)
+      history.push({ role: 'assistant', text: `Prior question: ${question?.text || ''}\nAI suggestion: ${lastAnswer.text}` })
+    }
+    return history
   }
 
   /** UI projection — committed+ terminal questions never omitted because of loading. */
