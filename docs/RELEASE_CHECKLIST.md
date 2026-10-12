@@ -55,6 +55,12 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] On a test kill/relaunch, recent Live question/hint notes are readable via explicit recovery, without auto-resuming mic, STT, generation or billing
 - [ ] Physically exercise sleep/wake and audio-track `ended` without `devicechange`, and verify capture reacquisition never resurrects after Stop
 
+## 4b. Live follow-up context, answer caps and Windows overlay (PR #93)
+- [ ] On the packaged build, replay fragmented definitions, topic changes, duplicate STT finals, coding corrections and short follow-ups ("draw it", "show me the code", "explain the architecture", "give me an example") through capture and generation. Follow-ups resolve against the previous question and AI suggestion, and a question longer than 800 characters is answered in full
+- [ ] Benchmark the same recorded input and context, with the same provider and model, against a **named baseline release**: the one the regression report compared against or, if none was recorded, the latest stable public Windows release (v1.5.3). Record the selected model, TTFT, completion/truncation status, capture-to-answer latency and token usage/cost from diagnostics (never transcript content), with the baseline tag, in `docs/evidence/VALIDATION_STATUS.md`
+- [ ] Concise style: coding/design answers still contain complete code or architecture within 1,800 tokens, and simple answers on the blocking `/api/hint` path (Live JSON compatibility fallback, Duo or mobile) finish within **380 tokens** with no truncation and no JSON-repair request (`request_usage` `requestIndex` stays 0)
+- [ ] Windows transparent overlay: collapse to the badge, drag, expand and resize with the custom edge handles at 100% and one non-default page zoom. Transparency survives every step. Repeat with microphone and system-playback sources
+
 ## 5. Screenshot solve
 - [ ] Ctrl+Shift+U / F7 on a coding problem **from Live** → answer-first solution, no refusal
 - [ ] Home does **not** show a screen-analysis panel / “Screenshot + solve” CTA

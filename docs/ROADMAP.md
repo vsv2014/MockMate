@@ -90,6 +90,8 @@ See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
 - [ ] Expand STT/accent/noise evaluation fixtures using privacy-safe recordings or synthetic corpora.
 - [ ] Certify Stealth/share-preview behavior per Windows/macOS + meeting-app/share-mode combination.
 - [ ] Keep Linux Stealth explicitly unsupported until there is a real OS/compositor solution.
+- [ ] Evaluate an explicit, opt-in automatic-question option for microphone mode. Keep manual **Answer this** as the default, because diarizing a single microphone cannot reliably tell the interviewer from the candidate.
+- [ ] Consider an optional OpenRouter connection for model comparison, with per-key spending limits ([API key creation](https://openrouter.ai/docs/api/api-reference/api-keys/create-a-new-api-key)). It must never be required; personal use stays on direct Gemini + Deepgram BYOK.
 
 ## P3 — Mobile practice MVP
 

@@ -12,7 +12,8 @@ Files rotate at 5 MB and retain four generations (about 20 MB maximum).
 
 - `sessionId` identifies a Live/Solo session.
 - `requestId` identifies one API, auth or screenshot operation.
-- Provider attempts include operation, provider, model, status class, duration, TTFT and usage.
+- Provider attempts include operation, provider, model, status class, duration, TTFT and usage. They also carry `attemptIndex` (0 for the first provider tried; higher values are fallbacks) and `contextChars`, the length of the JSON-serialized request messages including the system prompt. `contextChars` is a size signal, not a token count.
+- Blocking JSON calls emit `request_usage` for each successful provider request in an attempt, including JSON-repair requests. `requestIndex` numbers every request in the attempt from 0, failed retries included, so a value above 0 means a retry or JSON repair happened. Token counts a provider does not return are recorded as `null` (unknown), never `0`.
 
 ## Covered events
 

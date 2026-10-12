@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Preserve Live follow-up context in both streamed and blocking hints: send the complete current question (previously clipped at 800 characters); honour `includeLastAnswer`, which Live already requested but `getLlmHistory` ignored, so the last completed AI suggestion is included and labelled as AI text, never candidate speech; and replace 300-character history clipping with whole recent turns under a shared 24,000-character budget.
+- Share output caps between transports. Coding/system-design and coach-mode requests rise to 2,400 tokens (1,800 concise); streaming previously allowed 900 balanced, 650 concise and 1,100 detailed. Simple streaming caps are unchanged; blocking concise simple answers now use the streaming 380-token cap instead of 700. Concise answers must still include complete requested code or architecture, and definition answers lead with what the term means.
+- Treat short explicit requests such as "draw it", "show me the code", "explain the architecture" and "give me an example" as refinements of the current question.
+- Keep the Windows transparent overlay natively non-resizable at creation and across collapse/expand; the custom handles still resize through the bounded `window-resize` IPC handler.
+- Add metadata-only provider diagnostics: attempt index, serialized request size, per-request usage for blocking calls including JSON repairs, and `null` rather than `0` for token counts a provider does not report.
+- Settings reports a detected key separately from model availability, reads BYOK key status from the local service even when Managed mode is selected, and no longer labels Gemini or Groq as free.
+- Document the hint context and output caps, Windows resizing rationale and personal BYOK recommendation and cost estimate in `docs/MODEL_AND_AUDIO_REVIEW.md`, with acceptance gates in `docs/RELEASE_CHECKLIST.md` §4b.
+
+Source changes only; no release or installer is claimed. Real-provider answer/usage checks and physical Windows collapse/drag/resize checks remain open.
+
 ## v1.6.2 — 2026-10-12 (signed public release candidate)
 
 - Centralize AI defaults, automatic routing priorities, key links and lifecycle policy; recover with provider-discovered compatible models and distinguish actionable provider failures.
