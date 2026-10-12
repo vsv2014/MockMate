@@ -173,13 +173,28 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   }
 
   useEffect(() => {
+    let stopped = false
     refetchProviders()
-    apiFetch('/api/models').then(r => r.json()).then(d => {
-      const next = d.models || []
-      setModels(next)
-      const compact = curateModelOptions(next)
-      setProvider(current => compact.some(m => m.id === current) ? current : '')
-    }).catch(() => {})
+    const refreshModelCatalog = () => {
+      apiFetch('/api/models').then(r => r.json()).then(d => {
+        if (stopped) return
+        const next = Array.isArray(d.models) ? d.models : []
+        const verified = Array.isArray(d.discoveredProviders) ? d.discoveredProviders : []
+        // Only replace a family's options when its provider was actually queried
+        // successfully. A network/key outage must not erase cached good models.
+        if (!verified.length) return
+        setModels(previous => [...previous.filter(row => !verified.includes(row.provider)), ...next])
+        setProvider(current => {
+          if (!current?.includes('::')) return current
+          const family = current.split('::')[0]
+          // Remove a saved exact-model selection only after its own family was
+          // checked successfully and the model disappeared from the active set.
+          return verified.includes(family) && !next.some(row => row.id === current) ? '' : current
+        })
+      }).catch(() => {}) // Keep the last known-good list on transient discovery failures.
+    }
+    refreshModelCatalog()
+    const modelRefreshTimer = setInterval(refreshModelCatalog, 15 * 60 * 1000)
     window.electronAPI?.getAudioSources?.().then(srcs => {
       setAudioSources(srcs || [])
       // Auto-select system audio (best for hearing the interviewer) — but NOT on
@@ -190,6 +205,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
         if (screen) setSourceId(screen.id)
       }
     })
+    return () => { stopped = true; clearInterval(modelRefreshTimer) }
   }, [])
 
   useEffect(() => { persistModelSelection(provider) }, [provider])
