@@ -1,7 +1,7 @@
 // Shared logic for the serverless functions (api/*.js) and the local dev server
 // (server.js). Files prefixed with _ are not treated as routes by Vercel.
 import OpenAI from 'openai'
-import { isCurrentChatModel, isCurrentProviderChoice } from '../../shared/currentModels.js'
+import { isCurrentChatModel, isCurrentProviderChoice, isActiveModelRecord, isModelUnavailableError } from '../../shared/currentModels.js'
 import { analyze } from '../../shared/delivery.js'
 import { fetchWithTimeout } from './http.js'
 import { getRetryAfterMs, isRateLimit, isQuotaExhausted, isTransient } from '../../shared/llm-errors.js'
@@ -108,18 +108,79 @@ const CATALOG = {
   }
 }
 
-// Populated by /api/models using the user's real key. Automatic routing may then choose a newer
-// stable model without guessing availability. Empty on cold start, where catalog defaults remain
-// the safe fallback until discovery completes.
+// Runtime model lifecycle registry. Key-specific provider discovery is the source of
+// truth once it succeeds; catalog defaults are only cold-start candidates.
+// A confirmed model-specific retirement 400/404 quarantines JUST that model,
+// not the entire API-key family. Never abort an already-streaming answer.
 const discoveredModels = new Map()
-function rememberDiscovered(provider, model) {
-  if (!provider || !model) return
-  if (!discoveredModels.has(provider)) discoveredModels.set(provider, new Set())
-  discoveredModels.get(provider).add(model)
+let lastSuccessfulDiscoveries = new Set()
+const quarantinedModels = new Map()
+const MODEL_QUARANTINE_MS = 6 * 60 * 60 * 1000
+const MODEL_REFRESH_INTERVAL_MS = 15 * 60 * 1000
+let nextModelDiscoveryAt = 0
+
+function modelFamily(id) {
+  const base = String(id || '').split('::', 1)[0]
+  if (base.startsWith('openai') || base === 'gpt_6_astra') return 'openai'
+  if (base.startsWith('claude')) return 'claude_sonnet'
+  if (base.startsWith('gemini')) return 'gemini'
+  return base
 }
+
+function isQuarantinedModel(family, model, now = Date.now()) {
+  const key = `${family}::${model}`
+  const expiresAt = quarantinedModels.get(key) || 0
+  if (expiresAt && expiresAt <= now) quarantinedModels.delete(key)
+  return expiresAt > now
+}
+
+function quarantineModel(providerId, model, error) {
+  if (!isModelUnavailableError(error) || !model) return false
+  const family = modelFamily(providerId)
+  if (isQuarantinedModel(family, model)) return true
+  quarantinedModels.set(`${family}::${model}`, Date.now() + MODEL_QUARANTINE_MS)
+  // A key can access other active models. Re-discover in the background rather
+  // than benching every sibling because one model was retired or unavailable.
+  const known = discoveredModels.get(family)
+  known?.delete(model)
+  nextModelDiscoveryAt = 0
+  providerDiagnostic('model_quarantined', { provider: family, model, reason: 'model_unavailable' }, 'warn')
+  return true
+}
+
+function selectActiveModel(alias) {
+  const catalog = CATALOG[alias]
+  if (!catalog || !process.env[catalog.envKey]) return null
+  const family = modelFamily(alias)
+  const known = discoveredModels.get(family)
+  const suggested = [
+    catalog.model(),
+    ...Object.entries(CATALOG)
+      .filter(([other]) => modelFamily(other) === family && other !== alias)
+      .map(([, p]) => p.model()),
+    ...(known ? [...known].sort().reverse() : []),
+  ]
+  return suggested.find(model =>
+    isCurrentChatModel(family, model)
+    && !isQuarantinedModel(family, model)
+    && (!known || known.has(model))
+  ) || null
+}
+
+// Refresh opportunistically in the background, never blocking an interview
+// on a slow or unavailable provider's /models endpoint. A failed discovery
+// preserves the last successfully confirmed models; it does not mark them retired.
+function scheduleModelDiscovery() {
+  if (process.env.NODE_ENV === 'test') return
+  const now = Date.now()
+  if (now < nextModelDiscoveryAt) return
+  nextModelDiscoveryAt = now + MODEL_REFRESH_INTERVAL_MS
+  void listModels().catch(() => {})
+}
+
 function newestDiscovered(provider, orderedIds) {
   const known = discoveredModels.get(provider)
-  const found = orderedIds.find(id => known?.has(id))
+  const found = orderedIds.find(id => known?.has(id) && !isQuarantinedModel(provider, id))
   return found ? `${provider}::${found}` : null
 }
 
@@ -130,7 +191,7 @@ export function searchConfigured() {
 // Which providers are actually configured (have a key) — used for default selection + fallback.
 export function availableProviders() {
   const list = Object.entries(CATALOG)
-    .filter(([, p]) => process.env[p.envKey])
+    .filter(([id, p]) => process.env[p.envKey] && selectActiveModel(id))
     .map(([id, p]) => ({ id, label: p.label }))
   if (process.env.LLM_API_KEY) list.push({ id: 'custom', label: process.env.LLM_MODEL || 'Custom model' })
   return list
@@ -146,22 +207,32 @@ export async function testProviderConnection(providerId) {
     throw error
   }
 
-  const provider = resolveProvider(id)
-  const llm = clientFor(provider)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 8_000)
   try {
-    const response = await llm.chat.completions.create({
-      model: provider.model,
-      ...completionBudget(provider, 64),
-      messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
-    }, { signal: controller.signal })
-    if (!response.choices?.[0]?.message) {
-      const error = new Error('The provider returned no answer. Check the key and model access.')
-      error.status = 502
-      throw error
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const provider = resolveProvider(id)
+      const llm = clientFor(provider)
+      try {
+        const response = await llm.chat.completions.create({
+          model: provider.model,
+          ...completionBudget(provider, 64),
+          messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
+        }, { signal: controller.signal })
+        if (!response.choices?.[0]?.message) {
+          const error = new Error('The provider returned no answer. Check the key and model access.')
+          error.status = 502
+          throw error
+        }
+        return { ok: true, provider: id, model: provider.model }
+      } catch (error) {
+        // A retired default should not force a user to search for model names.
+        // Try a different active model once; never retry auth or rate-limit errors.
+        if (!quarantineModel(id, provider.model, error) || attempt) throw error
+        if (!selectActiveModel(id)) throw error
+      }
     }
-    return { ok: true, provider: id, model: provider.model }
+    throw aiError('no_provider', 502)
   } finally {
     clearTimeout(timer)
   }
@@ -232,8 +303,9 @@ export function allProviders() {
 export async function listModels() {
   const out = []
   const staged = new Map()
+  const successful = new Set()
   const push = (provider, model, label) => {
-    if (!isCurrentChatModel(provider, model)) return
+    if (!isCurrentChatModel(provider, model) || isQuarantinedModel(provider, model)) return
     if (!staged.has(provider)) staged.set(provider, new Set())
     staged.get(provider).add(model)
     out.push({ id: `${provider}::${model}`, provider, model, label })
@@ -243,6 +315,7 @@ export async function listModels() {
   const settle = async (provider, fn) => {
     try {
       await fn()
+      successful.add(provider)
       discoveredModels.set(provider, new Set(staged.get(provider) || []))
     } catch {}
   }
@@ -252,7 +325,7 @@ export async function listModels() {
     process.env.OPENAI_API_KEY && settle('openai', async () => {
       const r = await fetchWithTimeout('https://api.openai.com/v1/models', { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } })
       if (!r.ok) throw new Error('Model discovery unavailable')
-      ;((await r.json())?.data || []).map(m => m.id)
+      ;((await r.json())?.data || []).filter(isActiveModelRecord).map(m => m.id)
         .filter(id => /^(gpt-|o[0-9]|chatgpt)/i.test(id) && !/audio|realtime|transcrib|tts|image|embedding|moderation|search|dall|whisper/i.test(id))
         .sort().reverse()
         .forEach(id => push('openai', id, `OpenAI · ${id}`))
@@ -261,36 +334,43 @@ export async function listModels() {
     process.env.ANTHROPIC_API_KEY && settle('claude_sonnet', async () => {
       const r = await fetchWithTimeout('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' } })
       if (!r.ok) throw new Error('Model discovery unavailable')
-      ;((await r.json())?.data || []).forEach(m => push('claude_sonnet', m.id, `Claude · ${m.display_name || m.id}`))
+      ;((await r.json())?.data || []).filter(isActiveModelRecord).forEach(m => push('claude_sonnet', m.id, `Claude · ${m.display_name || m.id}`))
     }),
     // Google Gemini — models that support generateContent.
     process.env.GEMINI_API_KEY && settle('gemini', async () => {
       const r = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}&pageSize=100`)
       if (!r.ok) throw new Error('Model discovery unavailable')
       ;((await r.json())?.models || [])
-        .filter(m => (m.supportedGenerationMethods || []).includes('generateContent') && /gemini/i.test(m.name || ''))
+        .filter(m => isActiveModelRecord(m) && (m.supportedGenerationMethods || []).includes('generateContent') && /gemini/i.test(m.name || ''))
         .forEach(m => { const id = (m.name || '').replace(/^models\//, ''); push('gemini', id, `Gemini · ${m.displayName || id}`) })
     }),
     // Groq (OpenAI-compatible).
     process.env.GROQ_API_KEY && settle('groq', async () => {
       const r = await fetchWithTimeout('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` } })
       if (!r.ok) throw new Error('Model discovery unavailable')
-      ;((await r.json())?.data || []).map(m => m.id).filter(id => !/whisper|tts|guard/i.test(id))
+      ;((await r.json())?.data || []).filter(isActiveModelRecord).map(m => m.id).filter(id => !/whisper|tts|guard/i.test(id))
         .forEach(id => push('groq', id, `Groq · ${id}`))
     }),
     // Cerebras (OpenAI-compatible).
     process.env.CEREBRAS_API_KEY && settle('cerebras', async () => {
       const r = await fetchWithTimeout('https://api.cerebras.ai/v1/models', { headers: { Authorization: `Bearer ${process.env.CEREBRAS_API_KEY}` } })
       if (!r.ok) throw new Error('Model discovery unavailable')
-      ;((await r.json())?.data || []).map(m => m.id).filter(Boolean)
+      ;((await r.json())?.data || []).filter(isActiveModelRecord).map(m => m.id).filter(Boolean)
         .forEach(id => push('cerebras', id, `Cerebras · ${id}`))
     }),
   ].filter(Boolean))
+  lastSuccessfulDiscoveries = successful
   providerDiagnostic('model_discovery_completed', {
     modelCount: out.length,
     providerCount: new Set(out.map(m => m.provider)).size,
   })
   return out
+}
+
+// Metadata lets the UI distinguish a successfully checked provider with no
+// active models from an offline endpoint; no API key or credential is exposed.
+export function getModelDiscoveryStatus() {
+  return { discoveredProviders: [...lastSuccessfulDiscoveries] }
 }
 
 // A provider id may be a plain CATALOG key ('openai') OR an encoded dynamic-model pick
@@ -304,14 +384,25 @@ function resolveProvider(id) {
   if (id && id.includes('::')) {
     const base = id.slice(0, id.indexOf('::')), model = id.slice(id.indexOf('::') + 2)
     const cc = CATALOG[base]
-    if (cc && process.env[cc.envKey] && isCurrentChatModel(base, model)) return { key: process.env[cc.envKey], baseURL: cc.baseURL, model }
+    const family = modelFamily(base)
+    const known = discoveredModels.get(family)
+    if (cc && process.env[cc.envKey] && isCurrentChatModel(family, model)
+      && !isQuarantinedModel(family, model) && (!known || known.has(model))) {
+      return { key: process.env[cc.envKey], baseURL: cc.baseURL, model }
+    }
     id = base   // base unusable → fall through to normal resolution
   }
   const c = CATALOG[id]
-  if (c && process.env[c.envKey]) return { key: process.env[c.envKey], baseURL: c.baseURL, model: c.model() }
+  if (c && process.env[c.envKey]) {
+    const model = selectActiveModel(id)
+    if (model) return { key: process.env[c.envKey], baseURL: c.baseURL, model }
+  }
   if (process.env.LLM_API_KEY) return { key: process.env.LLM_API_KEY, baseURL: process.env.LLM_BASE_URL, model: process.env.LLM_MODEL || 'gpt-6-luna' }
   const first = availableProviders()[0]
-  if (first && CATALOG[first.id]) { const p = CATALOG[first.id]; return { key: process.env[p.envKey], baseURL: p.baseURL, model: p.model() } }
+  if (first && CATALOG[first.id]) {
+    const p = CATALOG[first.id], model = selectActiveModel(first.id)
+    if (model) return { key: process.env[p.envKey], baseURL: p.baseURL, model }
+  }
   throw aiError('no_provider', 402)
 }
 
@@ -407,7 +498,8 @@ function banTextProvider(provId, ms = RATE_LIMIT_BAN_MS, reason = 'rate_limit') 
   textBannedReason[base] = reason
 }
 
-function noteTextProviderFailure(provId, e) {
+function noteTextProviderFailure(provId, e, model = null) {
+  if (quarantineModel(provId, model, e)) return
   const retryAfterMs = getRetryAfterMs(e)
   if (isQuotaExhausted(e)) banTextProvider(provId, Math.max(QUOTA_BAN_MS, retryAfterMs), 'quota')
   else if (isProviderHardFail(e)) banTextProvider(provId, HARD_FAILURE_BAN_MS, 'hard_failure')
@@ -453,6 +545,9 @@ export function _resetProviderHealthForTests() {
   lastWorkingTextProvider = null
   lastWorkingVisionProvider = null
   discoveredModels.clear()
+  lastSuccessfulDiscoveries = new Set()
+  quarantinedModels.clear()
+  nextModelDiscoveryAt = 0
   for (const k of Object.keys(textBannedUntil)) delete textBannedUntil[k]
   for (const k of Object.keys(textBannedReason)) delete textBannedReason[k]
 }
@@ -463,6 +558,7 @@ export function _getProviderHealthForTests() {
     lastWorkingVisionProvider,
     textBannedUntil: { ...textBannedUntil },
     textBannedReason: { ...textBannedReason },
+    quarantinedModels: Object.fromEntries(quarantinedModels),
   }
 }
 
@@ -553,6 +649,7 @@ export function assertProviderConfigured() {
 }
 
 export function getFallbackProviders(requestedId) {
+  scheduleModelDiscovery()
   // Preferred try-order (fast/cheap first), then EVERY other configured provider appended —
   // so ANY second key you add (Anthropic/Claude, Groq, Gemini, a custom endpoint, …) is part
   // of the failover, not just this hardcoded subset. That's what makes auto-switch actually work.
@@ -564,7 +661,12 @@ export function getFallbackProviders(requestedId) {
   const order = ['gemini_flash_lite', 'openai_mini', 'groq', 'cerebras', 'claude_haiku', 'custom']
   const configured = availableProviders().map(p => p.id)
   const now = Date.now()
-  const safeRequestedId = isCurrentProviderChoice(requestedId) ? requestedId : ''
+  const candidateChoice = isCurrentProviderChoice(requestedId) ? requestedId : ''
+  const requestedFamily = modelFamily(candidateChoice)
+  const requestedModel = String(candidateChoice).includes('::') ? String(candidateChoice).split('::').slice(1).join('::') : null
+  const safeRequestedId = requestedModel && (isQuarantinedModel(requestedFamily, requestedModel)
+    || (discoveredModels.has(requestedFamily) && !discoveredModels.get(requestedFamily).has(requestedModel)))
+    ? '' : candidateChoice
   const reqBase = baseOf(safeRequestedId)
   const encoded = !!safeRequestedId && safeRequestedId !== reqBase   // 'provider::model' dynamic pick
   // Filter out recently banned text providers (bans are keyed by the base provider id).
@@ -635,13 +737,29 @@ function userFacingPartialStreamError(error) {
   return visibleError
 }
 
+// One same-key recovery when a model has definitively disappeared. Do not
+// retry every sibling or restart a stream once the user saw any tokens.
+function enqueueActiveModelRecovery(queue, currentIndex, provId, previousModel, error, recoveredFamilies) {
+  if (!isModelUnavailableError(error)) return
+  const alias = baseOf(provId)
+  const family = modelFamily(alias)
+  if (recoveredFamilies.has(family)) return
+  const nextModel = selectActiveModel(alias)
+  if (!nextModel || nextModel === previousModel) return
+  recoveredFamilies.add(family)
+  queue.splice(currentIndex + 1, 0, alias)
+  providerDiagnostic('model_replacement_selected', { provider: family, previousModel, replacementModel: nextModel })
+}
+
 export async function completeJSON({ messages, maxTokens = 1600, provider }) {
   assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
   if (!providerQueue.length) throw textProviderCoolingError()
   let lastError, sawQuota = false, sawRate = false, sawTransient = false, retryAfterMs = 0
 
-  for (const provId of providerQueue) {
+  const recoveredFamilies = new Set()
+  for (let queueIndex = 0; queueIndex < providerQueue.length; queueIndex++) {
+    const provId = providerQueue[queueIndex]
     let prov
     try { prov = resolveProvider(provId) } catch { continue }
     const llm = clientFor(prov), model = prov.model
@@ -706,21 +824,24 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
       return parsed
     } catch (e) {
       lastError = e
+      if (quarantineModel(provId, model, e)) {
+        enqueueActiveModelRecovery(providerQueue, queueIndex, provId, model, e, recoveredFamilies)
+      }
       providerDiagnostic('attempt_failed', { attemptId, operation: 'json', provider: provId, model, status: e?.status || 0, durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
       // Check quota BEFORE rate-limit: "insufficient_quota" also matches the rate-limit regex,
       // but out-of-credits is a different, more actionable problem.
-      if (isQuotaExhausted(e)) { sawQuota = true; noteTextProviderFailure(provId, e); console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
+      if (isQuotaExhausted(e)) { sawQuota = true; noteTextProviderFailure(provId, e, model); console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
       if (isRateLimit(e)) {
         sawRate = true
         const providerWaitMs = Math.max(RATE_LIMIT_BAN_MS, getRetryAfterMs(e))
         retryAfterMs = retryAfterMs > 0 ? Math.min(retryAfterMs, providerWaitMs) : providerWaitMs
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, model)
         console.warn(`[MockMate] ${provId} rate-limited → trying next provider`)
         continue
       }
       if (isTransient(e)) {
         sawTransient = true
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, model)
         console.warn(`[MockMate] ${provId} transient error (${e?.status || ''}) → trying next provider`)
         continue
       }
@@ -728,7 +849,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
       // next configured provider. A 400/401/403/404 won't self-heal this session, so BENCH the
       // provider briefly — otherwise a permanently-broken key (e.g. a Gemini model your key can't
       // use) gets retried on every single request, spamming logs and adding latency to each turn.
-      if (isProviderHardFail(e)) noteTextProviderFailure(provId, e)
+      if (isProviderHardFail(e)) noteTextProviderFailure(provId, e, model)
       console.error(`[llm] ${provId} (${model}) failed (${e?.status || ''}): ${e?.message || e} → trying next provider`)
       continue
     }
@@ -749,19 +870,17 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
 // Prefer current Gemini Flash-Lite / GPT-6 Luna before heavier models; skip cooling slots.
 export function listVisionProviders() {
   const list = []
-  if (process.env.GEMINI_API_KEY) {
-    list.push({ id: 'gemini_flash_lite', key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini_flash_lite.baseURL, model: CATALOG.gemini_flash_lite.model() })
-    list.push({ id: 'gemini', key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: CATALOG.gemini.model() })
-    list.push({ id: 'gemini_3_flash', key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini_3_flash.baseURL, model: CATALOG.gemini_3_flash.model() })
+  // Apply the same active/discovered/retired-model policy used by text.
+  // Vision and text still maintain independent rate-limit health/cooldowns.
+  for (const id of ['gemini_flash_lite', 'gemini', 'gemini_3_flash', 'openai_mini', 'openai']) {
+    const c = CATALOG[id]
+    const model = selectActiveModel(id)
+    if (model) list.push({ id, key: process.env[c.envKey], baseURL: c.baseURL, model })
   }
-  if (process.env.OPENAI_API_KEY) {
-    list.push({ id: 'openai_mini', key: process.env.OPENAI_API_KEY, baseURL: CATALOG.openai_mini.baseURL, model: CATALOG.openai_mini.model() })
-    list.push({ id: 'openai', key: process.env.OPENAI_API_KEY, baseURL: CATALOG.openai.baseURL, model: CATALOG.openai.model() })
-  }
-  // Groq and custom OpenAI-compatible gateways can expose vision models, but their
-  // default text models are not vision-capable. Opt in with an explicit model so a
-  // normal GROQ_API_KEY never produces a misleading 400 on image input.
-  if (process.env.GROQ_API_KEY && process.env.GROQ_VISION_MODEL) {
+  // Custom vision ids are not in the curated text catalog. These are explicit
+  // user overrides and remain permitted unless the provider rejects that exact model.
+  if (process.env.GROQ_API_KEY && process.env.GROQ_VISION_MODEL
+    && !isQuarantinedModel('groq_vision', process.env.GROQ_VISION_MODEL)) {
     list.push({
       id: 'groq_vision',
       key: process.env.GROQ_API_KEY,
@@ -769,7 +888,8 @@ export function listVisionProviders() {
       model: process.env.GROQ_VISION_MODEL,
     })
   }
-  if (process.env.VISION_API_KEY && process.env.VISION_MODEL && process.env.VISION_BASE_URL) {
+  if (process.env.VISION_API_KEY && process.env.VISION_MODEL && process.env.VISION_BASE_URL
+    && !isQuarantinedModel('custom_vision', process.env.VISION_MODEL)) {
     list.push({
       id: 'custom_vision',
       key: process.env.VISION_API_KEY,
@@ -892,6 +1012,7 @@ async function visionCompleteOnce({
         return raw
       } catch (e) {
         lastError = e
+        quarantineModel(prov.id, prov.model, e)
         const kind = classifyVisionError(e)
         if (debug) {
           console.info('[vision]', visionTelemetry({
@@ -965,21 +1086,21 @@ export async function completeTextQuick({ prompt, maxTokens = 1200, signal, requ
       const kind = classifyVisionError(e)
       if (kind === 'cancelled') throw e
       if (kind === 'rate') {
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, prov.model)
         // Same API key is rate-limited — cool vision siblings for this repair path only.
         markVision429Family(baseOf(provId))
         continue
       }
       if (kind === 'quota') {
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, prov.model)
         continue
       }
       if (kind === 'auth' || kind === 'bad_request') {
-        if (isProviderHardFail(e)) noteTextProviderFailure(provId, e)
+        if (isProviderHardFail(e)) noteTextProviderFailure(provId, e, prov.model)
         continue
       }
       if (isTransient(e)) {
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, prov.model)
         continue
       }
       if (!isRateLimit(e)) throw e
@@ -1017,6 +1138,7 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
   const providerQueue = getFallbackProviders(provider)
   if (!providerQueue.length) throw textProviderCoolingError()
   let lastError, emitted = false, sawQuota = false, sawRate = false, sawTransient = false, retryAfterMs = 0
+  const recoveredFamilies = new Set()
   for (let attemptIndex = 0; attemptIndex < providerQueue.length; attemptIndex++) {
     const provId = providerQueue[attemptIndex]
     let prov
@@ -1062,6 +1184,9 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
         throw e
       }
       lastError = e
+      if (quarantineModel(provId, model, e) && !emitted) {
+        enqueueActiveModelRecovery(providerQueue, attemptIndex, provId, model, e, recoveredFamilies)
+      }
       const timedOut = deadline.timedOut() || /timed? ?out|ETIMEDOUT/i.test(e?.message || '')
       if (timedOut && !e?.status) e.status = 504
       providerDiagnostic(timedOut ? 'attempt_timed_out' : 'attempt_failed', { attemptId, operation: 'stream', provider: provId, model, status: e?.status || 0, emitted, durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
@@ -1069,27 +1194,27 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       if (emitted) {
         // Keep the partial answer visible and never restart this paid generation. Cool the
         // failed provider for a later question and send a classified, actionable error to UI.
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, model)
         throw userFacingPartialStreamError(e)
       }
       // Before any token: same failover classes as completeJSON (rate / transient / hard fail / quota).
       if (!shouldFailoverTextError(e, { emitted: false })) throw e
-      if (isQuotaExhausted(e)) { sawQuota = true; noteTextProviderFailure(provId, e); console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
+      if (isQuotaExhausted(e)) { sawQuota = true; noteTextProviderFailure(provId, e, model); console.warn(`[MockMate] ${provId} out of quota → trying next provider`); continue }
       if (isRateLimit(e)) {
         sawRate = true
         const providerWaitMs = Math.max(RATE_LIMIT_BAN_MS, getRetryAfterMs(e))
         retryAfterMs = retryAfterMs > 0 ? Math.min(retryAfterMs, providerWaitMs) : providerWaitMs
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, model)
         console.warn(`[MockMate] ${provId} rate-limited → trying next provider`)
         continue
       }
       if (isTransient(e)) {
         sawTransient = true
-        noteTextProviderFailure(provId, e)
+        noteTextProviderFailure(provId, e, model)
         console.warn(`[MockMate] ${provId} transient error (${e?.status || ''}) → trying next provider`)
         continue
       }
-      if (isProviderHardFail(e)) noteTextProviderFailure(provId, e)
+      if (isProviderHardFail(e)) noteTextProviderFailure(provId, e, model)
       console.error(`[llm] ${provId} (${model}) stream failed (${e?.status || ''}): ${e?.message || e} → trying next provider`)
     } finally {
       deadline.cleanup()

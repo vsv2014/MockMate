@@ -33,3 +33,30 @@ export function isCurrentProviderChoice(value) {
   const model = value.slice(separator + 2)
   return isCurrentChatModel(provider, model)
 }
+
+
+// Treat provider-published lifecycle metadata as authoritative. A deprecated
+// model might still answer requests, but we intentionally stop offering it for
+// new sessions; retired models must never be routed. Missing metadata does NOT
+// imply deprecation (several providers return only { id }).
+export function isActiveModelRecord(record) {
+  if (!record || typeof record !== 'object') return false
+  const lifecycle = String(record.lifecycle || record.status || '').toLowerCase()
+  if (['deprecated', 'retired', 'sunset', 'sunsetted', 'disabled', 'inactive'].includes(lifecycle)) return false
+  if (record.deprecated === true || record.is_deprecated === true || record.retired === true || record.is_retired === true) return false
+  if (record.deprecated_at && lifecycle !== 'active') return false
+  return true
+}
+
+// Classify model-specific retirement/unavailability without mistaking a generic
+// 400, bad key, provider outage or missing *endpoint* for model deprecation.
+export function isModelUnavailableError(error) {
+  const status = Number(error?.status ?? error?.statusCode)
+  if (![400, 404, 410].includes(status)) return false
+  const payload = error?.error || {}
+  const code = String(error?.code || payload.code || payload.type || '').toLowerCase()
+  if (/^(?:model[_-])?(?:model_not_found|model_not_available|model_unavailable|model_deprecated|model_retired|model_disabled|deployment_not_found)$/.test(code)) return true
+  const message = String(error?.message || payload.message || '').toLowerCase()
+  return /\b(model|deployment)\b/.test(message)
+    && /\b(deprecated|retired|not found|not available|unavailable|does not exist|no longer available|sunset)\b/.test(message)
+}

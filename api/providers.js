@@ -1,4 +1,4 @@
-import { availableProviders, allProviders, deepgramConfigured, searchConfigured, listModels } from './_lib/core.js'
+import { availableProviders, allProviders, deepgramConfigured, searchConfigured, listModels, getModelDiscoveryStatus } from './_lib/core.js'
 
 function publicProxyDisabled(res) {
   if (process.env.VERCEL && process.env.MOCKMATE_ALLOW_PUBLIC_API !== '1') {
@@ -14,8 +14,8 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' })
   if (publicProxyDisabled(res)) return
   if (req.query?.only === 'models') {
-    try { return res.status(200).json({ models: await listModels() }) }
-    catch { return res.status(200).json({ models: [] }) }
+    try { const models = await listModels(); return res.status(200).json({ models, ...getModelDiscoveryStatus() }) }
+    catch { return res.status(200).json({ models: [], discoveredProviders: [] }) }
   }
   res.status(200).json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured() })
 }

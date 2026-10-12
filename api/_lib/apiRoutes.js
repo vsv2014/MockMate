@@ -2,7 +2,7 @@
 // Deployments:
 //   - Local BYOK (server.js): no auth, loopback-only.
 //   - Managed backend (backend/server.js): auth + metering/model policy.
-import { makeReport, availableProviders, allProviders, listModels, testProviderConnection, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed, isLoopbackAddress } from './core.js'
+import { makeReport, availableProviders, allProviders, listModels, getModelDiscoveryStatus, testProviderConnection, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed, isLoopbackAddress } from './core.js'
 import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen, streamHint } from './interview.js'
 import { findJobs } from './jobs.js'
 import { atsScore, tailorResume, referralMessage, resumeLatex } from './career.js'
@@ -110,8 +110,8 @@ export function registerApiRoutes(app, opts = {}) {
     })
   }
   app.get('/api/models', ...guardLight, async (req, res) => {
-    try { res.json({ models: await listModels() }) }
-    catch (e) { console.error('[api] GET /api/models:', e.message); res.json({ models: [] }) }
+    try { const models = await listModels(); res.json({ models, ...getModelDiscoveryStatus() }) }
+    catch (e) { console.error('[api] GET /api/models:', e.message); res.json({ models: [], discoveredProviders: [] }) }
   })
   app.get('/api/arch', ...guardLight, (req, res) => {
     try {

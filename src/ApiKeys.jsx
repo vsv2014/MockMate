@@ -19,11 +19,11 @@ const inp = {
 // Provider ids map to stable credential families returned by /api/providers; display labels
 // and model names may change independently, so they are not used to infer which key is saved.
 const PROVIDERS = [
-  { k: 'GROQ_API_KEY', name: 'Groq', hint: 'free · fastest — best to start', free: true, providerIds: ['groq'], testId: 'groq',
+  { k: 'GROQ_API_KEY', name: 'Groq', hint: 'Free tier available · useful backup', free: true, providerIds: ['groq'], testId: 'groq',
     note: 'No credit card. Create a free key at', link: { href: 'https://console.groq.com/keys', label: 'console.groq.com/keys' } },
-  { k: 'GEMINI_API_KEY', name: 'Google Gemini', hint: 'free tier', free: true, providerIds: ['gemini', 'gemini_flash_lite', 'gemini_3_flash'], testId: 'gemini',
+  { k: 'GEMINI_API_KEY', name: 'Google Gemini', hint: 'Free tier available', free: true, providerIds: ['gemini', 'gemini_flash_lite', 'gemini_3_flash'], testId: 'gemini',
     note: 'Free with a Google account at', link: { href: 'https://aistudio.google.com/apikey', label: 'aistudio.google.com/apikey' } },
-  { k: 'OPENAI_API_KEY', name: 'OpenAI', hint: 'GPT-6.1 Sol · Luna · Astra — paid API', providerIds: ['openai', 'openai_mini', 'gpt_6_astra'], testId: 'openai_mini',
+  { k: 'OPENAI_API_KEY', name: 'OpenAI', hint: 'Paid API · automatically chooses the available model', providerIds: ['openai', 'openai_mini', 'gpt_6_astra'], testId: 'openai_mini',
     note: 'Needs billing credit (not ChatGPT Plus) at', link: { href: 'https://platform.openai.com/api-keys', label: 'platform.openai.com' } },
   { k: 'ANTHROPIC_API_KEY', name: 'Anthropic', hint: 'Claude — paid API', providerIds: ['claude_fable', 'claude_opus', 'claude_sonnet', 'claude_haiku'], testId: 'claude_haiku',
     note: 'Needs billing credit at', link: { href: 'https://console.anthropic.com/settings/keys', label: 'console.anthropic.com' } },
@@ -154,7 +154,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok || !data.ok) throw new Error(data.error || `Provider test returned HTTP ${response.status}`)
-      setTestResults(results => ({ ...results, [provider.k]: { status: 'ok', message: `Connection verified · ${data.model || provider.name}` } }))
+      setTestResults(results => ({ ...results, [provider.k]: { status: 'ok', message: `Connection verified · MockMate will choose the AI model automatically` } }))
     } catch (error) {
       setTestResults(results => ({ ...results, [provider.k]: { status: 'error', message: error?.message || 'Connection test failed.' } }))
     }
@@ -231,7 +231,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       </div>
 
       {/* ── AI provider — two-card chooser ── */}
-      <div style={sectionLabel}>AI · how MockMate gets models</div>
+      <div style={sectionLabel}>AI access</div>
       <div role="radiogroup" aria-label="AI mode" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
         <ProviderCard value="managed" selected={mode === 'managed'} onSelect={() => setMode('managed')}
           icon="✨" accent={T.accentFrom} title="Managed AI" subtitle="Hosted proxy (when configured)"
@@ -244,7 +244,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
           icon="🔑" accent="#8b5cf6" title="Bring your own API key" subtitle={byokRecommended ? 'Best choice until Managed is hosted' : 'Use your own provider keys'}
           recommended={!MANAGED_AVAILABLE}
           desc="Use your OpenAI, Anthropic, Gemini, Groq, or Cerebras keys. Keys stay in local app storage; interview content still goes to those providers."
-          checks={['Pick your own models', 'Use your existing credits', 'Keys encrypted at rest on this device', 'Test keys before a real interview']}
+          checks={['Automatic AI selection from your keys', 'Use your existing credits', 'Keys encrypted at rest on this device', 'Test connection before an interview']}
           cta="Use my own API key" />
       </div>
 
@@ -269,7 +269,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
 
       {mode === 'byok' && (<>
       {/* ── AI model ── */}
-      <div style={sectionLabel}>AI model · add at least one</div>
+      <div style={sectionLabel}>AI providers · connect at least one</div>
       <div style={card}>
         {PROVIDERS.map(p => (
           <KeyField key={p.k} name={p.name} hint={p.hint} free={p.free} added={isAdded(p)}
@@ -279,7 +279,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
             value={keyVals[p.k]} onChange={set(p.k)} />
         ))}
         <div style={{ fontSize: 10.5, color: '#86efac', lineHeight: 1.45, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: T.rCtrl, padding: '8px 10px' }}>
-          Start free with <strong>Groq</strong> or <strong>Gemini</strong> — no card needed. Add a second key for failover if one is rate-limited. (ChatGPT Plus is <strong>not</strong> an API key.)
+          Add an AI provider key, save it, then use <strong>Test connection</strong>. MockMate discovers compatible models, chooses the route for each question, and automatically tries another available provider when needed. A second provider key improves resilience. (ChatGPT Plus does <strong>not</strong> provide API credits.)
         </div>
       </div>
       </>)}
@@ -288,13 +288,13 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       {/* ── Advanced (collapsed) ── */}
       <button onClick={() => setShowAdv(a => !a)}
         style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: T.text2, fontSize: 11, fontWeight: 500, cursor: 'pointer', padding: 0, fontFamily: T.font }}>
-        {showAdv ? '▾ Hide advanced' : '▸ Advanced — custom model & job search'}
+        {showAdv ? '▾ Hide advanced' : '▸ Advanced · optional integrations'}
       </button>
       {showAdv && (
         <div style={card}>
           <KeyField name="Custom OpenAI model id" hint="optional" secret={false}
             value={keyVals.OPENAI_MODEL} onChange={set('OPENAI_MODEL')}
-            note="Blank = GPT-6.1 Sol. Only enter an alternate OpenAI model ID if your API key supports it; for other providers, select models from the in-app picker." />
+            note="Optional expert override. Leave blank for automatic model discovery and routing. If an override stops working, MockMate attempts another compatible model." />
           <button type="button" onClick={() => removeProvider('openai_model', 'OpenAI model overrides')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: 10.5, cursor: 'pointer' }}>Clear OpenAI model overrides</button>
           <KeyField name="Groq vision model id" hint="optional · screenshots" secret={false}
             value={keyVals.GROQ_VISION_MODEL} onChange={set('GROQ_VISION_MODEL')}
