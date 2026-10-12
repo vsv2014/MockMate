@@ -1,6 +1,6 @@
 # MockMate release checklist
 
-**Current target: v1.6.2, signed public Windows release.** Missing signing credentials stop release; no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
+**Current source version: 1.6.3, published as an unsigned personal preview.** The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
 
 **Rule: do not describe any build as physically certified until every applicable box below is checked on a REAL packaged build.** The separate explicit manual unsigned-preview path may publish only as an isolated, manual-update pre-release after automated CI; it is not a substitute for these physical checks.
 Every 1.4.2 defect (CSP broke Solo+Live, STT coupled to the LLM cap, dangling `mintToken` import,
@@ -55,6 +55,24 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] On a test kill/relaunch, recent Live question/hint notes are readable via explicit recovery, without auto-resuming mic, STT, generation or billing
 - [ ] Physically exercise sleep/wake and audio-track `ended` without `devicechange`, and verify capture reacquisition never resurrects after Stop
 
+## 4b. Live answers, key setup, product insights and Windows overlay (v1.6.3: #93, #94)
+- [ ] On the packaged build, replay fragmented definitions, topic changes, duplicate STT finals, coding corrections and short follow-ups ("draw it", "show me the code", "explain the architecture", "give me an example") through capture and generation. Follow-ups resolve against the previous question and AI suggestion, and a question longer than 800 characters is answered in full
+- [ ] Benchmark the same recorded input and context, with the same provider and model, against a **named baseline release**: the one the regression report compared against or, if none was recorded, the latest stable public Windows release (v1.5.3). Record the selected model, TTFT, completion/truncation status, capture-to-answer latency and token usage/cost from diagnostics (never transcript content), with the baseline tag, in `docs/evidence/VALIDATION_STATUS.md`
+- [ ] Concise style: coding/design answers still contain complete code or architecture within 1,800 tokens, and simple answers on the blocking `/api/hint` path (Live JSON compatibility fallback, Duo or mobile) finish within **380 tokens** with no truncation and no JSON-repair request (`request_usage` `requestIndex` stays 0)
+- [ ] Windows transparent overlay: collapse to the badge, drag, expand and resize with the custom edge handles at 100% and one non-default page zoom. Transparency survives every step. Repeat with microphone and system-playback sources
+- [ ] **Long answers finish:** with a real provider, a coding or system-design answer that streams for more than 11 seconds completes without an "outage" error. Diagnostics show no `attempt_timed_out`, or only `timeoutKind: first_token` before failover
+- [ ] **Early answer start:** with system audio in BYOK mode, a clear question's answer starts sooner than with `localStorage['mm-live-early-answer'] = '0'`, and diagnostics show `speculative_hint` `claimed`. When the interviewer pauses and then adds to the question, no answer to the shorter question is shown, the answer covers the full question, and diagnostics show `cancelled` with `speech_continued`
+- [ ] **Claude:** with only an Anthropic key, quick answers use Claude Haiku 5.5 and coding/design answers use Claude Sonnet 5.5. First words arrive without a long silent pause, and there is no `thinking_setting_rejected`
+- [ ] **Product insights privacy:**
+  - Rapid-click a document's Remove button, a History session's buttons and (in icon-sidebar mode) the account button.
+  - The panel shows only fixed identifiers (for example `document_remove`, `nav_account`), never names or text.
+  - With **Include usage breadcrumbs in diagnostic logs** off, an exported log bundle contains no `product_intel` rows; with it on, it does.
+- [ ] **Settings key setup:**
+  - Paste an Anthropic, Gemini, Groq, OpenAI, Cerebras and Deepgram key: each is suggested correctly.
+  - An unknown format requires choosing the provider; a mismatched choice asks for confirmation; OpenRouter and admin keys are refused.
+  - Keys saved by the previous release still appear and work after upgrading; Test, Replace and Remove work.
+  - "Which model answers" matches the models seen in diagnostics.
+
 ## 5. Screenshot solve
 - [ ] Ctrl+Shift+U / F7 on a coding problem **from Live** → answer-first solution, no refusal
 - [ ] Home does **not** show a screen-analysis panel / “Screenshot + solve” CTA
@@ -70,7 +88,7 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] `LIVEKIT_*` unset → Duo shows a clean "not configured" state, **does not crash the app**
 
 ## 7. Regression sweep
-- [ ] Home → Interview Kits → Ready Room → Live works in the packaged v1.6.2 candidate; active Kit selection, create/edit/delete, and no-Kit fallback states behave correctly.
+- [ ] Home → Interview Kits → Ready Room → Live works in the packaged release candidate; active Kit selection, create/edit/delete, and no-Kit fallback states behave correctly.
 - [ ] Kit Solo and Live sessions retain the correct role/JD/preferences and selected Kit-document IDs in their session snapshot, keep drafts per Kit, exclude the shared document library, and do not overwrite the shared profile.
 - [ ] Upload/select PDF, TXT, and Markdown supporting materials in a Kit; verify they remain account-local and visible only to that Kit, selected files alone ground its Solo/Live retrieval, removal clears the cached index, and deleting the Kit leaves shared documents unchanged.
 - [ ] Ready Room distinguishes local service availability, configured providers, successful AI/voice tests, and OS/share-preview checks; provider-test usage is disclosed before any potentially billable call.
@@ -95,7 +113,7 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 
 ## 9. Ship
 - [ ] `package.json` version matches a **new** release tag and CHANGELOG/release notes match the final implementation
-- [ ] Run the signed-only release workflow from reviewed main with new v1.6.2 tag only after signing, automated and device acceptance checks.
+- [ ] Run the signed-only release workflow from reviewed main with a new vX.Y.Z tag only after signing, automated and device acceptance checks.
 - [ ] Post-publish: download the published Windows installer on a clean machine and repeat §1–§4
 - [ ] Keep the last published Windows version **v1.5.3** installed → Check for updates → Downloading → Ready → Restart & install; **do not uninstall** during this test. For unsigned-to-signed migration, verify the safe manual signed-installer path if the legacy updater cannot verify provenance.
 - [ ] Settings → Diagnostics → Export logs; verify updater/provider/STT/session events exist and no key/token/transcript/prompt/screenshot content appears

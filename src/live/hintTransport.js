@@ -58,10 +58,14 @@ export function formatLiveError(error) {
 
 const STREAM_UNAVAILABLE = new Set([404, 405, 501])
 
-export async function streamLiveHint({ body, signal, isCurrent = () => true, onEvent, onFallback }) {
-  const res = await apiFetch('/api/hint-stream', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify(body),
-  })
+// `response` is an optional already-started /api/hint-stream request for this exact
+// body (see speculativeHint.js). It is consumed exactly like a fresh request.
+export async function streamLiveHint({ body, signal, isCurrent = () => true, onEvent, onFallback, response = null }) {
+  const res = response
+    ? await response
+    : await apiFetch('/api/hint-stream', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify(body),
+    })
   if (!isCurrent() || signal?.aborted) return { mode: 'aborted' }
 
   // Only fall back when the streaming transport genuinely is unavailable. Auth,

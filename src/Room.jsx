@@ -308,7 +308,7 @@ function RoomInner({ session, onEnd }) {
         <h2 style={{ margin: 0, fontSize: 17, fontWeight: 650, color: T.text1 }}>Room {session.room}</h2><span style={metaStyle}>· you are <strong style={{ color: T.text1 }}>{session.role}</strong></span><span style={{ flex: 1 }} />
         {session.role === 'candidate' && pipSupported && <button type="button" style={meetingMode ? btnPrimary : btnGhost} title="Moves AI hints to a floating window; always verify the meeting share preview" aria-pressed={meetingMode} onClick={toggleMeetingMode}>{meetingMode ? '🛡️ Meeting mode — on' : '🛡️ Meeting mode'}</button>}
         <button type="button" style={sharing ? btnPrimary : btnGhost} aria-pressed={sharing} onClick={toggleShare}>{sharing ? '🟢 Sharing — stop' : '🖥️ Share screen'}</button>
-        <button type="button" style={btnGhost} onClick={shareLink} title={`Room code ${session.room}`}>{copied ? `📋 Code: ${session.room}` : '🔗 Share room code'}</button>
+        <button type="button" style={btnGhost} onClick={shareLink} data-pi-target="room_share_code" title={`Room code ${session.room}`}>{copied ? `📋 Code: ${session.room}` : '🔗 Share room code'}</button>
         <button type="button" style={{ ...btnDanger, opacity: ending ? 0.5 : 1 }} onClick={end} disabled={ending}>{ending ? 'Scoring…' : 'End & get feedback'}</button>
       </div>
 
@@ -364,6 +364,7 @@ function RoomInner({ session, onEnd }) {
                   <button
                     key={idx}
                     type="button"
+                    data-pi-target="room_ask_question"
                     aria-label={`Ask this interview question: ${q}`}
                     onClick={() => sendInterviewerQuestion(q)}
                     style={{ ...smallGhost, textAlign: 'left', padding: '4px 8px', fontSize: 11 }}>

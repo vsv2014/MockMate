@@ -7,6 +7,8 @@ This directory is intentionally small. Prefer updating an existing canonical doc
 | Document | Purpose |
 |---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Current system architecture, runtime boundaries, ARCH, RAG, Electron, hosted API and mobile topology |
+| [`MODEL_AND_AUDIO_REVIEW.md`](MODEL_AND_AUDIO_REVIEW.md) | Current model routing, Live audio, hint context/output caps and answer timing, window UX and key setup, and the personal BYOK provider recommendation and cost estimate |
+| [`PROFESSIONAL_MODEL.md`](PROFESSIONAL_MODEL.md) | Planned ARCH professional model (Professional State Graph): definition, today's data map, Duo map, minimal schema, gates and evaluation |
 | [`ROADMAP.md`](ROADMAP.md) | Future product and engineering direction; completed implementation plans should be folded here or removed |
 | [`DEPLOY_BACKEND.md`](DEPLOY_BACKEND.md) | Hosted backend/Vercel/Mongo deployment and verification |
 | [`RELEASE.md`](RELEASE.md) | Release process and workflow behavior |
@@ -17,7 +19,7 @@ This directory is intentionally small. Prefer updating an existing canonical doc
 | [`MOBILE_BETA.md`](MOBILE_BETA.md) | Current mobile implementation/beta boundary |
 | [`MOBILE_APP_PLAN.md`](MOBILE_APP_PLAN.md) | Longer-lived mobile product/delivery direction |
 | [`DIAGNOSTICS.md`](DIAGNOSTICS.md) | Diagnostics, privacy-safe logging and support workflow |
-| [`EVALS.md`](EVALS.md) | Evaluation harness and quality checks |
+| [`EVALS.md`](EVALS.md) | Evaluation harness, quality checks and the Gate 0 Live session protocol |
 | [`INTERRUPTION_MATRIX.md`](INTERRUPTION_MATRIX.md) | Live interruption/regression scenarios |
 | [`STEALTH_BROWSER_MATRIX.md`](STEALTH_BROWSER_MATRIX.md) | Capture-protection verification matrix |
 | [`SECRET_ROTATION.md`](SECRET_ROTATION.md) | Secret rotation/security operations |

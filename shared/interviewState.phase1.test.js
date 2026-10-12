@@ -49,3 +49,27 @@ describe('previous answer context', () => {
     expect(state.getLlmHistory({ includeLastAnswer: true }).some(t => t.role === 'assistant')).toBe(false)
   })
 })
+
+describe('pending question history preview (early answer start)', () => {
+  it('matches the post-commit history exactly, including the 12-turn window shift and last suggestion', () => {
+    const state = createInterviewState()
+    for (let i = 0; i < 7; i++) {
+      const q = state.commitQuestion(`Question ${i}?`, { questionType: 'technical' })
+      state.recordCandidate(`Candidate answer ${i} with enough words`)
+      if (i === 6) state.commitAnswer({ questionId: q.id, generationId: `g${i}`, text: `Suggestion ${i}` })
+    }
+    const next = 'How would you shard the user table?'
+    const preview = state.getLlmHistory({ limit: 12, includeLastAnswer: true, pendingInterviewerText: `  ${next}  ` })
+    state.commitQuestion(next, { questionType: 'system_design' })
+    const committed = state.getLlmHistory({ limit: 12, includeLastAnswer: true })
+    expect(JSON.stringify(preview)).toBe(JSON.stringify(committed))
+    expect(committed.filter(t => t.role !== 'assistant')).toHaveLength(12)
+    expect(committed.at(-2)).toEqual({ role: 'interviewer', text: next })
+  })
+
+  it('leaves history untouched when no pending question is given', () => {
+    const state = createInterviewState()
+    state.commitQuestion('Design RAG', { questionType: 'system_design' })
+    expect(state.getLlmHistory({ pendingInterviewerText: '' })).toEqual(state.getLlmHistory())
+  })
+})

@@ -1,4 +1,4 @@
-import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget } from '../../shared/modelRegistry.js'
+import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget, claudeLowLatencyThinking, modelDisplayName } from '../../shared/modelRegistry.js'
 // Shared logic for the serverless functions (api/*.js) and the local dev server
 // (server.js). Files prefixed with _ are not treated as routes by Vercel.
 import OpenAI from 'openai'
@@ -6,7 +6,7 @@ import { isCurrentChatModel, isDiscoveredChatModel, isCurrentProviderChoice, isA
 import { analyze } from '../../shared/delivery.js'
 import { fetchWithTimeout } from './http.js'
 import { getRetryAfterMs, isRateLimit, isQuotaExhausted, isTransient } from '../../shared/llm-errors.js'
-import { LIVE_PROVIDER_ATTEMPT_TIMEOUT_MS } from '../../shared/liveTiming.js'
+import { LIVE_PROVIDER_ATTEMPT_TIMEOUT_MS, LIVE_STREAM_STALL_TIMEOUT_MS } from '../../shared/liveTiming.js'
 import {
   filterVisionProviders,
   markVision429Family,
@@ -156,11 +156,15 @@ export async function testProviderConnection(providerId) {
       const provider = resolveProvider(id)
       const llm = clientFor(provider)
       try {
-        const response = await llm.chat.completions.create({
+        const params = {
           model: provider.model,
           ...completionBudget(provider, 64),
           messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
-        }, { signal: controller.signal })
+        }
+        // Without this, Claude 5-generation thinking can consume the 64-token test budget.
+        const thinking = claudeThinkingFor(provider)
+        if (thinking) params.thinking = thinking
+        const response = await createWithThinkingFallback(llm, params, { signal: controller.signal })
         if (!response.choices?.[0]?.message) {
           const error = new Error('The provider returned no answer. Check the key and model access.')
           error.status = 502
@@ -187,8 +191,22 @@ export function pickFastProvider() {
   if (process.env.OPENAI_API_KEY) return newestDiscovered('openai', MODEL_PRIORITIES.fast.openai) || 'openai_mini'
   if (process.env.CEREBRAS_API_KEY) return 'cerebras'
   if (process.env.GROQ_API_KEY) return 'groq'
-  if (process.env.ANTHROPIC_API_KEY) return 'claude_haiku'
+  if (process.env.ANTHROPIC_API_KEY) return newestDiscovered('claude_sonnet', MODEL_PRIORITIES.fast.claude_sonnet) || 'claude_haiku'
   return null
+}
+
+// Which model automatic routing would use right now for quick answers and for
+// coding/system-design answers. Settings shows this; it never includes key material.
+export function describeAutomaticRouting() {
+  const describe = id => {
+    if (!id) return null
+    try {
+      const provider = resolveProvider(id)
+      if (!provider?.model) return null
+      return { id, model: provider.model, label: modelDisplayName(provider.model) }
+    } catch { return null }
+  }
+  return { fast: describe(pickFastProvider()), strong: describe(pickStrongProvider()) }
 }
 
 export function pickStrongProvider() {
@@ -731,14 +749,17 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
     // response_format:json_object — it just needs reasoning_effort:'none' (set below) to stop
     // its default "thinking" from eating the token budget. This matches streamText, which works.
     const jsonMode = /openai\.com|groq\.com/i.test(prov.baseURL || '')
+    // Claude 5-generation thinking is invisible here, eats max_tokens and adds latency.
+    const claudeThinking = claudeThinkingFor(prov)
     let requestCount = 0
     const ask = async msgs => {
-      let useExtras = true   // JSON-mode / reasoning params; dropped if this provider 400s on them
+      let useExtras = true   // JSON-mode / reasoning / thinking params; dropped if this provider 400s on them
       for (let attempt = 0; ; attempt++) {
         try {
           const params = { model, ...completionBudget(prov, maxTokens), messages: msgs }
           if (useExtras && isGemini) params.reasoning_effort = 'none'
           if (useExtras && jsonMode) params.response_format = { type: 'json_object' }
+          if (useExtras && claudeThinking) params.thinking = claudeThinking
           const requestIndex = requestCount++
           const requestStartedAt = Date.now()
           const r = await llm.chat.completions.create(params)
@@ -760,8 +781,9 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
           // A 400 while sending the optional JSON-mode/reasoning params usually means THIS
           // provider/model rejects one of them (e.g. some Gemini models 400 on reasoning_effort).
           // Drop the extras and retry once before treating it as a real failure.
-          if (e?.status === 400 && useExtras && (jsonMode || isGemini)) {
-            console.warn(`[llm] ${provId} rejected JSON-mode params (400) → retrying without them`)
+          if (e?.status === 400 && useExtras && (jsonMode || isGemini || claudeThinking)) {
+            console.warn(`[llm] ${provId} rejected optional JSON-mode/reasoning/thinking params (400) → retrying without them`)
+            if (claudeThinking) providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'json', provider: provId, model }, 'warn')
             useExtras = false
             attempt--   // param-probe shouldn't consume a real transient/rate retry
             continue
@@ -1081,21 +1103,57 @@ export async function completeTextQuick({ prompt, maxTokens = 1200, signal, requ
 // Streaming text completion — emits tokens via onToken as they arrive (true SSE).
 // Provider fallback only kicks in BEFORE the first token; once streaming has begun
 // we don't restart on another provider (that would duplicate output).
-function withDeadline(upstreamSignal, ms) {
+// Two-phase stream deadline. Until the first answer token arrives, `firstTokenMs`
+// bounds the wait so failover can still run. Each progress() call after that
+// re-arms a shorter inactivity timer instead: the stream is ended only when it
+// stalls, never because a healthy answer is long.
+function withStreamDeadline(upstreamSignal, { firstTokenMs, stallMs }) {
   const controller = new AbortController()
-  let timedOut = false
+  let timedOutKind = null   // null | 'first_token' | 'stall'
+  let timer = null
   const abortFromUpstream = () => controller.abort(upstreamSignal?.reason)
   if (upstreamSignal?.aborted) abortFromUpstream()
   else upstreamSignal?.addEventListener?.('abort', abortFromUpstream, { once: true })
-  const timer = setTimeout(() => { timedOut = true; controller.abort(new Error('LLM stream timed out')) }, ms)
-  timer.unref?.()
+  const arm = (kind, ms) => {
+    clearTimeout(timer)
+    timer = setTimeout(() => {
+      timedOutKind = kind
+      controller.abort(new Error(kind === 'stall' ? 'LLM stream stalled' : 'LLM stream timed out'))
+    }, ms)
+    timer.unref?.()
+  }
+  arm('first_token', firstTokenMs)
   return {
     signal: controller.signal,
-    timedOut: () => timedOut,
+    timedOut: () => timedOutKind !== null,
+    timeoutKind: () => timedOutKind,
+    progress: () => { if (!controller.signal.aborted) arm('stall', stallMs) },
     cleanup: () => {
       clearTimeout(timer)
       upstreamSignal?.removeEventListener?.('abort', abortFromUpstream)
     },
+  }
+}
+
+// Low-latency thinking setting for Claude models served by Anthropic directly.
+// Other gateways may not accept the field, so it is only sent to api.anthropic.com.
+function claudeThinkingFor(prov) {
+  return /^https:\/\/api\.anthropic\.com\//i.test(String(prov?.baseURL || ''))
+    ? claudeLowLatencyThinking(prov?.model)
+    : null
+}
+
+// If Anthropic rejects the thinking setting for a model (for example because a
+// future effort default no longer allows it), retry once without the field rather
+// than failing the answer. Only a 400 before any output triggers the retry.
+async function createWithThinkingFallback(llm, params, requestOpts, onRejected) {
+  try {
+    return await llm.chat.completions.create(params, requestOpts)
+  } catch (e) {
+    if (!params.thinking || Number(e?.status) !== 400 || requestOpts?.signal?.aborted) throw e
+    const { thinking: _rejected, ...withoutThinking } = params
+    try { onRejected?.(e) } catch {}
+    return await llm.chat.completions.create(withoutThinking, requestOpts)
   }
 }
 
@@ -1113,7 +1171,10 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
     const providerStartedAt = Date.now()
     let firstTokenAt = null
     const attemptId = newProviderAttemptId()
-    const deadline = withDeadline(signal, Number(process.env.LLM_STREAM_TIMEOUT_MS) || LIVE_PROVIDER_ATTEMPT_TIMEOUT_MS)
+    const deadline = withStreamDeadline(signal, {
+      firstTokenMs: Number(process.env.LLM_STREAM_TIMEOUT_MS) || LIVE_PROVIDER_ATTEMPT_TIMEOUT_MS,
+      stallMs: Number(process.env.LLM_STREAM_STALL_TIMEOUT_MS) || LIVE_STREAM_STALL_TIMEOUT_MS,
+    })
     providerDiagnostic('attempt_started', {
       attemptId, operation: 'stream', provider: provId, model, maxTokens, attemptIndex, contextChars: JSON.stringify(messages).length,
       requestedProvider: provider || 'auto', selectionReason: attemptIndex > 0 ? 'fallback' : (provider && provider !== 'auto' ? 'requested' : 'automatic'),
@@ -1122,19 +1183,26 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
     try {
       const params = { model, ...completionBudget(prov, maxTokens), messages, stream: true }
       if (/gemini/i.test(model)) params.reasoning_effort = 'none'
+      const claudeThinking = claudeThinkingFor(prov)
+      if (claudeThinking) params.thinking = claudeThinking
       // Only OpenAI/Groq reliably support stream usage; gate it so others don't 400.
       const supportsUsage = /openai\.com|groq\.com/.test(prov.baseURL || '')
       if (supportsUsage) params.stream_options = { include_usage: true }
       let usage = null
-      // A live interview cannot wait indefinitely for first byte. The SDK timeout
-      // covers connection + time-to-first-token; transient timeout then enters the
-      // existing provider failover path before any token has been shown.
+      // A live interview cannot wait indefinitely for the first answer text. The SDK
+      // timeout only covers connecting (it clears once response headers arrive); the
+      // first-token deadline below then lets failover run before anything is shown.
+      // After the first token only a stall ends the stream (no new text for
+      // LIVE_STREAM_STALL_TIMEOUT_MS), so a long, healthy answer is never cut off.
       const requestOpts = { timeout: 9000, signal: deadline.signal }
-      const stream = await llm.chat.completions.create(params, requestOpts)
+      const stream = await createWithThinkingFallback(llm, params, requestOpts, () => {
+        providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'stream', provider: provId, model }, 'warn')
+      })
       for await (const chunk of stream) {
         if (chunk?.usage) usage = chunk.usage
         const tok = chunk?.choices?.[0]?.delta?.content || ''
         if (tok) { if (!firstTokenAt) firstTokenAt = Date.now(); emitted = true; onToken?.(tok) }
+        if (firstTokenAt) deadline.progress()
       }
       lastWorkingTextProvider = baseOf(provId)
       if (usage && onUsage) onUsage({ model, input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0 })
@@ -1155,7 +1223,7 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       }
       const timedOut = deadline.timedOut() || /timed? ?out|ETIMEDOUT/i.test(e?.message || '')
       if (timedOut && !e?.status) e.status = 504
-      providerDiagnostic(timedOut ? 'attempt_timed_out' : 'attempt_failed', { attemptId, operation: 'stream', provider: provId, model, status: e?.status || 0, emitted, durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
+      providerDiagnostic(timedOut ? 'attempt_timed_out' : 'attempt_failed', { attemptId, operation: 'stream', provider: provId, model, status: e?.status || 0, emitted, timeoutKind: deadline.timeoutKind(), durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
       try { onProviderEvent?.({ type: timedOut ? 'timed_out' : 'failed', attemptId, attemptIndex, provider: provId, status: e?.status || 0, emitted }) } catch {}
       if (emitted) {
         // Keep the partial answer visible and never restart this paid generation. Cool the

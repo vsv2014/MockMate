@@ -185,7 +185,7 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
               })}
             </div>
             <div style={{ marginTop: 'auto' }}>
-              <button type="button" onClick={() => onNav('account')}
+              <button type="button" onClick={() => onNav('account')} data-pi-target="nav_account"
                 title={sidebarIcons ? (auth?.user?.name || auth?.user?.email || 'Account') : undefined}
                 style={{
                   display: 'flex', alignItems: 'center', gap: sidebarIcons ? 0 : 10,
@@ -535,7 +535,7 @@ export function SessionsTable({ sessions = [], onOpen, onDelete }) {
             onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
             <div role="cell" style={{ ...cell, padding: 0 }}>
-              <button type="button" onClick={() => onOpen?.(s)} aria-label={`Open session ${label}`}
+              <button type="button" onClick={() => onOpen?.(s)} data-pi-target="history_session_open" aria-label={`Open session ${label}`}
                 style={{ ...cell, width: '100%', height: '100%', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 2, background: 'transparent', border: 0, textAlign: 'left', cursor: 'pointer', font: 'inherit' }}>
                 <span style={{ color: T.text1, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{label}</span>
                 {s.verdict && <span style={{ fontSize: 11, color: T.text3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{s.verdict}</span>}
@@ -545,8 +545,8 @@ export function SessionsTable({ sessions = [], onOpen, onDelete }) {
             <div role="cell" style={cell}>{typeof s.score === 'number' ? <span style={{ color: scoreColor(s.score), fontWeight: 600 }}>{(s.score / 10).toFixed(1)}</span> : <span style={{ color: s.report?.error || s.note === 'evaluate_error' ? '#fca5a5' : T.text3 }}>{s.report?.error || s.note === 'evaluate_error' ? 'Err' : '—'}</span>}</div>
             <div role="cell" style={cell}>{s.transcript?.length || 0}</div>
             <div role="cell" style={{ ...cell, gap: 4 }}>
-              <button type="button" onClick={() => onOpen?.(s)} title="View" aria-label={`View session ${label}`} style={iconBtn}>👁</button>
-              <button type="button" onClick={() => onDelete?.(s.id)} title="Delete" aria-label={`Delete session ${label}`} style={iconBtn}>🗑</button>
+              <button type="button" onClick={() => onOpen?.(s)} data-pi-target="history_session_view" title="View" aria-label={`View session ${label}`} style={iconBtn}>👁</button>
+              <button type="button" onClick={() => onDelete?.(s.id)} data-pi-target="history_session_delete" title="Delete" aria-label={`Delete session ${label}`} style={iconBtn}>🗑</button>
             </div>
           </div>
         )

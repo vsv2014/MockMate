@@ -13,6 +13,8 @@ import { streamLiveHint, fetchLiveHintFallback } from './hintTransport.js'
  * @param {(hint: object) => void} deps.onFallbackHint
  * @param {() => void} [deps.onMarkFallback]
  * @param {() => void} [deps.onSkip]
+ * @param {() => (Promise<Response>|null)} [deps.getPrefetchedResponse] already-started
+ *   stream request for this exact body (early answer start); used once, never for fallback
  */
 export function createLiveSessionController(deps) {
   const {
@@ -23,6 +25,7 @@ export function createLiveSessionController(deps) {
     onFallbackHint,
     onMarkFallback,
     onSkip,
+    getPrefetchedResponse,
   } = deps
 
   async function runFallback() {
@@ -43,6 +46,7 @@ export function createLiveSessionController(deps) {
       body: getHintBody(),
       signal: getSignal?.(),
       isCurrent,
+      response: getPrefetchedResponse?.() || null,
       onEvent: onStreamEvent,
       onFallback: async () => {
         onMarkFallback?.()

@@ -362,9 +362,16 @@ export function createInterviewState(opts = {}) {
     }
   }
 
-  /** History for LLM: only speech that actually occurred. AI suggestions are not candidate speech. */
-  function getLlmHistory({ limit = 12, includeLastAnswer = false } = {}) {
-    const history = speechTurns.slice(-limit).map(t => ({ role: t.role, text: t.text }))
+  /**
+   * History for LLM: only speech that actually occurred. AI suggestions are not candidate speech.
+   * `pendingInterviewerText` previews the history as it will be once that question commits
+   * (commitQuestion appends it as an interviewer turn), so a request prepared during
+   * question stabilization is identical to the one sent after commit.
+   */
+  function getLlmHistory({ limit = 12, includeLastAnswer = false, pendingInterviewerText = null } = {}) {
+    const pending = String(pendingInterviewerText || '').trim()
+    const turns = pending ? [...speechTurns, { role: 'interviewer', text: pending }] : speechTurns
+    const history = turns.slice(-limit).map(t => ({ role: t.role, text: t.text }))
     // Suggestions are useful referents, but are never facts about candidate speech.
     if (includeLastAnswer && lastAnswer?.text && !lastAnswer.incomplete) {
       const question = getQuestion(lastAnswer.questionId)

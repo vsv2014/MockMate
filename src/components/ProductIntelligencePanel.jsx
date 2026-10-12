@@ -65,7 +65,7 @@ export default function ProductIntelligencePanel() {
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: T.text1 }}>
-              ARCH · Product Intelligence
+              Product insights
             </span>
             <span style={{
               fontSize: 9.5,
@@ -78,11 +78,14 @@ export default function ProductIntelligencePanel() {
               color: '#5eead4',
               letterSpacing: '0.04em',
             }}>
-              ZERO-PII · LOCAL
+              ON THIS DEVICE · METADATA ONLY
             </span>
           </div>
           <div style={{ fontSize: 11.5, color: T.text2, marginTop: 2, lineHeight: 1.45 }}>
-            Answers where flows stall, which features get used, and where repeated clicks/retries occur — <strong>never</strong> capturing resumes, interview transcripts, prompts, API keys, screenshots, or audio.
+            Shows where flows stall, which features get used and where repeated clicks happen. Stored only on this device as event names, counts, timings and fixed control identifiers — <strong>never</strong> résumé or document text, interview questions, transcripts, answers, prompts, API keys, screenshots, audio, or text shown on buttons.
+          </div>
+          <div style={{ fontSize: 10.5, color: T.text3, marginTop: 3, lineHeight: 1.45 }}>
+            This covers usage insights only. Your résumé, documents, saved jobs and interview history are kept by those features on this device, and the parts a feature needs are sent to the AI and transcription providers you configure when you use it.
           </div>
         </div>
         <button
@@ -304,10 +307,10 @@ export default function ProductIntelligencePanel() {
           }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11.5, fontWeight: 600, color: T.text1 }}>
-                Opt-in interaction breadcrumb replay (default OFF)
+                Include usage breadcrumbs in diagnostic logs (default OFF)
               </div>
               <div style={{ fontSize: 10.5, color: T.text3, marginTop: 1 }}>
-                When enabled, includes redacted UI step timestamps in exported diagnostic bundles. Never captures screen video, audio, resumes, or transcripts.
+                When on, the same metadata-only events are also written to the local diagnostics log, so an exported log bundle includes them. When off, they stay only in this panel. Nothing is uploaded; you decide whether to share an exported bundle.
               </div>
             </div>
             <button

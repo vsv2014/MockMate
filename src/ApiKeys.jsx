@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { T } from './auth/tokens'
 import { getAiMode, setAiMode, MANAGED_AVAILABLE } from './lib/aiMode'
 import { keyFieldStatus, configuredKeyRows } from './lib/keyStatus.js'
+import { KEY_PROVIDERS, detectKeyProvider, describeDetection } from './lib/keyDetect.js'
 import { PROVIDER_KEY_LINKS } from '../shared/modelRegistry.js'
+
+const GEMINI_PRIVACY_NOTE = 'Privacy: on Gemini’s free tier, Google may use your prompts — including résumé and interview text — to improve its products. Use a billing-enabled (paid) project for interviews. Paid-tier prompts are not used for training, but Google keeps them for a limited time for abuse monitoring.'
 
 // Reusable API-key entry. Used BOTH at the global level (Home → Settings) and inside
 // Live Companion, so keys can be configured once without entering any specific mode.
@@ -116,6 +119,14 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   const [providerStatusError, setProviderStatusError] = useState('')
   const [testResults, setTestResults] = useState({})
   const [showAdv, setShowAdv] = useState(false)
+  const [routing, setRouting] = useState(null)
+  // Single "Add API key" box: detection is a local suggestion the user confirms.
+  const [addKey, setAddKey] = useState('')
+  const [addChoice, setAddChoice] = useState('')     // provider env key chosen by hand ('' = follow detection)
+  const [replacing, setReplacing] = useState(null)   // env key of the saved provider being replaced
+  const [addSaving, setAddSaving] = useState(false)
+  const [addMsg, setAddMsg] = useState('')
+  const addInputRef = useRef(null)
   const [mode, setModeState] = useState(getAiMode())
   const setMode = m => { setAiMode(m); setModeState(m); onModeChange?.(m) }
 
@@ -128,6 +139,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       if (!response.ok) throw new Error(`Provider status returned HTTP ${response.status}`)
       const data = await response.json()
       setConfigured(configuredKeyRows(data))
+      setRouting(data.routing || null)
       setDg(!!data.deepgram)
       setProviderStatusError('')
       return data
@@ -183,16 +195,61 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
     }
   }
 
+  // Keys are merged into the encrypted local store, then the local service reloads.
+  async function persistKeyLines(lines) {
+    const written = await window.electronAPI?.writeEnv?.(lines)
+    if (!written?.ok) throw new Error(written?.error || 'Could not save keys')
+    const applied = await window.electronAPI?.applyKeys?.()
+    if (!applied?.ok) throw new Error(`Keys were saved, but the local service could not reload: ${applied?.error || 'restart request failed'}`)
+    await new Promise(resolve => setTimeout(resolve, 1200))
+  }
+
+  const detection = detectKeyProvider(addKey)
+  const addTarget = replacing || addChoice || detection.provider?.envKey || ''
+  const targetProvider = KEY_PROVIDERS.find(p => p.envKey === addTarget) || null
+  const detectionMismatch = !!(detection.provider && targetProvider && detection.confidence === 'high'
+    && detection.provider.envKey !== targetProvider.envKey)
+  const providerHelp = targetProvider
+    ? (PROVIDERS.find(p => p.k === targetProvider.envKey)
+      || (targetProvider.envKey === 'DEEPGRAM_API_KEY'
+        ? { note: 'Deepgram is required for Live and Solo voice. Create a project key with speech transcription access; usage consumes project credits. Open', link: PROVIDER_KEY_LINKS.deepgram }
+        : null))
+    : null
+
+  function startReplace(provider) {
+    setReplacing(provider.k); setAddChoice(''); setAddKey(''); setAddMsg('')
+    setTimeout(() => addInputRef.current?.focus(), 0)
+  }
+  function cancelReplace() { setReplacing(null); setAddKey(''); setAddMsg('') }
+
+  async function saveAddedKey() {
+    if (!targetProvider || !detection.value || detection.problem) return
+    setAddSaving(true); setAddMsg(''); setMsg('')
+    try {
+      await persistKeyLines(`${targetProvider.envKey}=${detection.value}\n`)
+      setTestResults(results => ({ ...results, [targetProvider.envKey]: undefined }))
+      setAddKey(''); setAddChoice(''); setReplacing(null)
+      try {
+        await refresh()
+        setAddMsg(`✓ ${targetProvider.name} key saved on this device. Test the connection before an interview.`)
+      } catch (error) {
+        setProviderStatusError(error?.message || 'Could not refresh provider status.')
+        setAddMsg('⚠ The key was saved, but provider status could not be refreshed. Retry the status check before relying on it.')
+      }
+      onSaved?.()
+    } catch (error) {
+      setAddMsg(`⚠ ${error?.message || 'Key save or service reload failed.'}`)
+    } finally {
+      setAddSaving(false)
+    }
+  }
+
   async function save() {
     const lines = Object.entries(keyVals).filter(([, value]) => value.trim()).map(([key, value]) => `${key}=${value.trim()}`).join('\n')
     if (!lines) { setMsg('Enter at least one key'); return }
     setSaving(true); setMsg('')
     try {
-      const written = await window.electronAPI?.writeEnv?.(lines + '\n')
-      if (!written?.ok) throw new Error(written?.error || 'Could not save keys')
-      const applied = await window.electronAPI?.applyKeys?.()
-      if (!applied?.ok) throw new Error(`Keys were saved, but the local service could not reload: ${applied?.error || 'restart request failed'}`)
-      await new Promise(resolve => setTimeout(resolve, 1200))
+      await persistKeyLines(lines + '\n')
       try {
         await refresh()
         setMsg('✓ Keys saved; updated provider configuration loaded. Connection has not been tested.')
@@ -218,6 +275,16 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   const keyStatus = statusLoading ? 'loading' : providerStatusError ? 'error' : 'ready'
   const hasEdits = Object.values(keyVals).some(value => value.trim())
   const canTestProviders = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
+  const savedProviders = PROVIDERS.filter(isAdded)
+  const routeBase = id => String(id || '').split('::')[0]
+  const rolesFor = p => [
+    routing?.fast && p.providerIds.includes(routeBase(routing.fast.id)) ? 'Quick answers' : null,
+    routing?.strong && p.providerIds.includes(routeBase(routing.strong.id)) ? 'Coding & design' : null,
+  ].filter(Boolean)
+  const muted = { fontSize: 10.5, color: T.text3, lineHeight: 1.45 }
+  const smallBtn = (color, border) => ({ background: 'none', border: `1px solid ${border}`, color, fontSize: 10.5, cursor: 'pointer', padding: '3px 8px', borderRadius: 6, fontFamily: T.font })
+  const replacingProvider = replacing ? PROVIDERS.find(p => p.k === replacing) : null
+  const canSaveAdded = !!detection.value && !!targetProvider && !detection.problem && !addSaving && keyStatus !== 'loading'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontFamily: T.font }}>
@@ -257,7 +324,8 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
         <span aria-hidden="true">ⓘ</span><span>You can switch anytime. BYOK keys stay local; audio/resume/screenshots still go to the providers you call — not “never leave the device.”</span>
       </div>
 
-      {(showStatus || mode === 'byok') && (
+      {/* BYOK shows saved keys and routing in its own section below. */}
+      {showStatus && mode !== 'byok' && (
         <div role="status" style={{ ...card, fontSize: 12, color: T.text2 }}>
           <div style={{ fontWeight: 600, color: T.text1, marginBottom: 4 }}>Keys detected on this device</div>
           <div>AI: {keyStatus !== 'ready' ? (statusLoading ? 'Checking…' : 'Status unavailable — retry below') : configuredNames.length ? configuredNames.join(', ') : (mode === 'managed' ? 'No hosted provider reported' : 'None yet')}</div>
@@ -274,18 +342,106 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       )}
 
       {mode === 'byok' && (<>
-      {/* ── AI model ── */}
-      <div style={sectionLabel}>AI providers · connect at least one</div>
+      {/* ── AI providers: routing summary, saved keys, one add box ── */}
+      <div style={sectionLabel}>AI providers · one key is enough</div>
       <div style={card}>
-        {PROVIDERS.map(p => (
-          <KeyField key={p.k} name={p.name} hint={p.hint} added={isAdded(p)} status={keyStatus}
-            onRemove={() => removeProvider(p.k.replace('_API_KEY', '').toLowerCase(), p.name)}
-            onTest={canTestProviders ? () => testProvider(p) : undefined} testState={testResults[p.k]}
-            note={p.note} link={p.link}
-            value={keyVals[p.k]} onChange={set(p.k)} />
-        ))}
-        <div style={{ fontSize: 10.5, color: '#86efac', lineHeight: 1.45, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: T.rCtrl, padding: '8px 10px' }}>
-          <strong>Only one AI provider is required.</strong> Keep a working provider you already use, or start with Gemini. The other providers are optional alternatives or backups. Deepgram is separate and handles voice transcription. Creating a key does not guarantee free usage. Save changes, then test the connection. Leave existing key fields blank to keep them. Model selection is automatic; you do not need a key for each model.
+        <div role="status" aria-live="polite" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: T.text1 }}>Which model answers</div>
+          {keyStatus !== 'ready'
+            ? <div style={muted}>{statusLoading ? 'Checking saved keys…' : 'Status unavailable — retry above.'}</div>
+            : routing?.fast || routing?.strong ? (<>
+              <div style={{ fontSize: 12, color: T.text2 }}>Quick answers: <strong style={{ color: T.text1 }}>{routing.fast?.label || routing.strong?.label}</strong></div>
+              <div style={{ fontSize: 12, color: T.text2 }}>Coding &amp; system design: <strong style={{ color: T.text1 }}>{routing.strong?.label || routing.fast?.label}</strong></div>
+              <div style={muted}>Chosen automatically from the keys saved on this device.</div>
+            </>)
+              : <div style={muted}>Add an AI key below to see which model will answer.</div>}
+        </div>
+
+        <div style={{ height: 1, background: T.border }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: T.text1 }}>Saved AI keys</div>
+          {keyStatus === 'ready' && savedProviders.length === 0 && <div style={muted}>No AI key saved on this device yet.</div>}
+          {savedProviders.map(p => {
+            const test = testResults[p.k]
+            const testing = test?.status === 'testing'
+            const badge = keyFieldStatus({ added: true, edited: false, status: keyStatus, testStatus: test?.status })
+            const ok = keyStatus === 'ready' && test?.status === 'ok'
+            const roles = rolesFor(p)
+            return (
+              <div key={p.k} role="group" aria-label={`${p.name} saved key`}
+                style={{ display: 'flex', flexDirection: 'column', gap: 6, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, padding: '9px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 500, color: T.text1 }}>{p.name}</span>
+                  {roles.length > 0 && <span style={{ fontSize: 10.5, color: T.text3 }}>{roles.join(' · ')}</span>}
+                  <span style={{ marginLeft: 'auto' }}>
+                    <Pill color={ok ? T.success : '#fbbf24'} bg={ok ? 'rgba(34,197,94,0.14)' : 'rgba(251,191,36,0.12)'}>{badge}</Pill>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {canTestProviders && (
+                    <button type="button" onClick={() => testProvider(p)} disabled={testing || keyStatus !== 'ready'}
+                      title="Sends one short text request; the provider may charge a small amount."
+                      aria-label={`Test ${p.name} connection`}
+                      style={{ ...smallBtn('#5eead4', 'rgba(94,234,212,0.3)'), opacity: testing ? 0.55 : 1, cursor: testing ? 'not-allowed' : 'pointer' }}>
+                      {testing ? 'Testing…' : test?.status ? 'Test again' : 'Test'}
+                    </button>
+                  )}
+                  <button type="button" onClick={() => startReplace(p)} aria-label={`Replace saved ${p.name} key`}
+                    style={smallBtn(T.text1, T.borderStrong)}>Replace</button>
+                  <button type="button" onClick={() => removeProvider(p.k.replace('_API_KEY', '').toLowerCase(), p.name)}
+                    aria-label={`Remove saved ${p.name} key`} style={smallBtn('#fca5a5', 'rgba(252,165,165,0.35)')}>Remove</button>
+                </div>
+                {test?.message && keyStatus === 'ready' && (
+                  <div role={test.status === 'error' ? 'alert' : 'status'} style={{ fontSize: 10.5, color: test.status === 'error' ? T.danger : T.success }}>{test.message}</div>
+                )}
+                {p.k === 'GEMINI_API_KEY' && <div style={muted}>{GEMINI_PRIVACY_NOTE}</div>}
+              </div>
+            )
+          })}
+          {canTestProviders && savedProviders.length > 0 && <div style={muted}>Testing sends one short request and may incur a small usage charge. A detected key is not proof that it works.</div>}
+        </div>
+
+        <div style={{ height: 1, background: T.border }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label htmlFor="mm-add-api-key" style={{ fontSize: 12.5, fontWeight: 600, color: T.text1 }}>
+            {replacingProvider ? `Replace the ${replacingProvider.name} key` : 'Add API key'}
+          </label>
+          <input id="mm-add-api-key" ref={addInputRef} type="password" value={addKey} autoComplete="off" spellCheck={false}
+            placeholder={replacingProvider ? `Paste the new ${replacingProvider.name} key` : 'Paste a key — its format is checked on this computer'}
+            aria-describedby="mm-add-api-key-detect"
+            onChange={e => { setAddKey(e.target.value); setAddMsg('') }}
+            style={inp}
+            onFocus={e => e.target.style.borderColor = T.accentFrom}
+            onBlur={e => e.target.style.borderColor = T.border} />
+          <div id="mm-add-api-key-detect" role="status" aria-live="polite"
+            style={{ fontSize: 11, lineHeight: 1.4, color: detection.problem ? T.danger : T.text2 }}>
+            {addKey ? describeDetection(detection) : 'MockMate suggests the provider from the key format. The key is not sent anywhere to identify it.'}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label htmlFor="mm-add-api-key-provider" style={{ fontSize: 11.5, color: T.text2 }}>Provider</label>
+            <select id="mm-add-api-key-provider" value={addTarget} disabled={!!replacing}
+              onChange={e => setAddChoice(e.target.value)}
+              style={{ ...inp, width: 'auto', minWidth: 200, flex: '1 1 200px' }}>
+              <option value="">Choose the provider…</option>
+              {KEY_PROVIDERS.map(p => <option key={p.envKey} value={p.envKey}>{p.name}</option>)}
+            </select>
+            <button type="button" onClick={saveAddedKey} disabled={!canSaveAdded}
+              style={{ height: 36, padding: '0 14px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12, fontWeight: 600, fontFamily: T.font, cursor: canSaveAdded ? 'pointer' : 'not-allowed', opacity: canSaveAdded ? 1 : 0.5 }}>
+              {addSaving ? 'Saving…' : detectionMismatch ? `Save as ${targetProvider.name} anyway` : 'Save key'}
+            </button>
+            {replacing && <button type="button" onClick={cancelReplace} style={smallBtn(T.text2, T.border)}>Cancel</button>}
+          </div>
+          {detectionMismatch && (
+            <div role="alert" style={{ fontSize: 11, color: '#fbbf24', lineHeight: 1.4 }}>
+              This key looks like {detection.provider.name}, not {targetProvider.name}. A key only works with the provider that issued it.
+            </div>
+          )}
+          {targetProvider?.envKey === 'GEMINI_API_KEY' && <div style={muted}>{GEMINI_PRIVACY_NOTE}</div>}
+          {providerHelp?.note && (
+            <div style={muted}>{providerHelp.note}{providerHelp.link && <> <a href={providerHelp.link.href} target="_blank" rel="noopener noreferrer" style={{ color: T.accentFrom }}>{providerHelp.link.label}</a></>}</div>
+          )}
+          {addMsg && <div role={addMsg.startsWith('⚠') ? 'alert' : 'status'} style={{ fontSize: 11, fontWeight: 500, color: addMsg.startsWith('⚠') ? T.danger : T.success }}>{addMsg}</div>}
+          <div style={muted}>One AI key is enough. A key works only with the provider that issued it — a Claude key does not unlock Gemini — so add a second provider only if you want a backup. Deepgram (above) handles voice separately. Model choice is automatic; you do not need a key for each model.</div>
         </div>
       </div>
       </>)}

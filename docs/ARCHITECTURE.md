@@ -1,6 +1,6 @@
-# v1.6.2 release update
+# v1.6.3 release update
 
-Current desktop manifests target 1.6.2 with signed-only public release gating. Model/audio and window UX changes are documented in [MODEL_AND_AUDIO_REVIEW.md](MODEL_AND_AUDIO_REVIEW.md). Historical notes below do not establish v1.6.2 publication or device validation.
+Current desktop manifests target 1.6.3. v1.6.3 is published as an unsigned personal preview (GitHub pre-release) from `main` through `unsigned-public.yml`; the signed stable route (`release.yml`) still requires signing settings and has not produced a build since v1.5.3. Model/audio, Live hint context, output caps and answer timing, window UX and key-setup changes, and the personal BYOK provider recommendation are documented in [MODEL_AND_AUDIO_REVIEW.md](MODEL_AND_AUDIO_REVIEW.md). The planned ARCH professional model, today's data map and its gates are in [PROFESSIONAL_MODEL.md](PROFESSIONAL_MODEL.md). Historical notes below do not establish publication or device validation.
 
 # MockMate — Architecture
 
@@ -24,7 +24,7 @@ Window modes include dashboard/app, overlay, camera-anchored teleprompter and pi
 
 Windows/macOS use Electron content protection where supported. This is a partial protection mechanism, not a universal invisibility guarantee; meeting-app share preview must still be verified. Linux does not provide the same protected-overlay guarantee.
 
-Latest usable signed Windows installer: **v1.5.3**. Source/manifests target **v1.6.2**; the `v1.6.0` release has no installer assets. The automated workflow emits Windows x64 NSIS only: trusted signed stable artifacts only; missing signing settings block publication. Explicit manual previews remain a separate track. macOS/Linux source and packaging code are not claimed as current public DMG/AppImage artifacts.
+Latest usable signed Windows installer: **v1.5.3**. Source/manifests target **v1.6.3**, published only as an unsigned personal preview; the `v1.6.0` release has no installer assets. The automated workflow emits Windows x64 NSIS only: trusted signed stable artifacts only; missing signing settings block publication. Explicit manual previews remain a separate track. macOS/Linux source and packaging code are not claimed as current public DMG/AppImage artifacts.
 
 ### Interview preparation screens and Kit context
 
@@ -92,7 +92,7 @@ Mongo and file stores both clamp usage releases at zero. Stripe checkout/webhook
 
 ## 8. ARCH runtime intelligence
 
-ARCH is a declarative policy/runtime layer built around `arch/mockmate.abl.json`.
+ARCH is a declarative policy/runtime layer built around `arch/mockmate.abl.json`. Together with Product Intelligence (§9) it is MockMate's engineering layer: metadata only and separate from the planned ARCH professional model, which will hold the user's professional evidence ([PROFESSIONAL_MODEL.md](PROFESSIONAL_MODEL.md)).
 
 Implemented today:
 
@@ -108,7 +108,10 @@ Not all LLM/vision/embedding execution goes through the same ARCH fallback execu
 
 Product Intelligence is **local/runtime adaptive telemetry**, not hosted closed-loop analytics.
 
-Renderer interactions are reduced to structural, redacted events in an account-scoped bounded local store. Resumes, transcripts, prompts, answers, screenshots, audio, API keys and passwords are excluded by contract/sanitization.
+Renderer interactions are reduced to structural, redacted events in an account-scoped bounded local store (`mm-product-intel-v2`, 600 events), shown in the Settings **Product insights** panel. Resumes, transcripts, prompts, answers, screenshots, audio, API keys and passwords are excluded by contract and sanitization.
+
+- **Rage-click targets** use only `data-pi-target`, a clean `id`, or a coarse `section:role` descriptor (`data-pi-section` on the app shell). Visible text, `aria-label` and `title` are never read, because they can contain a document name, a question, a session label or the account name. The pre-1.6.3 store (`mm-product-intel-v1`), which could hold label-derived targets, is deleted on first use.
+- **Usage breadcrumbs** reach the diagnostics log, and so exported log bundles, only while the user's opt-in is on (default off). Before 1.6.3 they were always forwarded.
 
 The backend PI store is currently dormant with no production bridge. Any future hosted PI path requires an explicit opt-in/privacy design.
 

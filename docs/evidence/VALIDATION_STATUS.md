@@ -1,4 +1,28 @@
-# Validation status — v1.6.0 release candidate
+# Validation status
+
+## v1.6.3 unsigned personal preview (2026-10-13)
+
+**Evidence is version- and commit-specific. Do not infer a physical PASS from unit tests, code review or an unsigned CI installer.**
+
+- **Source:** `main` after PR #94 (#93's squash plus #94). Version `1.6.3` in `package.json` and both lockfile fields.
+- **Publication:** requested through `unsigned-public.yml` as an unsigned GitHub pre-release (Windows x64 NSIS, no updater feed). The latest signed stable Windows release remains `v1.5.3`. v1.6.2 is the prior unsigned preview and does not contain #93.
+- **Automated checks on the release head:**
+  - `npx vitest run`: **102 files / 804 tests passed**
+  - `vite build` passed and `git diff --check` is clean
+  - `scripts/doctor.mjs` stops only because the sandbox cannot download the Electron runtime
+  - PR CI (`windows-tests`, `verify-desktop`, Vercel) must pass before merge
+  - the release workflow repeats tests, the build and a packaged smoke test on Windows
+- **Not verified:**
+  - real-provider Live timing and usage
+  - the early answer start in a real meeting
+  - the Settings key flow and Product insights checks on the packaged build
+  - physical Windows collapse, drag and resize
+  - meeting share preview
+  - the Gate 0 session (`docs/EVALS.md`)
+- **Production readiness:** **NOT CERTIFIED.**
+
+## v1.6.0 release candidate (historical)
+
 
 **As of 2026-10-11. Evidence is version- and commit-specific; do not infer a physical PASS from unit tests, code review, or an unsigned CI installer.**
 

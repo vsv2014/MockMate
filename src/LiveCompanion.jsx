@@ -29,10 +29,12 @@ import { createSessionId } from './lib/sessionGen'
 import { createInterviewState } from '../shared/interviewState.js'
 import { createGenerationManager } from '../shared/generationManager.js'
 import { resolveContextSources, formatInterviewDevTrace } from '../shared/contextSelection.js'
-import { createTranscriptBuffer } from '../shared/transcriptBuffer.js'
+import { createTranscriptBuffer, normalizeCaptureText } from '../shared/transcriptBuffer.js'
 import { createQuestionCaptureController, formatCaptureDebugLine } from '../shared/questionCapture.js'
-import { LIVE_HINT_OVERALL_TIMEOUT_MS } from '../shared/liveTiming.js'
+import { LIVE_HINT_OVERALL_TIMEOUT_MS, LIVE_HINT_STALL_TIMEOUT_MS } from '../shared/liveTiming.js'
 import { createLiveSessionController } from './live/LiveSessionController.js'
+import { createSpeculativeHint } from './live/speculativeHint.js'
+import { diagnostic } from './lib/diagnostics'
 import { computeLiveCanStart, resolveAnswerNowCandidate } from './live/liveGate.js'
 import { formatLiveError } from './live/hintTransport.js'
 import { copyText } from './lib/clipboard'
@@ -654,6 +656,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const programmaticScrollTimerRef = useRef(null)
   const [showJumpLatest, setShowJumpLatest] = useState(false)
   const ragSpec = useRef({ q: '', p: null, ac: null, timer: null })
+  // Early answer start: prepares the committed request during the capture silence window.
+  const speculativeHintRef = useRef(null)
+  const startSpeculativeHintRef = useRef(null)
+  if (!speculativeHintRef.current) {
+    speculativeHintRef.current = createSpeculativeHint({
+      // Metadata only: outcome, reason and timings — never question or answer text.
+      onEvent: evt => diagnostic('live', 'speculative_hint', evt),
+    })
+  }
   const liveCaptureTextRef = useRef('')
   const manualQRef = useRef('')
   const generateHintRef = useRef(null)
@@ -749,11 +760,17 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         if (candText && candText.split(/\s+/).length >= 5) {
           startSpeculativeRag(candText, { immediate: false })
         }
+        // The interviewer kept talking: an early answer for the shorter text is stale.
+        speculativeHintRef.current?.cancelUnlessKey(normalizeCaptureText(candText), 'speech_continued')
       },
+      onStabilizing: (c) => { startSpeculativeHintRef.current?.(c) },
       onCommitted: (c) => { handleCommittedRef.current?.(c) },
-      onRevision: (evt) => { handleRevisionRef.current?.(evt) },
-      onRefinement: (evt) => { handleRefinementRef.current?.(evt) },
-      onReject: (reason) => { metricsRef.current?.markQuestionReject?.(reason) },
+      onRevision: (evt) => { speculativeHintRef.current?.cancel('revision'); handleRevisionRef.current?.(evt) },
+      onRefinement: (evt) => { speculativeHintRef.current?.cancel('refinement'); handleRefinementRef.current?.(evt) },
+      onReject: (reason) => {
+        metricsRef.current?.markQuestionReject?.(reason)
+        speculativeHintRef.current?.cancel('rejected')
+      },
       onDebug: (evt) => {
         if (typeof localStorage !== 'undefined' && localStorage.getItem('mm-debug-live') === '1') {
           // eslint-disable-next-line no-console
@@ -849,6 +866,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       }
       sessionActiveRef.current = false
       cancelSpeculativeRag()
+      speculativeHintRef.current?.cancel('unmount')
       try { genManagerRef.current?.cancelCurrent?.('unmount') } catch {}
       try { captureRef.current?.reset?.() } catch {}
       bcRef.current?.close()
@@ -951,6 +969,87 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     setTimeout(() => setCopiedKey(current => current === key ? '' : current), 1400)
   }, [])
 
+  // Pure planning shared by generateHint and the early answer start. `pending`
+  // previews the history as it will be once the question commits, so a request
+  // prepared during stabilization is byte-identical to the committed one.
+  function planHintTurn(qText, { pending = false } = {}) {
+    const history = interviewStateRef.current.getLlmHistory({
+      limit: 12, includeLastAnswer: true, ...(pending ? { pendingInterviewerText: qText } : {}),
+    })
+    const prevClassification = lastClassificationRef.current
+    const classification = classifyTurn({
+      question: qText,
+      profile: profileRef.current,
+      conversationHistory: history.filter(t => t.role === 'interviewer' || t.role === 'candidate'),
+      lastClassification: prevClassification,
+      recentScreen: recentScreenRef.current,
+    })
+    const selectedScreen = selectScreenForTurn({
+      question: qText,
+      classification,
+      recentScreen: recentScreenRef.current,
+      codingScreen: codingScreenRef.current,
+    })
+    const relevance = evaluateScreenRelevance({ question: qText, classification, screen: selectedScreen })
+    return { prevClassification, classification, selectedScreen, relevance }
+  }
+
+  function composeHintBody({ qText, history, prevClassification, classification, attachScreen, selectedScreen, ragContext }) {
+    return {
+      question: qText, profile: profileRef.current, conversationHistory: history,
+      provider: providerRef.current, language: profileRef.current?.language || 'English',
+      extraContext: [extraContextRef.current, ragContext].filter(Boolean).join('\n\n') || undefined,
+      mode: coachModeRef.current ? 'coach' : 'answer',
+      style: answerStyleRef.current, autoSkip: getAutoSkip(),
+      lastClassification: prevClassification,
+      classification, // one authority — server must not re-classify when present
+      recentScreen: attachScreen ? selectedScreen : null,
+    }
+  }
+
+  // Early answer start (system audio, BYOK only). Capture reports a complete
+  // question that is only waiting for its silence window; prepare the exact request
+  // generateHint would send and start it without showing anything. generateHint
+  // claims it on commit if nothing changed; otherwise it is aborted.
+  const earlyAnswerEnabled = () => {
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('mm-live-early-answer') === '0') return false
+    } catch {}
+    return !isManaged()   // never spend managed quota on a request that may be discarded
+  }
+  startSpeculativeHintRef.current = async (captured) => {
+    const early = speculativeHintRef.current
+    if (!early || !earlyAnswerEnabled() || !sessionActiveRef.current) return
+    if (!liveSourceIdRef.current || liveSourceIdRef.current === 'microphone') return
+    const text = String(captured?.text || '').trim()
+    const key = normalizeCaptureText(text)
+    if (!key || early.activeKey() === key) return
+    const ticket = early.prepare(key)
+    try {
+      const plan = planHintTurn(text, { pending: true })
+      let ragContext = ''
+      if (shouldRetrieveDocs(plan.classification)) {
+        // Share the retrieval generateHint will reuse so both bodies get identical context.
+        let spec = ragSpec.current
+        if (!(spec?.p && canReuseSpeculativeRag(spec.q, text))) {
+          startSpeculativeRag(text, { immediate: true })
+          spec = ragSpec.current
+        }
+        if (!(spec?.p && canReuseSpeculativeRag(spec.q, text))) { early.abandon(ticket, 'retrieval_unavailable'); return }
+        ragContext = await spec.p.catch(() => '')
+      }
+      // Re-read history after the await: an earlier answer may have completed meanwhile.
+      const history = interviewStateRef.current.getLlmHistory({ limit: 12, includeLastAnswer: true, pendingInterviewerText: text })
+      const body = composeHintBody({
+        qText: text, history, prevClassification: plan.prevClassification, classification: plan.classification,
+        attachScreen: plan.relevance.attach, selectedScreen: plan.selectedScreen, ragContext,
+      })
+      early.start(ticket, { key, bodyJson: JSON.stringify(body) })
+    } catch {
+      early.abandon(ticket, 'prepare_failed')
+    }
+  }
+
   // Hint generation — only after QUESTION_COMMITTED (or manual Answer this).
   async function generateHint(question, { force, questionId: existingQuestionId } = {}) {
     if (!question) return
@@ -992,26 +1091,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     setLiveCaptureText('')
     setCaptureStatus('committed')
 
-    const classification = classifyTurn({
-      question: qRec.text,
-      profile: profileRef.current,
-      conversationHistory: priorTurns().filter(t => t.role === 'interviewer' || t.role === 'candidate'),
-      lastClassification: prevClassification,
-      recentScreen: recentScreenRef.current,
-    })
+    // Same pure planning the early answer start uses (history already includes qRec).
+    const plan = planHintTurn(qRec.text)
+    const classification = plan.classification
     state.attachClassification(qRec.id, classification)
     lastClassificationRef.current = classification
     try { onLiveSpokenQuestion?.(qRec.text) } catch {}
 
-    const selectedScreen = selectScreenForTurn({
-      question: qRec.text,
-      classification,
-      recentScreen: recentScreenRef.current,
-      codingScreen: codingScreenRef.current,
-    })
-    const relevance = evaluateScreenRelevance({
-      question: qRec.text, classification, screen: selectedScreen,
-    })
+    const selectedScreen = plan.selectedScreen
+    const relevance = plan.relevance
     const ctx = resolveContextSources({
       classification,
       screenRelevant: relevance.attach,
@@ -1085,14 +1173,16 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       })
     }
 
-    // Hard backstop: the server may spend one attempt budget on each configured
-    // provider before it finds a healthy fallback. Keep this deadline above the
-    // default three-provider budget so the browser does not cancel failover at 12s.
-    const lockTimeout = setTimeout(() => {
+    // Hard backstop before the first token: the server may spend one attempt budget on
+    // each configured provider before it finds a healthy fallback. Keep this deadline
+    // above the default three-provider budget so the browser does not cancel failover.
+    // Once text is streaming, a long answer is never cut off for being long: only a
+    // stall (no new tokens for LIVE_HINT_STALL_TIMEOUT_MS) ends it.
+    const onBackstop = reason => () => {
       if (!isCurrent()) return
       hintInFlight.current = false
       setHintLoading(false); setStreaming(false); setBuyTimePhrase('')
-      if (gotToken || incomplete) markIncomplete(lastAnswer, lastHintObj, 'timed out')
+      if (gotToken || incomplete) markIncomplete(lastAnswer, lastHintObj, reason)
       else {
         hintIncompleteRef.current = true
         incomplete = true
@@ -1100,9 +1190,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         upsert({ hint: { confidence: 'general', fullAnswer: '', incomplete: true } })
         state.markQuestionFailed?.(questionId, 'timed_out')
       }
-      try { gen.fail('timed_out') } catch {}
-    }, LIVE_HINT_OVERALL_TIMEOUT_MS)
+      try { gen.fail(gotToken ? 'stalled' : 'timed_out') } catch {}
+    }
+    let lockTimeout = setTimeout(onBackstop('timed out'), LIVE_HINT_OVERALL_TIMEOUT_MS)
     lockTimerRef.current = lockTimeout
+    const armStallBackstop = () => {
+      clearTimeout(lockTimeout)
+      lockTimeout = setTimeout(onBackstop('answer stopped arriving'), LIVE_HINT_STALL_TIMEOUT_MS)
+      lockTimerRef.current = lockTimeout
+    }
 
     let lastAnswer = ''
     let lastHintObj = null
@@ -1236,24 +1332,26 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     }
     ragSpec.current = { q: '', p: null, ac: null, timer: null }
     if (!isCurrent()) return
-    const mergedContext = () => [extraContextRef.current, ragContext].filter(Boolean).join('\n\n') || undefined
-
-    const hintBody = () => ({
-      question: qText, profile: profileRef.current, conversationHistory: priorTurns(),
-      provider: providerRef.current, language: profileRef.current?.language || 'English',
-      extraContext: mergedContext(), mode: coachModeRef.current ? 'coach' : 'answer',
-      style: answerStyleRef.current, autoSkip: getAutoSkip(),
-      lastClassification: prevClassification,
-      classification, // one authority — server must not re-classify when present
-      recentScreen: attachScreen ? selectedScreen : null,
+    const hintBody = () => composeHintBody({
+      qText, history: priorTurns(), prevClassification, classification,
+      attachScreen, selectedScreen, ragContext,
     })
 
     hintTimingRef.current = metricsRef.current?.startHint?.() || null
     let rawAnswer = '', answer = '', hintObj = null
+    // Adopt the early request only if it was prepared for exactly this request body;
+    // otherwise claim() aborts it and the normal request below is sent.
+    const requestBody = hintBody()
+    const early = speculativeHintRef.current?.claim({
+      key: normalizeCaptureText(qText), bodyJson: JSON.stringify(requestBody),
+    }) || null
+    if (early) gen.signal?.addEventListener?.('abort', early.abort, { once: true })
+    let earlyResponse = early?.response || null
     const controller = createLiveSessionController({
       isCurrent,
       getSignal: () => gen.signal,
-      getHintBody: hintBody,
+      getHintBody: () => requestBody,
+      getPrefetchedResponse: () => { const response = earlyResponse; earlyResponse = null; return response },
       onMarkFallback: () => { metricsRef.current?.markFallback?.() },
       onSkip: () => { metricsRef.current?.markSkip?.(); resetSkip() },
       onFallbackHint: h => {
@@ -1288,6 +1386,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         } else if (ev === 'token') {
           if (!rawAnswer) metricsRef.current?.markFirstToken?.(hintTimingRef.current)
           gotToken = true
+          armStallBackstop()
           clearTimeout(postMetaTimerRef.current)
           rawAnswer += typeof data === 'string' ? data : ''
           const cleaned = stripHintMeta(rawAnswer)
@@ -1729,6 +1828,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     try { metricsRef.current?.end({ tokens: usage.tokens, cost: usage.cost }) } catch {}
     metricsRef.current = null
     sessionActiveRef.current = false
+    speculativeHintRef.current?.cancel('session_ended')
     try { genManagerRef.current?.cancelCurrent?.('end_session') } catch {}
 
     audio.stop(); stopSpeaking()

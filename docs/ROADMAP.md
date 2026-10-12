@@ -5,9 +5,9 @@ MockMate is an interview-performance OS: prepare, practice, perform and learn ac
 
 `docs/ARCHITECTURE.md` is the source of truth for **current implementation**. This roadmap contains future work and release gates only.
 
-## Current v1.6.2 signed public release candidate
+## Current release state
 
-The `v1.6.0` source tag/release exists but has no Windows installer assets because its signing-only workflow failed before building. Historical v1.6.1 used an isolated unsigned pre-release. Current v1.6.2 requires a trusted signed stable installer; missing signing settings block publication.
+The `v1.6.0` source tag/release exists but has no Windows installer assets because its signing-only workflow failed before building. v1.6.1, v1.6.2 and v1.6.3 were published only as unsigned personal previews (GitHub pre-releases); v1.6.3 is the first to contain #93 and #94. A signed stable release still requires trusted signing settings; missing settings block publication. The latest signed stable installer remains v1.5.3.
 
 ### Desktop
 - [x] Windows multi-monitor overlay and 760×240 camera-anchored Teleprompter.
@@ -46,7 +46,7 @@ The `v1.6.0` source tag/release exists but has no Windows installer assets becau
 - [ ] Real second-device pairing / Duo remote companion.
 - [ ] Store-ready PDF/DOCX mobile upload/extraction path.
 
-## Release gates for v1.6.2
+## Release gates for the next signed release (history from the v1.6.x cycle)
 
 - [x] Current audit-remediation checks: 84 test files / 630 tests; API smoke (5 tests), production Vite build/output check, Electron syntax checks, and `git diff --check` passed on 2026-10-11. `npm run verify` could not complete because the sandbox could not download the Electron runtime; fresh CI is required for this diff.
 - [x] PR #85 reliability-only head: Linux/Windows CI passed; [run 38116194648](https://github.com/vsv2014/MockMate/actions/runs/38116194648).
@@ -90,6 +90,13 @@ See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
 - [ ] Expand STT/accent/noise evaluation fixtures using privacy-safe recordings or synthetic corpora.
 - [ ] Certify Stealth/share-preview behavior per Windows/macOS + meeting-app/share-mode combination.
 - [ ] Keep Linux Stealth explicitly unsupported until there is a real OS/compositor solution.
+- [ ] Evaluate an explicit, opt-in automatic-question option for microphone mode. Keep manual **Answer this** as the default, because diarizing a single microphone cannot reliably tell the interviewer from the candidate.
+- [ ] Settings phase 2:
+  - A speech-to-text section showing the Deepgram model, which audio source Live is using and estimated minutes.
+  - A preview before exporting logs, and per-provider notes on what data each provider receives.
+  - An optional spend limit, presented as MockMate's estimate; provider-enforced limits stay in each provider's console.
+  - An explicit on/off for using a second provider as backup.
+- [ ] Consider an optional OpenRouter connection for model comparison, with per-key spending limits ([API key creation](https://openrouter.ai/docs/api/api-reference/api-keys/create-a-new-api-key)). It must never be required; personal use stays on direct Gemini + Deepgram BYOK.
 
 ## P3 — Mobile practice MVP
 
@@ -107,13 +114,22 @@ See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
 - [ ] Mentor/helper join with explicit consent and revocable permissions.
 - [ ] Audit every remote-control action.
 
-## P5 — Interview Intelligence Graph
+## P5 — ARCH professional model (supersedes the Interview Intelligence Graph)
 
-- [x] Normalize skills, concepts, question types, attempts, evidence and outcomes.
-- [x] Track repeated misses, follow-up failures, over-explanation and unsupported claims locally.
-- [x] Generate drills from evidence-backed weak areas.
-- [ ] Cross-session longitudinal readiness without inventing a universal score.
-- [ ] Export/delete controls for graph data.
+Design, data map, gates and evaluation: [`PROFESSIONAL_MODEL.md`](PROFESSIONAL_MODEL.md). The earlier P5 checkboxes overstated persistence. What exists is a deterministic skills-gap matrix with "Drill in Solo" links, extractive résumé facts and delivery analysis. No cross-session evidence store exists.
+
+- [ ] **Gate 0:** run the representative 90-minute Live session on v1.6.3 against v1.6.2 and LockedIn with the fixed rubric in `EVALS.md`. Name any remaining gap before adding features.
+- [ ] **Privacy gate, remaining items:**
+  - make Duo recent rooms account-scoped and deleted with the account
+  - add per-artifact provider disclosure
+  - offer a transcript retention choice
+  - write graph-specific deletion and copy
+  (Product-insights copy and collection were corrected in v1.6.3.)
+- [ ] Step 1: minimal Professional State Graph (job, résumé version, claims and requirements, interview link) with provenance, versioning, append-only corrections, first-class conflicts, deletion, and a minimal **My Professional Model** surface.
+- [ ] Step 2: deterministic requirement ↔ résumé-span links, interview ↔ job/résumé links, and a post-session correction view.
+- [ ] Step 3: fixture comparison against a test-only federated baseline, then the first five eligible real insights with the pre-declared pass bar. Stop expanding if it fails.
+- [ ] Step 4: same-completion Live coaching signals, only if Step 3 passes.
+- [ ] Prerequisite for any post-session analysis call: an app-side hard spend ceiling across LLM and transcription, paired with provider-side limits.
 - [ ] Any centralized analytics must be aggregate, consent-based and tenant-scoped.
 
 ## P6 — MockMate Code Arena

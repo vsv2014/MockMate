@@ -218,6 +218,10 @@ export function createQuestionCaptureController(opts = {}) {
     onDebug = () => {},
     onRevision = () => {},
     onRefinement = () => {},
+    // Called when a complete or likely-complete question is only waiting for the
+    // silence window. `text` is exactly what commitCurrent() would commit now, so a
+    // consumer can prepare (but not show) the answer during the wait.
+    onStabilizing = () => {},
     getHadPriorQuestion = () => false,
     getLastCommittedText = () => '',
     getAudioSource = () => null,
@@ -374,6 +378,20 @@ export function createQuestionCaptureController(opts = {}) {
       if (candidate) candidate.status = 'stabilizing'
       onLive({ text: candidate?.text || lane.text, status: assessment.action, reason: assessment.reason })
       scheduleEvaluate(assessment.waitMs)
+      // Only question-shaped text that is merely waiting for silence; incomplete
+      // openers and unknown speakers ('wait') never trigger early preparation.
+      if (assessment.action === 'stabilize' && candidate) {
+        const commitText = repairInterviewTerms(applyUtteranceCorrection(candidate.text), getLastCommittedText())
+        const last = getLastCommittedText()
+        if (commitText && !(last && isDuplicateQuestion(commitText, last))) {
+          try {
+            onStabilizing({
+              questionId: candidate.id, text: commitText, waitMs: assessment.waitMs,
+              completeness: assessment.completeness, reason: assessment.reason,
+            })
+          } catch {}
+        }
+      }
       return assessment
     }
 

@@ -1,6 +1,37 @@
 # Changelog
 
+## v1.6.3 — 2026-10-13 (unsigned personal preview)
+
+- Preserve Live follow-up context in both streamed and blocking hints: send the complete current question (previously clipped at 800 characters); honour `includeLastAnswer`, which Live already requested but `getLlmHistory` ignored, so the last completed AI suggestion is included and labelled as AI text, never candidate speech; and replace 300-character history clipping with whole recent turns under a shared 24,000-character budget.
+- Share output caps between transports. Coding/system-design and coach-mode requests rise to 2,400 tokens (1,800 concise); streaming previously allowed 900 balanced, 650 concise and 1,100 detailed. Simple streaming caps are unchanged; blocking concise simple answers now use the streaming 380-token cap instead of 700. Concise answers must still include complete requested code or architecture, and definition answers lead with what the term means.
+- Treat short explicit requests such as "draw it", "show me the code", "explain the architecture" and "give me an example" as refinements of the current question.
+- Keep the Windows transparent overlay natively non-resizable at creation and across collapse/expand; the custom handles still resize through the bounded `window-resize` IPC handler.
+- Add metadata-only provider diagnostics: attempt index, serialized request size, per-request usage for blocking calls including JSON repairs, and `null` rather than `0` for token counts a provider does not report.
+- Settings reports a detected key separately from model availability, reads BYOK key status from the local service even when Managed mode is selected, and no longer labels Gemini or Groq as free.
+- Stop cutting off long Live answers. The 11-second per-provider budget now covers only the wait for the first answer text; after that only a stall ends a stream (8 s on the server, 12 s in the browser). Previously any answer still streaming 11 s after its request started was cut off, shown as a provider outage, and its provider was cooled down.
+- Turn off Claude's hidden thinking for Live answers. Claude 5-generation models think by default, and over the OpenAI-compatible endpoint that thinking was invisible, used the answer's token budget and was billed. Live now sends `between_tools` for Sonnet 5.5 and `disabled` for Sonnet 5, Opus 5 and Haiku 5.5, retrying once without the setting if Anthropic rejects it.
+- Use the current Claude generation: Sonnet 5.5 for coding/design and Haiku 5.5 for quick answers, falling back to Sonnet 5 and Haiku 4.5 (both still active). Add list prices to the session cost gauge.
+- Start Live answers during the question's silence window (system audio, BYOK). The exact request is prepared early and used only if it is identical to the committed request; new speech or any change aborts it.
+- Simplify BYOK key setup in Settings: show which model answers quick and coding questions, list saved keys with Test, Replace and Remove, and replace the per-provider fields with one Add API key box. The box suggests the provider from the key format on the device and asks the user to confirm. Saved keys are unchanged.
+- Make the Product insights privacy wording true:
+  - Rage-click events now store only fixed control identifiers (`data-pi-target`, a clean `id`, or `section:role`), never a button's visible label. Labels could contain a document name, an interview question, a session label, the account name or a Duo room code.
+  - The old `mm-product-intel-v1` store is deleted.
+  - The breadcrumb opt-in now controls whether usage events reach the diagnostics log; previously they always did.
+  - The Settings panel is renamed from "ARCH · Product Intelligence" to "Product insights", with scoped, accurate copy.
+- Add `scripts/session-report.mjs`, which summarizes an exported diagnostics bundle per session and writes the Gate 0 rubric scoresheet.
+- Document the planned ARCH professional model (`docs/PROFESSIONAL_MODEL.md`): today's data map, the Duo map, a minimal schema, gates and evaluation. Add the Gate 0 Live session protocol to `docs/EVALS.md`, and document the unsigned public preview route in `docs/RELEASE.md`.
+- Document the hint context and output caps, Windows resizing rationale and personal BYOK recommendation and cost estimate in `docs/MODEL_AND_AUDIO_REVIEW.md`, with acceptance gates in `docs/RELEASE_CHECKLIST.md` §4b.
+
+Published by `unsigned-public.yml` as an unsigned GitHub pre-release (Windows x64 NSIS, no auto-update feed); not code-signed. Still open (`docs/RELEASE_CHECKLIST.md` §4b):
+
+- real-provider answer, timing and usage checks
+- the Settings key flow and Product insights checks on the packaged build
+- physical Windows collapse, drag and resize checks
+- the Gate 0 session (`docs/EVALS.md`)
+
 ## v1.6.2 — 2026-10-12 (signed public release candidate)
+
+Published on 2026-10-12 only as an unsigned personal preview (GitHub pre-release). No signed v1.6.2 build was produced.
 
 - Centralize AI defaults, automatic routing priorities, key links and lifecycle policy; recover with provider-discovered compatible models and distinguish actionable provider failures.
 - Remove Live/Solo model dropdowns and retain automatic operation-based routing from PRs #90/#91.
