@@ -12,8 +12,8 @@ function managedBase() {
 }
 
 export async function apiFetch(path, opts = {}) {
-  const { timeoutMs, signal: outerSignal, diagnosticRequestId, ...rest } = opts
-  const base = isManaged() ? managedBase() : ''
+  const { localOnly = false, timeoutMs, signal: outerSignal, diagnosticRequestId, ...rest } = opts
+  const base = !localOnly && isManaged() ? managedBase() : ''
   const requestId = diagnosticRequestId || createDiagnosticRequestId('api')
   const startedAt = performance.now()
   const headers = { ...(rest.headers || {}), 'X-MockMate-Request-Id': requestId }

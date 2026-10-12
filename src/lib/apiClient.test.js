@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-vi.mock('./aiMode', () => ({ isManaged: () => false }))
+vi.mock('./aiMode', () => ({ isManaged: vi.fn(() => false) }))
 vi.mock('../auth/api', () => ({ getToken: async () => null }))
 
+import { isManaged } from './aiMode'
 import { apiFetch } from './apiClient.js'
 
 describe('apiFetch timeoutMs', () => {
   beforeEach(() => {
+    isManaged.mockReturnValue(false)
     vi.stubGlobal('fetch', vi.fn())
   })
   afterEach(() => {
@@ -28,6 +30,15 @@ describe('apiFetch timeoutMs', () => {
     const assertion = expect(p).rejects.toMatchObject({ name: 'AbortError' })
     await vi.advanceTimersByTimeAsync(1000)
     await assertion
+  })
+
+  it('keeps key checks local even when Managed AI is selected', async () => {
+    isManaged.mockReturnValue(true)
+    fetch.mockResolvedValue({ ok: true })
+    await apiFetch('/api/providers', { localOnly: true })
+    expect(fetch.mock.calls[0][0]).toBe('/api/providers')
+    expect(fetch.mock.calls[0][1].localOnly).toBeUndefined()
+    expect(fetch.mock.calls[0][1].headers.Authorization).toBeUndefined()
   })
 
   it('passes through without timeout when timeoutMs unset', async () => {

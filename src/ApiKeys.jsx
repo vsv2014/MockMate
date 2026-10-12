@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { T } from './auth/tokens'
 import { getAiMode, setAiMode, MANAGED_AVAILABLE } from './lib/aiMode'
-import { configuredProviderNames } from './lib/modelPicker'
+import { keyFieldStatus, configuredKeyRows } from './lib/keyStatus.js'
 import { PROVIDER_KEY_LINKS } from '../shared/modelRegistry.js'
 
 // Reusable API-key entry. Used BOTH at the global level (Home → Settings) and inside
@@ -20,10 +20,10 @@ const inp = {
 // Provider ids map to stable credential families returned by /api/providers; display labels
 // and model names may change independently, so they are not used to infer which key is saved.
 const PROVIDERS = [
-  { k: 'GROQ_API_KEY', name: 'Groq', hint: 'Free tier available · useful backup', free: true, providerIds: ['groq'], testId: 'groq',
+  { k: 'GROQ_API_KEY', name: 'Groq', hint: 'Optional text provider', providerIds: ['groq'], testId: 'groq',
     note: 'Free tier has rate and token limits. Create your key at', link: PROVIDER_KEY_LINKS.groq },
-  { k: 'GEMINI_API_KEY', name: 'Google Gemini', hint: 'Answers + screenshots · start here · free tier available', free: true, providerIds: ['gemini', 'gemini_flash_lite', 'gemini_3_flash'], testId: 'gemini',
-    note: 'Create a new Gemini API key in Google AI Studio; free-tier limits depend on your project. Open', link: PROVIDER_KEY_LINKS.gemini },
+  { k: 'GEMINI_API_KEY', name: 'Google Gemini', hint: 'Suggested starting provider · answers + screenshots', providerIds: ['gemini', 'gemini_flash_lite', 'gemini_3_flash'], testId: 'gemini',
+    note: 'Use an existing key or create one in Google AI Studio. Creating a key is free; usage and limits depend on project billing. Open', link: PROVIDER_KEY_LINKS.gemini },
   { k: 'OPENAI_API_KEY', name: 'OpenAI', hint: 'Paid API · automatically chooses the available model', providerIds: ['openai', 'openai_mini', 'gpt_6_astra'], testId: 'openai_mini',
     note: 'Needs billing credit (not ChatGPT Plus) at', link: PROVIDER_KEY_LINKS.openai },
   { k: 'ANTHROPIC_API_KEY', name: 'Anthropic', hint: 'Claude — paid API', providerIds: ['claude_fable', 'claude_opus', 'claude_sonnet', 'claude_haiku'], testId: 'claude_haiku',
@@ -38,30 +38,23 @@ function Pill({ color, bg, children }) {
 }
 
 // A labeled key field with explicit saved/test state and a single associated input label.
-function KeyField({ name, hint, value, onChange, added, free, secret = true, note, link, onRemove, onTest, testState }) {
+function KeyField({ name, hint, value, onChange, added, status = 'ready', secret = true, note, link, onRemove, onTest, testState }) {
   const id = `mm-key-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
   const noteId = `${id}-note`
   const testId = `${id}-test-status`
   const edited = !!value?.trim()
   const testing = testState?.status === 'testing'
-  const badge = edited ? 'Replacement unsaved'
-    : testState?.status === 'ok' ? 'Connection verified'
-      : testState?.status === 'error' ? 'Configured · test failed'
-        : testing ? 'Configured · testing'
-          : added ? 'Configured · untested'
-            : 'Entered · unsaved'
-  const statusColor = testState?.status === 'ok' && !edited ? T.success : '#fbbf24'
+  const badge = keyFieldStatus({ added, edited, status, testStatus: testState?.status })
+  const statusColor = status === 'ready' && testState?.status === 'ok' && !edited ? T.success : '#fbbf24'
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <label htmlFor={id} style={{ fontSize: 12.5, fontWeight: 500, color: T.text1 }}>{name}</label>
         {hint && <span style={{ fontSize: 10.5, color: T.text3 }}>{hint}</span>}
         <span style={{ marginLeft: 'auto' }}>
-          {added || edited
-            ? <Pill color={statusColor} bg={statusColor === T.success ? 'rgba(34,197,94,0.14)' : 'rgba(251,191,36,0.12)'}>{badge}</Pill>
-            : free ? <Pill color="#5eead4" bg="rgba(20,184,166,0.14)">Free</Pill> : null}
+          <Pill color={statusColor} bg={statusColor === T.success ? 'rgba(34,197,94,0.14)' : 'rgba(251,191,36,0.12)'}>{badge}</Pill>
         </span>
-        {added && onTest && <button type="button" onClick={onTest} disabled={testing || edited}
+        {added && onTest && <button type="button" onClick={onTest} disabled={testing || edited || status !== 'ready'}
           title={edited ? 'Save the replacement key before testing it.' : 'Sends one short text request; the provider may charge a small amount.'}
           aria-label={`Test ${name} connection`} aria-describedby={testState?.message ? testId : undefined}
           style={{ background: 'none', border: '1px solid rgba(94,234,212,0.3)', color: '#5eead4', fontSize: 10, cursor: testing || edited ? 'not-allowed' : 'pointer', opacity: testing || edited ? 0.55 : 1, padding: '3px 7px', borderRadius: 6 }}>
@@ -70,13 +63,13 @@ function KeyField({ name, hint, value, onChange, added, free, secret = true, not
         {added && onRemove && <button type="button" onClick={onRemove} aria-label={`Remove saved ${name} key`}
           style={{ background: 'none', border: 'none', color: '#fca5a5', fontSize: 10, cursor: 'pointer', padding: '2px 0 2px 5px' }}>Remove</button>}
       </div>
-      <input id={id} type={secret ? 'password' : 'text'} placeholder={added ? '•••••••• — paste a new key to replace' : `Paste your ${name} key`}
+      <input id={id} type={secret ? 'password' : 'text'} placeholder={status !== 'ready' ? 'Key status not confirmed' : added ? 'Key already detected — leave blank to keep it' : `Paste your ${name} key`}
         value={value} autoComplete="off" spellCheck={false} onChange={onChange}
         aria-describedby={note ? noteId : undefined}
         style={inp}
         onFocus={e => e.target.style.borderColor = T.accentFrom}
         onBlur={e => e.target.style.borderColor = T.border} />
-      {testState?.message && <div id={testId} role={testState.status === 'error' ? 'alert' : 'status'} aria-live={testState.status === 'error' ? 'assertive' : 'polite'} style={{ fontSize: 10.5, color: testState.status === 'error' ? T.danger : T.success }}>{testState.message}</div>}
+      {!edited && status === 'ready' && testState?.message && <div id={testId} role={testState.status === 'error' ? 'alert' : 'status'} aria-live={testState.status === 'error' ? 'assertive' : 'polite'} style={{ fontSize: 10.5, color: testState.status === 'error' ? T.danger : T.success }}>{testState.message}</div>}
       {note && <div id={noteId} style={{ fontSize: 10, color: T.text2, lineHeight: 1.4 }}>{note}{added && onTest && ' Testing sends one short request to the provider and may incur a small usage charge.'}{link && <> <a href={link.href} target="_blank" rel="noopener noreferrer" style={{ color: T.accentFrom }}>{link.label}</a></>}</div>}
     </div>
   )
@@ -118,6 +111,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const [configured, setConfigured] = useState([])
+  const [statusLoading, setStatusLoading] = useState(true)
   const [dg, setDg] = useState(false)
   const [providerStatusError, setProviderStatusError] = useState('')
   const [testResults, setTestResults] = useState({})
@@ -125,14 +119,22 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   const [mode, setModeState] = useState(getAiMode())
   const setMode = m => { setAiMode(m); setModeState(m); onModeChange?.(m) }
 
+  // BYOK settings must inspect the local service, even when Managed mode is selected.
+  const keyApiFetch = (path, options = {}) => apiFetch(path, { ...options, localOnly: true })
   const refresh = async () => {
-    const response = await apiFetch('/api/providers')
-    if (!response.ok) throw new Error(`Provider status returned HTTP ${response.status}`)
-    const data = await response.json()
-    setConfigured(Array.isArray(data.providers) ? data.providers : [])
-    setDg(!!data.deepgram)
-    setProviderStatusError('')
-    return data
+    setStatusLoading(true)
+    try {
+      const response = await keyApiFetch('/api/providers', { timeoutMs: 8000 })
+      if (!response.ok) throw new Error(`Provider status returned HTTP ${response.status}`)
+      const data = await response.json()
+      setConfigured(configuredKeyRows(data))
+      setDg(!!data.deepgram)
+      setProviderStatusError('')
+      return data
+    } catch (error) {
+      setProviderStatusError(error?.message || 'Could not refresh provider status.')
+      throw error
+    } finally { setStatusLoading(false) }
   }
   useEffect(() => { refresh().catch(error => setProviderStatusError(error?.message || 'Could not refresh provider status.')) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -148,14 +150,14 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   async function testProvider(provider) {
     setTestResults(results => ({ ...results, [provider.k]: { status: 'testing', message: `Testing ${provider.name}…` } }))
     try {
-      const response = await apiFetch('/api/providers/test', {
+      const response = await keyApiFetch('/api/providers/test', {
         method: 'POST', timeoutMs: 12_000,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider: provider.testId }),
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok || !data.ok) throw new Error(data.error || `Provider test returned HTTP ${response.status}`)
-      setTestResults(results => ({ ...results, [provider.k]: { status: 'ok', message: `Connection verified · MockMate will choose the AI model automatically` } }))
+      setTestResults(results => ({ ...results, [provider.k]: { status: 'ok', message: `Text connection passed just now. Screenshot and voice capture are separate checks.` } }))
     } catch (error) {
       setTestResults(results => ({ ...results, [provider.k]: { status: 'error', message: error?.message || 'Connection test failed.' } }))
     }
@@ -212,7 +214,9 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   const card = { display: 'flex', flexDirection: 'column', gap: 12, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '13px 14px' }
 
   const byokRecommended = !MANAGED_AVAILABLE || mode === 'byok'
-  const configuredNames = configuredProviderNames([], configured)
+  const configuredNames = PROVIDERS.filter(isAdded).map(p => p.name)
+  const keyStatus = statusLoading ? 'loading' : providerStatusError ? 'error' : 'ready'
+  const hasEdits = Object.values(keyVals).some(value => value.trim())
   const canTestProviders = typeof window !== 'undefined' && !!window.electronAPI?.isElectron
 
   return (
@@ -222,7 +226,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       {/* Voice first — required for Live; prevents “AI ready but Live blocked” surprise */}
       <div style={sectionLabel}>Voice · required for Live · needed for Solo voice</div>
       <div style={card}>
-        <KeyField name="Deepgram" hint="live transcription" added={dg}
+        <KeyField name="Deepgram" hint="voice transcription · separate from AI answers" added={dg} status={keyStatus}
           value={keyVals.DEEPGRAM_API_KEY} onChange={set('DEEPGRAM_API_KEY')}
           onRemove={() => removeProvider('deepgram', 'Deepgram')}
           note="Required for Live and Solo voice. Create a project key with speech transcription access; usage consumes project credits. Open" link={PROVIDER_KEY_LINKS.deepgram} />
@@ -253,11 +257,12 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
         <span aria-hidden="true">ⓘ</span><span>You can switch anytime. BYOK keys stay local; audio/resume/screenshots still go to the providers you call — not “never leave the device.”</span>
       </div>
 
-      {showStatus && (
+      {(showStatus || mode === 'byok') && (
         <div role="status" style={{ ...card, fontSize: 12, color: T.text2 }}>
-          <div style={{ fontWeight: 600, color: T.text1, marginBottom: 4 }}>Currently configured</div>
-          <div>AI: {configuredNames.length ? configuredNames.join(', ') : (mode === 'managed' ? 'No hosted provider reported' : 'None yet')}</div>
-          <div style={{ marginTop: 2 }}>Voice: {dg ? 'Deepgram key configured · connection not tested' : 'Off'}</div>
+          <div style={{ fontWeight: 600, color: T.text1, marginBottom: 4 }}>Keys detected on this device</div>
+          <div>AI: {keyStatus !== 'ready' ? (statusLoading ? 'Checking…' : 'Status unavailable — retry below') : configuredNames.length ? configuredNames.join(', ') : (mode === 'managed' ? 'No hosted provider reported' : 'None yet')}</div>
+          <div style={{ marginTop: 2 }}>Voice: {keyStatus !== 'ready' ? 'Status not confirmed' : dg ? 'Deepgram key detected · test audio in Ready Room' : 'No Deepgram key detected'}</div>
+          <div>Blank fields keep existing keys. A detected key is not proof that a connection works. Test results apply only to this Settings visit.</div>
         </div>
       )}
       {providerStatusError && (
@@ -273,14 +278,14 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       <div style={sectionLabel}>AI providers · connect at least one</div>
       <div style={card}>
         {PROVIDERS.map(p => (
-          <KeyField key={p.k} name={p.name} hint={p.hint} free={p.free} added={isAdded(p)}
+          <KeyField key={p.k} name={p.name} hint={p.hint} added={isAdded(p)} status={keyStatus}
             onRemove={() => removeProvider(p.k.replace('_API_KEY', '').toLowerCase(), p.name)}
             onTest={canTestProviders ? () => testProvider(p) : undefined} testState={testResults[p.k]}
             note={p.note} link={p.link}
             value={keyVals[p.k]} onChange={set(p.k)} />
         ))}
         <div style={{ fontSize: 10.5, color: '#86efac', lineHeight: 1.45, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: T.rCtrl, padding: '8px 10px' }}>
-          One key per provider — you do not generate a separate key for each model. Start with <strong>Gemini</strong> for answers and screenshots, <strong>Deepgram</strong> for voice, and optionally <strong>Groq</strong> as a separate text fallback. Save your keys, then use <strong>Test connection</strong>. MockMate discovers compatible models, chooses the route for each question, and automatically tries another available provider when needed. A second provider key improves resilience. (ChatGPT Plus does <strong>not</strong> provide API credits.)
+          <strong>Only one AI provider is required.</strong> Keep a working provider you already use, or start with Gemini. The other providers are optional alternatives or backups. Deepgram is separate and handles voice transcription. Creating a key does not guarantee free usage. Save changes, then test the connection. Leave existing key fields blank to keep them. Model selection is automatic; you do not need a key for each model.
         </div>
       </div>
       </>)}
@@ -320,9 +325,9 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
 
       {/* Save stays reachable while scrolling the key form. */}
       <div role="toolbar" aria-label="API key actions" style={{ position: 'sticky', bottom: 0, zIndex: 5, padding: '10px 0', background: T.surface1, borderTop: `1px solid ${T.border}`, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
-        <button onClick={save} disabled={saving}
+        <button onClick={save} disabled={saving || !hasEdits}
           style={{ flex: 1, minWidth: 120, height: 42, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: T.font }}>
-          {saving ? 'Saving…' : 'Save keys'}
+          {saving ? 'Saving…' : hasEdits ? 'Save key changes' : 'No unsaved key changes'}
         </button>
         {msg && <span role={msg.startsWith('⚠') ? 'alert' : 'status'} aria-live={msg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: 11, fontWeight: 500, color: msg.startsWith('⚠') ? T.danger : T.success }}>{msg}</span>}
       </div>
