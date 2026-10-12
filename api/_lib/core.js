@@ -153,7 +153,7 @@ export async function testProviderConnection(providerId) {
   try {
     const response = await llm.chat.completions.create({
       model: provider.model,
-      max_tokens: 8,
+      ...completionBudget(provider, 64),
       messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
     }, { signal: controller.signal })
     if (!response.choices?.[0]?.message) {
@@ -317,6 +317,15 @@ function resolveProvider(id) {
 
 function clientFor(prov) {
   return new OpenAI({ apiKey: prov.key, ...(prov.baseURL ? { baseURL: prov.baseURL } : {}) })
+}
+
+// GPT-6 Chat Completions rejects the old max_tokens field; other providers
+// have different OpenAI-compatible contracts. Scope this change to OpenAI GPT-6.
+export function completionBudget(prov, maxTokens) {
+  return /^https:\/\/api\.openai\.com\/v1\/?$/i.test(String(prov.baseURL || ''))
+    && /^gpt-6(?:\.\d+)?-/i.test(String(prov.model || ''))
+    ? { max_completion_tokens: maxTokens }
+    : { max_tokens: maxTokens }
 }
 
 // The API endpoint a provider id talks to — used to make failover jump to a DIFFERENT
@@ -653,7 +662,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
       let useExtras = true   // JSON-mode / reasoning params; dropped if this provider 400s on them
       for (let attempt = 0; ; attempt++) {
         try {
-          const params = { model, max_tokens: maxTokens, messages: msgs }
+          const params = { model, ...completionBudget(prov, maxTokens), messages: msgs }
           if (useExtras && isGemini) params.reasoning_effort = 'none'
           if (useExtras && jsonMode) params.response_format = { type: 'json_object' }
           const r = await llm.chat.completions.create(params)
@@ -848,7 +857,7 @@ async function visionCompleteOnce({
   const callOne = _callProvider || (async (prov) => {
     const llm = clientFor(prov)
     const resp = await llm.chat.completions.create({
-      model: prov.model, max_tokens: maxTokens,
+      model: prov.model, ...completionBudget(prov, maxTokens),
       messages: [{ role: 'user', content: [
         { type: 'image_url', image_url: { url: dataUrl, detail } },
         { type: 'text', text: prompt },
@@ -937,7 +946,7 @@ export async function completeTextQuick({ prompt, maxTokens = 1200, signal, requ
     try {
       const llm = clientFor(prov)
       const resp = await llm.chat.completions.create({
-        model: prov.model, max_tokens: maxTokens,
+        model: prov.model, ...completionBudget(prov, maxTokens),
         messages: [{ role: 'user', content: prompt }],
       }, signal ? { signal } : undefined)
       const raw = resp.choices?.[0]?.message?.content
@@ -1023,7 +1032,7 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
     })
     try { onProviderEvent?.({ type: 'started', attemptId, attemptIndex, provider: provId, model }) } catch {}
     try {
-      const params = { model, max_tokens: maxTokens, messages, stream: true }
+      const params = { model, ...completionBudget(prov, maxTokens), messages, stream: true }
       if (/gemini/i.test(model)) params.reasoning_effort = 'none'
       // Only OpenAI/Groq reliably support stream usage; gate it so others don't 400.
       const supportsUsage = /openai\.com|groq\.com/.test(prov.baseURL || '')
