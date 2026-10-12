@@ -89,7 +89,7 @@ describe('deepgramTransport shared helpers', () => {
       keyterms: ['Kafka', 'PgBouncer'],
     })
     expect(liveUrl).toContain('model=nova-3')
-    expect(liveUrl).toContain('&diarize=true')
+    expect(liveUrl).toContain('&diarize_model=v1')
     expect(liveUrl).toContain('&keyterm=Kafka')
 
     const degradedUrl = buildDeepgramListenUrl({
@@ -99,7 +99,7 @@ describe('deepgramTransport shared helpers', () => {
       keyterms: ['Kafka'],
     })
     expect(degradedUrl).toContain('model=nova-2')
-    expect(degradedUrl).toContain('&diarize=true')
+    expect(degradedUrl).toContain('&diarize_model=v1')
     expect(degradedUrl).not.toContain('&keyterm=Kafka')
   })
 

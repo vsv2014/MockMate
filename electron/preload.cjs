@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
   platform: process.platform,
   getAudioSources: () => ipcRenderer.invoke('get-audio-sources'),
+  getWindowSize: () => ipcRenderer.sendSync('get-window-size'),
   windowDrag: (dx, dy) => ipcRenderer.send('window-drag', { dx, dy }),
   windowResize: (w, h, opts) => ipcRenderer.send('window-resize', { w, h, dx: opts?.dx || 0, dy: opts?.dy || 0 }),
   // 'app' = full windowed dashboard (large, centered); 'overlay' = compact floating panel.

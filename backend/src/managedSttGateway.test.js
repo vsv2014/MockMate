@@ -326,3 +326,13 @@ describe('managed streaming WebSocket policy', () => {
     } finally { await rig.close() }
   })
 })
+
+ describe('streaming diarizer validation', () => {
+  it('accepts supported diarizer versions and rejects mixed, duplicate or batch-only settings', () => {
+    expect(validatedListenUrl(url + '&diarize_model=v1')).toContain('diarize_model=v1')
+    expect(validatedListenUrl(url + '&diarize_model=latest')).toContain('diarize_model=latest')
+    for (const suffix of ['&diarize_model=v2', '&diarize_model=v1&diarize=true', '&diarize_model=v1&diarize_model=latest']) {
+      expect(() => validatedListenUrl(url + suffix)).toThrow()
+    }
+  })
+})

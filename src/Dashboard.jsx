@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import WindowResizeHandles from './WindowResizeHandles'
 import { apiFetch } from './lib/apiClient'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
@@ -86,7 +87,7 @@ function Sparkline({ sessions }) {
 }
 
 // ── The app shell — top bar + left sidebar + content ──
-export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealth, onMinimize, onClose, children }) {
+export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealth, onMinimize, onClose, children, minimized = false }) {
   const name = (auth?.user?.name || auth?.user?.email || '?')
   const initials = name.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase()).join('') || '?'
   // After login: left nav can hide/show (persisted). Collapsed = icon rail; hidden = gone.
@@ -104,12 +105,21 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
       return next
     })
   }
+  const [compactViewport, setCompactViewport] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 700px)').matches)
+  useEffect(() => {
+    const query = window.matchMedia?.('(max-width: 700px)')
+    if (!query) return
+    const changed = () => setCompactViewport(query.matches)
+    changed()
+    query.addEventListener('change', changed)
+    return () => query.removeEventListener('change', changed)
+  }, [])
   const sidebarHidden = sidebarMode === 'hidden'
-  const sidebarIcons = sidebarMode === 'icons'
+  const sidebarIcons = compactViewport || sidebarMode === 'icons'
   const sidebarW = sidebarHidden ? 0 : sidebarIcons ? 64 : 216
 
   return (
-    <div className="mm-shell" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: T.bg, color: T.text1, fontFamily: T.font, overflow: 'hidden' }}>
+    <div className="mm-shell" style={{ display: 'flex', flexDirection: 'column', height: '100dvh', minHeight: 0, minWidth: 0, background: T.bg, color: T.text1, fontFamily: T.font, overflow: 'hidden' }}>
       <style>{`
         .mm-shell *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.16) transparent}
         .mm-shell ::-webkit-scrollbar{width:8px;height:8px}
@@ -120,7 +130,7 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
       `}</style>
 
       {/* Top bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: `1px solid ${T.border}`, flexShrink: 0, background: T.surface1 }}>
+      <div className="mm-drag" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: `1px solid ${T.border}`, flexShrink: 0, background: T.surface1 }}>
         <TopBtn
           title={sidebarMode === 'full' ? 'Collapse sidebar to icons' : sidebarMode === 'icons' ? 'Hide sidebar' : 'Show sidebar'}
           onClick={cycleSidebar}
@@ -145,7 +155,7 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
           <div style={{
             width: sidebarW, flexShrink: 0, borderRight: `1px solid ${T.border}`, background: T.surface1,
             display: 'flex', flexDirection: 'column', padding: sidebarIcons ? '12px 8px' : '12px 10px',
-            transition: 'width 0.15s ease', overflow: 'hidden',
+            transition: 'width 0.15s ease', minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               {NAV.map(n => {
@@ -201,8 +211,9 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
         )}
 
         {/* Content */}
-        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '22px 26px' }}>{children}</div>
+        <main className="mm-shell-content mm-nodrag" tabIndex={0} aria-label="Page content" style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'auto', scrollbarGutter: 'stable', overscrollBehavior: 'contain', padding: 'clamp(12px, 3vw, 22px) clamp(12px, 3vw, 26px)', overflowWrap: 'anywhere' }}>{children}</main>
       </div>
+      <WindowResizeHandles disabled={minimized} />
       <UpdateToast />
     </div>
   )

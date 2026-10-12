@@ -108,7 +108,7 @@ export function validatedListenUrl(rawUrl) {
   const allowed = new Set([
     'model', 'encoding', 'sample_rate', 'channels', 'interim_results',
     'smart_format', 'punctuate', 'utterance_end_ms', 'vad_events',
-    'endpointing', 'language', 'diarize', 'keyterm',
+    'endpointing', 'language', 'diarize', 'diarize_model', 'keyterm',
   ])
   for (const key of url.searchParams.keys()) {
     if (!allowed.has(key)) throw new Error('Unsupported STT parameter')
@@ -128,6 +128,9 @@ export function validatedListenUrl(rawUrl) {
     const value = url.searchParams.get(key)
     if (value != null && !['true', 'false'].includes(value)) throw new Error('Invalid STT boolean')
   }
+  const diarizer = url.searchParams.get('diarize_model')
+  if (diarizer != null && !['v1', 'latest'].includes(diarizer)) throw new Error('Invalid streaming diarizer')
+  if (diarizer != null && url.searchParams.has('diarize')) throw new Error('Conflicting diarization parameters')
   for (const key of ['endpointing', 'utterance_end_ms']) {
     const n = Number(url.searchParams.get(key))
     if (url.searchParams.has(key) && (!Number.isInteger(n) || n < 100 || n > 5000)) {

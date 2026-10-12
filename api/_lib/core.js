@@ -1,7 +1,8 @@
+import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget } from '../../shared/modelRegistry.js'
 // Shared logic for the serverless functions (api/*.js) and the local dev server
 // (server.js). Files prefixed with _ are not treated as routes by Vercel.
 import OpenAI from 'openai'
-import { isCurrentChatModel, isCurrentProviderChoice, isActiveModelRecord, isModelUnavailableError } from '../../shared/currentModels.js'
+import { isCurrentChatModel, isDiscoveredChatModel, isCurrentProviderChoice, isActiveModelRecord, isModelUnavailableError } from '../../shared/currentModels.js'
 import { analyze } from '../../shared/delivery.js'
 import { fetchWithTimeout } from './http.js'
 import { getRetryAfterMs, isRateLimit, isQuotaExhausted, isTransient } from '../../shared/llm-errors.js'
@@ -44,69 +45,9 @@ const newProviderAttemptId = () => `llm_${Date.now().toString(36)}_${(++provider
 // fix — no code change. Exact ids drift fast; listModels() also live-discovers what each key can
 // actually use, and completeJSON/streamText bench-and-failover on a bad id, so a stale default
 // degrades gracefully rather than breaking a session.
-const CATALOG = {
-  // Stable family IDs preserve user preferences; only their model defaults change.
-  openai: {
-    label: 'OpenAI · GPT-6.1 Sol (balanced)', envKey: 'OPENAI_API_KEY',
-    baseURL: 'https://api.openai.com/v1',
-    model: () => process.env.OPENAI_MODEL || process.env.OPENAI_BALANCED_MODEL || 'gpt-6.1-sol'
-  },
-  openai_mini: {
-    label: 'OpenAI · GPT-6 Luna (fast)', envKey: 'OPENAI_API_KEY',
-    baseURL: 'https://api.openai.com/v1',
-    model: () => process.env.OPENAI_MINI_MODEL || process.env.OPENAI_FAST_MODEL || 'gpt-6-luna'
-  },
-  gpt_6_astra: {
-    label: 'OpenAI · GPT-6 Astra (maximum quality)', envKey: 'OPENAI_API_KEY',
-    baseURL: 'https://api.openai.com/v1',
-    model: () => process.env.OPENAI_MAX_MODEL || 'gpt-6-astra'
-  },
-  gemini_flash_lite: {
-    label: 'Gemini 3.5 Flash-Lite (fast)', envKey: 'GEMINI_API_KEY',
-    baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    model: () => process.env.GEMINI_FLASH_LITE_MODEL || 'gemini-3.5-flash-lite'
-  },
-  gemini_3_flash: {
-    label: 'Gemini 3.8 Flash (quality)', envKey: 'GEMINI_API_KEY',
-    baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    model: () => process.env.GEMINI_3_MODEL || 'gemini-3.8-flash'
-  },
-  gemini: {
-    label: 'Gemini 3.6 Flash (balanced)', envKey: 'GEMINI_API_KEY',
-    baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    model: () => process.env.GEMINI_MODEL || 'gemini-3.6-flash'
-  },
-  groq: {
-    label: 'Groq · GPT-OSS 120B', envKey: 'GROQ_API_KEY',
-    baseURL: 'https://api.groq.com/openai/v1',
-    model: () => process.env.GROQ_MODEL || 'openai/gpt-oss-120b'
-  },
-  cerebras: {
-    label: 'Cerebras · GPT-OSS 120B', envKey: 'CEREBRAS_API_KEY',
-    baseURL: 'https://api.cerebras.ai/v1',
-    model: () => process.env.CEREBRAS_MODEL || 'gpt-oss-120b'
-  },
-  claude_fable: {
-    label: 'Claude Fable 5 (maximum quality)', envKey: 'ANTHROPIC_API_KEY',
-    baseURL: 'https://api.anthropic.com/v1/',
-    model: () => process.env.ANTHROPIC_FABLE_MODEL || 'claude-fable-5'
-  },
-  claude_opus: {
-    label: 'Claude Opus 5', envKey: 'ANTHROPIC_API_KEY',
-    baseURL: 'https://api.anthropic.com/v1/',
-    model: () => process.env.ANTHROPIC_OPUS_MODEL || 'claude-opus-5'
-  },
-  claude_sonnet: {
-    label: 'Claude Sonnet 5 (balanced)', envKey: 'ANTHROPIC_API_KEY',
-    baseURL: 'https://api.anthropic.com/v1/',
-    model: () => process.env.ANTHROPIC_SONNET5_MODEL || 'claude-sonnet-5'
-  },
-  claude_haiku: {
-    label: 'Claude Haiku 4.5 (fast)', envKey: 'ANTHROPIC_API_KEY',
-    baseURL: 'https://api.anthropic.com/v1/',
-    model: () => process.env.ANTHROPIC_HAIKU_MODEL || 'claude-haiku-4-5-20251001'
-  }
-}
+const CATALOG = Object.fromEntries(Object.entries(MODEL_CATALOG).map(([id, record]) => [id, {
+  ...record, model: () => configuredModel(id, process.env),
+}]))
 
 // Runtime model lifecycle registry. Key-specific provider discovery is the source of
 // truth once it succeeds; catalog defaults are only cold-start candidates.
@@ -148,7 +89,7 @@ function quarantineModel(providerId, model, error) {
   return true
 }
 
-function selectActiveModel(alias) {
+function selectActiveModel(alias, { vision = false } = {}) {
   const catalog = CATALOG[alias]
   if (!catalog || !process.env[catalog.envKey]) return null
   const family = modelFamily(alias)
@@ -161,7 +102,8 @@ function selectActiveModel(alias) {
     ...(known ? [...known].sort().reverse() : []),
   ]
   return suggested.find(model =>
-    isCurrentChatModel(family, model)
+    (known ? known.has(model) : isCurrentChatModel(family, model))
+    && (!vision || isCurrentChatModel(family, model))
     && !isQuarantinedModel(family, model)
     && (!known || known.has(model))
   ) || null
@@ -241,12 +183,8 @@ export async function testProviderConnection(providerId) {
 // Tier-aware selection uses model IDs returned for each key when possible.
 // Cold starts use current stable catalog defaults; a provider 404/403 fails over.
 export function pickFastProvider() {
-  if (process.env.GEMINI_API_KEY) return newestDiscovered('gemini', [
-    'gemini-3.5-flash-lite',
-  ]) || 'gemini_flash_lite'
-  if (process.env.OPENAI_API_KEY) return newestDiscovered('openai', [
-    'gpt-6-luna',
-  ]) || 'openai_mini'
+  if (process.env.GEMINI_API_KEY) return newestDiscovered('gemini', MODEL_PRIORITIES.fast.gemini) || 'gemini_flash_lite'
+  if (process.env.OPENAI_API_KEY) return newestDiscovered('openai', MODEL_PRIORITIES.fast.openai) || 'openai_mini'
   if (process.env.CEREBRAS_API_KEY) return 'cerebras'
   if (process.env.GROQ_API_KEY) return 'groq'
   if (process.env.ANTHROPIC_API_KEY) return 'claude_haiku'
@@ -254,29 +192,17 @@ export function pickFastProvider() {
 }
 
 export function pickStrongProvider() {
-  if (process.env.OPENAI_API_KEY) return newestDiscovered('openai', [
-    'gpt-6.1-sol', 'gpt-6-sol',
-  ]) || 'openai'
-  if (process.env.ANTHROPIC_API_KEY) return newestDiscovered('claude_sonnet', [
-    'claude-sonnet-5',
-  ]) || 'claude_sonnet'
-  if (process.env.GEMINI_API_KEY) return newestDiscovered('gemini', [
-    'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash',
-  ]) || 'gemini_3_flash'
+  if (process.env.OPENAI_API_KEY) return newestDiscovered('openai', MODEL_PRIORITIES.strong.openai) || 'openai'
+  if (process.env.ANTHROPIC_API_KEY) return newestDiscovered('claude_sonnet', MODEL_PRIORITIES.strong.claude_sonnet) || 'claude_sonnet'
+  if (process.env.GEMINI_API_KEY) return newestDiscovered('gemini', MODEL_PRIORITIES.strong.gemini) || 'gemini_3_flash'
   return pickFastProvider()
 }
 
 export function pickBestProvider() {
   const candidates = [
-    process.env.ANTHROPIC_API_KEY && newestDiscovered('claude_sonnet', [
-      'claude-fable-5', 'claude-opus-5', 'claude-sonnet-5',
-    ]),
-    process.env.OPENAI_API_KEY && newestDiscovered('openai', [
-      'gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol',
-    ]),
-    process.env.GEMINI_API_KEY && newestDiscovered('gemini', [
-      'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash',
-    ]),
+    process.env.ANTHROPIC_API_KEY && newestDiscovered('claude_sonnet', MODEL_PRIORITIES.best.claude_sonnet),
+    process.env.OPENAI_API_KEY && newestDiscovered('openai', MODEL_PRIORITIES.best.openai),
+    process.env.GEMINI_API_KEY && newestDiscovered('gemini', MODEL_PRIORITIES.best.gemini),
   ].filter(Boolean)
   return candidates[0] || pickStrongProvider()
 }
@@ -304,8 +230,8 @@ export async function listModels() {
   const out = []
   const staged = new Map()
   const successful = new Set()
-  const push = (provider, model, label) => {
-    if (!isCurrentChatModel(provider, model) || isQuarantinedModel(provider, model)) return
+  const push = (provider, model, label, record = {}) => {
+    if (!isDiscoveredChatModel(provider, model, record) || isQuarantinedModel(provider, model)) return
     if (!staged.has(provider)) staged.set(provider, new Set())
     staged.get(provider).add(model)
     out.push({ id: `${provider}::${model}`, provider, model, label })
@@ -325,16 +251,14 @@ export async function listModels() {
     process.env.OPENAI_API_KEY && settle('openai', async () => {
       const r = await fetchWithTimeout('https://api.openai.com/v1/models', { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } })
       if (!r.ok) throw new Error('Model discovery unavailable')
-      ;((await r.json())?.data || []).filter(isActiveModelRecord).map(m => m.id)
-        .filter(id => /^(gpt-|o[0-9]|chatgpt)/i.test(id) && !/audio|realtime|transcrib|tts|image|embedding|moderation|search|dall|whisper/i.test(id))
-        .sort().reverse()
-        .forEach(id => push('openai', id, `OpenAI · ${id}`))
+      ;((await r.json())?.data || []).filter(isActiveModelRecord)
+        .forEach(m => push('openai', m.id, `OpenAI · ${m.id}`, m))
     }),
     // Anthropic (Claude) — the base id 'claude_sonnet' just carries the shared key/endpoint.
     process.env.ANTHROPIC_API_KEY && settle('claude_sonnet', async () => {
       const r = await fetchWithTimeout('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' } })
       if (!r.ok) throw new Error('Model discovery unavailable')
-      ;((await r.json())?.data || []).filter(isActiveModelRecord).forEach(m => push('claude_sonnet', m.id, `Claude · ${m.display_name || m.id}`))
+      ;((await r.json())?.data || []).filter(isActiveModelRecord).forEach(m => push('claude_sonnet', m.id, `Claude · ${m.display_name || m.id}`, m))
     }),
     // Google Gemini — models that support generateContent.
     process.env.GEMINI_API_KEY && settle('gemini', async () => {
@@ -342,21 +266,21 @@ export async function listModels() {
       if (!r.ok) throw new Error('Model discovery unavailable')
       ;((await r.json())?.models || [])
         .filter(m => isActiveModelRecord(m) && (m.supportedGenerationMethods || []).includes('generateContent') && /gemini/i.test(m.name || ''))
-        .forEach(m => { const id = (m.name || '').replace(/^models\//, ''); push('gemini', id, `Gemini · ${m.displayName || id}`) })
+        .forEach(m => { const id = (m.name || '').replace(/^models\//, ''); push('gemini', id, `Gemini · ${m.displayName || id}`, m) })
     }),
     // Groq (OpenAI-compatible).
     process.env.GROQ_API_KEY && settle('groq', async () => {
       const r = await fetchWithTimeout('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` } })
       if (!r.ok) throw new Error('Model discovery unavailable')
-      ;((await r.json())?.data || []).filter(isActiveModelRecord).map(m => m.id).filter(id => !/whisper|tts|guard/i.test(id))
-        .forEach(id => push('groq', id, `Groq · ${id}`))
+      ;((await r.json())?.data || []).filter(isActiveModelRecord)
+        .forEach(m => push('groq', m.id, `Groq · ${m.id}`, m))
     }),
     // Cerebras (OpenAI-compatible).
     process.env.CEREBRAS_API_KEY && settle('cerebras', async () => {
       const r = await fetchWithTimeout('https://api.cerebras.ai/v1/models', { headers: { Authorization: `Bearer ${process.env.CEREBRAS_API_KEY}` } })
       if (!r.ok) throw new Error('Model discovery unavailable')
-      ;((await r.json())?.data || []).filter(isActiveModelRecord).map(m => m.id).filter(Boolean)
-        .forEach(id => push('cerebras', id, `Cerebras · ${id}`))
+      ;((await r.json())?.data || []).filter(isActiveModelRecord)
+        .forEach(m => push('cerebras', m.id, `Cerebras · ${m.id}`, m))
     }),
   ].filter(Boolean))
   lastSuccessfulDiscoveries = successful
@@ -386,7 +310,7 @@ function resolveProvider(id) {
     const cc = CATALOG[base]
     const family = modelFamily(base)
     const known = discoveredModels.get(family)
-    if (cc && process.env[cc.envKey] && isCurrentChatModel(family, model)
+    if (cc && process.env[cc.envKey] && (known ? known.has(model) : isCurrentChatModel(family, model))
       && !isQuarantinedModel(family, model) && (!known || known.has(model))) {
       return { key: process.env[cc.envKey], baseURL: cc.baseURL, model }
     }
@@ -397,7 +321,7 @@ function resolveProvider(id) {
     const model = selectActiveModel(id)
     if (model) return { key: process.env[c.envKey], baseURL: c.baseURL, model }
   }
-  if (process.env.LLM_API_KEY) return { key: process.env.LLM_API_KEY, baseURL: process.env.LLM_BASE_URL, model: process.env.LLM_MODEL || 'gpt-6-luna' }
+  if (process.env.LLM_API_KEY) return { key: process.env.LLM_API_KEY, baseURL: process.env.LLM_BASE_URL, model: process.env.LLM_MODEL || MODEL_CATALOG.openai_mini.defaultModel }
   const first = availableProviders()[0]
   if (first && CATALOG[first.id]) {
     const p = CATALOG[first.id], model = selectActiveModel(first.id)
@@ -413,8 +337,7 @@ function clientFor(prov) {
 // GPT-6 Chat Completions rejects the old max_tokens field; other providers
 // have different OpenAI-compatible contracts. Scope this change to OpenAI GPT-6.
 export function completionBudget(prov, maxTokens) {
-  return /^https:\/\/api\.openai\.com\/v1\/?$/i.test(String(prov.baseURL || ''))
-    && /^gpt-6(?:\.\d+)?-/i.test(String(prov.model || ''))
+  return usesCompletionTokenBudget(prov.baseURL, prov.model)
     ? { max_completion_tokens: maxTokens }
     : { max_tokens: maxTokens }
 }
@@ -606,6 +529,22 @@ const AI_ERRORS = {
     'All configured AI providers failed for different reasons: one or more may have exhausted usage, be rate-limited, be temporarily unavailable, or have a key/model-access problem. Check billing, limits, credentials, and model access; use a separately provisioned backup if available.',
     'Some upstream AI providers are rate-limited, out of usage, temporarily unavailable, or could not authenticate or access the selected model. Please retry later, or switch to your own separately provisioned API key in Settings (⚙).',
   ],
+  auth: [
+    'The AI provider rejected the API key. Replace it in Settings → API Keys and test the connection again.',
+    'The managed AI provider could not authenticate. Retry later or use your own API key in Settings.',
+  ],
+  access: [
+    'The AI provider denied model access. Check this account’s model permissions or configure another provider in Settings → API Keys.',
+    'The managed AI provider denied model access. Retry later or use your own provider in Settings.',
+  ],
+  model_unavailable: [
+    'No usable model remained after automatic recovery. Test the provider connection in Settings or add another provider; you do not need to choose a model.',
+    'The managed AI model is unavailable after recovery. Retry later or use your own provider in Settings.',
+  ],
+  request_invalid: [
+    'The AI provider rejected the request format. Export diagnostics from Settings so the integration can be checked; replacing the key may not help.',
+    'The managed AI provider rejected the request format. Export diagnostics from Settings and report the failure.',
+  ],
   generic: [
     'Could not reach the configured AI provider. Check the provider key, model access, and current provider status in Settings (⚙), then try again or use another supported provider.',
     'Could not reach MockMate AI right now. Please try again shortly, or switch to your own API key in Settings (⚙).',
@@ -631,6 +570,7 @@ function aiError(kind, status) {
   e.kind = kind
   e.code = ({
     no_provider: 'no_provider',
+    auth: 'provider_auth', access: 'model_access', model_unavailable: 'model_unavailable', request_invalid: 'request_invalid',
     quota: 'insufficient_quota',
     rate: 'rate_limit',
     transient: 'transient',
@@ -661,7 +601,9 @@ export function getFallbackProviders(requestedId) {
   const order = ['gemini_flash_lite', 'openai_mini', 'groq', 'cerebras', 'claude_haiku', 'custom']
   const configured = availableProviders().map(p => p.id)
   const now = Date.now()
-  const candidateChoice = isCurrentProviderChoice(requestedId) ? requestedId : ''
+  const requestedParts = String(requestedId || '').split('::')
+  const discoveredChoice = requestedParts.length === 2 && discoveredModels.get(modelFamily(requestedParts[0]))?.has(requestedParts[1])
+  const candidateChoice = isCurrentProviderChoice(requestedId) || discoveredChoice ? requestedId : ''
   const requestedFamily = modelFamily(candidateChoice)
   const requestedModel = String(candidateChoice).includes('::') ? String(candidateChoice).split('::').slice(1).join('::') : null
   const safeRequestedId = requestedModel && (isQuarantinedModel(requestedFamily, requestedModel)
@@ -719,6 +661,19 @@ function exhaustedProviderError({ sawQuota, sawRate, sawTransient, retryAfterMs 
   const error = aiError(kind, status)
   if (retryAfterMs > 0) error.retryAfterMs = retryAfterMs
   return error
+}
+
+// Return actionable categories, never arbitrary upstream messages or credentials.
+export function actionableProviderError(error) {
+  const status = Number(error?.status || error?.statusCode) || 502
+  const kind = isQuotaExhausted(error) ? 'quota'
+    : isRateLimit(error) ? 'rate'
+      : isModelUnavailableError(error) ? 'model_unavailable'
+        : status === 401 ? 'auth'
+          : status === 403 ? 'access'
+            : status === 400 ? 'request_invalid'
+              : isTransient(error) ? 'transient' : 'generic'
+  return aiError(kind, status >= 400 && status <= 599 ? status : 502)
 }
 
 function userFacingPartialStreamError(error) {
@@ -863,7 +818,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
   // Every configured provider hit a genuine error. Keep the technical detail in the LOG (already
   // logged per-provider above), but show the USER a human message — never a raw "400 no body".
   console.error(`[llm] all providers failed — last: ${lastError?.status || ''} ${lastError?.message || lastError}`)
-  throw aiError('generic', lastError?.status || 502)
+  throw actionableProviderError(lastError)
 }
 
 // Vision-capable providers — cheap/fast first so screen solve survives free-tier 429s.
@@ -874,7 +829,7 @@ export function listVisionProviders() {
   // Vision and text still maintain independent rate-limit health/cooldowns.
   for (const id of ['gemini_flash_lite', 'gemini', 'gemini_3_flash', 'openai_mini', 'openai']) {
     const c = CATALOG[id]
-    const model = selectActiveModel(id)
+    const model = selectActiveModel(id, { vision: true })
     if (model) list.push({ id, key: process.env[c.envKey], baseURL: c.baseURL, model })
   }
   // Custom vision ids are not in the curated text catalog. These are explicit
@@ -1224,7 +1179,7 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
     throw exhaustedProviderError({ sawQuota, sawRate, sawTransient, retryAfterMs })
   }
   if (isQuotaExhausted(lastError)) throw aiError('quota', 402)
-  throw lastError || new Error('No LLM provider could stream a response')
+  throw actionableProviderError(lastError)
 }
 
 // ── Deepgram (accurate speech-to-text) ──────────────────────────────────────
@@ -1324,10 +1279,10 @@ export async function mintToken({ room, identity, name, role = 'candidate', requ
 // else Gemini gemini-embedding-001. Returns one vector per input string. Cheap; keep the doc index
 // on the client and only hit this to embed chunks (once) + each question.
 export function resolveEmbeddingProvider() {
-  if (process.env.OPENAI_API_KEY) return { key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: process.env.EMBED_MODEL || 'text-embedding-3-small' }
+  if (process.env.OPENAI_API_KEY) return { key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: process.env.EMBED_MODEL || EMBEDDING_MODELS.openai }
   // text-embedding-004 was retired by Google on 2026-01-14. The stable text replacement is
   // gemini-embedding-001; deployments can opt into gemini-embedding-2 through EMBED_MODEL.
-  if (process.env.GEMINI_API_KEY) return { key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: process.env.EMBED_MODEL || 'gemini-embedding-001' }
+  if (process.env.GEMINI_API_KEY) return { key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: process.env.EMBED_MODEL || EMBEDDING_MODELS.gemini }
   const e = new Error('Document search needs an OpenAI or Gemini key (for embeddings).'); e.status = 501; throw e
 }
 
@@ -1335,8 +1290,8 @@ export async function embed(input) {
   const list = (Array.isArray(input) ? input : [input]).filter(t => t && String(t).trim())
   if (!list.length) return []
   const candidates = []
-  if (process.env.OPENAI_API_KEY) candidates.push({ key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: process.env.OPENAI_EMBED_MODEL || process.env.EMBED_MODEL || 'text-embedding-3-small' })
-  if (process.env.GEMINI_API_KEY) candidates.push({ key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: process.env.GEMINI_EMBED_MODEL || process.env.EMBED_MODEL || 'gemini-embedding-001' })
+  if (process.env.OPENAI_API_KEY) candidates.push({ key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: process.env.OPENAI_EMBED_MODEL || process.env.EMBED_MODEL || EMBEDDING_MODELS.openai })
+  if (process.env.GEMINI_API_KEY) candidates.push({ key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: process.env.GEMINI_EMBED_MODEL || process.env.EMBED_MODEL || EMBEDDING_MODELS.gemini })
   if (!candidates.length) return resolveEmbeddingProvider() // throws the existing actionable 501
   let lastError
   for (const prov of candidates) {

@@ -84,7 +84,7 @@ safeStorage.decryptString = function decryptWithBackup(buffer) {
 // Everything else is blocked. main.cjs reuses externalNavigationAllowed().
 const KNOWN_SAFE_HOSTS = [
   'github.com', 'stripe.com', 'openai.com', 'platform.openai.com', 'anthropic.com',
-  'console.anthropic.com', 'groq.com', 'console.groq.com', 'google.com', 'ai.google.dev',
+  'console.anthropic.com', 'platform.claude.com', 'groq.com', 'console.groq.com', 'google.com', 'ai.google.dev',
   'aistudio.google.com', 'cerebras.ai', 'cloud.cerebras.ai', 'deepgram.com', 'console.deepgram.com',
 ]
 function isLoopbackHost(host) { return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' }

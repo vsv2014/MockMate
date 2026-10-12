@@ -5,9 +5,9 @@ MockMate is an interview-performance OS: prepare, practice, perform and learn ac
 
 `docs/ARCHITECTURE.md` is the source of truth for **current implementation**. This roadmap contains future work and release gates only.
 
-## Current v1.6.1 delivery correction
+## Current v1.6.2 signed public release candidate
 
-The `v1.6.0` source tag/release exists but has no Windows installer assets because its signing-only workflow failed before building. Version `1.6.1` adds the approved isolated unsigned pre-release fallback while retaining the signed stable path.
+The `v1.6.0` source tag/release exists but has no Windows installer assets because its signing-only workflow failed before building. Historical v1.6.1 used an isolated unsigned pre-release. Current v1.6.2 requires a trusted signed stable installer; missing signing settings block publication.
 
 ### Desktop
 - [x] Windows multi-monitor overlay and 760×240 camera-anchored Teleprompter.
@@ -46,7 +46,7 @@ The `v1.6.0` source tag/release exists but has no Windows installer assets becau
 - [ ] Real second-device pairing / Duo remote companion.
 - [ ] Store-ready PDF/DOCX mobile upload/extraction path.
 
-## Release gates for v1.6.1
+## Release gates for v1.6.2
 
 - [x] Current audit-remediation checks: 84 test files / 630 tests; API smoke (5 tests), production Vite build/output check, Electron syntax checks, and `git diff --check` passed on 2026-10-11. `npm run verify` could not complete because the sandbox could not download the Electron runtime; fresh CI is required for this diff.
 - [x] PR #85 reliability-only head: Linux/Windows CI passed; [run 38116194648](https://github.com/vsv2014/MockMate/actions/runs/38116194648).
@@ -54,24 +54,24 @@ The `v1.6.0` source tag/release exists but has no Windows installer assets becau
 - [x] Version-generic Windows release workflow.
 - [x] Vercel deployment constrained to Hobby's 12-function limit.
 - [ ] One clean hosted deployment on the final public head.
-- [ ] Physical Windows v1.6.1 clean-install smoke for the artifact actually produced; unsigned preview builds remain manual-update and non-certified.
+- [ ] Physical Windows v1.6.2 clean-install smoke for the artifact actually produced; unsigned preview builds remain manual-update and non-certified.
 - [ ] Packaged Live: `Alt+T → drag → Alt+T`, mic/system first question, `F7` repeat/display memory.
 - [ ] Real Zoom/Meet/Teams share-preview confirmation.
 - [ ] Real v1.5.3 → future signed update/install migration, including previously unsigned installers.
 - [ ] Diagnostics export/redaction click-through on the packaged build.
 - [ ] Two-account v3→v4 saved jobs and Resume Studio migration check on physical Windows, including Guest and account deletion.
 - [ ] Hosted managed WSS/Mongo/Deepgram E2E, session settlement and abrupt crash accounting.
-- [x] When signing settings are absent, isolate the unsigned BYOK pre-release identity and exclude all updater metadata; partial signing configuration fails closed.
+- [x] Stable release fails when signing settings are missing; explicit manual previews retain isolated identities without updater metadata.
 - [ ] Configure a trusted signing certificate and verify Authenticode before claiming a stable auto-updating release.
 
 See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
 
 ## P0 — Public release reliability
 
-- [ ] Complete automated release checks before creating the **v1.6.1** tag; complete physical checks before making production-certification claims.
+- [ ] Complete automated release checks before creating the **v1.6.2** tag; complete physical checks before making production-certification claims.
 - [ ] Add automated coverage for deployment-shape constraints so Hobby/serverless limits cannot regress silently.
 - [x] Guard local startup against killing unknown processes on ports 3002/4000 (PR #63).
-- [x] Signed Windows publisher validation remains enforced when all signing settings exist; an isolated unsigned pre-release path is used only when all are absent.
+- [x] Stable Windows releases require a trusted signer and publisher validation, with no unsigned fallback.
 - [ ] Supply real trusted signing credentials and pass signed-install/update verification on Windows hardware.
 - [ ] Establish staged rollout and rollback procedure.
 

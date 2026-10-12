@@ -144,13 +144,13 @@ function stopSpeaking() { window.speechSynthesis?.cancel() }
 
 
 // ── Setup screen ──────────────────────────────────────────────────────────────
-function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardLive, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, initialProfile, initialKit, onProfileChange }) {
+function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardLive, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, initialProfile, initialKit, onProfileChange, initialAudioSource }) {
   const kitScoped = Boolean(initialKit?.id && initialProfile)
   // Automatic chooses the speed/quality lane from the question itself; legacy
   // Fast/Maximum Quality preferences must not pin sessions to one model tier.
   const [profile, setProfile] = useState(() => ({ ...loadProfile(), ...(initialProfile || {}), modelStrategy: 'balanced' }))
   const [audioSources, setAudioSources] = useState([])
-  const [sourceId, setSourceId] = useState('microphone')
+  const [sourceId, setSourceId] = useState(initialAudioSource || 'microphone')
   const [providers, setProviders] = useState([])
   const [dgAvailable, setDgAvailable] = useState(false)
   // Inline API-key entry — same keys are also editable globally (Home → Settings).
@@ -170,7 +170,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
     window.electronAPI?.getAudioSources?.().then(srcs => {
       setAudioSources(srcs || [])
       // Prefer system audio on supported desktops; microphone remains a fallback.
-      if (window.electronAPI?.platform !== 'linux') {
+      if (!initialAudioSource && window.electronAPI?.platform !== 'linux') {
         const screen = (srcs || []).find(s => /screen|entire|display/i.test(s.name))
         if (screen) setSourceId(screen.id)
       }
@@ -308,7 +308,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
             <div style={{ color: preflightOk(!noLLM) }}>{noLLM ? '✗' : '✓'} AI ready {managed ? '(Managed)' : '(your keys)'}</div>
             <div style={{ color: audioPreflightColor }}>
               {micMode
-                ? '⚠ Microphone — may hear you; auto-hints wait for speaker lock (prefer System Audio on Win/macOS)'
+                ? '⚠ Microphone — may hear you; tap Answer this for each question (prefer System Audio on Win/macOS)'
                 : isLinux
                   ? '⚠ System Audio unavailable on Linux — use Microphone'
                   : '✓ System Audio — hears the interviewer (recommended)'}
@@ -390,7 +390,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
             const onMic = sourceId === 'microphone'
             return (
               <div style={{ fontSize: 12.5, color: T.text2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span>{onMic ? '🎤 Microphone' : '🖥️ System Audio'} <span style={{ color: T.text3 }}>· {onMic ? 'may hear you until speaker lock' : 'hears the interviewer (recommended on Win/macOS)'}</span></span>
+                <span>{onMic ? '🎤 Microphone' : '🖥️ System Audio'} <span style={{ color: T.text3 }}>· {onMic ? 'includes your voice; questions need confirmation' : 'hears the interviewer (recommended on Win/macOS)'}</span></span>
                 {!isLinux && (
                   <button type="button" onClick={() => setSourceId(onMic ? systemId : 'microphone')}
                     style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.accentFrom, cursor: 'pointer', fontSize: 12, textDecoration: 'underline', padding: 0, fontFamily: T.font }}>
@@ -1469,8 +1469,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     lastHintText.current = q.text
 
     const isMic = liveSourceIdRef.current === 'microphone'
-    if (isMic && !(diarizationLockedRef.current && !degradedRef.current)) {
-      // Pre-warm RAG once while waiting for manual confirmation / speaker lock
+    if (isMic) {
+      // Pre-warm RAG once while waiting for manual confirmation
       startSpeculativeRag(q.text, { immediate: true })
       pendingManualQ.current = { text: q.text, questionId: q.id }
       manualQRef.current = q.text
@@ -1484,6 +1484,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   // A clear interviewer correction invalidates the answer currently being generated.
   // Keep the old card as an explicit superseded record instead of a mysterious blank.
   handleRevisionRef.current = () => {
+    if (liveSourceIdRef.current === 'microphone') return
     const activeId = activeQuestionIdRef.current
     if (activeGenerationRef.current?.canCommit?.()) {
       activeGenerationRef.current.cancel?.('interviewer_revision')
@@ -1506,6 +1507,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   // "Write it as code" / "be brief" modifies the active question rather than
   // becoming a second card. Regenerate the same card with the explicit contract.
   handleRefinementRef.current = ({ text }) => {
+    if (liveSourceIdRef.current === 'microphone') return
     const activeId = activeQuestionIdRef.current || interviewStateRef.current?.getCurrentQuestionId?.()
     const current = activeId ? interviewStateRef.current?.getQuestion?.(activeId) : null
     if (!current?.text || !text) return
@@ -1522,6 +1524,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   const onEarlyQuestion = useCallback((text, meta) => {
     if (!sessionActiveRef.current) return
+    if (liveSourceIdRef.current === 'microphone') return // inferred speakers cannot authorize automatic generation
     const trimmed = String(text || '').trim()
     if (!trimmed) return
     if (meta?.isCandidate) {
@@ -1539,7 +1542,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       meta: {
         isCandidate: false,
         speaker: meta?.speaker,
-        speakerRole: (isSysAudio || diarizationLockedRef.current) ? 'interviewer' : 'unknown',
+        speakerRole: isSysAudio ? 'interviewer' : (meta?.speakerRole || 'unknown'),
         diarizationLocked: isSysAudio || diarizationLockedRef.current,
       },
     })
@@ -1572,6 +1575,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     }
 
     const isSysAudio = Boolean(liveSourceIdRef.current && liveSourceIdRef.current !== 'microphone')
+    if (!isSysAudio) {
+      // Keep microphone transcription usable without letting role inference trigger
+      // capture revisions, refinements or paid answer generation.
+      pendingManualQ.current = { text: trimmed, questionId: newQuestionId() }
+      manualQRef.current = trimmed
+      setManualQ(trimmed)
+      return
+    }
     captureRef.current?.ingest?.({
       text: trimmed,
       isFinal: true,
@@ -1579,9 +1590,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       meta: {
         isCandidate: false,
         speaker: meta?.speaker,
-        speakerRole: (isSysAudio || diarizationLockedRef.current)
-          ? 'interviewer'
-          : 'unknown',
+        speakerRole: isSysAudio ? 'interviewer' : (meta?.speakerRole || 'unknown'),
         diarizationLocked: isSysAudio || diarizationLockedRef.current,
         degraded: degradedRef.current,
       },
@@ -1597,15 +1606,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     degradedRef.current = !!audio.degraded
   }, [audio.diarizationLocked, audio.degraded])
 
-  // Mic lock flush — auto-answer the question that arrived before diarization locked.
-  useEffect(() => {
-    if (!(audio.diarizationLocked && !audio.degraded)) return
-    const pending = pendingManualQ.current
-    if (!pending?.text) return
-    pendingManualQ.current = null
-    setManualQ('')
-    generateHint(pending.text, { force: true, questionId: pending.questionId })
-  }, [audio.diarizationLocked, audio.degraded]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Microphone speaker identities are inferred, not authenticated. Never flush
+  // a pending question automatically when that heuristic changes.
 
   function audioOpts() {
     return {
@@ -1964,9 +1966,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                     : audio.reconnecting
                       ? 'Connection dropped — restoring automatically'
                       : liveSourceId === 'microphone'
-                        ? (audio.diarizationLocked && !audio.degraded
-                          ? 'Speaker locked — auto-hints on'
-                          : 'Listening — auto-hints after speaker lock, or tap Answer this')
+                        ? 'Microphone hears your voice too — tap Answer this for each question'
                         : 'Listening for the interviewer…'}
                 </div>
               </div>
@@ -1980,7 +1980,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
             <div style={{ fontSize: 12, color: T.text3, lineHeight: 1.6, marginBottom: 14 }}>
               {liveSourceId === 'microphone'
-                ? 'On mic, wait for speaker lock (or tap Answer this). Read the hint and answer in your own words.'
+                ? 'Microphone questions require Answer this. Use System Audio for automatic interviewer questions.'
                 : 'Hints appear when the interviewer asks a question. Read and respond in your own words.'}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2010,10 +2010,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         )}
 
         {/* Mic waiting for lock — Answer this for the queued question */}
-        {manualQ && liveSourceId === 'microphone' && !(audio.diarizationLocked && !audio.degraded) && (
+        {manualQ && liveSourceId === 'microphone' && (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.35)', borderRadius: 8, padding: '9px 11px', marginBottom: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, color: '#fbbf24', fontWeight: 700, marginBottom: 3 }}>Question captured — waiting for speaker lock</div>
+              <div style={{ fontSize: 11, color: '#fbbf24', fontWeight: 700, marginBottom: 3 }}>Microphone question — confirm before answering</div>
               <div style={{ fontSize: 12, color: T.text1, lineHeight: 1.4 }}>❓ {manualQ}</div>
             </div>
             <button type="button" onClick={() => {
@@ -2257,7 +2257,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, onSessionEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId, initialProfile, initialKit, onProfileChange }) {
+export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, onSessionEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId, initialProfile, initialKit, onProfileChange, initialAudioSource }) {
   const [phase, setPhase] = useState('setup')
   const [sessionConfig, setSessionConfig] = useState(null)
   const [sessionNotes, setSessionNotes] = useState(null)
@@ -2311,7 +2311,7 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
   }
 
   if (phase === 'setup') return (
-    <SetupScreen
+    <SetupScreen initialAudioSource={initialAudioSource}
       recoveredLive={recoveredLive}
       initialProfile={initialProfile}
       initialKit={initialKit}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react'
 import { apiFetch } from './lib/apiClient'
 import LiveCompanion from './LiveCompanion'
 import AuthGate from './auth/AuthGate'
@@ -95,6 +95,7 @@ function ElectronShell({ auth }) {
   const [view, setView] = useState('home')
   const [kitState, setKitState] = useState(() => loadInterviewKitState(loadProfile()))
   const [launchKitId, setLaunchKitId] = useState(null)
+  const [readyAudioSource, setReadyAudioSource] = useState(null)
   const kits = kitState.kits || []
   const activeKit = useMemo(() => activeInterviewKit(kitState), [kitState])
   const launchKit = kits.find(kit => kit.id === launchKitId) || null
@@ -203,7 +204,8 @@ function ElectronShell({ auth }) {
     setView('solo')
   }
 
-  function continueToLive(kit = activeKit) {
+  function continueToLive(kit = activeKit, readiness = {}) {
+    setReadyAudioSource(readiness.audioSource || null)
     if (!kit) { setView('kits'); return }
     activateKit(kit.id)
     setLaunchKitId(kit.id)
@@ -737,6 +739,7 @@ function ElectronShell({ auth }) {
   }
 
   function collapseToPill() {
+    window.electronAPI?.setWindowMode?.('pill')
     setClickThrough(false)
     setMinimized(true)
   }
@@ -809,7 +812,7 @@ function ElectronShell({ auth }) {
 
   // Resize the OS window: full dashboard for shell views + Live setup/feedback; compact
   // invisible overlay for the live interview itself; a tiny logo pill when minimized.
-  useEffect(() => {
+  useLayoutEffect(() => {
     let mode
     if (minimized) mode = 'pill'                          // collapsed → tiny click-to-expand pill
     else if (view === 'companion') mode = companionPhase === 'live' ? 'overlay' : 'app'
@@ -976,7 +979,7 @@ function ElectronShell({ auth }) {
           />
         )}
         <div style={shellPill ? { display: 'none' } : undefined} aria-hidden={shellPill || undefined}>
-          <AppShell active={view} onNav={handleNav} auth={auth} meetingActive={meetingActive}
+          <AppShell minimized={shellPill} active={view} onNav={handleNav} auth={auth} meetingActive={meetingActive}
             stealth={stealth} onStealth={requestStealthToggle}
             onMinimize={collapseToPill} onClose={() => window.close?.()}>
             <WhatsNew openSignal={whatsNewSignal} />
@@ -994,7 +997,7 @@ function ElectronShell({ auth }) {
   if (view === 'companion') return (
     <>
     {stealthSafety}
-    <LiveCompanion key={launchKit?.id || 'shared-profile'}
+    <LiveCompanion initialAudioSource={readyAudioSource} key={launchKit?.id || 'shared-profile'}
       initialProfile={launchKit ? profileFromInterviewKit(launchKit, loadProfile()) : undefined}
       initialKit={launchKit ? { id: launchKit.id, name: launchKit.title } : null}
       onProfileChange={profile => launchKit && saveKitProfile(launchKit.id, profile)}
@@ -1542,7 +1545,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
   // Collapsed → on-screen logo pill (never a full close). Protection follows the
   // explicit Stealth toggle; collapsing does not silently enable it.
   if (minimized) return (
-    <div id="mockmate-overlay" style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999 }}>
+    <div id="mockmate-overlay" style={{ position: 'fixed', inset: 0, background: 'transparent', pointerEvents: 'none', zIndex: 9999 }}>
       <button type="button" data-mm-hit="1"
         onMouseDown={startPillDrag}
         onClick={() => { if (!pillDragged.current) onMinimize?.() }}

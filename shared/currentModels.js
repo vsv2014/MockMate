@@ -1,21 +1,9 @@
+import { CURRENT_MODELS, MODEL_CATALOG } from './modelRegistry.js'
 // Single source of truth for the curated *current* chat-model picker. This is a
 // UI/automatic-routing allowlist, not a claim that every other model is retired.
 // Older models can be active but are intentionally omitted from the compact picker.
 // Actual account access is still determined by each provider's live /models endpoint.
-const CURRENT_MODELS = {
-  openai: /^(?:gpt-6(?:\.\d+)?-(?:astra|sol|luna))$/i,
-  claude_sonnet: /^claude-(?:(?:fable|opus|sonnet)-5(?:-\d+)?|haiku-4-5(?:-\d{8})?)$/i,
-  gemini: /^gemini-(?:3\.8-flash|3\.7-flash|3\.6-flash|3\.5-flash-lite)$/i,
-  groq: /^(?:openai\/gpt-oss-(?:120b|20b)|qwen\/qwen3\.8-27b)$/i,
-  cerebras: /^(?:gpt-oss-120b|zai-glm-4\.7)$/i,
-}
-const BASE_ALIASES = new Set([
-  'openai', 'openai_mini', 'gpt_6_astra',
-  'gemini', 'gemini_3_flash', 'gemini_flash_lite',
-  'groq', 'cerebras',
-  'claude_fable', 'claude_opus', 'claude_sonnet', 'claude_haiku',
-  'custom',
-])
+const BASE_ALIASES = new Set([...Object.keys(MODEL_CATALOG), 'custom'])
 
 export function isCurrentChatModel(provider, model) {
   const test = CURRENT_MODELS[provider]
@@ -59,4 +47,19 @@ export function isModelUnavailableError(error) {
   const message = String(error?.message || payload.message || '').toLowerCase()
   return /\b(model|deployment)\b/.test(message)
     && /\b(deprecated|retired|not found|not available|unavailable|does not exist|no longer available|sunset)\b/.test(message)
+}
+
+// Discovery is distinct from the compact curated picker. Future generations of
+// supported chat families can recover a retired default without a new release.
+// Reject specialized/preview endpoints even if the provider lists them.
+export function isDiscoveredChatModel(provider, model, record = {}) {
+  if (!isActiveModelRecord(record) || typeof model !== 'string') return false
+  if (/audio|realtime|transcrib|tts|image|embedding|moderation|search|guard|preview|experimental|live|omni|dall|whisper/i.test(model)) return false
+  if (isCurrentChatModel(provider, model)) return true
+  if (provider === 'openai') return /^gpt-(?:[6-9]|[1-9]\d+)(?:\.\d+)?-(?:astra|sol|luna)(?:-\d{4}-\d{2}-\d{2})?$/i.test(model)
+  if (provider === 'gemini') return /^gemini-(?:3\.(?:[5-9]|[1-9]\d+)|[4-9](?:\.\d+)?|[1-9]\d+(?:\.\d+)?)-(?:flash|flash-lite|pro)$/i.test(model)
+  if (provider === 'claude_sonnet') return /^claude-(?:fable|opus|sonnet|haiku)-(?:[5-9]|[1-9]\d+)(?:-\d+)*$/i.test(model)
+  // Other providers require positive chat-capability metadata for unfamiliar ids.
+  const capabilities = record.capabilities || {}
+  return ['groq', 'cerebras'].includes(provider) && (capabilities.chat === true || capabilities.chat_completions === true)
 }
