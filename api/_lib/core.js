@@ -1,6 +1,7 @@
 // Shared logic for the serverless functions (api/*.js) and the local dev server
 // (server.js). Files prefixed with _ are not treated as routes by Vercel.
 import OpenAI from 'openai'
+import { isCurrentChatModel, isCurrentProviderChoice } from '../../shared/currentModels.js'
 import { analyze } from '../../shared/delivery.js'
 import { fetchWithTimeout } from './http.js'
 import { getRetryAfterMs, isRateLimit, isQuotaExhausted, isTransient } from '../../shared/llm-errors.js'
@@ -44,66 +45,47 @@ const newProviderAttemptId = () => `llm_${Date.now().toString(36)}_${(++provider
 // actually use, and completeJSON/streamText bench-and-failover on a bad id, so a stale default
 // degrades gracefully rather than breaking a session.
 const CATALOG = {
-  // ── OpenAI ──
-  gpt_56_sol: {
-    label: 'GPT-5.6 Sol (maximum quality)', envKey: 'OPENAI_API_KEY',
-    baseURL: 'https://api.openai.com/v1',
-    model: () => process.env.OPENAI_MAX_MODEL || 'gpt-5.6-sol'
-  },
-  gpt_56_terra: {
-    label: 'GPT-5.6 Terra (balanced)', envKey: 'OPENAI_API_KEY',
-    baseURL: 'https://api.openai.com/v1',
-    model: () => process.env.OPENAI_BALANCED_MODEL || 'gpt-5.6-terra'
-  },
-  gpt_56_luna: {
-    label: 'GPT-5.6 Luna (fast)', envKey: 'OPENAI_API_KEY',
-    baseURL: 'https://api.openai.com/v1',
-    model: () => process.env.OPENAI_FAST_MODEL || 'gpt-5.6-luna'
-  },
-  gpt_5: {
-    label: 'GPT-5.4', envKey: 'OPENAI_API_KEY',
-    baseURL: 'https://api.openai.com/v1',
-    model: () => process.env.OPENAI_GPT5_MODEL || 'gpt-5.4'
-  },
+  // Stable family IDs preserve user preferences; only their model defaults change.
   openai: {
-    label: 'GPT-4o', envKey: 'OPENAI_API_KEY',
+    label: 'OpenAI · GPT-6 Sol (balanced)', envKey: 'OPENAI_API_KEY',
     baseURL: 'https://api.openai.com/v1',
-    model: () => process.env.OPENAI_MODEL || 'gpt-4o'
+    model: () => process.env.OPENAI_MODEL || process.env.OPENAI_BALANCED_MODEL || 'gpt-6-sol'
   },
   openai_mini: {
-    label: 'GPT mini (fast)', envKey: 'OPENAI_API_KEY',
+    label: 'OpenAI · GPT-6 Luna (fast)', envKey: 'OPENAI_API_KEY',
     baseURL: 'https://api.openai.com/v1',
-    model: () => process.env.OPENAI_MINI_MODEL || 'gpt-4o-mini'   // un-hardcoded — set OPENAI_MINI_MODEL=gpt-5-mini to modernize
+    model: () => process.env.OPENAI_MINI_MODEL || process.env.OPENAI_FAST_MODEL || 'gpt-6-luna'
   },
-  // ── Google Gemini ──
+  gpt_6_astra: {
+    label: 'OpenAI · GPT-6 Astra (maximum quality)', envKey: 'OPENAI_API_KEY',
+    baseURL: 'https://api.openai.com/v1',
+    model: () => process.env.OPENAI_MAX_MODEL || 'gpt-6-astra'
+  },
   gemini_flash_lite: {
-    label: 'Gemini 3.1 Flash-Lite (fastest)', envKey: 'GEMINI_API_KEY',
+    label: 'Gemini 3.5 Flash-Lite (fast)', envKey: 'GEMINI_API_KEY',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    model: () => process.env.GEMINI_FLASH_LITE_MODEL || 'gemini-3.1-flash-lite'
+    model: () => process.env.GEMINI_FLASH_LITE_MODEL || 'gemini-3.5-flash-lite'
   },
   gemini_3_flash: {
-    label: 'Gemini 3 Flash', envKey: 'GEMINI_API_KEY',
+    label: 'Gemini 3.8 Flash (quality)', envKey: 'GEMINI_API_KEY',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    model: () => process.env.GEMINI_3_MODEL || 'gemini-3-flash'
+    model: () => process.env.GEMINI_3_MODEL || 'gemini-3.8-flash'
   },
   gemini: {
-    label: 'Gemini 2.5 Flash', envKey: 'GEMINI_API_KEY',
+    label: 'Gemini 3.6 Flash (balanced)', envKey: 'GEMINI_API_KEY',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    model: () => process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+    model: () => process.env.GEMINI_MODEL || 'gemini-3.6-flash'
   },
-  // ── Groq (LPU — very low TTFT) ──
   groq: {
-    label: 'Groq · Llama 3.3 70B', envKey: 'GROQ_API_KEY',
+    label: 'Groq · GPT-OSS 120B', envKey: 'GROQ_API_KEY',
     baseURL: 'https://api.groq.com/openai/v1',
-    model: () => process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+    model: () => process.env.GROQ_MODEL || 'openai/gpt-oss-120b'
   },
-  // ── Cerebras (Wafer-Scale — fastest throughput; OpenAI-compatible) ──
   cerebras: {
-    label: 'Cerebras · Llama 3.3 70B', envKey: 'CEREBRAS_API_KEY',
+    label: 'Cerebras · GPT-OSS 120B', envKey: 'CEREBRAS_API_KEY',
     baseURL: 'https://api.cerebras.ai/v1',
-    model: () => process.env.CEREBRAS_MODEL || 'llama-3.3-70b'
+    model: () => process.env.CEREBRAS_MODEL || 'gpt-oss-120b'
   },
-  // ── Anthropic via its OpenAI-compatible endpoint (works with the openai client) ──
   claude_fable: {
     label: 'Claude Fable 5 (maximum quality)', envKey: 'ANTHROPIC_API_KEY',
     baseURL: 'https://api.anthropic.com/v1/',
@@ -114,15 +96,10 @@ const CATALOG = {
     baseURL: 'https://api.anthropic.com/v1/',
     model: () => process.env.ANTHROPIC_OPUS_MODEL || 'claude-opus-5'
   },
-  claude_sonnet_5: {
-    label: 'Claude Sonnet 5', envKey: 'ANTHROPIC_API_KEY',
+  claude_sonnet: {
+    label: 'Claude Sonnet 5 (balanced)', envKey: 'ANTHROPIC_API_KEY',
     baseURL: 'https://api.anthropic.com/v1/',
     model: () => process.env.ANTHROPIC_SONNET5_MODEL || 'claude-sonnet-5'
-  },
-  claude_sonnet: {
-    label: 'Claude Sonnet 4.6', envKey: 'ANTHROPIC_API_KEY',
-    baseURL: 'https://api.anthropic.com/v1/',
-    model: () => 'claude-sonnet-4-6'
   },
   claude_haiku: {
     label: 'Claude Haiku 4.5 (fast)', envKey: 'ANTHROPIC_API_KEY',
@@ -190,53 +167,44 @@ export async function testProviderConnection(providerId) {
   }
 }
 
-// Tier-based provider preference (used for auto-escalation). Keeps provider/key policy in
-// core.js (with CATALOG) rather than re-derived from process.env in interview.js. Returns
-// null if nothing's configured — callers fall back to the requested provider.
-// AUTO uses KNOWN-GOOD current models — IDs every key of that provider can actually call — so the
-// first request never wastes a round-trip 400ing on a model the key lacks (which benches it and
-// silently drops the answer to a lower tier). The newer/faster catalog entries (Gemini 3 Flash-Lite,
-// Cerebras, GPT-5.4, Sonnet 5) stay selectable in the dropdown and remain in the failover queue.
-// FAST tier — Live hints / simple questions. Optimize time-to-first-token + generous limits.
+// Tier-aware selection uses model IDs returned for each key when possible.
+// Cold starts use current stable catalog defaults; a provider 404/403 fails over.
 export function pickFastProvider() {
-  // Prefer the model that current Gemini keys actually expose. 2.5/3 aliases are still
-  // selectable after live model discovery, but must not be the automatic first request.
   if (process.env.GEMINI_API_KEY) return newestDiscovered('gemini', [
-    'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
   ]) || 'gemini_flash_lite'
   if (process.env.OPENAI_API_KEY) return newestDiscovered('openai', [
-    'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-4o-mini',
+    'gpt-6-luna',
   ]) || 'openai_mini'
   if (process.env.CEREBRAS_API_KEY) return 'cerebras'
   if (process.env.GROQ_API_KEY) return 'groq'
+  if (process.env.ANTHROPIC_API_KEY) return 'claude_haiku'
   return null
 }
-// STRONG tier — coding / system-design. A strong model the key can definitely use.
+
 export function pickStrongProvider() {
   if (process.env.OPENAI_API_KEY) return newestDiscovered('openai', [
-    'gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4', 'gpt-4o',
+    'gpt-6.1-sol', 'gpt-6-sol',
   ]) || 'openai'
   if (process.env.ANTHROPIC_API_KEY) return newestDiscovered('claude_sonnet', [
-    'claude-sonnet-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-4-6',
-  ]) || 'claude_sonnet_5'
+    'claude-sonnet-5',
+  ]) || 'claude_sonnet'
   if (process.env.GEMINI_API_KEY) return newestDiscovered('gemini', [
-    'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite',
-  ]) || 'gemini_flash_lite'
+    'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash',
+  ]) || 'gemini_3_flash'
   return pickFastProvider()
 }
 
-// MAXIMUM QUALITY — use only an exact model confirmed by the configured key. A catalog name
-// is not proof of account access, so cold starts fall back to the strong (conservative) lane.
 export function pickBestProvider() {
   const candidates = [
     process.env.ANTHROPIC_API_KEY && newestDiscovered('claude_sonnet', [
-      'claude-fable-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5',
+      'claude-fable-5', 'claude-opus-5', 'claude-sonnet-5',
     ]),
     process.env.OPENAI_API_KEY && newestDiscovered('openai', [
-      'gpt-5.6-sol', 'gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4-pro', 'gpt-5.4',
+      'gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol',
     ]),
     process.env.GEMINI_API_KEY && newestDiscovered('gemini', [
-      'gemini-3.6-pro', 'gemini-3.6-flash', 'gemini-3.5-pro', 'gemini-3.5-flash',
+      'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash',
     ]),
   ].filter(Boolean)
   return candidates[0] || pickStrongProvider()
@@ -265,7 +233,7 @@ export async function listModels() {
   const out = []
   const staged = new Map()
   const push = (provider, model, label) => {
-    if (!model) return
+    if (!isCurrentChatModel(provider, model)) return
     if (!staged.has(provider)) staged.set(provider, new Set())
     staged.get(provider).add(model)
     out.push({ id: `${provider}::${model}`, provider, model, label })
@@ -283,7 +251,7 @@ export async function listModels() {
     // OpenAI — chat models only (skip audio/image/embedding/etc.)
     process.env.OPENAI_API_KEY && settle('openai', async () => {
       const r = await fetchWithTimeout('https://api.openai.com/v1/models', { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } })
-      if (!r.ok) return
+      if (!r.ok) throw new Error('Model discovery unavailable')
       ;((await r.json())?.data || []).map(m => m.id)
         .filter(id => /^(gpt-|o[0-9]|chatgpt)/i.test(id) && !/audio|realtime|transcrib|tts|image|embedding|moderation|search|dall|whisper/i.test(id))
         .sort().reverse()
@@ -292,13 +260,13 @@ export async function listModels() {
     // Anthropic (Claude) — the base id 'claude_sonnet' just carries the shared key/endpoint.
     process.env.ANTHROPIC_API_KEY && settle('claude_sonnet', async () => {
       const r = await fetchWithTimeout('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' } })
-      if (!r.ok) return
+      if (!r.ok) throw new Error('Model discovery unavailable')
       ;((await r.json())?.data || []).forEach(m => push('claude_sonnet', m.id, `Claude · ${m.display_name || m.id}`))
     }),
     // Google Gemini — models that support generateContent.
     process.env.GEMINI_API_KEY && settle('gemini', async () => {
       const r = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}&pageSize=100`)
-      if (!r.ok) return
+      if (!r.ok) throw new Error('Model discovery unavailable')
       ;((await r.json())?.models || [])
         .filter(m => (m.supportedGenerationMethods || []).includes('generateContent') && /gemini/i.test(m.name || ''))
         .forEach(m => { const id = (m.name || '').replace(/^models\//, ''); push('gemini', id, `Gemini · ${m.displayName || id}`) })
@@ -306,14 +274,14 @@ export async function listModels() {
     // Groq (OpenAI-compatible).
     process.env.GROQ_API_KEY && settle('groq', async () => {
       const r = await fetchWithTimeout('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` } })
-      if (!r.ok) return
+      if (!r.ok) throw new Error('Model discovery unavailable')
       ;((await r.json())?.data || []).map(m => m.id).filter(id => !/whisper|tts|guard/i.test(id))
         .forEach(id => push('groq', id, `Groq · ${id}`))
     }),
     // Cerebras (OpenAI-compatible).
     process.env.CEREBRAS_API_KEY && settle('cerebras', async () => {
       const r = await fetchWithTimeout('https://api.cerebras.ai/v1/models', { headers: { Authorization: `Bearer ${process.env.CEREBRAS_API_KEY}` } })
-      if (!r.ok) return
+      if (!r.ok) throw new Error('Model discovery unavailable')
       ;((await r.json())?.data || []).map(m => m.id).filter(Boolean)
         .forEach(id => push('cerebras', id, `Cerebras · ${id}`))
     }),
@@ -336,12 +304,12 @@ function resolveProvider(id) {
   if (id && id.includes('::')) {
     const base = id.slice(0, id.indexOf('::')), model = id.slice(id.indexOf('::') + 2)
     const cc = CATALOG[base]
-    if (cc && process.env[cc.envKey] && model) return { key: process.env[cc.envKey], baseURL: cc.baseURL, model }
+    if (cc && process.env[cc.envKey] && isCurrentChatModel(base, model)) return { key: process.env[cc.envKey], baseURL: cc.baseURL, model }
     id = base   // base unusable → fall through to normal resolution
   }
   const c = CATALOG[id]
   if (c && process.env[c.envKey]) return { key: process.env[c.envKey], baseURL: c.baseURL, model: c.model() }
-  if (process.env.LLM_API_KEY) return { key: process.env.LLM_API_KEY, baseURL: process.env.LLM_BASE_URL, model: process.env.LLM_MODEL || 'gemini-2.5-flash' }
+  if (process.env.LLM_API_KEY) return { key: process.env.LLM_API_KEY, baseURL: process.env.LLM_BASE_URL, model: process.env.LLM_MODEL || 'gpt-6-luna' }
   const first = availableProviders()[0]
   if (first && CATALOG[first.id]) { const p = CATALOG[first.id]; return { key: process.env[p.envKey], baseURL: p.baseURL, model: p.model() } }
   throw aiError('no_provider', 402)
@@ -580,15 +548,16 @@ export function getFallbackProviders(requestedId) {
   // so ANY second key you add (Anthropic/Claude, Groq, Gemini, a custom endpoint, …) is part
   // of the failover, not just this hardcoded subset. That's what makes auto-switch actually work.
   // Known-good current models first so failover never leads with a speculative id that 400s; the
-  // newer entries (gpt_5 / gemini_3_flash / flash-lite / sonnet_5 / cerebras) are still in the queue.
+  // current entries remain available by exact key-specific model discovery.
   // One automatic candidate per API-key family. Additional models remain available through
   // /api/models when the user explicitly selects them, but fallback must never spray every
   // hard-coded alias belonging to the same key (the v1.4.9 log tried four Claude aliases).
   const order = ['gemini_flash_lite', 'openai_mini', 'groq', 'cerebras', 'claude_haiku', 'custom']
   const configured = availableProviders().map(p => p.id)
   const now = Date.now()
-  const reqBase = baseOf(requestedId)
-  const encoded = !!requestedId && requestedId !== reqBase   // 'provider::model' dynamic pick
+  const safeRequestedId = isCurrentProviderChoice(requestedId) ? requestedId : ''
+  const reqBase = baseOf(safeRequestedId)
+  const encoded = !!safeRequestedId && safeRequestedId !== reqBase   // 'provider::model' dynamic pick
   // Filter out recently banned text providers (bans are keyed by the base provider id).
   const candidates = [...new Set([reqBase, lastWorkingTextProvider, ...order, ...configured])]
     .filter(id => configured.includes(id))
@@ -606,7 +575,7 @@ export function getFallbackProviders(requestedId) {
   // Dynamic-model pick → lead with the EXACT encoded choice so its chosen model is used,
   // then the remaining configured providers as automatic failover.
   if (encoded && available.includes(reqBase)) {
-    return [requestedId, ...available.filter(id => id !== reqBase)]
+    return [safeRequestedId, ...available.filter(id => id !== reqBase)]
   }
   // Respect the caller's REQUESTED provider as primary — keep it first whenever it's
   // available. Only use last-known-working TEXT provider to order the REMAINING fallbacks.
