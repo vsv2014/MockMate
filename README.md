@@ -2,16 +2,24 @@
 
 MockMate is a desktop-first interview preparation and live-performance companion. It combines Solo practice, Resume Studio, Job Matching, Documents, session history, and a content-protected Live overlay that can transcribe interview audio and generate resume-grounded guidance.
 
-## Release status — v1.6.2 signed public candidate
+## Release status — v1.6.3 unsigned personal preview
 
-The desktop manifests now target **1.6.2**. The corresponding **v1.6.2** tag and public installer are pending release verification; this README does not claim an installer has already been published.
+The desktop manifests target **1.6.3**. **v1.6.3** is published from `main` as an **unsigned personal preview** (GitHub pre-release, Windows x64 installer only), built and smoke-tested by `unsigned-public.yml`. It is not code-signed and has no auto-update feed. The latest **signed** stable installer is still **v1.5.3**.
 
-- The stable Windows workflow is **signed-only**. It requires the signing certificate/password and publisher identity, verifies trusted Authenticode signatures for both the app and installer, and runs packaged smoke before publication.
-- Missing signing settings stop the stable release. It never falls back to an unsigned build or unsigned updater payload.
-- v1.6.1 remains the historical [unsigned Personal Preview](https://github.com/vsv2014/MockMate/releases/tag/v1.6.1). It is separate from the signed stable channel; existing historical tags are not moved.
-- Release details: [process](docs/RELEASE.md), [checklist](docs/RELEASE_CHECKLIST.md), [v1.6.2 notes](docs/RELEASE_NOTES_v1.6.2.md), [signing setup](SIGNING.md).
+- The stable Windows workflow (`release.yml`) is **signed-only**. It requires the signing certificate, password and publisher identity, verifies trusted Authenticode signatures for both the app and the installer, and runs a packaged smoke test before publication. Missing signing settings stop the stable release; it never falls back to an unsigned build or unsigned updater payload.
+- v1.6.1 and v1.6.2 remain historical [unsigned personal previews](https://github.com/vsv2014/MockMate/releases). Existing tags are never moved.
+- Release details: [process](docs/RELEASE.md), [checklist](docs/RELEASE_CHECKLIST.md), [changelog](CHANGELOG.md), [validation status](docs/evidence/VALIDATION_STATUS.md), [signing setup](SIGNING.md).
 
-The current automated stable release workflow produces Windows x64 NSIS only. macOS/Linux builds and mobile store releases are separate tracks; no current public artifacts are implied for them.
+The automated release workflows produce Windows x64 NSIS only. macOS/Linux builds and mobile store releases are separate tracks; no current public artifacts are implied for them.
+
+## What v1.6.3 adds
+
+- **Complete Live answers:** long answers are no longer cut off at 11 seconds. Follow-ups keep the full question and the previous answer's context.
+- **Faster answers:** Live starts preparing an answer during the pause after a question, and Claude's hidden thinking is turned off for Live.
+- **Claude models:** Claude Sonnet 5.5 and Haiku 5.5 are used automatically with an Anthropic key.
+- **Simpler key setup:** one Add API key box that recognises the provider on your computer, plus a "Which model answers" summary.
+- **Accurate Product insights privacy:** fixed control identifiers only, and usage breadcrumbs in logs only after opt-in.
+- **Windows overlay:** transparency fixes.
 
 ## What v1.6.2 adds
 
