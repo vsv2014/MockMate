@@ -113,27 +113,27 @@ describe('text vs vision provider health', () => {
       .rejects.toMatchObject({ status: 429, code: 'rate_limit', retryAfterMs: expect.any(Number) })
   })
 
-  it('uses the QA-verified Gemini Flash-Lite model for automatic fast answers', () => {
+  it('uses the current stable Gemini Flash-Lite model for automatic fast answers', () => {
     expect(pickFastProvider()).toBe('gemini_flash_lite')
   })
 
   it('routes maximum quality only to a model confirmed by the configured key', () => {
     _setDiscoveredModelsForTests('claude_sonnet', ['claude-fable-5', 'claude-sonnet-5'])
-    _setDiscoveredModelsForTests('openai', ['gpt-5.6-sol', 'gpt-5.6-luna'])
+    _setDiscoveredModelsForTests('openai', ['gpt-6-astra', 'gpt-6-luna'])
     expect(pickBestProvider()).toBe('claude_sonnet::claude-fable-5')
     expect(pickStrongProvider()).toBe('openai')
   })
 
   it('uses a discovered balanced OpenAI model for hard questions', () => {
-    _setDiscoveredModelsForTests('openai', ['gpt-5.6-terra', 'gpt-5.6-sol'])
-    expect(pickStrongProvider()).toBe('openai::gpt-5.6-terra')
+    _setDiscoveredModelsForTests('openai', ['gpt-6-sol', 'gpt-6-astra'])
+    expect(pickStrongProvider()).toBe('openai::gpt-6-sol')
   })
 
   it('offers only one automatic fallback per configured API-key family', () => {
     const q = getFallbackProviders('auto')
     expect(q.filter(id => id.startsWith('gemini'))).toEqual(['gemini_flash_lite'])
     expect(q.filter(id => id.startsWith('claude'))).toEqual(['claude_haiku'])
-    expect(q.filter(id => id.startsWith('openai') || id === 'gpt_5')).toEqual(['openai_mini'])
+    expect(q.filter(id => id.startsWith('openai') || id === 'gpt_6_astra')).toEqual(['openai_mini'])
   })
 
   it('uses a supported Gemini embedding model instead of retired text-embedding-004', () => {
