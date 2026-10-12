@@ -61,6 +61,38 @@ describe('visionPolicy cooldown', () => {
 })
 
 describe('vision provider configuration', () => {
+  it('uses current GPT-6 and Gemini vision-capable defaults (no GPT-4o)', () => {
+    const old = {
+      openai: process.env.OPENAI_API_KEY,
+      gemini: process.env.GEMINI_API_KEY,
+      model: process.env.OPENAI_MODEL,
+      mini: process.env.OPENAI_MINI_MODEL,
+      lite: process.env.GEMINI_FLASH_LITE_MODEL,
+    }
+    process.env.OPENAI_API_KEY = 'test-openai'
+    process.env.GEMINI_API_KEY = 'test-gemini'
+    delete process.env.OPENAI_MODEL
+    delete process.env.OPENAI_MINI_MODEL
+    delete process.env.GEMINI_FLASH_LITE_MODEL
+    try {
+      const configured = listVisionProviders()
+      expect(configured.find(p => p.id === 'openai_mini')?.model).toBe('gpt-6-luna')
+      expect(configured.find(p => p.id === 'openai')?.model).toBe('gpt-6-sol')
+      expect(configured.find(p => p.id === 'gemini_flash_lite')?.model).toBe('gemini-3.5-flash-lite')
+      expect(configured.find(p => p.id === 'gemini_3_flash')?.model).toBe('gemini-3.8-flash')
+      expect(configured.some(p => /gpt-4o|gemini-2\.5/i.test(p.model))).toBe(false)
+    } finally {
+      for (const [name, envKey] of [
+        ['openai', 'OPENAI_API_KEY'], ['gemini', 'GEMINI_API_KEY'],
+        ['model', 'OPENAI_MODEL'], ['mini', 'OPENAI_MINI_MODEL'],
+        ['lite', 'GEMINI_FLASH_LITE_MODEL'],
+      ]) {
+        if (old[name] === undefined) delete process.env[envKey]
+        else process.env[envKey] = old[name]
+      }
+    }
+  })
+
   it('does not treat Groq text models as vision-capable without an explicit vision model', () => {
     const oldKey = process.env.GROQ_API_KEY
     const oldModel = process.env.GROQ_VISION_MODEL
