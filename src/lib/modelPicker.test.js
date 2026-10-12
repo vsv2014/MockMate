@@ -8,7 +8,8 @@ describe('current model picker', () => {
     expect(out).toHaveLength(3)
     expect(out.every(m => m.provider === 'openai')).toBe(true)
     expect(out.map(m => m.model)).toContain('gpt-6-astra')
-    expect(out.map(m => m.model)).not.toContain('gpt-6-luna')
+    expect(out.map(m => m.model)).toContain('gpt-6-luna')
+    expect(out.map(m => m.model)).not.toContain('gpt-6-sol')
   })
 
   it('excludes retired, legacy, preview, audio and image models even if API discovery returns them', () => {
