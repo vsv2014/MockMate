@@ -44,7 +44,11 @@ if (deps.electron) {
       env: { ...process.env, electron_config_cache: process.env.electron_config_cache || join(tmpdir(), 'mockmate-electron-cache') },
     })
     if (boot.status !== 0) bad(`electron runtime bootstrap failed: ${String(boot.stderr || boot.error?.message || 'unknown error').trim()}`)
-    reportedVersion = String(boot.stdout || '').trim().replace(/^v/, '')
+    // Lazy bootstrap progress can precede the version on stdout. Compare only
+    // the complete version line, not the download banner.
+    const versionLines = String(boot.stdout || '').match(/^v?\d+\.\d+\.\d+(?:-[\w.]+)?\s*$/gm) || []
+    reportedVersion = (versionLines.at(-1) || '').trim().replace(/^v/, '')
+    if (boot.status === 0 && !reportedVersion) bad('electron runtime returned no recognizable version')
   }
   const p = join(root, 'node_modules', 'electron', 'path.txt')
   const exe = existsSync(p) && join(root, 'node_modules', 'electron', 'dist', readFileSync(p, 'utf8').trim())

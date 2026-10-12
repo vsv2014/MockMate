@@ -35,11 +35,11 @@ export function buildDeepgramListenUrl({
     + '&interim_results=true&smart_format=true&punctuate=true&utterance_end_ms=1200&vad_events=true&endpointing=300'
     + `&language=${encodeURIComponent(language || 'en-US')}`
   if (!diarize) return base
-  if (degraded) return `${base}&diarize=true`
+  if (degraded) return `${base}&diarize_model=v1`
   const terms = Array.isArray(keyterms)
     ? keyterms.slice(0, 40).map(t => `&keyterm=${encodeURIComponent(t)}`).join('')
     : ''
-  return `${base}&diarize=true${terms}`
+  return `${base}&diarize_model=v1${terms}`
 }
 
 export function abandonDeepgramSocket(sock, activeSocketRef, wsRef) {

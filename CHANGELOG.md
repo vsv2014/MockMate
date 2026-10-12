@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.6.2 — 2026-10-12 (signed public release candidate)
+
+- Centralize AI defaults, automatic routing priorities, key links and lifecycle policy; recover with provider-discovered compatible models and distinguish actionable provider failures.
+- Remove Live/Solo model dropdowns and retain automatic operation-based routing from PRs #90/#91.
+- Add microphone/system-playback preflight selection, carry the tested source into Live, invalidate voice readiness on device changes, and require manual confirmation for microphone questions.
+- Use supported Deepgram streaming diarization parameters and reject conflicting/batch-only gateway settings.
+- Fix collapsed badge minimum-size constraints and transparent backing, preserve drag/expand behavior, and provide consistent dashboard resizing and scrolling with sticky key-save actions.
+- Align desktop package and lockfile versions to 1.6.2. Require signing in the stable workflow and electron-builder; never fall back to an unsigned artifact under the stable v1.6.2 release.
+
+This is prepared source, not proof of a published or physically verified installer. The matching immutable tag/public release must follow CI, trusted Authenticode validation and packaged smoke. No v1.6.2 installer is claimed until its workflow succeeds.
+
 ## v1.6.1 — 2026-10-11 (unsigned delivery correction)
 
 - Make the Windows release workflow choose one of two explicit modes: trusted signed stable release when all three signing settings exist, or an isolated unsigned BYOK-only pre-release when all three are absent. A partial signing configuration still fails closed.

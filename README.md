@@ -2,34 +2,22 @@
 
 MockMate is a desktop-first interview preparation and live-performance companion. It combines Solo practice, Resume Studio, Job Matching, Documents, session history, and a content-protected Live overlay that can transcribe interview audio and generate resume-grounded guidance.
 
-## Release status — v1.6.1 delivery correction
+## Release status — v1.6.2 signed public candidate
 
-- **Source version:** PR [#85](https://github.com/vsv2014/MockMate/pull/85) was merged and `v1.6.0` was tagged, but that release has no binaries because its workflow required unavailable Windows signing settings. The delivery correction bumps the desktop source to `1.6.1`.
-- **Latest published Windows installer:** [v1.5.3](https://github.com/vsv2014/MockMate/releases/tag/v1.5.3) (`MockMate-Setup-1.5.3.exe`). The v1.5.4 hotfix and v1.5.5 source candidate were never published as stable releases.
-- **Next Windows artifact:** `v1.6.1` uses a signed stable installer only when all signing settings exist. With no certificate configured, the same workflow safely publishes an isolated, BYOK-only **unsigned pre-release** instead.
-- **macOS/Linux:** source support exists; the current public release workflow only publishes Windows NSIS. Linux overlay content protection is not supported.
-- **Mobile:** iOS/Android remains a private beta foundation, not a store release.
-- **Hosted API:** the desktop default `managedApiBase` remains empty; the local UI/AI service is still required, and Guest mode bypasses account authentication only. Managed AI uses hosted configuration only when intentionally configured.
-- **Validation:** source tests, API smoke, production build, Vite-output verification, and packaged Windows smoke remain mandatory before either release mode publishes. Physical Windows audio, screen-reader, share-preview, and live-provider checks remain separate acceptance gates. See [validation evidence](docs/evidence/VALIDATION_STATUS.md).
+The desktop manifests now target **1.6.2**. The corresponding **v1.6.2** tag and public installer are pending release verification; this README does not claim an installer has already been published.
 
-## Optional unsigned personal test pre-release
+- The stable Windows workflow is **signed-only**. It requires the signing certificate/password and publisher identity, verifies trusted Authenticode signatures for both the app and installer, and runs packaged smoke before publication.
+- Missing signing settings stop the stable release. It never falls back to an unsigned build or unsigned updater payload.
+- v1.6.1 remains the historical [unsigned Personal Preview](https://github.com/vsv2014/MockMate/releases/tag/v1.6.1). It is separate from the signed stable channel; existing historical tags are not moved.
+- Release details: [process](docs/RELEASE.md), [checklist](docs/RELEASE_CHECKLIST.md), [v1.6.2 notes](docs/RELEASE_NOTES_v1.6.2.md), [signing setup](SIGNING.md).
 
-If no Windows code-signing settings exist, the versioned [release workflow](.github/workflows/release.yml) now selects an isolated unsigned mode automatically. The existing [Build Unsigned Personal Pre-release](.github/workflows/unsigned-personal-prerelease.yml) remains available for extra manually numbered personal-test iterations. Both unsigned routes publish a **GitHub pre-release**, never a stable signed update, and are BYOK-only.
+The current automated stable release workflow produces Windows x64 NSIS only. macOS/Linux builds and mobile store releases are separate tracks; no current public artifacts are implied for them.
 
-The versioned unsigned installer is named `MockMate-Personal-Preview-1.6.1-UNSIGNED.exe`; it is **not Authenticode-signed**, so Windows SmartScreen / Smart App Control may warn or block it. The release includes a SHA256 checksum and warning notice but **no `latest.yml`, `app-update.yml`, or blockmap**. Install updates manually. This is public on GitHub but **not certified for production use**. Do not manually bypass device security policies. See [release process](docs/RELEASE.md).
+## What v1.6.2 adds
 
-## Download and platforms
-
-Until a `v1.6.1` artifact passes the workflow, use the direct [v1.5.3 release](https://github.com/vsv2014/MockMate/releases/tag/v1.5.3) for the latest usable signed installer. The public `v1.6.0` release contains source archives only and must not be treated as an installer release.
-
-| Platform | Current availability | Artifact / limitation |
-|---|---|---|
-| Windows | v1.5.3 signed installer; v1.6.0 has no binaries; v1.6.1 is the correction | Signed `MockMate-Setup-1.5.3.exe`; next artifact is signed when credentials exist, otherwise isolated `MockMate-Personal-Preview-1.6.1-UNSIGNED.exe` |
-| macOS | Not produced by current automated public release workflow | Source/developer build; signed/notarized DMG not published through this workflow |
-| Linux | Not produced by current automated public release workflow | Source/developer build; screen-share content protection not supported |
-| iOS / Android | Private beta foundation | No public store release |
-
-> Stable auto-updating Windows releases require a trusted Authenticode certificate. Without one, MockMate publishes only an isolated, manual-update, unsigned pre-release. See [`SIGNING.md`](SIGNING.md) and [`docs/RELEASE.md`](docs/RELEASE.md).
+- Automatic current-model routing and recovery; one provider key covers its accessible models.
+- Explicit system-audio/microphone readiness checks and safer microphone question confirmation.
+- A small collapsed badge with transparent surroundings, consistent dashboard resize handles, reliable scrolling, and sticky Save keys controls.
 
 ## What v1.6.0 adds over the last published installer
 

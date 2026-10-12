@@ -39,6 +39,25 @@ describe('automatic model retirement across runtime and picker', () => {
     expect(availableProviders()).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'claude_sonnet' })]))
   })
 
+  it('routes to a provider-discovered future chat model when every curated default is absent', async () => {
+    process.env.GEMINI_API_KEY = 'test-key'
+    const called = []
+    vi.stubGlobal('fetch', vi.fn(async (_url, opts) => {
+      if (!opts?.body) return reply({ models: [
+        { name: 'models/gemini-4.0-flash', supportedGenerationMethods: ['generateContent'], status: 'active' },
+        { name: 'models/gemini-4.0-flash-tts', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-4.0-flash-preview', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-4.0-pro', supportedGenerationMethods: ['generateContent'], retired: true },
+      ] })
+      called.push(JSON.parse(opts.body).model)
+      return reply({ choices: [{ message: { role: 'assistant', content: '{"ok":true}' } }] })
+    }))
+    expect((await listModels()).map(m => m.model)).toEqual(['gemini-4.0-flash'])
+    expect(availableProviders().some(p => p.id === 'gemini')).toBe(true)
+    await expect(completeJSON({ provider: 'gemini', messages: [{ role: 'user', content: 'JSON please' }] })).resolves.toEqual({ ok: true })
+    expect(called).toEqual(['gemini-4.0-flash'])
+  })
+
   it('keeps last known active models when provider discovery temporarily fails', async () => {
     process.env.OPENAI_API_KEY = 'test-openai-key'
     let fail = false

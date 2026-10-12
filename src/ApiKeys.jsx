@@ -3,6 +3,7 @@ import { apiFetch } from './lib/apiClient'
 import { T } from './auth/tokens'
 import { getAiMode, setAiMode, MANAGED_AVAILABLE } from './lib/aiMode'
 import { configuredProviderNames } from './lib/modelPicker'
+import { PROVIDER_KEY_LINKS } from '../shared/modelRegistry.js'
 
 // Reusable API-key entry. Used BOTH at the global level (Home → Settings) and inside
 // Live Companion, so keys can be configured once without entering any specific mode.
@@ -20,15 +21,15 @@ const inp = {
 // and model names may change independently, so they are not used to infer which key is saved.
 const PROVIDERS = [
   { k: 'GROQ_API_KEY', name: 'Groq', hint: 'Free tier available · useful backup', free: true, providerIds: ['groq'], testId: 'groq',
-    note: 'No credit card. Create a free key at', link: { href: 'https://console.groq.com/keys', label: 'console.groq.com/keys' } },
-  { k: 'GEMINI_API_KEY', name: 'Google Gemini', hint: 'Free tier available', free: true, providerIds: ['gemini', 'gemini_flash_lite', 'gemini_3_flash'], testId: 'gemini',
-    note: 'Free with a Google account at', link: { href: 'https://aistudio.google.com/apikey', label: 'aistudio.google.com/apikey' } },
+    note: 'Free tier has rate and token limits. Create your key at', link: PROVIDER_KEY_LINKS.groq },
+  { k: 'GEMINI_API_KEY', name: 'Google Gemini', hint: 'Answers + screenshots · start here · free tier available', free: true, providerIds: ['gemini', 'gemini_flash_lite', 'gemini_3_flash'], testId: 'gemini',
+    note: 'Create a new Gemini API key in Google AI Studio; free-tier limits depend on your project. Open', link: PROVIDER_KEY_LINKS.gemini },
   { k: 'OPENAI_API_KEY', name: 'OpenAI', hint: 'Paid API · automatically chooses the available model', providerIds: ['openai', 'openai_mini', 'gpt_6_astra'], testId: 'openai_mini',
-    note: 'Needs billing credit (not ChatGPT Plus) at', link: { href: 'https://platform.openai.com/api-keys', label: 'platform.openai.com' } },
+    note: 'Needs billing credit (not ChatGPT Plus) at', link: PROVIDER_KEY_LINKS.openai },
   { k: 'ANTHROPIC_API_KEY', name: 'Anthropic', hint: 'Claude — paid API', providerIds: ['claude_fable', 'claude_opus', 'claude_sonnet', 'claude_haiku'], testId: 'claude_haiku',
-    note: 'Needs billing credit at', link: { href: 'https://console.anthropic.com/settings/keys', label: 'console.anthropic.com' } },
+    note: 'Create a key scoped to your workspace; API billing is separate from a Claude subscription. Open', link: PROVIDER_KEY_LINKS.anthropic },
   { k: 'CEREBRAS_API_KEY', name: 'Cerebras', hint: 'fast inference', providerIds: ['cerebras'], testId: 'cerebras',
-    note: 'Create a key at', link: { href: 'https://cloud.cerebras.ai', label: 'cloud.cerebras.ai' } },
+    note: 'Create a key at', link: PROVIDER_KEY_LINKS.cerebras },
 ]
 const EMPTY = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', GROQ_API_KEY: '', CEREBRAS_API_KEY: '', DEEPGRAM_API_KEY: '', OPENAI_MODEL: '', GROQ_VISION_MODEL: '', VISION_API_KEY: '', VISION_MODEL: '', VISION_BASE_URL: '', ADZUNA_APP_ID: '', ADZUNA_APP_KEY: '' }
 
@@ -224,7 +225,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
         <KeyField name="Deepgram" hint="live transcription" added={dg}
           value={keyVals.DEEPGRAM_API_KEY} onChange={set('DEEPGRAM_API_KEY')}
           onRemove={() => removeProvider('deepgram', 'Deepgram')}
-          note="Required for Live Interview and Solo voice. Prefer a Project/Owner key (Member keys may fail token grant). Free tier at" link={{ href: 'https://console.deepgram.com', label: 'console.deepgram.com' }} />
+          note="Required for Live and Solo voice. Create a project key with speech transcription access; usage consumes project credits. Open" link={PROVIDER_KEY_LINKS.deepgram} />
         {mode === 'managed' && !dg && (
           <div role="status" style={{ fontSize: 11, color: '#fbbf24', lineHeight: 1.4 }}>Managed voice is included on supported hosted plans. BYOK/private mode requires your own Deepgram key.</div>
         )}
@@ -232,7 +233,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
 
       {/* ── AI provider — two-card chooser ── */}
       <div style={sectionLabel}>AI access</div>
-      <div role="radiogroup" aria-label="AI mode" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+      <div role="radiogroup" aria-label="AI mode" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 12 }}>
         <ProviderCard value="managed" selected={mode === 'managed'} onSelect={() => setMode('managed')}
           icon="✨" accent={T.accentFrom} title="Managed AI" subtitle="Hosted proxy (when configured)"
           disabled={!MANAGED_AVAILABLE}
@@ -279,7 +280,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
             value={keyVals[p.k]} onChange={set(p.k)} />
         ))}
         <div style={{ fontSize: 10.5, color: '#86efac', lineHeight: 1.45, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: T.rCtrl, padding: '8px 10px' }}>
-          Add an AI provider key, save it, then use <strong>Test connection</strong>. MockMate discovers compatible models, chooses the route for each question, and automatically tries another available provider when needed. A second provider key improves resilience. (ChatGPT Plus does <strong>not</strong> provide API credits.)
+          One key per provider — you do not generate a separate key for each model. Start with <strong>Gemini</strong> for answers and screenshots, <strong>Deepgram</strong> for voice, and optionally <strong>Groq</strong> as a separate text fallback. Save your keys, then use <strong>Test connection</strong>. MockMate discovers compatible models, chooses the route for each question, and automatically tries another available provider when needed. A second provider key improves resilience. (ChatGPT Plus does <strong>not</strong> provide API credits.)
         </div>
       </div>
       </>)}
@@ -317,10 +318,10 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       )}
       </>)}
 
-      {/* ── Save (BYOK fields + always-visible Deepgram) ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {/* Save stays reachable while scrolling the key form. */}
+      <div role="toolbar" aria-label="API key actions" style={{ position: 'sticky', bottom: 0, zIndex: 5, padding: '10px 0', background: T.surface1, borderTop: `1px solid ${T.border}`, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
         <button onClick={save} disabled={saving}
-          style={{ flex: 1, height: 42, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: T.font }}>
+          style={{ flex: 1, minWidth: 120, height: 42, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: T.font }}>
           {saving ? 'Saving…' : 'Save keys'}
         </button>
         {msg && <span role={msg.startsWith('⚠') ? 'alert' : 'status'} aria-live={msg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: 11, fontWeight: 500, color: msg.startsWith('⚠') ? T.danger : T.success }}>{msg}</span>}

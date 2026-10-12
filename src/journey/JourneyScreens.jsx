@@ -5,6 +5,7 @@ import { isManaged } from '../lib/aiMode'
 import { LANGUAGES, STT_LANG } from '../lib/languages'
 import { trackProductEvent } from '../lib/productIntelligence'
 import { useDeepgram } from '../useDeepgram'
+import { useSystemAudio } from '../useSystemAudio'
 import { getKitSelectedDocIds } from '../lib/docs'
 import Documents from '../Documents'
 
@@ -425,8 +426,13 @@ export function ReadyRoom({
   const [service, setService] = useState({ status: 'checking', providers: [], deepgram: false, error: '' })
   const [aiTest, setAiTest] = useState({ status: 'idle', message: '' })
   const [aiBusy, setAiBusy] = useState(false)
+  const aiController = useRef(null)
   const [voiceTest, setVoiceTest] = useState({ status: 'idle', message: '' })
   const [voiceTranscript, setVoiceTranscript] = useState('')
+  const [audioSource, setAudioSource] = useState('microphone')
+  const [audioSources, setAudioSources] = useState([])
+  const audioSourceRef = useRef('microphone')
+  const voiceTestSource = useRef('microphone')
   const [protectionStatus, setProtectionStatus] = useState('idle')
   const [protectionMessage, setProtectionMessage] = useState('')
   const [privacyBusy, setPrivacyBusy] = useState(false)
@@ -468,6 +474,14 @@ export function ReadyRoom({
   }, [checkServices, previewMode])
 
   useEffect(() => {
+    aiController.current?.abort()
+    aiController.current = null
+    setAiBusy(false)
+    voiceCancelled.current = true
+    voiceAttempt.current = 0
+    clearTimeout(voiceStopTimer.current)
+    clearTimeout(voiceResultTimer.current)
+    voiceRef.current?.stop?.()
     setAiTest({ status: 'idle', message: '' })
     setVoiceTest({ status: 'idle', message: '' })
     setVoiceTranscript('')
@@ -478,6 +492,21 @@ export function ReadyRoom({
   }, [kit?.id])
 
   useEffect(() => {
+    let current = true
+    if (previewMode || isLinux) return
+    Promise.resolve(window.electronAPI?.getAudioSources?.()).then(sources => {
+      if (!current) return
+      const screens = (sources || []).filter(source => /screen|entire|display/i.test(source.name))
+      setAudioSources(screens)
+      if (screens[0] && !voiceAttempt.current) {
+        audioSourceRef.current = screens[0].id
+        setAudioSource(screens[0].id)
+      }
+    }).catch(() => {})
+    return () => { current = false }
+  }, [previewMode, isLinux])
+
+  useEffect(() => {
     if (isLinux || stealth) return
     setProtectionStatus('idle')
     setProtectionMessage('Stealth was turned off. Re-apply OS protection and re-check your meeting preview.')
@@ -485,24 +514,47 @@ export function ReadyRoom({
   }, [isLinux, stealth])
 
   useEffect(() => {
+    const devices = navigator.mediaDevices
+    if (!devices?.addEventListener) return
+    const changed = () => {
+      voiceCancelled.current = true
+      voiceAttempt.current = 0
+      clearTimeout(voiceStopTimer.current)
+      clearTimeout(voiceResultTimer.current)
+      voiceRef.current?.stop?.()
+      setVoiceTranscript('')
+      setVoiceTest({ status: 'idle', message: 'Audio devices changed. Test the selected source again with your current headphones.' })
+    }
+    devices.addEventListener('devicechange', changed)
+    return () => devices.removeEventListener('devicechange', changed)
+  }, [])
+
+  useEffect(() => {
     const off = window.electronAPI?.onMeetingDetected?.(() => setSharePreviewConfirmed(false))
     return () => { try { off?.() } catch {} }
   }, [])
 
   useEffect(() => () => {
+    aiController.current?.abort()
+    aiController.current = null
     clearTimeout(voiceStopTimer.current)
     clearTimeout(voiceResultTimer.current)
-    voiceAttempt.current += 1
+    voiceCancelled.current = true
+    voiceAttempt.current = 0
+    voiceRef.current?.stop?.()
   }, [])
 
   const runAiTest = async () => {
     if (previewMode) { setPrimaryMessage('Preview only: no AI request was sent.'); return }
+    if (aiController.current) return
+    const controller = new AbortController()
+    aiController.current = controller
     setAiBusy(true)
     setAiTest({ status: 'testing', message: 'Sending one short test question…' })
     trackProductEvent('ready_room_ai_test_started')
     try {
       const response = await apiFetch('/api/hint', {
-        method: 'POST', timeoutMs: 30_000,
+        method: 'POST', timeoutMs: 30_000, signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: 'In one short sentence, what does a hash map do?',
@@ -511,33 +563,44 @@ export function ReadyRoom({
         }),
       })
       const data = await response.json().catch(() => ({}))
+      if (aiController.current !== controller) return
       const result = data?.hint
       const answer = typeof result === 'string' ? result : (result?.fullAnswer || result?.sampleAnswer || result?.opener || '')
-      if (!response.ok) throw new Error(data?.error || data?.message || `AI request failed (${response.status})`)
+      if (!response.ok) {
+        const error = new Error(data?.error || data?.message || `AI request failed (${response.status})`)
+        error.status = response.status
+        error.code = data?.code
+        throw error
+      }
       if (!String(answer || '').trim()) throw new Error('The AI service returned no usable answer. No readiness claim made.')
       setAiTest({ status: 'passed', message: `AI round trip completed at ${formatTime(new Date().toISOString())}.` })
       trackProductEvent('ready_room_ai_test_passed')
     } catch (error) {
-      setAiTest({ status: 'failed', message: error?.message || 'AI round trip failed. Check Settings and retry.' })
+      if (aiController.current !== controller) return
+      setAiTest({ status: 'failed', message: error?.name === 'AbortError'
+        ? 'The AI test timed out after 30 seconds. Check the connection and provider status, then retry.'
+        : `${error?.message || 'AI round trip failed. Check Settings and retry.'}${error?.code ? ` (Code: ${error.code})` : ''}` })
       trackProductEvent('ready_room_ai_test_failed')
-    } finally { setAiBusy(false) }
+    } finally {
+      if (aiController.current === controller) { aiController.current = null; setAiBusy(false) }
+    }
   }
 
   const onVoiceFinal = useCallback(text => {
     const transcript = String(text || '').trim()
-    if (!transcript || !voiceAttempt.current) return
+    if (!transcript || !voiceAttempt.current || voiceCancelled.current) return
     voiceHasFinal.current = true
     voiceFailure.current = false
     clearTimeout(voiceStopTimer.current)
     clearTimeout(voiceResultTimer.current)
     setVoiceTranscript(transcript)
-    setVoiceTest({ status: 'passed', message: 'Microphone audio reached Deepgram and returned a final transcript.' })
+    setVoiceTest({ status: 'passed', message: voiceTestSource.current === 'microphone' ? 'Microphone audio reached Deepgram. Your own voice is captured; Live questions require Answer this.' : 'System playback reached Deepgram and returned a final transcript. Keep the same headphones and output device for Live.' })
     trackProductEvent('ready_room_voice_test_passed')
     voiceRef.current?.stop?.()
   }, [])
 
   const onVoiceFail = useCallback(message => {
-    if (!voiceAttempt.current) return
+    if (!voiceAttempt.current || voiceCancelled.current) return
     voiceFailure.current = true
     clearTimeout(voiceStopTimer.current)
     clearTimeout(voiceResultTimer.current)
@@ -545,8 +608,23 @@ export function ReadyRoom({
     trackProductEvent('ready_room_voice_test_failed')
   }, [])
 
-  const voice = useDeepgram(onVoiceFinal, onVoiceFail, STT_LANG[kit?.language] || 'en-US')
+  const microphoneVoice = useDeepgram(onVoiceFinal, onVoiceFail, STT_LANG[kit?.language] || 'en-US')
+  const systemVoice = useSystemAudio(onVoiceFinal, onVoiceFail)
+  const voice = audioSource === 'microphone' ? microphoneVoice : systemVoice
   voiceRef.current = voice
+
+  const selectAudioSource = source => {
+    voiceCancelled.current = true
+    voiceAttempt.current = 0
+    clearTimeout(voiceStopTimer.current)
+    clearTimeout(voiceResultTimer.current)
+    microphoneVoice.stop()
+    systemVoice.stop()
+    audioSourceRef.current = source
+    setAudioSource(source)
+    setVoiceTranscript('')
+    setVoiceTest({ status: 'idle', message: '' })
+  }
 
   const startVoiceTest = async () => {
     if (previewMode) { setPrimaryMessage('Preview only: microphone capture is disabled.'); return }
@@ -558,9 +636,13 @@ export function ReadyRoom({
     voiceFailure.current = false
     voiceCancelled.current = false
     setVoiceTranscript('')
-    setVoiceTest({ status: 'listening', message: 'Connecting to Deepgram. Allow the microphone, then say “MockMate voice check” and pause.' })
+    voiceTestSource.current = audioSourceRef.current
+    setVoiceTest({ status: 'listening', message: audioSource === 'microphone' ? 'Allow the microphone, then say “MockMate voice check” and pause.' : 'Play speech in your meeting or an audio clip through your headphones. This test captures system playback, not your microphone.' })
     trackProductEvent('ready_room_voice_test_started')
-    try { await voice.start() } catch (error) {
+    try {
+      if (audioSource === 'microphone') await microphoneVoice.start()
+      else await systemVoice.start(audioSource, { language: STT_LANG[kit?.language] || 'en-US' })
+    } catch (error) {
       if (voiceAttempt.current === attempt) onVoiceFail(error?.message)
       return
     }
@@ -572,7 +654,7 @@ export function ReadyRoom({
       voiceRef.current?.stop?.()
       voiceResultTimer.current = setTimeout(() => {
         if (voiceAttempt.current === attempt && !voiceHasFinal.current) {
-          setVoiceTest({ status: 'failed', message: 'No final transcript arrived. Check microphone permission, speak clearly, and try again.' })
+          setVoiceTest({ status: 'failed', message: 'No final transcript arrived. Check the selected audio source, play or speak a short sentence, and try again.' })
         }
       }, 1800)
     }, 10_000)
@@ -586,7 +668,7 @@ export function ReadyRoom({
     voice.stop()
     voiceResultTimer.current = setTimeout(() => {
       if (voiceAttempt.current === attempt && !voiceHasFinal.current) {
-        setVoiceTest({ status: 'failed', message: 'No final transcript arrived. Check microphone permission and try again.' })
+        setVoiceTest({ status: 'failed', message: 'No final transcript arrived. Check the selected audio source and try again.' })
       }
     }, 1800)
   }
@@ -636,7 +718,7 @@ export function ReadyRoom({
     if (action === 'ai-test') { runAiTest(); return }
     if (action === 'voice-test') { startVoiceTest(); return }
     if (action === 'privacy') { checkRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); setPrimaryMessage('Complete the privacy check below. Applying protection is not the same as confirming the meeting share preview.'); return }
-    if (action === 'continue') { onContinueLive?.(kit); return }
+    if (action === 'continue') { onContinueLive?.(kit, { audioSource }); return }
     setPrimaryMessage('Checking the local AI and voice services…')
   }
 
@@ -649,7 +731,7 @@ export function ReadyRoom({
   const primaryLabel = {
     kits: 'Create an Interview Kit', context: 'Add context to this Kit', checking: 'Checking services…',
     service: 'Retry the AI service check', 'ai-settings': 'Configure an AI provider', 'ai-test': aiBusy ? 'Testing AI…' : 'Run the AI test',
-    'voice-settings': 'Configure Voice (Deepgram)', 'voice-test': voiceTest.status === 'listening' ? (voice.active ? 'Stop voice test' : 'Connecting to microphone…') : (voiceTest.status === 'passed' ? 'Voice test passed' : 'Test microphone'),
+    'voice-settings': 'Configure Voice (Deepgram)', 'voice-test': voiceTest.status === 'listening' ? (voice.active ? 'Stop voice test' : 'Connecting to microphone…') : (voiceTest.status === 'passed' ? 'Voice test passed' : (audioSource === 'microphone' ? 'Test microphone' : 'Test system audio')),
     privacy: isLinux ? 'Review Linux visibility risk' : 'Complete privacy check', continue: 'Continue to Live setup',
   }[firstAction]
 
@@ -672,7 +754,7 @@ export function ReadyRoom({
   const voiceStatusText = service.status === 'checking' ? 'Checking service…'
     : service.status === 'error' ? 'Service unavailable'
       : !voiceConfigured ? 'Deepgram not detected'
-        : voiceTest.status === 'passed' ? 'Transcript verified'
+        : voiceTest.status === 'passed' ? (audioSource === 'microphone' ? 'Microphone verified' : 'System playback verified')
           : voiceTest.status === 'failed' ? 'Test failed'
             : voiceTest.status === 'listening' ? (voice.active ? 'Listening · up to 10 sec' : 'Connecting…')
               : voiceTest.status === 'finishing' ? 'Waiting for transcript…'
@@ -716,7 +798,7 @@ export function ReadyRoom({
                 <div style={{ color: T.text3, fontSize: 10.5, lineHeight: 1.5, marginTop: 7 }}>The test sends one short generic question to the configured AI provider and may use API credits. It does not send this Kit, resume, or job description.</div>
               </CheckCard>
 
-              <CheckCard number="03" title="Microphone → Deepgram" status={voiceStatus} statusText={voiceStatusText} action={
+              <CheckCard number="03" title={audioSource === 'microphone' ? 'Microphone → Deepgram' : 'System Audio → Deepgram'} status={voiceStatus} statusText={voiceStatusText} action={
                 service.status === 'error'
                   ? <Button variant="secondary" onClick={checkServices}>Retry service check</Button>
                   : !voiceConfigured
@@ -725,13 +807,20 @@ export function ReadyRoom({
                       ? <Button variant="quiet" disabled>Test disabled in preview</Button>
                       : voiceTest.status === 'listening'
                     ? <Button variant="danger" onClick={stopVoiceTest}>{voice.active ? 'Stop voice test' : 'Cancel microphone request'}</Button>
-                    : <Button variant={voiceTest.status === 'passed' ? 'quiet' : 'secondary'} disabled={voiceTest.status === 'finishing'} onClick={startVoiceTest}>{voiceTest.status === 'passed' ? 'Run test again' : 'Test microphone'}</Button>
+                    : <Button variant={voiceTest.status === 'passed' ? 'quiet' : 'secondary'} disabled={voiceTest.status === 'finishing'} onClick={startVoiceTest}>{voiceTest.status === 'passed' ? 'Run test again' : (audioSource === 'microphone' ? 'Test microphone' : 'Test system audio')}</Button>
               }>
                 {voiceTest.message || (!voiceConfigured && service.status === 'ready'
                   ? 'Deepgram isn’t configured or available. Add Voice in Settings before Live.'
                   : 'A configured Deepgram key does not confirm microphone permission or transcription yet. This test waits for an actual final transcript.')}
-                <div style={{ color: T.text3, fontSize: 10.5, lineHeight: 1.5, marginTop: 7 }}>Voice test uses your microphone for up to 10 seconds and sends audio to Deepgram; provider usage may apply. The transcript stays on this screen and is not saved to the Kit or session history.</div>
-                {voice.active && <div aria-live="polite" style={{ color: '#5eead4', fontSize: 11, marginTop: 6 }}>{voice.interim ? `Hearing: ${voice.interim}` : 'Listening—say “MockMate voice check”, then pause.'}</div>}
+                <label style={{ display: 'block', marginTop: 9 }}>Audio source
+                  <select aria-label="Ready Room audio source" value={audioSource} disabled={voiceTest.status === 'listening' || voiceTest.status === 'finishing'} onChange={event => selectAudioSource(event.target.value)} style={{ ...controlStyle, marginTop: 5 }}>
+                    <option value="microphone">Microphone — includes your voice; confirm each question</option>
+                    {audioSources.map(source => <option key={source.id} value={source.id}>System Audio — {source.name}</option>)}
+                  </select>
+                </label>
+                <div style={{ color: T.text3, fontSize: 10.5, lineHeight: 1.5, marginTop: 7 }}>The test captures the selected source for up to 10 seconds and sends audio to Deepgram; provider usage may apply. The transcript is not saved to the Kit or session history.</div>
+                <div style={{ color: T.text2, fontSize: 11, lineHeight: 1.5, marginTop: 7 }}>Use System Audio for meeting playback. Test with your headphones connected, and speak while playback is paused to check for echo or monitoring. If your own voice appears in system capture, check the meeting and OS audio settings. Changing the output device requires another test.</div>
+                {voice.active && <div aria-live="polite" style={{ color: '#5eead4', fontSize: 11, marginTop: 6 }}>{voice.interim ? `Hearing: ${voice.interim}` : 'Listening—play or speak a short sentence, then pause.'}</div>}
                 {voiceTranscript && <div role="status" style={{ padding: '7px 9px', marginTop: 8, borderRadius: 8, background: 'rgba(20,184,166,0.08)', color: T.text1, fontSize: 11.5 }}><strong>Transcript:</strong> {voiceTranscript}</div>}
               </CheckCard>
 
@@ -775,7 +864,7 @@ export function ReadyRoom({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px 10px', alignItems: 'center', borderTop: `1px solid ${T.border}`, paddingTop: 12, marginTop: 13 }}>
                   <span style={{ color: T.text3, fontSize: 10.5 }}>Kit context</span><Pill tone={contextReady ? 'teal' : 'red'}>{contextReady ? 'OK' : 'TODO'}</Pill>
                   <span style={{ color: T.text3, fontSize: 10.5 }}>AI round trip</span><Pill tone={aiTest.status === 'passed' ? 'teal' : 'neutral'}>{aiTest.status === 'passed' ? 'OK' : 'TODO'}</Pill>
-                  <span style={{ color: T.text3, fontSize: 10.5 }}>Voice transcript</span><Pill tone={voiceTest.status === 'passed' ? 'teal' : 'neutral'}>{voiceTest.status === 'passed' ? 'OK' : 'TODO'}</Pill>
+                  <span style={{ color: T.text3, fontSize: 10.5 }}>{audioSource === 'microphone' ? 'Microphone transcript' : 'System transcript'}</span><Pill tone={voiceTest.status === 'passed' ? 'teal' : 'neutral'}>{voiceTest.status === 'passed' ? 'OK' : 'TODO'}</Pill>
                   <span style={{ color: T.text3, fontSize: 10.5 }}>Privacy check</span><Pill tone={privacyReady ? 'teal' : 'neutral'}>{privacyReady ? 'OK' : 'TODO'}</Pill>
                 </div>
               </section>

@@ -1,3 +1,7 @@
+# v1.6.2 release update
+
+Current desktop manifests target 1.6.2 with signed-only public release gating. Model/audio and window UX changes are documented in [MODEL_AND_AUDIO_REVIEW.md](MODEL_AND_AUDIO_REVIEW.md). Historical notes below do not establish v1.6.2 publication or device validation.
+
 # MockMate — Architecture
 
 This document describes the implementation carried by the **v1.6.0 source release** and the v1.6.1 delivery correction. The v1.6.0 GitHub Release has no Windows binary and neither version is implied to be physically certified. Roadmap items live in `docs/ROADMAP.md`; release evidence lives in `docs/evidence/VALIDATION_STATUS.md`.
@@ -20,7 +24,7 @@ Window modes include dashboard/app, overlay, camera-anchored teleprompter and pi
 
 Windows/macOS use Electron content protection where supported. This is a partial protection mechanism, not a universal invisibility guarantee; meeting-app share preview must still be verified. Linux does not provide the same protected-overlay guarantee.
 
-Latest usable signed Windows installer: **v1.5.3**. Source/manifests target **v1.6.1**; the `v1.6.0` release has no installer assets. The automated workflow emits Windows x64 NSIS only: trusted signed stable artifacts when all signing settings exist, otherwise an isolated unsigned BYOK pre-release with no updater feed. macOS/Linux source and packaging code are not claimed as current public DMG/AppImage artifacts.
+Latest usable signed Windows installer: **v1.5.3**. Source/manifests target **v1.6.2**; the `v1.6.0` release has no installer assets. The automated workflow emits Windows x64 NSIS only: trusted signed stable artifacts only; missing signing settings block publication. Explicit manual previews remain a separate track. macOS/Linux source and packaging code are not claimed as current public DMG/AppImage artifacts.
 
 ### Interview preparation screens and Kit context
 

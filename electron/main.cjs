@@ -8,6 +8,7 @@ const crypto = require('crypto')
 const net = require('net')
 const { fork } = require('child_process')
 const { DiagnosticStore } = require('./diagnostics.cjs')
+const { prepareWindowMode, PILL_SIZE } = require('./window-mode.cjs')
 const { attachRequiredServiceLifecycle, waitForOptionalServiceReady, stopServiceAndWait, classifyRendererLoadFailure } = require('./service-lifecycle.cjs')
 
 // Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
@@ -88,7 +89,8 @@ function activeDisplayWorkArea(win = mainWindow) {
 function applyPillGeometry() {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const area = activeDisplayWorkArea(mainWindow)
-  const s = 72
+  const s = PILL_SIZE
+  prepareWindowMode(mainWindow, 'pill')
   try { mainWindow.setIgnoreMouseEvents(false) } catch {}
   mainWindow.setSize(s, s)
   mainWindow.setPosition(Math.max(area.x, area.x + area.width - s - 16), area.y + 16)
@@ -104,6 +106,7 @@ function applyPillGeometry() {
 
 function applyTeleprompterGeometry() {
   if (!mainWindow || mainWindow.isDestroyed()) return
+  prepareWindowMode(mainWindow, 'teleprompter')
   const area = activeDisplayWorkArea(mainWindow)
   const w = Math.min(760, Math.max(360, area.width - 40))
   const h = Math.min(240, Math.max(180, area.height - 40))
@@ -1093,6 +1096,11 @@ ipcMain.handle('set-ignore-mouse-events', (_, { ignore, forward } = {}) => {
     return { ok: false, error: e?.message || 'Could not change mouse handling.' }
   }
 })
+// Read the native DIP size so page zoom cannot make a dashboard resize jump.
+ipcMain.on('get-window-size', event => {
+  const bounds = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : null
+  event.returnValue = bounds ? { width: bounds.width, height: bounds.height } : null
+})
 ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const moveX = Math.round(Number(dx) || 0)
@@ -1156,11 +1164,13 @@ ipcMain.on('set-window-mode', (_, mode) => {
     } else if (mode === 'teleprompter') {
       applyTeleprompterGeometry()
     } else if (mode === 'app') {
+      prepareWindowMode(mainWindow, 'app')
       const w = Math.min(1200, area.width - 80), h = Math.min(760, area.height - 80)
       const x = area.x + Math.max(0, Math.round((area.width - w) / 2))
       const y = area.y + Math.max(0, Math.round((area.height - h) / 2))
       mainWindow.setBounds({ x, y, width: w, height: h })
     } else {
+      prepareWindowMode(mainWindow, 'overlay')
       // Restore the user's last HUD size on the current display — never hard-reset to primary monitor.
       const w = Math.min(Math.max(240, lastOverlaySize.w || 300), area.width - 40)
       const h = Math.min(Math.max(180, lastOverlaySize.h || 360), area.height - 40)

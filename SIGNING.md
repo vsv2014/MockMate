@@ -1,3 +1,9 @@
+# v1.6.2 signed public release
+
+The stable release requires trusted Authenticode signing and fails when certificate/password/publisher configuration is missing. `build.win.forceCodeSigning` and update signature verification are enabled. Stable release CI never falls back to an unsigned preview. No signed v1.6.2 installer is claimed until actual signature validation and packaged smoke pass.
+
+The existing setup guide follows; manual previews are a separate explicit distribution track.
+
 # Code Signing (Windows + macOS)
 
 Unsigned builds trigger OS trust walls:

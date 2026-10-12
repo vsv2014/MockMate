@@ -30,6 +30,7 @@ function createIsolatedUnsignedConfig(pkg, lock, version) {
   // Do not let the isolated unsigned package inherit the stable product's
   // publisher identity. CI also disables certificate auto-discovery and then
   // proves both the installer and packaged executable are NotSigned.
+  preview.build.win.forceCodeSigning = false // Explicit manual preview only, never stable release CI.
   delete preview.build.win.signtoolOptions
   preview.build.nsis.shortcutName = 'MockMate Personal Preview'
   preview.build.nsis.uninstallDisplayName = 'MockMate Personal Preview ${version}'
