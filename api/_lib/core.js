@@ -113,6 +113,7 @@ const CATALOG = {
 // A confirmed model-specific retirement 400/404 quarantines JUST that model,
 // not the entire API-key family. Never abort an already-streaming answer.
 const discoveredModels = new Map()
+let lastSuccessfulDiscoveries = new Set()
 const quarantinedModels = new Map()
 const MODEL_QUARANTINE_MS = 6 * 60 * 60 * 1000
 const MODEL_REFRESH_INTERVAL_MS = 15 * 60 * 1000
@@ -295,6 +296,7 @@ export function allProviders() {
 export async function listModels() {
   const out = []
   const staged = new Map()
+  const successful = new Set()
   const push = (provider, model, label) => {
     if (!isCurrentChatModel(provider, model) || isQuarantinedModel(provider, model)) return
     if (!staged.has(provider)) staged.set(provider, new Set())
@@ -306,6 +308,7 @@ export async function listModels() {
   const settle = async (provider, fn) => {
     try {
       await fn()
+      successful.add(provider)
       discoveredModels.set(provider, new Set(staged.get(provider) || []))
     } catch {}
   }
@@ -349,11 +352,18 @@ export async function listModels() {
         .forEach(id => push('cerebras', id, `Cerebras · ${id}`))
     }),
   ].filter(Boolean))
+  lastSuccessfulDiscoveries = successful
   providerDiagnostic('model_discovery_completed', {
     modelCount: out.length,
     providerCount: new Set(out.map(m => m.provider)).size,
   })
   return out
+}
+
+// Metadata lets the UI distinguish a successfully checked provider with no
+// active models from an offline endpoint; no API key or credential is exposed.
+export function getModelDiscoveryStatus() {
+  return { discoveredProviders: [...lastSuccessfulDiscoveries] }
 }
 
 // A provider id may be a plain CATALOG key ('openai') OR an encoded dynamic-model pick
@@ -528,6 +538,7 @@ export function _resetProviderHealthForTests() {
   lastWorkingTextProvider = null
   lastWorkingVisionProvider = null
   discoveredModels.clear()
+  lastSuccessfulDiscoveries = new Set()
   quarantinedModels.clear()
   nextModelDiscoveryAt = 0
   for (const k of Object.keys(textBannedUntil)) delete textBannedUntil[k]
