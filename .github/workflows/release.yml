@@ -2,6 +2,8 @@ name: Build & Release MockMate (Windows)
 
 on:
   push:
+    branches: [main]
+    paths: ['.github/release-request.json']
     tags:
       - 'v*.*.*'
   workflow_dispatch:
@@ -30,13 +32,21 @@ jobs:
         id: meta
         shell: bash
         env:
-          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
         run: |
           set -euo pipefail
+          if [ -z "$RELEASE_TAG" ]; then
+            RELEASE_TAG="$(node -p "require('./.github/release-request.json').tag")"
+            export RELEASE_TAG
+          fi
+          if [ "$GITHUB_REF_TYPE" != tag ] && [ -n "$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG")" ]; then
+            echo 'Refusing to overwrite an existing release tag.' >&2
+            exit 1
+          fi
           git fetch origin main --no-tags
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "$GITHUB_SHA" != "$(git rev-parse origin/main)" ]; then
-            echo "Manual releases must be dispatched from the current main HEAD." >&2
+          if [ "$GITHUB_REF_TYPE" != tag ] && [ "$GITHUB_SHA" != "$(git rev-parse origin/main)" ]; then
+            echo "Release requests must run from the current main HEAD." >&2
             exit 1
           fi
           node <<'NODE'
