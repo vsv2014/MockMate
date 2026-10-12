@@ -415,7 +415,9 @@ function createMainWindow() {
     transparent: !isLinux,                            // transparent overlay only on Win/macOS
     roundedCorners: false,                            // preserve the existing frameless overlay on Electron 43+
     backgroundColor: isLinux ? '#08090e' : '#00000000',
-    resizable: true, skipTaskbar: !isLinux,
+    // Windows transparency must not acquire a native resize frame. Custom handles
+    // still resize through the bounded window-resize IPC handler.
+    resizable: process.platform !== 'win32', skipTaskbar: !isLinux,
     icon: iconPath(),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   })
