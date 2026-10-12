@@ -58,5 +58,5 @@ export function isModelUnavailableError(error) {
   if (/^(?:model[_-])?(?:model_not_found|model_not_available|model_unavailable|model_deprecated|model_retired|model_disabled|deployment_not_found)$/.test(code)) return true
   const message = String(error?.message || payload.message || '').toLowerCase()
   return /\b(model|deployment)\b/.test(message)
-    && /\b(deprecated|retired|not found|not available|unavailable|does not exist|no longer available|sunset|not supported)\b/.test(message)
+    && /\b(deprecated|retired|not found|not available|unavailable|does not exist|no longer available|sunset)\b/.test(message)
 }
