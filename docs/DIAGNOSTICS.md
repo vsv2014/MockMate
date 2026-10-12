@@ -41,13 +41,37 @@ Both renderer and Electron redact. The following are excluded: API keys, authori
 tokens, passwords, cookies, secrets, credentials, résumé, transcripts, prompts, full answers,
 screenshot/base64 data and audio. Strings, arrays, nesting, event size and queue size are bounded.
 
-Settings provides **Export logs** and **Clear**, plus the **ARCH · Product Intelligence** inspector
-(`shared/productIntelligence.js`, `src/components/ProductIntelligencePanel.jsx`), which summarizes
-redacted funnel conversion (`live_interview`, `solo_practice`, `screen_solve`), sequence patterns
-(such as `overlay_resize → teleprompter_toggle`), rage clicks, and closed-loop `ARCH` latency
-promotions (`reasoningPolicy` promoting `'balanced'` to `'fast'` when `p95` TTFT breaches the
-declarative `arch/mockmate.abl.json` threshold). Interaction breadcrumb replay is **OFF** by default
-and requires explicit opt-in in Settings. Clearing diagnostics does not delete interview history.
+Settings provides **Export logs** and **Clear**, plus the **Product insights** inspector
+(`shared/productIntelligence.js`, `src/components/ProductIntelligencePanel.jsx`; formerly labelled
+"ARCH · Product Intelligence"). It summarizes redacted funnel conversion (`live_interview`,
+`solo_practice`, `screen_solve`), sequence patterns (such as `overlay_resize → teleprompter_toggle`),
+rage clicks, and closed-loop ARCH latency promotions (`reasoningPolicy` promoting `'balanced'` to
+`'fast'` when `p95` TTFT breaches the declarative `arch/mockmate.abl.json` threshold).
+
+- **Storage:** product-insight events stay in account-scoped local storage.
+- **Rage clicks:** recorded with fixed control identifiers only (`data-pi-target`, a clean `id`, or
+  `section:role`), never visible labels.
+- **Breadcrumbs in logs:** these events are written to this diagnostics log, and so to exported
+  bundles, only while **Include usage breadcrumbs in diagnostic logs** is on. It is off by default.
+  Before 1.6.3 they were always written.
+
+Clearing diagnostics does not delete interview history.
+
+## Summarizing a session
+
+`node scripts/session-report.mjs <exported bundle> [--session <id>] [--json] [--scoresheet out.csv]`
+reads an exported bundle and reports each Live or Solo session:
+
+- capture wait and time to first answer token
+- incomplete answers and errors
+- provider attempts, fallbacks and timeouts (by `timeoutKind`)
+- reported token usage and estimated cost
+- early-answer-start hits and cancellations
+- speech-to-text quality
+
+Provider rows carry no `sessionId`, so they are assigned to sessions by time. Gemini and Claude
+streams do not report token usage, so cost for those comes from the provider's usage page. The
+scoresheet is the Gate 0 rubric template ([`EVALS.md`](EVALS.md#gate-0-representative-live-session)).
 
 ## Future deep-debug mode
 
