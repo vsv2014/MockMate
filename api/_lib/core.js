@@ -47,9 +47,9 @@ const newProviderAttemptId = () => `llm_${Date.now().toString(36)}_${(++provider
 const CATALOG = {
   // Stable family IDs preserve user preferences; only their model defaults change.
   openai: {
-    label: 'OpenAI · GPT-6 Sol (balanced)', envKey: 'OPENAI_API_KEY',
+    label: 'OpenAI · GPT-6.1 Sol (balanced)', envKey: 'OPENAI_API_KEY',
     baseURL: 'https://api.openai.com/v1',
-    model: () => process.env.OPENAI_MODEL || process.env.OPENAI_BALANCED_MODEL || 'gpt-6-sol'
+    model: () => process.env.OPENAI_MODEL || process.env.OPENAI_BALANCED_MODEL || 'gpt-6.1-sol'
   },
   openai_mini: {
     label: 'OpenAI · GPT-6 Luna (fast)', envKey: 'OPENAI_API_KEY',
