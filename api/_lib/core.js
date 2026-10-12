@@ -294,7 +294,7 @@ export async function listModels() {
 }
 
 // A provider id may be a plain CATALOG key ('openai') OR an encoded dynamic-model pick
-// ('openai::gpt-5.1' = that provider's key/endpoint + an exact model chosen from /api/models).
+// ('openai::gpt-6-luna' = that provider's key/endpoint + an exact model chosen from /api/models).
 // baseOf() returns the CATALOG key so failover/ban logic keeps working on the provider level.
 const baseOf = id => (id && id.includes('::')) ? id.slice(0, id.indexOf('::')) : id
 
@@ -320,7 +320,7 @@ function clientFor(prov) {
 }
 
 // The API endpoint a provider id talks to — used to make failover jump to a DIFFERENT
-// service. Same-endpoint siblings (e.g. gpt-4o & gpt-4o-mini both hit api.openai.com)
+// service. Same-endpoint siblings (e.g. GPT-6 Sol and Luna both hit api.openai.com)
 // share an outage, so there's no point trying one right after the other fails.
 function baseUrlFor(id) {
   id = baseOf(id)
@@ -506,7 +506,7 @@ const AI_ERRORS = {
     'Could not reach MockMate AI right now. Please try again shortly, or switch to your own API key in Settings (⚙).',
   ],
   vision_none: [
-    'Screen analysis needs a vision model — add an OPENAI_API_KEY (GPT-4o) or GEMINI_API_KEY in ⚙ Settings.',
+    'Screen analysis needs a vision-capable model — add an OpenAI GPT-6 or Gemini key in Settings (⚙).',
     'Screen analysis is temporarily unavailable. Please try again, or add your own OpenAI/Gemini key in Settings (⚙).',
   ],
   vision_quota: [
@@ -737,17 +737,17 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
 }
 
 // Vision-capable providers — cheap/fast first so screen solve survives free-tier 429s.
-// Prefer Gemini Flash / GPT-4o-mini before heavy GPT-4o; skip recently rate-limited slots.
+// Prefer current Gemini Flash-Lite / GPT-6 Luna before heavier models; skip cooling slots.
 export function listVisionProviders() {
   const list = []
   if (process.env.GEMINI_API_KEY) {
     list.push({ id: 'gemini_flash_lite', key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini_flash_lite.baseURL, model: CATALOG.gemini_flash_lite.model() })
     list.push({ id: 'gemini', key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini.baseURL, model: CATALOG.gemini.model() })
+    list.push({ id: 'gemini_3_flash', key: process.env.GEMINI_API_KEY, baseURL: CATALOG.gemini_3_flash.baseURL, model: CATALOG.gemini_3_flash.model() })
   }
   if (process.env.OPENAI_API_KEY) {
-    list.push({ id: 'openai_mini', key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: process.env.OPENAI_MINI_MODEL || 'gpt-4o-mini' })
-    const oaiModel = process.env.OPENAI_MODEL && /4o|4\.1|gpt-4|gpt-5/.test(process.env.OPENAI_MODEL) ? process.env.OPENAI_MODEL : 'gpt-4o'
-    list.push({ id: 'openai', key: process.env.OPENAI_API_KEY, baseURL: 'https://api.openai.com/v1', model: oaiModel })
+    list.push({ id: 'openai_mini', key: process.env.OPENAI_API_KEY, baseURL: CATALOG.openai_mini.baseURL, model: CATALOG.openai_mini.model() })
+    list.push({ id: 'openai', key: process.env.OPENAI_API_KEY, baseURL: CATALOG.openai.baseURL, model: CATALOG.openai.model() })
   }
   // Groq and custom OpenAI-compatible gateways can expose vision models, but their
   // default text models are not vision-capable. Opt in with an explicit model so a
