@@ -2,7 +2,7 @@
 // Deployments:
 //   - Local BYOK (server.js): no auth, loopback-only.
 //   - Managed backend (backend/server.js): auth + metering/model policy.
-import { makeReport, availableProviders, allProviders, listModels, getModelDiscoveryStatus, testProviderConnection, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed, isLoopbackAddress } from './core.js'
+import { makeReport, availableProviders, allProviders, describeAutomaticRouting, listModels, getModelDiscoveryStatus, testProviderConnection, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed, isLoopbackAddress } from './core.js'
 import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen, streamHint } from './interview.js'
 import { findJobs } from './jobs.js'
 import { atsScore, tailorResume, referralMessage, resumeLatex } from './career.js'
@@ -95,7 +95,7 @@ export function registerApiRoutes(app, opts = {}) {
 
   const bodyWithPolicy = (path, raw = {}) => applyArchReasoningPolicy(path, raw, resolveReasoningPolicy)
 
-  app.get('/api/providers', ...guardLight, (req, res) => res.json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured() }))
+  app.get('/api/providers', ...guardLight, (req, res) => res.json({ providers: availableProviders(), allProviders: allProviders(), routing: describeAutomaticRouting(), deepgram: deepgramConfigured(), search: searchConfigured() }))
   if (opts.enableLocalProviderTest === true) {
     app.post('/api/providers/test', ...guardLight, async (req, res) => {
       try {
