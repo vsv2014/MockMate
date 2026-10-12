@@ -9,15 +9,15 @@ const PROVIDER_LABELS = {
 const SCORE_RULES = {
   openai: [
     [/^gpt-6-astra$/i, 240], [/^gpt-6\.1-sol$/i, 220],
-    [/^gpt-6-sol$/i, 210], [/^gpt-6-luna$/i, 150],
+    [/^gpt-6-luna$/i, 210], [/^gpt-6-sol$/i, 190],
   ],
   claude_sonnet: [
     [/^claude-fable-5$/i, 240], [/^claude-opus-5$/i, 220],
     [/^claude-sonnet-5$/i, 200], [/^claude-haiku-4-5/i, 130],
   ],
   gemini: [
-    [/^gemini-3\.8-flash$/i, 220], [/^gemini-3\.7-flash$/i, 200],
-    [/^gemini-3\.6-flash$/i, 180], [/^gemini-3\.5-flash-lite$/i, 130],
+    [/^gemini-3\.8-flash$/i, 220], [/^gemini-3\.7-flash$/i, 170],
+    [/^gemini-3\.6-flash$/i, 200], [/^gemini-3\.5-flash-lite$/i, 190],
   ],
   groq: [[/gpt-oss-120b/i, 180], [/qwen3\.8-27b/i, 160], [/gpt-oss-20b/i, 125]],
   cerebras: [[/zai-glm-4\.7/i, 190], [/gpt-oss-120b/i, 170]],
