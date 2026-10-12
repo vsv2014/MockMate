@@ -604,3 +604,37 @@ describe('short requests from interview replay', () => {
       expect(isRefinementSignal(text)).toBe(false)
     })
 })
+
+describe('early answer signal (onStabilizing)', () => {
+  it('reports a complete question while it waits for silence, with the exact text that then commits', () => {
+    const stabilizing = []
+    const { ctrl, committed, advance } = makeCapture({ onStabilizing: s => stabilizing.push(s) })
+    ctrl.ingest({ text: 'How would you design a rate limiter?', isFinal: true, meta: { speakerRole: 'interviewer' } })
+    expect(stabilizing).toHaveLength(1)
+    expect(committed).toHaveLength(0)
+    expect(stabilizing[0]).toMatchObject({ completeness: 'complete', waitMs: STABILIZE_MS.completeQuestionMark })
+    advance(STABILIZE_MS.completeQuestionMark + 20)
+    expect(committed).toHaveLength(1)
+    expect(stabilizing[0].text).toBe(committed[0].text)
+    expect(stabilizing[0].questionId).toBe(committed[0].id)
+  })
+
+  it('stays silent for incomplete openers', () => {
+    const stabilizing = []
+    const { ctrl } = makeCapture({ onStabilizing: s => stabilizing.push(s) })
+    ctrl.ingest({ text: 'Tell me about', isFinal: true, meta: { speakerRole: 'interviewer' } })
+    expect(stabilizing).toHaveLength(0)
+  })
+
+  it('stays silent for a repeat of the question that just committed', () => {
+    const stabilizing = []
+    const { ctrl, committed, advance } = makeCapture({ onStabilizing: s => stabilizing.push(s) })
+    const meta = { speakerRole: 'interviewer' }
+    ctrl.ingest({ text: 'Why use Redis?', isFinal: true, meta })
+    advance(STABILIZE_MS.completeQuestionMark + 20)
+    expect(committed).toHaveLength(1)
+    expect(stabilizing).toHaveLength(1)
+    ctrl.ingest({ text: 'Why use Redis?', isFinal: true, meta })   // duplicate Deepgram final
+    expect(stabilizing).toHaveLength(1)
+  })
+})

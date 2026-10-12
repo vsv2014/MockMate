@@ -158,3 +158,20 @@ describe('Live hint stream completion safety', () => {
     expect(splitSseBuffer('event: token\rdata: "hello"\r\r').events[0].data).toBe('hello')
   })
 })
+
+describe('early (already started) hint request', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('consumes the prefetched response exactly like a fresh request and never re-sends', async () => {
+    const prefetched = Promise.resolve(streamedResponse([
+      'event: meta\ndata: {"type":"technical"}\n\n',
+      'event: token\ndata: "early answer"\n\n',
+      'event: done\ndata: {}\n\n',
+    ]))
+    const events = []
+    const result = await streamLiveHint({ body: { question: 'Q' }, response: prefetched, onEvent: ev => { events.push(ev) } })
+    expect(result.mode).toBe('stream')
+    expect(events.map(ev => ev.event)).toEqual(['meta', 'token', 'done'])
+    expect(apiFetch).not.toHaveBeenCalled()
+  })
+})
