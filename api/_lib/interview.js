@@ -35,10 +35,10 @@ function groundedSearch(question, budgetMs) {
 // directive to append to the system message and a maxTokens cap relative to the caller's base.
 function styleFor(style, baseTokens) {
   if (style === 'concise') return {
-    directive: '\n\nLENGTH: Be CONCISE — lead with the direct answer in the first sentence, then at most two short supporting sentences. No preamble, no filler.',
+    directive: '\n\nLENGTH: Be CONCISE — lead with the direct answer in the first sentence, then at most two short supporting sentences for simple questions. For coding or design, shorten the explanation but include the complete requested code or architecture and essential trade-offs. No preamble, no filler.',
     // Strong tier (base ≥900: coding / system-design) keeps room so a code block or design
     // walkthrough isn't hard-truncated; only the fast/simple tier gets the tight cap.
-    maxTokens: Math.min(baseTokens, baseTokens >= 900 ? 650 : 380),
+    maxTokens: Math.min(baseTokens, baseTokens >= 900 ? 1800 : 380),
   }
   if (style === 'detailed') return {
     directive: '\n\nLENGTH: Be thorough — a complete, well-structured answer with specifics and concrete examples.',
@@ -344,7 +344,7 @@ ${META_LINE}
 2) Then a newline, then the answer. For coding requests, include a short practical approach followed by one COMPLETE runnable fenced code block in the requested language. For non-coding questions, return spoken prose with no markdown headers.
 CRITICAL: Never repeat the META JSON (or any JSON) inside the answer. Code must never be emitted as loose plain-text lines.
 
-SPOKEN STYLE (said out loud, not read): real-person contractions and connectors ("so", "honestly", "basically"); start mid-thought, never a textbook definition; plain words over jargon when possible; ALWAYS state the WHY / the trade-off, not just the what. Never use these AI-tell words: ${BANNED_WORDS}.
+SPOKEN STYLE (said out loud, not read): real-person contractions and connectors ("so", "honestly", "basically"); lead with the direct answer; for definitions, first explain what the term means, then give a concrete example; plain words over jargon when possible; ALWAYS state the WHY / the trade-off, not just the what. Never use these AI-tell words: ${BANNED_WORDS}.
 
 WHEN TO USE THE RESUME (critical — applies to EVERY question type):
 - EXPERIENCE / behavioral / "tell me about a time" / project walkthrough → ground in the resume. NAME the project. Never invent tools or numbers not on it.
@@ -466,7 +466,7 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   const chosen = userPicked ? provider : (automatic || provider)
 
   // Apply the verbosity control on top of the tier's base budget.
-  const { directive, maxTokens } = styleFor(style, (tier === 'strong' || mode === 'coach') ? 900 : 700)
+  const { directive, maxTokens } = styleFor(style, (tier === 'strong' || mode === 'coach') ? 2400 : 700)
   // Auto-skip OFF → force an answer for every input (override the [SKIP] instruction).
   const skipDirective = autoSkip ? '' : '\n\nALWAYS ANSWER: respond to every input — do NOT output [SKIP], even for small talk, filler, or a partial/unclear question. Do your best with what was said.'
   const system = baseSystem + directive + skipDirective + classificationBlock(classification)
