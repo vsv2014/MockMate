@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useId } from 'react'
 import { apiFetch } from './lib/apiClient'
-import { curateModelOptions, configuredProviderNames, curateProviderFallbacks, loadModelSelection, persistModelSelection } from './lib/modelPicker'
 import { useDeepgram } from './useDeepgram'
 import { analyze, liveNudge } from '../shared/delivery.js'
 import SoloFeedback from './SoloFeedback'
@@ -107,13 +106,11 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
   const [relentless, setRelentless] = useState(false)
   const [tts, setTts] = useState(true)
   const [providers, setProviders] = useState([])
-  const [provider, setProvider] = useState(loadModelSelection)
   const managed = isManaged()
-  const effProvider = managed ? '' : provider   // managed → let the server auto-route/failover
+  // Both managed and BYOK use the same adaptive backend router.
+  // Never replay a historical user-chosen model that has since been retired.
+  const effProvider = ''
   const [dgAvailable, setDgAvailable] = useState(false)
-  const [models, setModels] = useState([])   // dynamic per-key model list from /api/models
-  const modelOptions = curateModelOptions(models)
-  const providerNames = configuredProviderNames(models, providers)
   const [setupError, setSetupError] = useState('')
   const [resumeDraft, setResumeDraft] = useState(() => loadSoloDraft(draftScope))
   // Voice = Deepgram ONLY. The browser SpeechRecognition API silently fails inside
@@ -123,20 +120,12 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
     apiFetch('/api/providers').then(r => r.json()).then(d => {
       const list = d.providers || []
       setProviders(list)
-      setProvider(p => (!p || p.includes('::') || list.some(x => x.id === p)) ? p : '')
       setDgAvailable(!!d.deepgram)
       setSetupError('')
     }).catch(() => {
       setSetupError('Could not load AI providers — check your connection, then refresh.')
     })
-    if (!managed) apiFetch('/api/models').then(r => r.json()).then(d => {
-      const next = d.models || []
-      setModels(next)
-      const compact = curateModelOptions(next)
-      setProvider(current => compact.some(m => m.id === current) ? current : '')
-    }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { persistModelSelection(provider) }, [provider])
   useEffect(() => { trackProductEvent('solo_setup') }, [])
 
   const [transcript, setTranscript] = useState([])
@@ -812,18 +801,9 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
           <div>
             <Chips label="Voice style" options={['Professional', 'Friendly', 'Concise', 'Detailed']} value={voiceStyle} onChange={v => { setVoiceStyle(v); patchProfile({ voiceStyle: v }) }} />
           </div>
-          {!managed && (providers.length > 0 || models.length > 0) && (
-            <div>
-              <Label htmlFor={`${soloFormId}-model`}>AI model</Label>
-              <select id={`${soloFormId}-model`} value={provider} onChange={e => setProvider(e.target.value)} style={{ ...textInput, maxWidth: 380 }}>
-                <option value="">Automatic — recommended</option>
-                {modelOptions.length > 0
-                  ? modelOptions.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
-                  : curateProviderFallbacks(providers).map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-              </select>
-              <div style={{ fontSize: 10.5, color: T.text3, marginTop: 5 }}>Configured provider{providerNames.length === 1 ? '' : 's'}: {providerNames.join(', ') || 'none'}</div>
-            </div>
-          )}
+          <div role="status" style={{ fontSize: 11, color: T.text2, lineHeight: 1.5 }}>
+            AI runs automatically from your connected provider keys. MockMate selects an available model for each question and switches when necessary; no model setup is needed here.
+          </div>
           <div>
             <Label htmlFor={`${soloFormId}-language`}>Language</Label>
             <select id={`${soloFormId}-language`} value={profile.language || 'English'} onChange={e => patchProfile({ language: e.target.value })} style={{ ...textInput, maxWidth: 340 }}>
