@@ -31,3 +31,21 @@ describe('InterviewState Phase 1 authorities', () => {
     expect(hist.map(t => t.role)).toEqual(['interviewer', 'candidate'])
   })
 })
+
+
+describe('previous answer context', () => {
+  it('includes a complete suggestion only when requested, without changing speech history', () => {
+    const state = createInterviewState()
+    const q = state.commitQuestion('Design RAG', { questionType: 'system_design' })
+    const answer = 'retrieval details '.repeat(100)
+    state.commitAnswer({ questionId: q.id, generationId: 'g1', text: answer })
+    expect(state.getLlmHistory({ includeLastAnswer: true }).at(-1)).toMatchObject({ role: 'assistant', text: expect.stringContaining(answer) })
+    expect(state.getLlmHistory().some(t => t.role === 'assistant')).toBe(false)
+  })
+  it('does not reuse an incomplete answer as a complete suggestion', () => {
+    const state = createInterviewState()
+    const q = state.commitQuestion('Design RAG', { questionType: 'system_design' })
+    state.commitAnswer({ questionId: q.id, generationId: 'g1', text: 'partial', incomplete: true })
+    expect(state.getLlmHistory({ includeLastAnswer: true }).some(t => t.role === 'assistant')).toBe(false)
+  })
+})

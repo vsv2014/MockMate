@@ -35,16 +35,40 @@ function groundedSearch(question, budgetMs) {
 // directive to append to the system message and a maxTokens cap relative to the caller's base.
 function styleFor(style, baseTokens) {
   if (style === 'concise') return {
-    directive: '\n\nLENGTH: Be CONCISE — lead with the direct answer in the first sentence, then at most two short supporting sentences. No preamble, no filler.',
+    directive: '\n\nLENGTH: Be CONCISE — lead with the direct answer in the first sentence, then at most two short supporting sentences for simple questions. For coding or design, shorten the explanation but include the complete requested code or architecture and essential trade-offs. No preamble, no filler.',
     // Strong tier (base ≥900: coding / system-design) keeps room so a code block or design
     // walkthrough isn't hard-truncated; only the fast/simple tier gets the tight cap.
-    maxTokens: Math.min(baseTokens, baseTokens >= 900 ? 650 : 380),
+    maxTokens: Math.min(baseTokens, baseTokens >= 900 ? 1800 : 380),
   }
   if (style === 'detailed') return {
     directive: '\n\nLENGTH: Be thorough — a complete, well-structured answer with specifics and concrete examples.',
     maxTokens: Math.max(baseTokens, 1100),
   }
   return { directive: '', maxTokens: baseTokens }   // balanced (default) — unchanged behavior
+}
+
+// Preserve complete recent turns within a bounded history budget. Never silently
+// turn a code block into its first 300 characters or clip the current question.
+export function buildHintUserContext({ question, packed = '', conversationHistory = [], searchBlock = '', followParent = '', screenNote = '' }) {
+  const selected = []
+  let remaining = 24000
+  for (const turn of (Array.isArray(conversationHistory) ? conversationHistory : []).slice(-13).reverse()) {
+    if (!turn || !['interviewer', 'candidate', 'assistant', 'user'].includes(turn.role)) continue
+    const text = String(turn.text || '')
+    if (!text.trim()) continue
+    const label = turn.role === 'assistant' ? 'AI SUGGESTION (not evidence of what the candidate said)' : turn.role.toUpperCase()
+    const entry = `${label}: ${text}`
+    if (entry.length > remaining) continue // omit a whole older turn rather than corrupt its code
+    selected.unshift(entry)
+    remaining -= entry.length
+  }
+  const historyBlock = selected.length
+    ? '\n\nRecent conversation and prior AI suggestion (resolve follow-ups using relevant context; the current question overrides older topics):\n' + selected.join('\n') : ''
+  return `${packed ? packed + '\n\n' : ''}${historyBlock}${searchBlock}${followParent}${screenNote}\n\nCurrent question: "${String(question)}"`
+}
+
+export function hintAnswerStyle(style, tier, mode) {
+  return styleFor(style, (tier === 'strong' || mode === 'coach') ? 2400 : 700)
 }
 
 function profileBlock(p = {}) {
@@ -344,7 +368,7 @@ ${META_LINE}
 2) Then a newline, then the answer. For coding requests, include a short practical approach followed by one COMPLETE runnable fenced code block in the requested language. For non-coding questions, return spoken prose with no markdown headers.
 CRITICAL: Never repeat the META JSON (or any JSON) inside the answer. Code must never be emitted as loose plain-text lines.
 
-SPOKEN STYLE (said out loud, not read): real-person contractions and connectors ("so", "honestly", "basically"); start mid-thought, never a textbook definition; plain words over jargon when possible; ALWAYS state the WHY / the trade-off, not just the what. Never use these AI-tell words: ${BANNED_WORDS}.
+SPOKEN STYLE (said out loud, not read): real-person contractions and connectors ("so", "honestly", "basically"); lead with the direct answer; for definitions, first explain what the term means, then give a concrete example; plain words over jargon when possible; ALWAYS state the WHY / the trade-off, not just the what. Never use these AI-tell words: ${BANNED_WORDS}.
 
 WHEN TO USE THE RESUME (critical — applies to EVERY question type):
 - EXPERIENCE / behavioral / "tell me about a time" / project walkthrough → ground in the resume. NAME the project. Never invent tools or numbers not on it.
@@ -438,8 +462,6 @@ export async function streamHint({ question, profile = {}, conversationHistory =
     }
   }
   const packed = packCandidateContext(profile, extraContext, { classification: packClassification, question })
-  const historyBlock = conversationHistory.length
-    ? '\n\nConversation so far (resolve "that"/"it"/"what you said" against this):\n' + conversationHistory.slice(-8).map(t => `${t.role.toUpperCase()}: ${String(t.text).slice(0, 300)}`).join('\n') : ''
 
   const pb = pickPlaybook(question, { classification })
   const baseSystem = mode === 'coach' ? buildCoachSystem(language, pb.coach) : buildAnswerSystem(language, pb.answer)
@@ -449,7 +471,7 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   const screenNote = screenBlock
     ? `\n\n${screenBlock}\n(Use the screen evidence above for the CURRENT question. Do not invent pixels. Follow CONTEXT PRECEDENCE in the candidate pack.)`
     : ''
-  const user = `${packed ? packed + '\n\n' : ''}${historyBlock}${searchBlock}${followParent}${screenNote}\n\nCurrent question: "${String(question).slice(0, 800)}"`
+  const user = buildHintUserContext({ question, packed, conversationHistory, searchBlock, followParent, screenNote })
 
   // HONOR THE USER'S EXPLICIT MODEL CHOICE. If they picked a model in the dropdown
   // (provider is a real id, not '' / 'auto'), use it for EVERY question — so choosing
@@ -466,7 +488,7 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   const chosen = userPicked ? provider : (automatic || provider)
 
   // Apply the verbosity control on top of the tier's base budget.
-  const { directive, maxTokens } = styleFor(style, (tier === 'strong' || mode === 'coach') ? 900 : 700)
+  const { directive, maxTokens } = hintAnswerStyle(style, tier, mode)
   // Auto-skip OFF → force an answer for every input (override the [SKIP] instruction).
   const skipDirective = autoSkip ? '' : '\n\nALWAYS ANSWER: respond to every input — do NOT output [SKIP], even for small talk, filler, or a partial/unclear question. Do your best with what was said.'
   const system = baseSystem + directive + skipDirective + classificationBlock(classification)
@@ -574,9 +596,7 @@ async function generateHintImpl({ question, profile = {}, conversationHistory = 
   const pb = pickPlaybook(question, { classification })
   const baseSystem = mode === 'coach' ? buildCoachSystem(language, pb.coach) : buildAnswerSystem(language, pb.answer)
   const packed = packCandidateContext(profile, extraContext, { classification: packClassification, question })
-  const historyBlock = conversationHistory.length
-    ? '\n\nConversation so far (resolve "that"/"it" against this):\n' + conversationHistory.slice(-8).map(t => `${t.role.toUpperCase()}: ${String(t.text).slice(0, 300)}`).join('\n')
-    : ''
+
   const followParent = classification.isFollowUp && classification.parentTopic
     ? `\n\nParent topic for this follow-up: "${String(classification.parentTopic).slice(0, 240)}"${classification.parentType ? ` (prior type: ${classification.parentType})` : ''}`
     : ''
@@ -591,8 +611,7 @@ async function generateHintImpl({ question, profile = {}, conversationHistory = 
     : strategy === 'fast' ? escalateFast
       : (pb.tier === 'strong' ? escalateStrong : escalateFast)
   const chosen = userPicked ? provider : (automatic || provider)
-  const { directive } = styleFor(style, 700)
-  const maxTokens = style === 'detailed' ? 1100 : (pb.tier === 'strong' || mode === 'coach') ? 900 : 700
+  const { directive, maxTokens } = hintAnswerStyle(style, pb.tier, mode)
   const skipDirective = autoSkip
     ? ''
     : '\n\nALWAYS ANSWER: respond to every input — do NOT skip, even for small talk or a partial question.'
@@ -614,7 +633,7 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
     maxTokens, provider: chosen,
     messages: [
       { role: 'system', content: baseSystem + directive + skipDirective + classificationBlock(classification) + answerRequirementBlock(question, profile, classification) + schemaNote },
-      { role: 'user', content: `${packed ? packed + '\n\n' : ''}${historyBlock}${searchBlock}${followParent}${screenNote}\n\nCurrent question: "${String(question).slice(0, 800)}"` },
+      { role: 'user', content: buildHintUserContext({ question, packed, conversationHistory, searchBlock, followParent, screenNote }) },
     ],
   })
 

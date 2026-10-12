@@ -720,7 +720,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
     const llm = clientFor(prov), model = prov.model
     const providerStartedAt = Date.now()
     const attemptId = newProviderAttemptId()
-    providerDiagnostic('attempt_started', { attemptId, operation: 'json', provider: provId, model, maxTokens })
+    providerDiagnostic('attempt_started', { attemptId, operation: 'json', provider: provId, model, maxTokens, attemptIndex: queueIndex, contextChars: JSON.stringify(messages).length })
 
     // Gemini 2.5 models THINK by default — reasoning silently eats the token
     // budget, so the actual answer gets truncated into invalid JSON. Disable it
@@ -731,6 +731,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
     // response_format:json_object — it just needs reasoning_effort:'none' (set below) to stop
     // its default "thinking" from eating the token budget. This matches streamText, which works.
     const jsonMode = /openai\.com|groq\.com/i.test(prov.baseURL || '')
+    let requestCount = 0
     const ask = async msgs => {
       let useExtras = true   // JSON-mode / reasoning params; dropped if this provider 400s on them
       for (let attempt = 0; ; attempt++) {
@@ -738,7 +739,17 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
           const params = { model, ...completionBudget(prov, maxTokens), messages: msgs }
           if (useExtras && isGemini) params.reasoning_effort = 'none'
           if (useExtras && jsonMode) params.response_format = { type: 'json_object' }
+          const requestIndex = requestCount++
+          const requestStartedAt = Date.now()
           const r = await llm.chat.completions.create(params)
+          providerDiagnostic('request_usage', {
+            attemptId, operation: 'json', provider: provId, model,
+            requestIndex, retryCount: requestIndex, status: 200,
+            contextChars: JSON.stringify(msgs).length,
+            durationMs: Date.now() - requestStartedAt,
+            inputTokens: r.usage?.prompt_tokens ?? null,
+            outputTokens: r.usage?.completion_tokens ?? null,
+          })
           // A content-filter / safety refusal / some Gemini responses come back with an empty
           // choices array. Throw a transient-classified error so we retry, rather than a raw
           // TypeError on r.choices[0].
@@ -1104,7 +1115,7 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
     const attemptId = newProviderAttemptId()
     const deadline = withDeadline(signal, Number(process.env.LLM_STREAM_TIMEOUT_MS) || LIVE_PROVIDER_ATTEMPT_TIMEOUT_MS)
     providerDiagnostic('attempt_started', {
-      attemptId, operation: 'stream', provider: provId, model, maxTokens,
+      attemptId, operation: 'stream', provider: provId, model, maxTokens, attemptIndex, contextChars: JSON.stringify(messages).length,
       requestedProvider: provider || 'auto', selectionReason: attemptIndex > 0 ? 'fallback' : (provider && provider !== 'auto' ? 'requested' : 'automatic'),
     })
     try { onProviderEvent?.({ type: 'started', attemptId, attemptIndex, provider: provId, model }) } catch {}
@@ -1127,7 +1138,7 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       }
       lastWorkingTextProvider = baseOf(provId)
       if (usage && onUsage) onUsage({ model, input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0 })
-      providerDiagnostic('attempt_succeeded', { attemptId, operation: 'stream', provider: provId, model, durationMs: Date.now() - providerStartedAt, ttftMs: firstTokenAt ? firstTokenAt - providerStartedAt : null, inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0 })
+      providerDiagnostic('attempt_succeeded', { attemptId, operation: 'stream', provider: provId, model, durationMs: Date.now() - providerStartedAt, ttftMs: firstTokenAt ? firstTokenAt - providerStartedAt : null, attemptIndex, status: 200, inputTokens: usage?.prompt_tokens ?? null, outputTokens: usage?.completion_tokens ?? null })
       try { onProviderEvent?.({ type: 'succeeded', attemptId, attemptIndex, provider: provId, model, durationMs: Date.now() - providerStartedAt }) } catch {}
       return
     } catch (e) {

@@ -588,3 +588,19 @@ describe('Turn-1 negatives (blast-radius review: greetings must never become que
     }
   })
 })
+
+
+describe('short requests from interview replay', () => {
+  it.each(['draw', 'show the snippet', 'explain architecture', 'give an example'])(
+    'refines an existing question for %s', text => {
+      const onRefinement = vi.fn()
+      const { ctrl, committed } = makeCapture({ hadPrior: true, onRefinement })
+      ctrl.ingest({ text, isFinal: true, meta: { speakerRole: 'interviewer', source: 'system' } })
+      expect(onRefinement).toHaveBeenCalledWith(expect.objectContaining({ text }))
+      expect(committed).toHaveLength(0)
+    })
+  it.each(['draw money from an account', 'show me how you design a new database', 'okay'])(
+    'does not mistake a new topic or acknowledgement for a refinement: %s', text => {
+      expect(isRefinementSignal(text)).toBe(false)
+    })
+})

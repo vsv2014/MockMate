@@ -198,7 +198,8 @@ export function isRevisionSignal(text) {
 }
 
 export function isRefinementSignal(text) {
-  return REFINEMENT_SIGNAL.test(sanitizeCaptureText(text))
+  const clean = sanitizeCaptureText(text)
+  return REFINEMENT_SIGNAL.test(clean) || /^(?:please\s+)?(?:draw(?:\s+(?:it|that|the diagram|the architecture))?|show (?:me )?(?:the )?(?:code|snippet|diagram)|explain (?:the )?(?:architecture|code)|give (?:me )?(?:an? )?example)[?.!]*$/i.test(clean)
 }
 
 /**

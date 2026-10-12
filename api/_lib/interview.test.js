@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pickPlaybook, packCandidateContext, analyzeScreen, answerRequirementBlock, hasOnlineCompilerHarness, isLogisticalCheck, streamHint } from './interview.js'
+import { buildHintUserContext, hintAnswerStyle, pickPlaybook, packCandidateContext, analyzeScreen, answerRequirementBlock, hasOnlineCompilerHarness, isLogisticalCheck, streamHint } from './interview.js'
 import { classifyTurn } from '../../shared/interviewClassify.js'
 import { glanceLayers } from '../../shared/hintLayers.js'
 
@@ -435,5 +435,29 @@ describe('glanceLayers (stream/JSON shared contract)', () => {
   it('honors meta.keyPoints when provided', () => {
     const layers = glanceLayers('Only one sentence here.', { keyPoints: ['A', 'B', 'C'] })
     expect(layers.keyPoints).toEqual(['A', 'B', 'C'])
+  })
+})
+
+
+describe('shared hint context and budgets', () => {
+  it('preserves long current requirements and previous code for short follow-ups', () => {
+    const question = 'Design a pipeline. '.repeat(100) + 'MUST_SUPPORT_DELETIONS'
+    const code = 'const step = true;\n'.repeat(100) + 'return finalResult;'
+    const prompt = buildHintUserContext({ question, conversationHistory: [{ role: 'assistant', text: code }] })
+    expect(prompt).toContain(question)
+    expect(prompt).toContain(code)
+    expect(prompt).toContain('not evidence of what the candidate said')
+  })
+  it('bounds older history without clipping retained turns or the current question', () => {
+    const prompt = buildHintUserContext({ question: 'show the snippet', conversationHistory: [
+      { role: 'interviewer', text: 'old'.repeat(10000) },
+      { role: 'assistant', text: 'complete recent answer' },
+    ] })
+    expect(prompt).not.toContain('oldold')
+    expect(prompt).toContain('complete recent answer')
+    expect(prompt).toContain('show the snippet')
+  })
+  it.each(['concise', 'balanced', 'detailed'])('keeps enough code budget for %s on either transport', style => {
+    expect(hintAnswerStyle(style, 'strong', 'answer').maxTokens).toBeGreaterThanOrEqual(1800)
   })
 })
