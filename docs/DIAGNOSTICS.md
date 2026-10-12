@@ -14,6 +14,11 @@ Files rotate at 5 MB and retain four generations (about 20 MB maximum).
 - `requestId` identifies one API, auth or screenshot operation.
 - Provider attempts include operation, provider, model, status class, duration, TTFT and usage. They also carry `attemptIndex` (0 for the first provider tried; higher values are fallbacks) and `contextChars`, the length of the JSON-serialized request messages including the system prompt. `contextChars` is a size signal, not a token count.
 - Blocking JSON calls emit `request_usage` for each successful provider request in an attempt, including JSON-repair requests. `requestIndex` numbers every request in the attempt from 0, failed retries included, so a value above 0 means a retry or JSON repair happened. Token counts a provider does not return are recorded as `null` (unknown), never `0`.
+- Streamed `attempt_timed_out` events carry `timeoutKind`:
+  - `first_token`: no answer text before the per-provider budget, so failover runs.
+  - `stall`: no new text for the stall window after the answer had started; the partial answer is kept.
+- `thinking_setting_rejected` means Anthropic refused the low-latency thinking setting for a model, and the request was retried once without it.
+- Live `speculative_hint` events record the early answer start: `outcome` (`started`, `claimed` or `cancelled`), `reason` and `phase` for cancellations, `leadMs` for how far ahead a claimed request started, and `ageMs` for cancelled ones. They never include question or answer text. Setting `localStorage['mm-live-early-answer']` to `'0'` disables the feature for troubleshooting.
 
 ## Covered events
 

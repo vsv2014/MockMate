@@ -91,6 +91,11 @@ See `docs/RELEASE_CHECKLIST.md` and `docs/evidence/VALIDATION_STATUS.md`.
 - [ ] Certify Stealth/share-preview behavior per Windows/macOS + meeting-app/share-mode combination.
 - [ ] Keep Linux Stealth explicitly unsupported until there is a real OS/compositor solution.
 - [ ] Evaluate an explicit, opt-in automatic-question option for microphone mode. Keep manual **Answer this** as the default, because diarizing a single microphone cannot reliably tell the interviewer from the candidate.
+- [ ] Settings phase 2:
+  - A speech-to-text section showing the Deepgram model, which audio source Live is using and estimated minutes.
+  - A preview before exporting logs, and per-provider notes on what data each provider receives.
+  - An optional spend limit, presented as MockMate's estimate; provider-enforced limits stay in each provider's console.
+  - An explicit on/off for using a second provider as backup.
 - [ ] Consider an optional OpenRouter connection for model comparison, with per-key spending limits ([API key creation](https://openrouter.ai/docs/api/api-reference/api-keys/create-a-new-api-key)). It must never be required; personal use stays on direct Gemini + Deepgram BYOK.
 
 ## P3 — Mobile practice MVP

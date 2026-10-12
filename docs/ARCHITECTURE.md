@@ -1,6 +1,6 @@
 # v1.6.2 release update
 
-Current desktop manifests target 1.6.2 with signed-only public release gating. Model/audio, Live hint context and output caps, window UX changes, and the personal BYOK provider recommendation are documented in [MODEL_AND_AUDIO_REVIEW.md](MODEL_AND_AUDIO_REVIEW.md). Historical notes below do not establish v1.6.2 publication or device validation.
+Current desktop manifests target 1.6.2 with signed-only public release gating. Model/audio, Live hint context, output caps and answer timing, window UX and key-setup changes, and the personal BYOK provider recommendation are documented in [MODEL_AND_AUDIO_REVIEW.md](MODEL_AND_AUDIO_REVIEW.md). Historical notes below do not establish v1.6.2 publication or device validation.
 
 # MockMate — Architecture
 

@@ -60,6 +60,14 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] Benchmark the same recorded input and context, with the same provider and model, against a **named baseline release**: the one the regression report compared against or, if none was recorded, the latest stable public Windows release (v1.5.3). Record the selected model, TTFT, completion/truncation status, capture-to-answer latency and token usage/cost from diagnostics (never transcript content), with the baseline tag, in `docs/evidence/VALIDATION_STATUS.md`
 - [ ] Concise style: coding/design answers still contain complete code or architecture within 1,800 tokens, and simple answers on the blocking `/api/hint` path (Live JSON compatibility fallback, Duo or mobile) finish within **380 tokens** with no truncation and no JSON-repair request (`request_usage` `requestIndex` stays 0)
 - [ ] Windows transparent overlay: collapse to the badge, drag, expand and resize with the custom edge handles at 100% and one non-default page zoom. Transparency survives every step. Repeat with microphone and system-playback sources
+- [ ] **Long answers finish:** with a real provider, a coding or system-design answer that streams for more than 11 seconds completes without an "outage" error. Diagnostics show no `attempt_timed_out`, or only `timeoutKind: first_token` before failover
+- [ ] **Early answer start:** with system audio in BYOK mode, a clear question's answer starts sooner than with `localStorage['mm-live-early-answer'] = '0'`, and diagnostics show `speculative_hint` `claimed`. When the interviewer pauses and then adds to the question, no answer to the shorter question is shown, the answer covers the full question, and diagnostics show `cancelled` with `speech_continued`
+- [ ] **Claude:** with only an Anthropic key, quick answers use Claude Haiku 5.5 and coding/design answers use Claude Sonnet 5.5. First words arrive without a long silent pause, and there is no `thinking_setting_rejected`
+- [ ] **Settings key setup:**
+  - Paste an Anthropic, Gemini, Groq, OpenAI, Cerebras and Deepgram key: each is suggested correctly.
+  - An unknown format requires choosing the provider; a mismatched choice asks for confirmation; OpenRouter and admin keys are refused.
+  - Keys saved by the previous release still appear and work after upgrading; Test, Replace and Remove work.
+  - "Which model answers" matches the models seen in diagnostics.
 
 ## 5. Screenshot solve
 - [ ] Ctrl+Shift+U / F7 on a coding problem **from Live** → answer-first solution, no refusal

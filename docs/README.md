@@ -7,7 +7,7 @@ This directory is intentionally small. Prefer updating an existing canonical doc
 | Document | Purpose |
 |---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Current system architecture, runtime boundaries, ARCH, RAG, Electron, hosted API and mobile topology |
-| [`MODEL_AND_AUDIO_REVIEW.md`](MODEL_AND_AUDIO_REVIEW.md) | Current model routing, Live audio and hint context/output caps, window UX, and the personal BYOK provider recommendation and cost estimate |
+| [`MODEL_AND_AUDIO_REVIEW.md`](MODEL_AND_AUDIO_REVIEW.md) | Current model routing, Live audio, hint context/output caps and answer timing, window UX and key setup, and the personal BYOK provider recommendation and cost estimate |
 | [`ROADMAP.md`](ROADMAP.md) | Future product and engineering direction; completed implementation plans should be folded here or removed |
 | [`DEPLOY_BACKEND.md`](DEPLOY_BACKEND.md) | Hosted backend/Vercel/Mongo deployment and verification |
 | [`RELEASE.md`](RELEASE.md) | Release process and workflow behavior |

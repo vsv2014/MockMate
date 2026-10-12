@@ -8,9 +8,14 @@
 - Keep the Windows transparent overlay natively non-resizable at creation and across collapse/expand; the custom handles still resize through the bounded `window-resize` IPC handler.
 - Add metadata-only provider diagnostics: attempt index, serialized request size, per-request usage for blocking calls including JSON repairs, and `null` rather than `0` for token counts a provider does not report.
 - Settings reports a detected key separately from model availability, reads BYOK key status from the local service even when Managed mode is selected, and no longer labels Gemini or Groq as free.
+- Stop cutting off long Live answers. The 11-second per-provider budget now covers only the wait for the first answer text; after that only a stall ends a stream (8 s on the server, 12 s in the browser). Previously any answer still streaming 11 s after its request started was cut off, shown as a provider outage, and its provider was cooled down.
+- Turn off Claude's hidden thinking for Live answers. Claude 5-generation models think by default, and over the OpenAI-compatible endpoint that thinking was invisible, used the answer's token budget and was billed. Live now sends `between_tools` for Sonnet 5.5 and `disabled` for Sonnet 5, Opus 5 and Haiku 5.5, retrying once without the setting if Anthropic rejects it.
+- Use the current Claude generation: Sonnet 5.5 for coding/design and Haiku 5.5 for quick answers, falling back to Sonnet 5 and Haiku 4.5 (both still active). Add list prices to the session cost gauge.
+- Start Live answers during the question's silence window (system audio, BYOK). The exact request is prepared early and used only if it is identical to the committed request; new speech or any change aborts it.
+- Simplify BYOK key setup in Settings: show which model answers quick and coding questions, list saved keys with Test, Replace and Remove, and replace the per-provider fields with one Add API key box. The box suggests the provider from the key format on the device and asks the user to confirm. Saved keys are unchanged.
 - Document the hint context and output caps, Windows resizing rationale and personal BYOK recommendation and cost estimate in `docs/MODEL_AND_AUDIO_REVIEW.md`, with acceptance gates in `docs/RELEASE_CHECKLIST.md` §4b.
 
-Source changes only; no release or installer is claimed. Real-provider answer/usage checks and physical Windows collapse/drag/resize checks remain open.
+Source changes only; no release or installer is claimed. Real-provider answer, timing and usage checks, the Settings key flow on a packaged build, and physical Windows collapse/drag/resize checks remain open (`docs/RELEASE_CHECKLIST.md` §4b).
 
 ## v1.6.2 — 2026-10-12 (signed public release candidate)
 
