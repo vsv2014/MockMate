@@ -38,7 +38,6 @@ import { formatLiveError } from './live/hintTransport.js'
 import { copyText } from './lib/clipboard'
 import { trackProductEvent } from './lib/productIntelligence'
 import { nid } from '../shared/id.js'
-import { curateModelOptions, configuredProviderNames, curateProviderFallbacks, loadModelSelection, persistModelSelection } from './lib/modelPicker'
 
 function newQuestionId() {
   return nid('q', 6)
@@ -147,16 +146,13 @@ function stopSpeaking() { window.speechSynthesis?.cancel() }
 // ── Setup screen ──────────────────────────────────────────────────────────────
 function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardLive, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, initialProfile, initialKit, onProfileChange }) {
   const kitScoped = Boolean(initialKit?.id && initialProfile)
-  const [profile, setProfile] = useState(() => initialProfile ? { ...loadProfile(), ...initialProfile } : loadProfile())
+  // Automatic chooses the speed/quality lane from the question itself; legacy
+  // Fast/Maximum Quality preferences must not pin sessions to one model tier.
+  const [profile, setProfile] = useState(() => ({ ...loadProfile(), ...(initialProfile || {}), modelStrategy: 'balanced' }))
   const [audioSources, setAudioSources] = useState([])
   const [sourceId, setSourceId] = useState('microphone')
-  const [providers, setProviders] = useState([])       // configured only (for default + validation)
-  const [allProviders, setAllProviders] = useState([]) // every model (for the dropdown)
-  const [provider, setProvider] = useState(loadModelSelection)
+  const [providers, setProviders] = useState([])
   const [dgAvailable, setDgAvailable] = useState(false)
-  const [models, setModels] = useState([])   // dynamic per-key model list from /api/models
-  const modelOptions = curateModelOptions(models)
-  const providerNames = configuredProviderNames(models, providers)
   // Inline API-key entry — same keys are also editable globally (Home → Settings).
   const [showKeys, setShowKeys] = useState(false)
   const [documentMeta, setDocumentMeta] = useState(() => kitScoped && initialKit?.id ? listKitDocs(initialKit.id) : listDocs())
@@ -165,50 +161,22 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
     return apiFetch('/api/providers').then(r => r.json()).then(d => {
       const list = d.providers || []
       setProviders(list)
-      setAllProviders(d.allProviders || list.map(p => ({ ...p, configured: true })))
-      // Default selection must be a CONFIGURED provider (never auto-pick a locked one)
-      setProvider(p => (!p || p.includes('::') || list.some(x => x.id === p)) ? p : '')
       setDgAvailable(!!d.deepgram)
     }).catch(() => {})
   }
 
   useEffect(() => {
-    let stopped = false
     refetchProviders()
-    const refreshModelCatalog = () => {
-      apiFetch('/api/models').then(r => r.json()).then(d => {
-        if (stopped) return
-        const next = Array.isArray(d.models) ? d.models : []
-        const verified = Array.isArray(d.discoveredProviders) ? d.discoveredProviders : []
-        // Only replace a family's options when its provider was actually queried
-        // successfully. A network/key outage must not erase cached good models.
-        if (!verified.length) return
-        setModels(previous => [...previous.filter(row => !verified.includes(row.provider)), ...next])
-        setProvider(current => {
-          if (!current?.includes('::')) return current
-          const family = current.split('::')[0]
-          // Remove a saved exact-model selection only after its own family was
-          // checked successfully and the model disappeared from the active set.
-          return verified.includes(family) && !next.some(row => row.id === current) ? '' : current
-        })
-      }).catch(() => {}) // Keep the last known-good list on transient discovery failures.
-    }
-    refreshModelCatalog()
-    const modelRefreshTimer = setInterval(refreshModelCatalog, 15 * 60 * 1000)
     window.electronAPI?.getAudioSources?.().then(srcs => {
       setAudioSources(srcs || [])
-      // Auto-select system audio (best for hearing the interviewer) — but NOT on
-      // Linux, where Chromium can't capture desktop/loopback audio. There the
-      // microphone is the only source that actually produces audio.
+      // Prefer system audio on supported desktops; microphone remains a fallback.
       if (window.electronAPI?.platform !== 'linux') {
         const screen = (srcs || []).find(s => /screen|entire|display/i.test(s.name))
         if (screen) setSourceId(screen.id)
       }
     })
-    return () => { stopped = true; clearInterval(modelRefreshTimer) }
   }, [])
 
-  useEffect(() => { persistModelSelection(provider) }, [provider])
   useEffect(() => {
     setDocumentMeta(kitScoped && initialKit?.id ? listKitDocs(initialKit.id) : listDocs())
   }, [kitScoped, initialKit?.id])
@@ -241,7 +209,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   // BYOK with no LLM configured → hints would error on every question mid-call. Block Start and say why.
   // Public builds enforce the full Electron + OS protection + share-preview safety gate;
   // frictionless bypass is strictly restricted to local dev mode.
-  const noLLM = providers.length === 0 && models.length === 0
+  const noLLM = !managed && providers.length === 0
   const canStart = computeLiveCanStart({
     dgAvailable,
     noLLM,
@@ -337,7 +305,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           <div style={{ fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 8 }}>Preflight</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12.5 }}>
             <div style={{ color: preflightOk(dgAvailable) }}>{dgAvailable ? '✓' : '✗'} Deepgram (required for Live)</div>
-            <div style={{ color: preflightOk(!noLLM) }}>{noLLM ? '✗' : '✓'} AI model {managed ? '(Managed / auto-route)' : '(BYOK)'}</div>
+            <div style={{ color: preflightOk(!noLLM) }}>{noLLM ? '✗' : '✓'} AI ready {managed ? '(Managed)' : '(your keys)'}</div>
             <div style={{ color: audioPreflightColor }}>
               {micMode
                 ? '⚠ Microphone — may hear you; auto-hints wait for speaker lock (prefer System Audio on Win/macOS)'
@@ -410,7 +378,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
         )}
         {dgAvailable && noLLM && (
           <div role="alert" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fca5a5' }}>
-            ⚠ No AI model configured — hints would fail on every question. Add an AI key in <strong>Settings</strong> (or switch to MockMate AI when hosted Managed is available), then come back.
+            ⚠ No AI provider connected — hints would fail on every question. Add an AI key in <strong>Settings</strong> (or switch to MockMate AI when hosted Managed is available), then come back.
           </div>
         )}
 
@@ -514,32 +482,10 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
         </Field>
         </Section>
 
-        <Section n={4} title="More options" subtitle="Model, language, coding" defaultOpen={false}>
-        {!managed && (
-          <Field label="AI model" htmlFor="live-ai-model">
-            <select id="live-ai-model" style={inp} value={provider} onChange={e => setProvider(e.target.value)} disabled={!providers.length && !models.length}>
-              {!providers.length && !models.length && <option value="">No models yet — add a key in Settings</option>}
-              {(providers.length > 0 || models.length > 0) && <option value="">Automatic — recommended</option>}
-              {modelOptions.length > 0
-                ? modelOptions.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
-                : curateProviderFallbacks(providers).map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
-            <div style={{ fontSize: 11, color: T.text3, marginTop: 6 }}>
-              Using: {providerNames.join(', ') || 'none'}. Automatic chooses the best configured provider and preserves failover. Manage or remove keys in <strong style={{ color: T.text2 }}>Settings</strong>.
-            </div>
-          </Field>
-        )}
-
-        <Field label="Answer intelligence" htmlFor="live-answer-intelligence">
-          <select id="live-answer-intelligence" style={inp} value={profile.modelStrategy || 'balanced'} onChange={e => patch({ modelStrategy: e.target.value })}>
-            <option value="balanced">Balanced — fast normally, strongest for hard questions</option>
-            <option value="quality">Maximum quality — strongest model for every answer</option>
-            <option value="fast">Fast — lowest response latency</option>
-          </select>
-          <div style={{ fontSize: 11, color: T.text3, marginTop: 6 }}>
-            Maximum quality can answer better but costs more and may respond slower. Explicit model selection always wins.
-          </div>
-        </Field>
+        <Section n={4} title="More options" subtitle="Language and coding" defaultOpen={false}>
+        <div role="status" style={{ fontSize: 11.5, color: T.text2, lineHeight: 1.5 }}>
+          <strong style={{ color: T.text1 }}>AI routing: Automatic.</strong> MockMate uses your connected AI providers, favors quick responses for straightforward questions, and allocates more reasoning to coding or system design. If a model is unavailable, it tries a compatible fallback before showing an answer.
+        </div>
 
         <Field label="Interview language" htmlFor="live-interview-language">
           <select id="live-interview-language" style={inp} value={profile.language || 'English'} onChange={e => patch({ language: e.target.value })}>
@@ -566,7 +512,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
             interviewConfig.kitId = initialKit.id
             interviewConfig.kitName = initialKit.name || 'Interview Kit'
           }
-          onStart({ profile, sourceId, provider: managed ? '' : provider, interviewConfig, kitId: initialKit?.id, kitName: initialKit?.name })
+          onStart({ profile, sourceId, provider: '', interviewConfig, kitId: initialKit?.id, kitName: initialKit?.name })
         }}
           style={{ position: 'sticky', bottom: 0, zIndex: 3, height: 52, background: canStart ? T.accent : T.surface2, color: canStart ? '#fff' : T.text3, border: `1px solid ${canStart ? 'rgba(103,232,249,0.45)' : T.border}`, borderRadius: T.rCtrl, boxShadow: '0 -10px 24px rgba(6,12,22,0.78)', fontSize: 15, fontWeight: 700, cursor: canStart ? 'pointer' : 'default', fontFamily: T.font }}>
           Start Live →
@@ -575,7 +521,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           <div style={{ fontSize: 11.5, color: T.text3, marginTop: -4 }}>
             {!inElectron ? 'Open the desktop app to start.'
               : !dgAvailable ? 'Add Voice (Deepgram) in Settings first.'
-              : noLLM ? 'Configure an AI model in Settings first.'
+              : noLLM ? 'Add an AI provider key in Settings first.'
               : isLinux ? 'Acknowledge the Linux screen-share risk above.'
               : 'Check the share-preview box above to enable Start.'}
           </div>
