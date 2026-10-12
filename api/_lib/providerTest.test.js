@@ -32,6 +32,28 @@ describe('provider connection test', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('recovers from a retired default with the same key before reporting a failed connection', async () => {
+    process.env.OPENAI_API_KEY = 'unit-test-key'
+    const models = []
+    const fetchMock = vi.fn(async (_url, options) => {
+      const req = JSON.parse(options.body)
+      models.push(req.model)
+      if (req.model === 'gpt-6-luna') {
+        return new Response(JSON.stringify({
+          error: { code: 'model_not_found', type: 'invalid_request_error', message: 'Model gpt-6-luna does not exist' },
+        }), { status: 404, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response(JSON.stringify({
+        choices: [{ message: { role: 'assistant', content: 'OK' } }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(testProviderConnection('openai_mini')).resolves.toMatchObject({
+      ok: true, provider: 'openai_mini', model: 'gpt-6.1-sol',
+    })
+    expect(models).toEqual(['gpt-6-luna', 'gpt-6.1-sol'])
+  })
+
   it('refuses unconfigured or unsupported provider ids without contacting an upstream', async () => {
     delete process.env.OPENAI_API_KEY
     const fetchMock = vi.fn()
