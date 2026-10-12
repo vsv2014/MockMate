@@ -75,6 +75,7 @@ describe('automatic provider model lifecycle', () => {
     for (const error of [
       { status: 404, message: 'Route not found' },
       { status: 400, message: 'Invalid response_format' },
+      { status: 400, message: 'Model does not support this response format' },
       { status: 401, message: 'Unknown API key for model' },
       { status: 403, message: 'Model access forbidden' },
       { status: 429, code: 'model_not_found' },
