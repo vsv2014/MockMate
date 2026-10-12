@@ -2,7 +2,7 @@
 // Provider tiers, regional processing, cached tokens and promotions vary; pricing
 // here is intentionally conservative and MUST NOT be used for billing.
 const PRICING = [
-  [/gpt-6-astra/i, 5, 25], [/gpt-6(?:\.1)?-sol/i, 1, 5], [/gpt-6-luna/i, 0.05, 0.25],
+  [/gpt-6-astra/i, 10, 50], [/gpt-6(?:\.1)?-sol/i, 2, 10], [/gpt-6-luna/i, 0.1, 0.5],
   [/claude-fable-5|fable/i, 10, 50], [/claude-opus-5|opus/i, 5, 25],
   [/claude-sonnet-5/i, 3, 15], [/claude-haiku-4-5|haiku/i, 1, 5],
   [/gemini-3\.8-flash/i, 0.75, 3.75], [/gemini-3\.6-flash/i, 1.5, 7.5],
