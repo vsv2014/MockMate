@@ -978,7 +978,7 @@ function ElectronShell({ auth }) {
             panelSize={panelSize}
           />
         )}
-        <div style={shellPill ? { display: 'none' } : undefined} aria-hidden={shellPill || undefined}>
+        <div style={shellPill ? { display: 'none' } : undefined} aria-hidden={shellPill || undefined} data-pi-section={view}>
           <AppShell minimized={shellPill} active={view} onNav={handleNav} auth={auth} meetingActive={meetingActive}
             stealth={stealth} onStealth={requestStealthToggle}
             onMinimize={collapseToPill} onClose={() => window.close?.()}>

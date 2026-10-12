@@ -115,7 +115,7 @@ export default function Documents({ hideBioTypes = false, onLibraryChange, kitId
           </select>
           <span style={{ fontSize: 10, color: T.text3 }}>{(d.chars / 1000).toFixed(1)}k</span>
           {d.retrievalCoverage === 'representative' && <span title="Long document: MockMate indexes representative sections across the file" style={{ fontSize: 9.5, color: '#fbbf24' }}>sampled</span>}
-          <button type="button" onClick={() => del(d.id)} title="Remove" aria-label={`Remove ${d.name}`} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 13, padding: '0 2px' }}>✕</button>
+          <button type="button" onClick={() => del(d.id)} data-pi-target="document_remove" title="Remove" aria-label={`Remove ${d.name}`} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 13, padding: '0 2px' }}>✕</button>
         </div>
       ))}
       {msg && <div role={msg.startsWith('⚠') ? 'alert' : 'status'} aria-live={msg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: 10.5, color: msg.startsWith('⚠') ? '#fca5a5' : '#86efac', marginTop: 6 }}>{msg}</div>}
