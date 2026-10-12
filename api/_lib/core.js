@@ -207,25 +207,32 @@ export async function testProviderConnection(providerId) {
     throw error
   }
 
-  const provider = resolveProvider(id)
-  const llm = clientFor(provider)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 8_000)
   try {
-    const response = await llm.chat.completions.create({
-      model: provider.model,
-      ...completionBudget(provider, 64),
-      messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
-    }, { signal: controller.signal })
-    if (!response.choices?.[0]?.message) {
-      const error = new Error('The provider returned no answer. Check the key and model access.')
-      error.status = 502
-      throw error
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const provider = resolveProvider(id)
+      const llm = clientFor(provider)
+      try {
+        const response = await llm.chat.completions.create({
+          model: provider.model,
+          ...completionBudget(provider, 64),
+          messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
+        }, { signal: controller.signal })
+        if (!response.choices?.[0]?.message) {
+          const error = new Error('The provider returned no answer. Check the key and model access.')
+          error.status = 502
+          throw error
+        }
+        return { ok: true, provider: id, model: provider.model }
+      } catch (error) {
+        // A retired default should not force a user to search for model names.
+        // Try a different active model once; never retry auth or rate-limit errors.
+        if (!quarantineModel(id, provider.model, error) || attempt) throw error
+        if (!selectActiveModel(id)) throw error
+      }
     }
-    return { ok: true, provider: id, model: provider.model }
-  } catch (error) {
-    quarantineModel(id, provider.model, error)
-    throw error
+    throw aiError('no_provider', 502)
   } finally {
     clearTimeout(timer)
   }
