@@ -136,6 +136,7 @@ function isQuarantinedModel(family, model, now = Date.now()) {
 function quarantineModel(providerId, model, error) {
   if (!isModelUnavailableError(error) || !model) return false
   const family = modelFamily(providerId)
+  if (isQuarantinedModel(family, model)) return true
   quarantinedModels.set(`${family}::${model}`, Date.now() + MODEL_QUARANTINE_MS)
   // A key can access other active models. Re-discover in the background rather
   // than benching every sibling because one model was retired or unavailable.
@@ -539,6 +540,7 @@ export function _getProviderHealthForTests() {
     lastWorkingVisionProvider,
     textBannedUntil: { ...textBannedUntil },
     textBannedReason: { ...textBannedReason },
+    quarantinedModels: Object.fromEntries(quarantinedModels),
   }
 }
 
@@ -717,13 +719,29 @@ function userFacingPartialStreamError(error) {
   return visibleError
 }
 
+// One same-key recovery when a model has definitively disappeared. Do not
+// retry every sibling or restart a stream once the user saw any tokens.
+function enqueueActiveModelRecovery(queue, currentIndex, provId, previousModel, error, recoveredFamilies) {
+  if (!isModelUnavailableError(error)) return
+  const alias = baseOf(provId)
+  const family = modelFamily(alias)
+  if (recoveredFamilies.has(family)) return
+  const nextModel = selectActiveModel(alias)
+  if (!nextModel || nextModel === previousModel) return
+  recoveredFamilies.add(family)
+  queue.splice(currentIndex + 1, 0, alias)
+  providerDiagnostic('model_replacement_selected', { provider: family, previousModel, replacementModel: nextModel })
+}
+
 export async function completeJSON({ messages, maxTokens = 1600, provider }) {
   assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
   if (!providerQueue.length) throw textProviderCoolingError()
   let lastError, sawQuota = false, sawRate = false, sawTransient = false, retryAfterMs = 0
 
-  for (const provId of providerQueue) {
+  const recoveredFamilies = new Set()
+  for (let queueIndex = 0; queueIndex < providerQueue.length; queueIndex++) {
+    const provId = providerQueue[queueIndex]
     let prov
     try { prov = resolveProvider(provId) } catch { continue }
     const llm = clientFor(prov), model = prov.model
@@ -788,6 +806,9 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
       return parsed
     } catch (e) {
       lastError = e
+      if (quarantineModel(provId, model, e)) {
+        enqueueActiveModelRecovery(providerQueue, queueIndex, provId, model, e, recoveredFamilies)
+      }
       providerDiagnostic('attempt_failed', { attemptId, operation: 'json', provider: provId, model, status: e?.status || 0, durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
       // Check quota BEFORE rate-limit: "insufficient_quota" also matches the rate-limit regex,
       // but out-of-credits is a different, more actionable problem.
@@ -1099,6 +1120,7 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
   const providerQueue = getFallbackProviders(provider)
   if (!providerQueue.length) throw textProviderCoolingError()
   let lastError, emitted = false, sawQuota = false, sawRate = false, sawTransient = false, retryAfterMs = 0
+  const recoveredFamilies = new Set()
   for (let attemptIndex = 0; attemptIndex < providerQueue.length; attemptIndex++) {
     const provId = providerQueue[attemptIndex]
     let prov
@@ -1144,6 +1166,9 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
         throw e
       }
       lastError = e
+      if (quarantineModel(provId, model, e) && !emitted) {
+        enqueueActiveModelRecovery(providerQueue, attemptIndex, provId, model, e, recoveredFamilies)
+      }
       const timedOut = deadline.timedOut() || /timed? ?out|ETIMEDOUT/i.test(e?.message || '')
       if (timedOut && !e?.status) e.status = 504
       providerDiagnostic(timedOut ? 'attempt_timed_out' : 'attempt_failed', { attemptId, operation: 'stream', provider: provId, model, status: e?.status || 0, emitted, durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
