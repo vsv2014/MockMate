@@ -10,12 +10,26 @@ import {
   pickStrongProvider,
   pickBestProvider,
   resolveEmbeddingProvider,
+  completionBudget,
   _resetProviderHealthForTests,
   _getProviderHealthForTests,
   _setProviderHealthForTests,
   _setDiscoveredModelsForTests,
 } from './core.js'
 import { markVision429Family, isVisionCooling, _resetVisionStateForTests } from './visionPolicy.js'
+
+describe('current chat-completions token budget', () => {
+  it('uses max_completion_tokens for GPT-6 API models', () => {
+    expect(completionBudget({ baseURL: 'https://api.openai.com/v1', model: 'gpt-6.1-sol' }, 160)).toEqual({ max_completion_tokens: 160 })
+    expect(completionBudget({ baseURL: 'https://api.openai.com/v1', model: 'gpt-6-luna' }, 64)).toEqual({ max_completion_tokens: 64 })
+    expect(completionBudget({ baseURL: 'https://api.openai.com/v1', model: 'gpt-6-astra' }, 900)).toEqual({ max_completion_tokens: 900 })
+  })
+  it('keeps max_tokens for Anthropic/Gemini/Groq compatibility', () => {
+    expect(completionBudget({ baseURL: 'https://api.anthropic.com/v1/', model: 'claude-sonnet-5' }, 160)).toEqual({ max_tokens: 160 })
+    expect(completionBudget({ baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/', model: 'gemini-3.6-flash' }, 200)).toEqual({ max_tokens: 200 })
+    expect(completionBudget({ baseURL: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b' }, 250)).toEqual({ max_tokens: 250 })
+  })
+})
 
 describe('unified text failover policy', () => {
   it('fails over a request-specific 400 without globally classifying the provider as hard-failed', () => {
