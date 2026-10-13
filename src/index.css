@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+@theme {
+  /* MockMate brand palette */
+  --color-bg: #0a0a0e;
+  --color-surface: #16161d;
+  --color-surface-2: #1c1c25;
+  --color-surface-3: #24242e;
+  --color-border: rgba(255, 255, 255, 0.07);
+  --color-border-strong: rgba(255, 255, 255, 0.13);
+  --color-text: rgba(255, 255, 255, 0.92);
+  --color-text-muted: rgba(255, 255, 255, 0.55);
+  --color-text-subtle: rgba(255, 255, 255, 0.32);
+  --color-accent: #14b8a6;
+  --color-accent-from: #5eead4;
+  --color-accent-to: #0d9488;
+  --color-primary: #8b5cf6;
+  --color-primary-deep: #7c3aed;
+  --color-success: #22c55e;
+  --color-danger: #f43f5e;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
+
+  /* Spacing */
+  --spacing-card: 18px;
+  --spacing-section: 24px;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-card: 16px;
+  --radius-ctrl: 8px;
+  --radius-full: 9999px;
+
+  /* Font */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-mono: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+
+  /* Shadows */
+  --shadow-overlay: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-button: 0 2px 8px rgba(0, 0, 0, 0.2);
+
+  /* Transitions */
+  --transition-fast: 120ms ease;
+  --transition-normal: 200ms ease;
+}
+
+/* Base reset */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  background: var(--color-bg);
+  margin: 0;
+  padding: 0;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Focus visible */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

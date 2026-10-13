@@ -1,3 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+  /* MockMate brand palette */
+  --color-bg: #0a0a0e;
+  --color-surface: #16161d;
+  --color-surface-2: #1c1c25;
+  --color-surface-3: #24242e;
+  --color-border: rgba(255, 255, 255, 0.07);
+  --color-border-strong: rgba(255, 255, 255, 0.13);
+  --color-text: rgba(255, 255, 255, 0.92);
+  --color-text-muted: rgba(255, 255, 255, 0.55);
+  --color-text-subtle: rgba(255, 255, 255, 0.32);
+  --color-accent: #14b8a6;
+  --color-accent-from: #5eead4;
+  --color-accent-to: #0d9488;
+  --color-primary: #8b5cf6;
+  --color-primary-deep: #7c3aed;
+  --color-success: #22c55e;
+  --color-danger: #f43f5e;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-card: 16px;
+  --radius-ctrl: 8px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-overlay: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-button: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }

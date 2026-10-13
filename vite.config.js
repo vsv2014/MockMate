@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { configDefaults } from 'vitest/config'
 import { readFileSync } from 'fs'
 
@@ -26,7 +27,7 @@ const journeyPreviewEntry = {
 
 export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
-  plugins: [react(), journeyPreviewEntry],
+  plugins: [react(), tailwindcss(), journeyPreviewEntry],
   build: {
     chunkSizeWarningLimit: 550,
     rolldownOptions: {
