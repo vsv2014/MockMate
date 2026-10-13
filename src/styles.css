@@ -114,3 +114,100 @@ summary:focus-visible,
 .mm-drag [role="button"] {
   -webkit-app-region: no-drag;
 }
+
+/* ===== MockMate Design System Utilities ===== */
+
+/* Panel/card surfaces */
+.mm-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.mm-panel-elevated {
+  background: linear-gradient(145deg, rgba(20, 184, 166, 0.08), var(--color-surface) 62%);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+/* Typography */
+.mm-eyebrow {
+  font-family: 'Kanit', sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-subtle);
+}
+
+.mm-title {
+  font-family: 'Kanit', sans-serif;
+  color: var(--color-text);
+}
+
+.mm-body {
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mm-body-muted {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.mm-hint {
+  color: var(--color-text-subtle);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+/* Status badges */
+.mm-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.mm-pill-accent {
+  background: var(--color-accent-soft, rgba(20, 184, 166, 0.14));
+  border-color: var(--color-accent-border, rgba(20, 184, 166, 0.38));
+  color: var(--color-accent);
+}
+
+/* Layout */
+.mm-content-narrow {
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 1rem 1.5rem;
+}
+
+.mm-content-medium {
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 1rem;
+}
+
+/* Section spacing */
+.mm-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mm-section-tight {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
