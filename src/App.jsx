@@ -1020,7 +1020,26 @@ function ElectronShell({ auth }) {
     </>
   )
 
-  return null   // every other view is handled by the dashboard shell above
+  // Fallback: unrecognized view — show a minimal branded panel instead of a black window.
+  // This prevents the overlay window from appearing as a blank black rectangle when the
+  // saved view is stale or invalid.
+  return (
+    <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized} opacity={opacity} onOpacity={setOpacity}
+      onDrag={startDrag} onResize={startResize}
+      onStealth={requestStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={onClickThrough}
+      onClose={goHome} title="MockMate" autoHeight>
+      <div style={{ padding: '14px 16px 16px', fontFamily: T.font, textAlign: 'center' }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: T.text1, marginBottom: 8 }}>MockMate</div>
+        <div style={{ fontSize: 12, color: T.text2, lineHeight: 1.5, marginBottom: 12 }}>
+          Something went wrong. Click below to return to the dashboard.
+        </div>
+        <button onClick={goHome}
+          style={{ width: '100%', height: 36, background: T.accentFrom, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>
+          Go to Dashboard
+        </button>
+      </div>
+    </OverlayPanel>
+  )
 }
 
 // Lightweight, dependency-free syntax highlighter — generic across Python/JS/
