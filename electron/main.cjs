@@ -8,7 +8,7 @@ const crypto = require('crypto')
 const net = require('net')
 const { fork } = require('child_process')
 const { DiagnosticStore } = require('./diagnostics.cjs')
-const { prepareWindowMode, PILL_SIZE } = require('./window-mode.cjs')
+const { prepareWindowMode, pillDragBounds, PILL_SIZE } = require('./window-mode.cjs')
 const { attachRequiredServiceLifecycle, waitForOptionalServiceReady, stopServiceAndWait, classifyRendererLoadFailure } = require('./service-lifecycle.cjs')
 
 // Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
@@ -92,8 +92,16 @@ function applyPillGeometry() {
   const s = PILL_SIZE
   prepareWindowMode(mainWindow, 'pill')
   try { mainWindow.setIgnoreMouseEvents(false) } catch {}
-  mainWindow.setSize(s, s)
-  mainWindow.setPosition(Math.max(area.x, area.x + area.width - s - 16), area.y + 16)
+  // ONE atomic setBounds: setSize + setPosition are two independent passes, and on
+  // Windows each pass re-applies the (possibly phantom) constraints, which is how a
+  // 72×72 badge could come back larger than requested.
+  const x = Math.max(area.x, area.x + area.width - s - 16)
+  const y = area.y + 16
+  mainWindow.setBounds({ x, y, width: s, height: s })
+  try {
+    const { width, height } = mainWindow.getBounds()
+    if (width !== s || height !== s) diag('window', 'pill_geometry_phantom', { requested: s, observed: { width, height } }, 'warn')
+  } catch {}
   if (!mainWindow.isVisible()) {
     try { mainWindow.showInactive() } catch { mainWindow.show() }
   }
@@ -1108,7 +1116,15 @@ ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const moveX = Math.round(Number(dx) || 0)
   const moveY = Math.round(Number(dy) || 0)
-  if (moveX || moveY) {
+  if (lastWindowMode === 'pill') {
+    // The badge stays exactly PILL_SIZE while it is dragged. Never move with
+    // setPosition here: on Windows a non-resizable window re-applies min/max from its
+    // observed bounds on every move, so a phantom strip would accumulate into a
+    // growing opaque rectangle around the badge (electron#41190, electron#13043).
+    const { bounds, drifted, observed } = pillDragBounds(mainWindow.getBounds(), moveX, moveY)
+    if (drifted) diag('window', 'pill_geometry_corrected', { observed, target: PILL_SIZE }, 'warn')
+    try { mainWindow.setBounds(bounds) } catch {}
+  } else if (moveX || moveY) {
     const [x, y] = mainWindow.getPosition()
     mainWindow.setPosition(x + moveX, y + moveY)
   }

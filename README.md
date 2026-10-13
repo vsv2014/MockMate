@@ -16,6 +16,7 @@ The automated release workflows produce Windows x64 NSIS only. macOS/Linux build
 
 ## What v1.6.5 fixes (v1.6.4 hotfix)
 
+- **The collapsed badge is transparent again:** no black rectangle on collapse, and it can no longer grow when dragged. The app stops painting its full-window surfaces while collapsed, and the badge window is pinned to its exact size instead of being re-derived from the size Windows reports back.
 - **Live can be started from the Ready Room again:** the action button and readiness rail were hidden by the v1.6.4 layout change; they are back in the single-column flow.
 - **OpenRouter keys are kept:** `OPENROUTER_API_KEY`/`OPENROUTER_MODEL` are allowed through the desktop key plumbing (bootstrap allowlist, key detection, removal, setup screen) instead of being silently dropped.
 - **Existing screens render as designed again:** the app no longer loads Tailwind's global Preflight reset; Tailwind stays as theme + utilities.
@@ -27,7 +28,7 @@ The automated release workflows produce Windows x64 NSIS only. macOS/Linux build
 - **Linear Ready Room workflow:** Pre-flight checks now present in a clean single-column layout instead of a two-column grid, making the setup sequence clearer and more focused.
 - **Deepgram UI improvements:** Eye toggle to show/hide API key and dedicated test button for verifying Deepgram configuration.
 - **Answer budget fixes:** Thinking token budgets now correctly applied per model, with proper floor values and empty-output detection.
-- **Desktop stability fixes:** Black overlay window replaced with informative fallback panel for unrecognized views. Collapsed pill icon no longer shows black background rectangle.
+- **Desktop stability fixes:** Black overlay window replaced with informative fallback panel for unrecognized views. (The collapsed badge black rectangle it also claimed to fix is fixed in v1.6.5 — see above.)
 
 ## What v1.6.3 adds
 

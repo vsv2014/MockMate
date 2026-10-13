@@ -127,6 +127,26 @@ summary:focus-visible,
   -webkit-app-region: no-drag;
 }
 
+/* Collapsed to the badge (body.mm-collapsed, toggled by App while `minimized`).
+ *
+ * The OS window can be LARGER than the 72×72 badge on Windows: a frameless
+ * transparent window gets a phantom strip whose size varies with the display
+ * (electron#41190), and the badge is dragged with setBounds corrections that can
+ * leave the native window a few pixels bigger mid-gesture. Anything the app paints
+ * across the window then becomes a visible black rectangle around the badge — this
+ * is what v1.6.4 called "transparent body" while the actual culprit, the full-window
+ * app surfaces below, stayed opaque.
+ *
+ * Every full-window opaque surface carries data-mm-surface="opaque" and must stop
+ * painting while collapsed. The badge itself (data-mm-hit) keeps its own styling.
+ */
+body.mm-collapsed,
+body.mm-collapsed #root,
+body.mm-collapsed [data-mm-surface="opaque"] {
+  background: transparent !important;
+  background-image: none !important;
+}
+
 /* ===== MockMate Design System Utilities ===== */
 
 /* Panel/card surfaces */

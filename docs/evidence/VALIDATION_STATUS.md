@@ -6,12 +6,13 @@
 
 - **Source:** branch `arena/603b5bc9-mockmate` (PR from `main` at `ba4e8d7`, the v1.6.4 merge commit). Version `1.6.5` in `package.json` and both lockfile fields.
 - **Defects fixed (each reproduced on v1.6.4 code first):**
+  - Collapsed badge (the reported blocker): the signed-in stage (`.mm-ready-stage`, `position:fixed; inset:0`, `background:#0B0D12`) stayed opaque while collapsed, painting any window area beyond the 72×72 badge black; v1.6.4's `<style>body{background:transparent!important}</style>` band-aid targeted an already-transparent `body` from a single badge render path. Independently, the native window could grow while dragged: Windows adds a phantom strip to small frameless transparent windows whose size varies with the display ([electron#41190](https://github.com/electron/electron/issues/41190)) and re-applies min/max from the *observed* bounds on every move of a `resizable:false` window ([electron#13043](https://github.com/electron/electron/issues/13043)). No physical Windows reproduction was possible in this environment — the mechanism comes from those reports plus the code path, and is simulated in `electron/window-mode.test.js`.
   - Ready Room: `<aside style="display:none">` held the session summary, readiness rail and the only Live action button.
   - OpenRouter: `write-env`'s allowlist in `electron/bootstrap.cjs` dropped `OPENROUTER_API_KEY`/`OPENROUTER_MODEL`; `hasApiKeys()` ignored the key; `remove-provider-key` had no `openrouter` entry; `setup.html` had no field. `ANTHROPIC_SONNET_MODEL` was dropped by the same allowlist.
   - UI: `@import "tailwindcss";` in `src/styles.css` shipped Tailwind Preflight to every screen (built CSS contained `h1,…,h6{font-size:inherit;font-weight:inherit}` and the list reset).
 - **Automated checks on the hotfix head:**
-  - `npx vitest run`: **106 files / 830 tests passed**
-  - the three new contract tests fail on the v1.6.4 sources and pass here (`src/journey/ReadyRoom.render.test.js`, `electron/provider-key-plumbing.test.js`, `src/designSystem.test.js`)
+  - `npx vitest run`: **107 files / 839 tests passed**
+  - the five new contract tests fail on the v1.6.4 sources and pass here (`src/journey/ReadyRoom.render.test.js`, `electron/provider-key-plumbing.test.js`, `src/designSystem.test.js`, `src/collapsedPill.test.js`, `electron/window-mode.test.js` — 7 of those 14 pill assertions fail on `ba4e8d7`, including the drag-growth guard over 25 consecutive drags)
   - `vite build` passed; the emitted stylesheet contains the `theme` and `utilities` layers and no Preflight `base` layer; `npm run verify:vite-output` and `npm run smoke:api` passed
   - `scripts/doctor.mjs` stops only because the sandbox cannot download the Electron runtime (unchanged from v1.6.3 evidence)
   - PR CI (`windows-tests`, `verify-desktop`, Vercel) must pass before merge
@@ -19,7 +20,8 @@
 - **Not verified (must not be claimed as passing):**
   - Settings key flow and Ready Room → Live on a real packaged Windows build
   - real-provider Live timing, usage and OpenRouter routing
-  - physical Windows collapse, drag and resize
+  - physical Windows collapse, drag and resize — including the collapsed-badge transparency and drag-growth checks in `docs/RELEASE_CHECKLIST.md` §4b, which this release turns into the acceptance test for the reported blocker
+  - whether Windows still reserves an invisible (now transparent) strip below the badge on the reporter's display
   - meeting share preview
   - the Gate 0 session (`docs/EVALS.md`)
 - **Production readiness:** **NOT CERTIFIED.**

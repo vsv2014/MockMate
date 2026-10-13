@@ -6,13 +6,39 @@
 
 ## Summary
 
-v1.6.5 fixes three regressions that shipped in v1.6.4, without reverting the features v1.6.4 added.
+v1.6.5 fixes four regressions that shipped in v1.6.4, without reverting the features v1.6.4 added.
 
-If you installed v1.6.4, the Ready Room had no visible way to continue into Live setup and an
-OpenRouter key could not be saved. Both are fixed here. Existing screens also render with their
-original typography again.
+If you installed v1.6.4, the collapsed badge showed a black rectangle that grew when you dragged it,
+the Ready Room had no visible way to continue into Live setup, and an OpenRouter key could not be
+saved. All three are fixed here. Existing screens also render with their original typography again.
 
 ## Fixes
+
+### Collapsed badge: no more black rectangle, and it can no longer grow (the reported blocker)
+
+Collapsing to the badge painted a black rectangle around it, and dragging the badge made that
+rectangle grow. That is the defect v1.6.4 claimed to fix, so it is the headline of this release. It
+took two separate causes:
+
+1. **The app kept painting a full-window surface while collapsed.** The signed-in stage is a fixed
+   layer covering the whole window (`background: #0B0D12`), and it stayed opaque after collapsing.
+   Any part of the native window not covered by the 72×72 badge therefore showed as solid black.
+   v1.6.4 tried to fix this by forcing the *body* background transparent — but the body was already
+   transparent and that rule only applied inside one small badge render path, so the real surface was
+   never touched. Collapsing now marks the whole document (`body.mm-collapsed`) and every full-window
+   app surface — signed-in stage, loading screen, auth shell, dashboard shell — becomes transparent,
+   applied before the collapse paints so there is no black flash.
+2. **The native window itself could grow.** Windows gives a small frameless transparent window an
+   invisible strip beyond the size you asked for, whose size varies with the display
+   ([electron#41190](https://github.com/electron/electron/issues/41190)); and a window created with
+   `resizable: false` re-applies its minimum/maximum size from the size it *observes* on every move
+   ([electron#13043](https://github.com/electron/electron/issues/13043)), so each drag re-derived
+   bounds from the drifted size and the excess accumulated. The badge window is now pinned to exactly
+   its own size — minimum **and** maximum — while collapsed, and dragging recomputes the position from
+   your mouse movement only, never from the size Windows reports back, applied as one atomic bounds
+   update. Restoring from the badge clears the maximum again.
+
+Because both are fixed, the black rectangle is gone even on displays where the phantom strip appears.
 
 ### Ready Room action button restored (could not start Live)
 
@@ -71,6 +97,10 @@ Each fix has a contract test that fails against v1.6.4 and passes here:
   screen, hosted config and ARCH provider map.
 - `src/designSystem.test.js` — the shared stylesheet must not import Tailwind Preflight, must be the
   only stylesheet entry, and must define every token its own classes consume.
+- `src/collapsedPill.test.js` — while collapsed, every full-window app surface must be transparent
+  (and none may skip the marker), and the badge must stay clickable.
+- `electron/window-mode.test.js` — collapse must pin the badge's minimum and maximum size and clear
+  the maximum on restore, and 25 consecutive drags from a phantom-sized window may never grow it.
 
 ## Known issues
 
@@ -91,6 +121,8 @@ Each fix has a contract test that fails against v1.6.4 and passes here:
 
 ## Verification
 
+- [ ] Collapsing to the badge shows no black rectangle on any display scaling, and dragging the badge
+      ten or more times never grows it (see `docs/RELEASE_CHECKLIST.md` §4b)
 - [ ] Ready Room shows the session summary, four checks, readiness rail and action button in one column
 - [ ] "Continue to Live setup →" opens the Live setup/overlay
 - [ ] An OpenRouter key can be pasted, saved, tested and removed in Settings
