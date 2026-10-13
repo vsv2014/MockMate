@@ -1,6 +1,6 @@
 # MockMate release checklist
 
-**Current source version: 1.6.3, published as an unsigned personal preview.** The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
+**Current source version: 1.6.5, published as an unsigned personal preview (the v1.6.4 hotfix).** The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
 
 **Rule: do not describe any build as physically certified until every applicable box below is checked on a REAL packaged build.** The separate explicit manual unsigned-preview path may publish only as an isolated, manual-update pre-release after automated CI; it is not a substitute for these physical checks.
 Every 1.4.2 defect (CSP broke Solo+Live, STT coupled to the LLM cap, dangling `mintToken` import,
@@ -68,10 +68,12 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
   - The panel shows only fixed identifiers (for example `document_remove`, `nav_account`), never names or text.
   - With **Include usage breadcrumbs in diagnostic logs** off, an exported log bundle contains no `product_intel` rows; with it on, it does.
 - [ ] **Settings key setup:**
-  - Paste an Anthropic, Gemini, Groq, OpenAI, Cerebras and Deepgram key: each is suggested correctly.
-  - An unknown format requires choosing the provider; a mismatched choice asks for confirmation; OpenRouter and admin keys are refused.
+  - Paste an Anthropic, Gemini, Groq, OpenAI, Cerebras, OpenRouter and Deepgram key: each is suggested correctly.
+  - An unknown format requires choosing the provider; a mismatched choice asks for confirmation; admin keys are refused.
   - Keys saved by the previous release still appear and work after upgrading; Test, Replace and Remove work.
   - "Which model answers" matches the models seen in diagnostics.
+- [ ] **Ready Room → Live (v1.6.5 hotfix):** the Ready Room shows the session summary, the four checks, the readiness rail and the action button in one visible column; with every check passed the button reads "Continue to Live setup →" and opens the Live setup. No check may be reachable only from a hidden container.
+- [ ] **OpenRouter key persists (v1.6.5 hotfix):** on the packaged build, save an OpenRouter key in Settings, restart the app, and confirm it still shows under "Saved AI keys" with the model routing summary populated; `Remove` clears it; the first-run setup screen offers an OpenRouter field; a user with only an OpenRouter key is not returned to setup on every launch.
 
 ## 5. Screenshot solve
 - [ ] Ctrl+Shift+U / F7 on a coding problem **from Live** → answer-first solution, no refusal

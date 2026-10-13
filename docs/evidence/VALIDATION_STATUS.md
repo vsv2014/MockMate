@@ -1,5 +1,29 @@
 # Validation status
 
+## v1.6.5 unsigned personal preview (2026-10-13, v1.6.4 hotfix)
+
+**Evidence is version- and commit-specific. Do not infer a physical PASS from unit tests, code review or an unsigned CI installer.**
+
+- **Source:** branch `arena/603b5bc9-mockmate` (PR from `main` at `ba4e8d7`, the v1.6.4 merge commit). Version `1.6.5` in `package.json` and both lockfile fields.
+- **Defects fixed (each reproduced on v1.6.4 code first):**
+  - Ready Room: `<aside style="display:none">` held the session summary, readiness rail and the only Live action button.
+  - OpenRouter: `write-env`'s allowlist in `electron/bootstrap.cjs` dropped `OPENROUTER_API_KEY`/`OPENROUTER_MODEL`; `hasApiKeys()` ignored the key; `remove-provider-key` had no `openrouter` entry; `setup.html` had no field. `ANTHROPIC_SONNET_MODEL` was dropped by the same allowlist.
+  - UI: `@import "tailwindcss";` in `src/styles.css` shipped Tailwind Preflight to every screen (built CSS contained `h1,…,h6{font-size:inherit;font-weight:inherit}` and the list reset).
+- **Automated checks on the hotfix head:**
+  - `npx vitest run`: **106 files / 830 tests passed**
+  - the three new contract tests fail on the v1.6.4 sources and pass here (`src/journey/ReadyRoom.render.test.js`, `electron/provider-key-plumbing.test.js`, `src/designSystem.test.js`)
+  - `vite build` passed; the emitted stylesheet contains the `theme` and `utilities` layers and no Preflight `base` layer; `npm run verify:vite-output` and `npm run smoke:api` passed
+  - `scripts/doctor.mjs` stops only because the sandbox cannot download the Electron runtime (unchanged from v1.6.3 evidence)
+  - PR CI (`windows-tests`, `verify-desktop`, Vercel) must pass before merge
+  - the release workflow repeats tests, the build and a packaged smoke test on Windows
+- **Not verified (must not be claimed as passing):**
+  - Settings key flow and Ready Room → Live on a real packaged Windows build
+  - real-provider Live timing, usage and OpenRouter routing
+  - physical Windows collapse, drag and resize
+  - meeting share preview
+  - the Gate 0 session (`docs/EVALS.md`)
+- **Production readiness:** **NOT CERTIFIED.**
+
 ## v1.6.3 unsigned personal preview (2026-10-13)
 
 **Evidence is version- and commit-specific. Do not infer a physical PASS from unit tests, code review or an unsigned CI installer.**

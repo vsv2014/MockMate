@@ -1,5 +1,46 @@
 # Changelog
 
+## v1.6.5 — 2026-10-13 (unsigned personal preview · v1.6.4 hotfix)
+
+v1.6.4 was published with three user-visible regressions. This release fixes those first and keeps
+the rest of v1.6.4 unchanged.
+
+- **Ready Room can start Live again.** The v1.6.4 single-column conversion moved the session summary,
+  the Live readiness rail and the only primary action button into an `<aside style="display:none">`.
+  The screen rendered, but there was no visible way to continue into Live setup. Those blocks now sit
+  in the linear column in the documented order (session summary → four checks → readiness → action).
+- **OpenRouter keys survive the desktop path.** OpenRouter was added to the UI and the API, but not to
+  the Electron key plumbing, so the hardened `write-env` handler in `electron/bootstrap.cjs` silently
+  dropped `OPENROUTER_API_KEY` (and `OPENROUTER_MODEL`). An OpenRouter-only user was additionally
+  treated as "no keys configured" by `hasApiKeys()`, which re-opened the first-run setup screen that
+  had no OpenRouter field, and Settings' Remove action failed with "Unknown provider". Fixed in
+  `electron/bootstrap.cjs`, `electron/main.cjs`, `setup.html`, `backend/src/hostedConfig.js`,
+  `backend/src/arch.js` and `src/lib/modelPicker.js`. The same audit found `ANTHROPIC_SONNET_MODEL`,
+  which was dropped the same way; it is now allowed and cleared with the Anthropic key.
+- **The global Tailwind reset is no longer loaded.** v1.6.4 added `@import "tailwindcss";` to
+  `src/styles.css`, the one stylesheet every screen loads. That pulled in Tailwind Preflight, which
+  resets headings to body size and weight, removes list markers and paragraph margins and zeroes
+  default borders — restyling screens that were never migrated to Tailwind. `src/styles.css` now
+  imports only the `theme` and `utilities` layers, so utility classes still work without the global
+  reset; the duplicate, never-imported `src/index.css` entry was removed so there is a single
+  stylesheet entry point.
+- **Settings uses the shared container class.** `ApiKeys.jsx` no longer depends on Tailwind utilities
+  for its own layout (`mm-content-medium`, the same 1000px container Ready Room uses).
+- **Regression tests for all three.** New contracts fail against v1.6.4 and pass here:
+  `src/journey/ReadyRoom.render.test.js` (the Live action must not be inside a hidden container and
+  must keep the documented order), `electron/provider-key-plumbing.test.js` (every catalog provider
+  key and model override must survive bootstrap allowlist, key detection, removal map, setup screen,
+  hosted config and ARCH maps) and `src/designSystem.test.js` (no Tailwind Preflight in the shared
+  stylesheet, one stylesheet entry, every token a class consumes is defined). The Settings render test
+  now also asserts OpenRouter is in the provider dropdown.
+
+Unchanged from v1.6.4: OpenRouter support on the server, the Deepgram eye toggle and test button,
+the Settings save-button behaviour, answer-budget/thinking floors, and the desktop stability fixes.
+Not fixed here (still open in `docs/RELEASE_CHECKLIST.md` §4b): real-provider answer, timing and usage
+checks on a packaged build, and the physical Windows collapse/drag/resize pass.
+
+Published by `unsigned-public.yml` as an unsigned GitHub pre-release (Windows x64 NSIS, no auto-update feed); not code-signed.
+
 ## v1.6.4 — 2026-10-13 (unsigned personal preview)
 
 - **OpenRouter provider support:** Full integration for OpenRouter as a supported provider. Users can connect with a single OpenRouter API key and access any model available through the platform. Model selection, usage tracking, and provider testing all work seamlessly.
