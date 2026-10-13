@@ -1,4 +1,16 @@
-@import "tailwindcss";
+/* Tailwind v4 imports WITHOUT its Preflight (`base`) layer.
+ *
+ * v1.6.4 shipped `@import "tailwindcss";` here. That pulled Preflight into the
+ * single stylesheet every screen already loads, so a global reset silently
+ * restyled the existing inline-styled app: headings fell back to body size and
+ * weight, lists lost markers and indentation, paragraphs lost their margins and
+ * form controls lost default borders. Theme + utilities are imported instead, so
+ * utility classes (`mx-auto`, `max-w-[…]`, …) keep working while adoption stays
+ * opt-in per component. Re-introduce Preflight only together with a reviewed,
+ * screen-by-screen migration — never globally in this file.
+ */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
 
 @theme {
   /* MockMate brand palette */
