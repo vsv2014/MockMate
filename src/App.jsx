@@ -351,7 +351,7 @@ function ElectronShell({ auth }) {
       navigator.mediaDevices?.addEventListener?.('devicechange', () => setBrowserShareWarning(true))
     }
     return () => cleanups.forEach(c => c?.())
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // Run vision analysis on a screenshot (optionally in a chosen coding language).
   // Single-flight + abort: rapid F7 presses used to stack requests and burn the vision
@@ -819,7 +819,7 @@ function ElectronShell({ auth }) {
 
   // The sessions list is a snapshot — refresh it when the Sessions tab opens so a
   // just-finished interview shows up without navigating away and back.
-  useEffect(() => { if (view === 'history') refreshSessions() }, [view]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (view === 'history') refreshSessions() }, [view])
 
   // Collapsed pill for dashboard/shell — keep shell views mounted (hidden) so Career JD /
   // form state survives minimize. Live overlay keeps its own minimized handling.

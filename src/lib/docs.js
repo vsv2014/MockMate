@@ -8,6 +8,8 @@ import { diagnostic } from './diagnostics'
 import { activeAccountScope, getScopedItem, setScopedItem } from './accountScope'
 import { readScopedArrayWithRecovery } from './storageRecovery'
 
+// Retrieval deadline is independent of Live prefetch debounce.
+const DEFAULT_RETRIEVAL_BUDGET_MS = 2_000
 const KEY = 'mm-docs'
 const CORRUPT_DOCS_BACKUP_KEY = 'mm-docs-corrupt-backup-v1'
 const INDEX_STORAGE_KEY = 'mm-docs-index-v1'
@@ -470,7 +472,7 @@ export function canReuseSpeculativeRag(specQuery = '', committedQuery = '') {
   return overlap / wordsB.length >= 0.7
 }
 
-export async function retrieveContext(question, { k = 4, minScore, budgetMs = 2000, docIds, types, kitId, signal: externalSignal } = {}) {
+export async function retrieveContext(question, { k = 4, minScore, budgetMs = DEFAULT_RETRIEVAL_BUDGET_MS, docIds, types, kitId, signal: externalSignal } = {}) {
   const origin = ensureCurrentScope()
   if (!question || !String(question).trim()) return ''
   if (externalSignal?.aborted) return ''

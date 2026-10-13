@@ -271,7 +271,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
     finally { setLoading(false) }
   }, [inputsKey, profile.resume, profile.targetRole, effLoc.location, profile.yearsExp, companyUrl])
 
-  useEffect(() => { if (hasResume && !result) find() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (hasResume && !result) find() }, [])
 
   useEffect(() => {
     if (sort === 'salary' && result && !hasSalaryData) setSort('fit')

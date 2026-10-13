@@ -7,7 +7,7 @@ import { isCurrentChatModel, isDiscoveredChatModel, isCurrentProviderChoice, isA
 import { analyze } from '../../shared/delivery.js'
 import { fetchWithTimeout } from './http.js'
 import { getRetryAfterMs, isRateLimit, isQuotaExhausted, isTransient } from '../../shared/llm-errors.js'
-import { LIVE_PROVIDER_ATTEMPT_TIMEOUT_MS, LIVE_STREAM_STALL_TIMEOUT_MS } from '../../shared/liveTiming.js'
+import { LIVE_PROVIDER_ATTEMPT_TIMEOUT_MS, LIVE_STREAM_STALL_TIMEOUT_MS, LIVE_SDK_CONNECT_TIMEOUT_MS } from '../../shared/liveTiming.js'
 import {
   MANAGED_VISION_RATE_MESSAGE,
   MANAGED_VISION_UNAVAILABLE_MESSAGE,
@@ -797,12 +797,12 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
     const attemptId = newProviderAttemptId()
     providerDiagnostic('attempt_started', { attemptId, operation: 'json', provider: provId, model, maxTokens: Object.values(completionBudget(prov, maxTokens, thinkingTokenFloor))[0], attemptIndex: queueIndex, contextChars: JSON.stringify(messages).length })
 
-    // Gemini 2.5 models THINK by default — reasoning silently eats the token
+    // Thinking-by-default Gemini models can consume hidden reasoning tokens — reasoning silently eats the token
     // budget, so the actual answer gets truncated into invalid JSON. Disable it
     // and force a clean JSON object (no ```json fences). Scoped to Gemini so
     // Groq/OpenAI requests are unchanged.
     const isGemini = /gemini/i.test(model)
-    // JSON mode is for OpenAI/Groq only. Gemini 2.5 (OpenAI-compat) 400s on
+    // JSON mode is for OpenAI/Groq only. Gemini OpenAI-compatible requests have rejected
     // response_format:json_object — it just needs reasoning_effort:'none' (set below) to stop
     // its default "thinking" from eating the token budget. This matches streamText, which works.
     const jsonMode = /openai\.com|groq\.com/i.test(prov.baseURL || '')
@@ -1265,7 +1265,7 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
       // first-token deadline below then lets failover run before anything is shown.
       // After the first token only a stall ends the stream (no new text for
       // LIVE_STREAM_STALL_TIMEOUT_MS), so a long, healthy answer is never cut off.
-      const requestOpts = { timeout: 9000, signal: deadline.signal }
+      const requestOpts = { timeout: LIVE_SDK_CONNECT_TIMEOUT_MS, signal: deadline.signal }
       const stream = await createWithThinkingFallback(llm, params, requestOpts, (_e, details = {}) => {
         providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'stream', provider: provId, model, ...details }, 'warn')
       })
@@ -1366,6 +1366,8 @@ export async function deepgramToken(opts = {}) {
   if (fallbackAllowed && (r.status === 403 || r.status === 401)) {
     return {
       access_token: key,
+      // Cache refresh interval only: a long-lived API key is not a five-minute grant.
+      // This does not assert that the key itself expires in one hour.
       expires_in: 3600,
       fallback: 'api_key',
       warning: 'byok_api_key_fallback',

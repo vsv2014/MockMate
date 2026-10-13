@@ -16,3 +16,6 @@ export const LIVE_STREAM_STALL_TIMEOUT_MS = 8_000
 // Browser-side stall backstop after the first token: the server stall timeout plus
 // margin for the SSE hop, so the server normally reports a stall first.
 export const LIVE_HINT_STALL_TIMEOUT_MS = 12_000
+
+// SDK connection timeout stays below the provider time-to-first-token deadline.
+export const LIVE_SDK_CONNECT_TIMEOUT_MS = 9_000

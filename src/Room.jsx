@@ -165,7 +165,7 @@ function RoomInner({ session, onEnd }) {
       try { sendSync(new TextEncoder().encode(JSON.stringify({ kind: 'request', room: session.room, identity: session.identity })), { reliable: true }) } catch {}
     }, 400)
     return () => clearTimeout(timer)
-  }, [participants.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [participants.length])
 
   function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
   function renderHintToPip(pip, { hint: h, hintLoading: loading, question }) {
@@ -186,7 +186,7 @@ function RoomInner({ session, onEnd }) {
     if (meetingMode) { try { pipWindow?.close() } catch {}; setPipWindow(null); setMeetingMode(false) }
     else { setMeetingMode(true); if (pipSupported) await openPip() }
   }
-  useEffect(() => { if (pipWindow && !pipWindow.closed) renderHintToPip(pipWindow, { hint, hintLoading, question: lastHintQuestion.current }) }, [hint, hintLoading, pipWindow]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (pipWindow && !pipWindow.closed) renderHintToPip(pipWindow, { hint, hintLoading, question: lastHintQuestion.current }) }, [hint, hintLoading, pipWindow])
   useEffect(() => () => { try { pipWindow?.close() } catch {}; hintRequest.current?.abort?.() }, [pipWindow])
 
   const screenTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false }).filter(t => t.publication?.track)
@@ -254,7 +254,7 @@ function RoomInner({ session, onEnd }) {
     const last = [...transcript].reverse().find(s => s.role === 'interviewer')
     if (!last || last.id === lastHintQuestion.current) return
     requestHintForQuestion(last.text, last.id)
-  }, [transcript]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [transcript])
 
   function sendInterviewerQuestion(text) {
     const clean = String(text || '').trim()
@@ -285,7 +285,7 @@ function RoomInner({ session, onEnd }) {
       catch (e) { if (!cancelled) setSttError(e.message || 'Could not start Deepgram transcription') }
     })()
     return () => { cancelled = true; speech.stop() }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [transcript, speech.interim])
 

@@ -76,7 +76,7 @@ app.use('/api', (req, res, next) => {
   next()
 })
 app.use(express.json({ limit: '2mb' }))
-app.use('/api', rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }))
+app.use('/api', rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true, legacyHeaders: false }))
 
 const report = e => { if (process.env.SENTRY_DSN && (!e?.status || e.status >= 500)) Sentry.captureException(e) }
 registerApiRoutes(app, { report, reasoningPolicy, enableLocalProviderTest: true })

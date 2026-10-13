@@ -61,7 +61,7 @@ export default function WhatsNew({ openSignal = 0 }) {
       document.removeEventListener('keydown', onKey)
       try { prev?.focus?.() } catch {}
     }
-  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open])
 
   const data = open ? parseLatest(changelog) : null
   if (!open || !data) return null

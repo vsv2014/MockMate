@@ -1,3 +1,4 @@
+import { diagnostic } from '../lib/diagnostics'
 import React, { useState, useMemo } from 'react'
 import { T } from '../auth/tokens'
 import { parseCustomInstructionSections } from '../../shared/customInstructions.js'
@@ -152,13 +153,13 @@ export function savePlaybookSlot(name, prompt) {
   const next = existingIdx >= 0
     ? list.map((p, i) => (i === existingIdx ? entry : p))
     : [entry, ...list].slice(0, 8)
-  try { setScopedItem(SAVED_PLAYBOOKS_KEY, JSON.stringify(next)) } catch {}
+  try { setScopedItem(SAVED_PLAYBOOKS_KEY, JSON.stringify(next)) } catch { diagnostic('storage', 'custom_playbook_write_failed', { operation: 'save' }, 'warn') }
   return next
 }
 
 export function deletePlaybookSlot(id) {
   const next = loadSavedPlaybooks().filter(p => p.id !== id)
-  try { setScopedItem(SAVED_PLAYBOOKS_KEY, JSON.stringify(next)) } catch {}
+  try { setScopedItem(SAVED_PLAYBOOKS_KEY, JSON.stringify(next)) } catch { diagnostic('storage', 'custom_playbook_write_failed', { operation: 'delete' }, 'warn') }
   return next
 }
 

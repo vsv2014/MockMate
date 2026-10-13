@@ -10,6 +10,8 @@ const app = fs.readFileSync(path.join(root, 'src', 'App.jsx'), 'utf8')
 describe('pill window geometry safety', () => {
   it('keeps pill mode while the badge is dragged', () => {
     expect(main).not.toContain("if (lastWindowMode === 'pill' || lastWindowMode == null) lastWindowMode = 'overlay'")
+    // Intentional source pin: neighboring assertions protect this mode-transition branch.
+    // This comment assertion is not a native Windows behavior test.
     expect(main).toContain('A pill remains a pill while it is repositioned')
   })
 

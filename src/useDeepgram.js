@@ -216,7 +216,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       }
       scheduleReconnect('connection dropped')
     }
-  }, [abandonSocket, fail]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [abandonSocket, fail])
 
   function failOrDegrade(reason) {
     if (!degradedAudio.current) {

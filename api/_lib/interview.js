@@ -1,3 +1,6 @@
+const HISTORY_CONTEXT_CHAR_BUDGET = 24_000
+const HISTORY_CONTEXT_ENTRY_LIMIT = 13
+
 import { REPORT_JSON_FIELDS } from '../../shared/reportSchema.js'
 // Solo (you-vs-AI) interview engine for the web app. Open-ended, speech-first,
 // no difficulty knob — the interviewer calibrates to the target role.
@@ -21,7 +24,7 @@ import { compileCustomInstructions } from '../../shared/customInstructions.js'
 // Web-search grounding must NEVER stall an answer — above all a live streamed hint, where
 // time-to-first-word is the whole product. Time-box the lookup: if it returns within budget we
 // ground the answer in it; otherwise we start answering immediately (ungrounded) and drop the
-// late result. Bounds worst-case TTFT to the budget instead of the search engine's 10s timeout.
+// late result. Bounds worst-case TTFT to the budget instead of the search engine's 8s default timeout.
 // Live streaming is latency-critical → a tight search budget (grounding is a bonus, speed is not
 // optional). Solo turns (blocking) can afford a little more since there's no token-by-token stream.
 const SEARCH_BUDGET_MS = { stream: 1200, blocking: 2500 }
@@ -52,8 +55,8 @@ function styleFor(style, baseTokens) {
 // turn a code block into its first 300 characters or clip the current question.
 export function buildHintUserContext({ question, packed = '', conversationHistory = [], searchBlock = '', followParent = '', screenNote = '' }) {
   const selected = []
-  let remaining = 24000
-  for (const turn of (Array.isArray(conversationHistory) ? conversationHistory : []).slice(-13).reverse()) {
+  let remaining = HISTORY_CONTEXT_CHAR_BUDGET
+  for (const turn of (Array.isArray(conversationHistory) ? conversationHistory : []).slice(-HISTORY_CONTEXT_ENTRY_LIMIT).reverse()) {
     if (!turn || !['interviewer', 'candidate', 'assistant', 'user'].includes(turn.role)) continue
     const text = String(turn.text || '')
     if (!text.trim()) continue
