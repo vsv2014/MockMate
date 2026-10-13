@@ -122,7 +122,7 @@ function makeFileBackend() {
       const r = db.usage.find(x => String(x.userId) === String(userId) && x.period === period)
       if (!r) return true
       r.llmCalls = Math.max(0, r.llmCalls - delta)
-      try { await persist() } catch {}
+      await persist()
       return true
     },
     // STT mirrors the LLM reserve/release pattern (round-6 review): streaming grants
@@ -142,7 +142,7 @@ function makeFileBackend() {
       const r = db.usage.find(x => String(x.userId) === String(userId) && x.period === period)
       if (!r) return true
       r.sttSeconds = Math.max(0, r.sttSeconds - delta)
-      try { await persist() } catch {}
+      await persist()
       return true
     },
   }
