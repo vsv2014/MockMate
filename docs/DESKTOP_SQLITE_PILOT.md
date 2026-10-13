@@ -1,6 +1,6 @@
 # Desktop SQLite pilot
 
-Status: implemented behind MOCKMATE_SQLITE_PILOT=1, disabled by default. Stacked on session-preservation PR #103. No hosted service, sync, release or version bump is included.
+Status: SQLite is selected by default; MOCKMATE_SQLITE_PILOT=0 is an explicit emergency legacy override. Stacked on session-preservation PR #103. No hosted service, sync, release or version bump is included.
 
 ## Implemented boundary
 
@@ -8,7 +8,7 @@ Electron main owns the database path and encryption key. An allowlisted asynchro
 
 Main accepts the main window's top frame only. Account namespace is selected against the subject in main's already-stored token; this is local namespace isolation, not hosted token signature verification. Hosted auth remains the backend's responsibility. Guest is a separate local namespace. No sign-in upload or remote session write is introduced.
 
-History callers use acknowledged async writes. The original localStorage implementation remains the browser/default non-pilot path. Once pilot SQLite is selected, failed DB writes do not fall back to localStorage. Start commits a provisional row before capture begins; a failed pilot Start commit blocks Live entry. End commits captured material before evaluation; failed preservation suppresses evaluation. Failed final writes retain recovery and an explicit retry/copy route.
+History callers use acknowledged async writes. The original localStorage implementation remains the browser/explicit legacy-override path. Once pilot SQLite is selected, failed DB writes do not fall back to localStorage. Start commits a provisional row before capture begins; a failed pilot Start commit blocks Live entry. End commits captured material before evaluation; failed preservation suppresses evaluation. Failed final writes retain recovery and an explicit retry/copy route.
 
 Live subscribes to the authoritative committed interview state, journals interviewer/candidate turns incrementally, and acknowledges batches only after transaction commit. This is not every raw STT utterance: rejected/uncommitted utterances and raw audio are outside this journal. Renderer/OS crashes can still lose changes not yet acknowledged. Interrupted committed capture appears in History and opens with a recovered transcript; recording is not automatically resumed. Interviewer corrections may update a provisional local turn; hosted immutable turn sync is separate work.
 
@@ -34,10 +34,10 @@ On the first async History access/write in each authorized account scope, read t
 
 When import fails, existing SQLite rows remain readable; otherwise parseable legacy rows are shown read-only. Raw legacy export is available even for malformed JSON. New SQLite writes remain blocked while import is unresolved. Earlier account migration now preserves malformed array bytes rather than replacing them with []; global-to-scoped copies are verified before cleanup. A prior version's already-deleted content cannot be recovered by this importer.
 
-Disable the flag to halt the pilot, but the old localStorage view will not contain new SQLite captures. Do not treat flag-off as a data rollback. Preserve DB/key/source files and export new SQLite rows before downgrading. A newer unsupported DB schema is refused, never reset. Backup/restore tooling, automatic SQLite schema upgrade beyond v1 and outbox/cloud sync are not implemented in this pilot.
+Set MOCKMATE_SQLITE_PILOT=0 to halt SQLite writes, but the old localStorage view will not contain new SQLite captures. Do not treat flag-off as a data rollback. Preserve DB/key/source files and export new SQLite rows before downgrading. A newer unsupported DB schema is refused, never reset. Backup/restore tooling, automatic SQLite schema upgrade beyond v1 and outbox/cloud sync are not implemented in this pilot.
 
 ## Evidence and release gates
 
 Unit tests cover transaction rollback, physical SQLITE_FULL-style capacity failure using max_page_count, reopen recovery, encryption of private payload bytes, account separation, unscored import >60 old rows, duplicate replay, changed source, quotas, pagination and schema refusal. Renderer adapter tests cover raw source import, no silent fallback and account changes during async writes.
 
-Linux packaged Electron 44.5.1 / Node 24.21.0 smoke test loaded node:sqlite and exercised worker write -> close -> reopen -> candidate recovery. Its key wrapper was synthetic; this does not validate the Windows OS keychain or a Windows UI journey. Packaged Windows Start/End/History, crash/restart, account switch, upgrade/import, real disk-full and secure-storage/key recovery tests remain mandatory before enabling the flag in production. ARCH state graph/coaching and Mongo sync are not implemented by this PR.
+Linux packaged Electron 44.5.1 / Node 24.21.0 smoke test loaded node:sqlite and exercised worker write -> close -> reopen -> candidate recovery. Its key wrapper was synthetic; this does not validate the Windows OS keychain or a Windows UI journey. Packaged Windows Start/End/History, crash/restart, account switch, upgrade/import, real disk-full and secure-storage/key recovery tests remain mandatory before publishing a release with this default. ARCH state graph/coaching and Mongo sync are not implemented by this PR.

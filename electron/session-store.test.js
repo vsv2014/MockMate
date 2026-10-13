@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { createRequire } from 'node:module'
+import vm from 'node:vm'
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -76,5 +77,22 @@ describe('transactional encrypted desktop sessions', () => {
   it('refuses a newer schema without resetting it', () => {
     store.db.exec('PRAGMA user_version=99'); store.close()
     expect(() => new SessionStore(path.join(folder,'sessions.db'),key)).toThrow('schema_too_new')
+  })
+})
+
+
+describe('desktop persistence selection', () => {
+  it('selects SQLite without an opt-in flag and permits only an explicit legacy override', async () => {
+    const main=readFileSync(new URL('./main.cjs',import.meta.url),'utf8')
+    const start=main.indexOf("ipcMain.handle('session-store'")
+    const source=main.slice(start,main.indexOf("ipcMain.handle('auth-get-token'",start))
+    const mainFrame={},webContents={mainFrame}
+    const scope={ mainWindow:{webContents},process:{env:{}},ipcMain:{handle(_name,fn){this.handler=fn}} }
+    vm.runInNewContext(source,scope)
+    const event={sender:webContents,senderFrame:mainFrame}
+    expect(await scope.ipcMain.handler(event,{op:'status'})).toEqual({enabled:true})
+    scope.process.env.MOCKMATE_SQLITE_PILOT='0'
+    expect(await scope.ipcMain.handler(event,{op:'status'})).toEqual({enabled:false})
+    expect(await scope.ipcMain.handler({sender:webContents,senderFrame:{}},{op:'status'})).toEqual({ok:false,code:'untrusted_sender'})
   })
 })

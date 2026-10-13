@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import vm from 'node:vm'
-import { prepareWindowMode, pillDragBounds, PILL_SIZE } from './window-mode.cjs'
+import { prepareWindowMode, pillDragBounds, expandedOverlaySize, PILL_SIZE } from './window-mode.cjs'
 
 function nativeWindow() {
   return {
@@ -126,5 +126,39 @@ describe('native collapse constraints', () => {
     const pillBranch = drag.slice(drag.indexOf("if (lastWindowMode === 'pill')"), drag.indexOf('} else if (moveX || moveY)'))
     expect(pillBranch).toContain('mainWindow.setBounds(bounds)')
     expect(pillBranch).not.toContain('mainWindow.setPosition(')
+  })
+})
+
+
+describe('expanded overlay restoration', () => {
+  it('releases cached pill constraints after resizability changes', () => {
+    const win=nativeWindow()
+    prepareWindowMode(win,'pill','win32'); win.setSize(72,72)
+    win.setResizable=function(value) { this.resizable=value; if(value) this.max=[...this.size] }
+    win.setMinimumSize=function(w,h) { this.min=[Math.min(w,this.max[0] || Infinity),Math.min(h,this.max[1] || Infinity)] }
+    prepareWindowMode(win,'overlay','win32')
+    expect(win.max).toEqual([0,0]); expect(win.min).toEqual([240,180])
+    const size=expandedOverlaySize({ w:72,h:72 },{ width:1920,height:1080 })
+    win.setBounds({ x:0,y:0,width:size.w,height:size.h })
+    expect(win.size).toEqual([600,720])
+  })
+  it('restores readable dimensions from a pill or undersized cached overlay', () => {
+    expect(expandedOverlaySize({ w:72,h:73 },{ width:1920,height:1080 })).toEqual({ w:600,h:720 })
+    expect(expandedOverlaySize({ w:240,h:180 },{ width:1920,height:1080 })).toEqual({ w:600,h:600 })
+    expect(expandedOverlaySize({ w:900,h:850 },{ width:1920,height:1080 })).toEqual({ w:900,h:850 })
+    expect(expandedOverlaySize({ w:900,h:850 },{ width:800,height:600 })).toEqual({ w:760,h:560 })
+  })
+  it('uses the actual native mode handler to expand a stale pill size', () => {
+    const main=fs.readFileSync(new URL('./main.cjs',import.meta.url),'utf8')
+    const start=main.indexOf("ipcMain.on('set-window-mode'")
+    const source=main.slice(start,main.indexOf('// MERGE the submitted keys',start))
+    const win=runCollapse(nativeWindow()); win.getPosition=() => win.position
+    const scope={ mainWindow:win,lastWindowMode:'pill',lastOverlaySize:{w:72,h:72},
+      expandedOverlaySize,prepareWindowMode:(w,mode)=>prepareWindowMode(w,mode,'win32'),
+      activeDisplayWorkArea:()=>({ x:0,y:0,width:1920,height:1080 }),suppressBlurHide(){},syncOverlayShortcuts(){},diag(){},
+      ipcMain:{on(_name,handler){this.handler=handler}} }
+    vm.runInNewContext(source,scope)
+    scope.ipcMain.handler({},'overlay',{w:72,h:73})
+    expect(win.size).toEqual([600,720]); expect(win.max).toEqual([0,0]); expect(win.resizable).toBe(true)
   })
 })

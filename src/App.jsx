@@ -344,7 +344,7 @@ function ElectronShell({ auth }) {
         const next = !m
         if (!next && viewRef.current === 'companion' && companionPhaseRef.current === 'live') {
           const { w, h } = panelSizeRef.current || { w: 600, h: 720 }
-          queueMicrotask(() => window.electronAPI?.windowResize?.(w, h))
+          queueMicrotask(() => window.electronAPI?.setWindowMode?.('overlay', { w, h }))
         }
         return next
       })
@@ -752,7 +752,7 @@ function ElectronShell({ auth }) {
     setMinimized(false)
     if (inElectron && viewRef.current === 'companion' && companionPhaseRef.current === 'live') {
       const { w, h } = panelSizeRef.current || { w: 600, h: 720 }
-      queueMicrotask(() => window.electronAPI?.windowResize?.(w, h))
+      queueMicrotask(() => window.electronAPI?.setWindowMode?.('overlay', { w, h }))
     }
   }
 

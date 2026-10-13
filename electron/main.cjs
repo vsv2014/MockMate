@@ -9,7 +9,7 @@ const net = require('net')
 const { fork } = require('child_process')
 const { createSessionStoreBridge } = require('./session-store-bridge.cjs')
 const { DiagnosticStore } = require('./diagnostics.cjs')
-const { prepareWindowMode, pillDragBounds, PILL_SIZE } = require('./window-mode.cjs')
+const { prepareWindowMode, pillDragBounds, expandedOverlaySize, PILL_SIZE } = require('./window-mode.cjs')
 const { attachRequiredServiceLifecycle, waitForOptionalServiceReady, stopServiceAndWait, classifyRendererLoadFailure } = require('./service-lifecycle.cjs')
 
 // Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
@@ -1041,10 +1041,11 @@ ipcMain.on('send-hint', (_e, payload) => { if (copilotWindow && !copilotWindow.i
 // stored in userData. NEVER localStorage. Falls back to a userData file if the
 // OS has no keychain (some headless Linux) — still off the renderer, still off disk-as-localStorage.
 const AUTH_TOKEN_FILE = () => path.join(app.getPath('userData'), 'auth-token.bin')
-// Disabled outside the explicit SQLite pilot. Main owns the path/key; renderer cannot send SQL.
+// SQLite is the desktop default; explicit legacy override is for recovery only.
+// Main owns the path/key; renderer cannot send SQL.
 ipcMain.handle('session-store', async (event, payload = {}) => {
   if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow?.webContents.mainFrame) return { ok:false, code:'untrusted_sender' }
-  if (process.env.MOCKMATE_SQLITE_PILOT !== '1') return { enabled:false }
+  if (process.env.MOCKMATE_SQLITE_PILOT === '0') return { enabled:false }
   if (payload.op === 'status') return { enabled:true }
   const scope = String(payload.scope || '')
   if (scope !== 'guest') {
@@ -1207,7 +1208,7 @@ ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
 // top-center camera anchor ('teleprompter'), and minimized badge ('pill').
 ipcMain.on('set-window-mode', (_, mode, requestedSize) => {
   if (mode === 'overlay' && Number.isFinite(requestedSize?.w) && Number.isFinite(requestedSize?.h)) {
-    lastOverlaySize = { w: requestedSize.w, h: requestedSize.h }
+    lastOverlaySize = expandedOverlaySize(requestedSize, activeDisplayWorkArea(mainWindow))
   }
   if (!mainWindow || mainWindow.isDestroyed() || (mode === lastWindowMode && mode === 'app')) return
   suppressBlurHide(900)
@@ -1228,12 +1229,14 @@ ipcMain.on('set-window-mode', (_, mode, requestedSize) => {
     } else {
       prepareWindowMode(mainWindow, 'overlay')
       // Restore the user's last HUD size on the current display — never hard-reset to primary monitor.
-      const w = Math.min(Math.max(240, lastOverlaySize.w || 600), area.width - 40)
-      const h = Math.min(Math.max(180, lastOverlaySize.h || 720), area.height - 40)
+      const { w, h } = expandedOverlaySize(lastOverlaySize, area)
+      lastOverlaySize = { w, h }
       const [cx, cy] = mainWindow.getPosition()
       const x = Math.min(Math.max(area.x, cx), Math.max(area.x, area.x + area.width - w))
       const y = Math.min(Math.max(area.y, cy), Math.max(area.y, area.y + area.height - h))
       mainWindow.setBounds({ x, y, width: w, height: h })
+      const observed = mainWindow.getBounds()
+      diag('window','overlay_restored',{ requested: { width:w,height:h }, observed:{ width:observed.width,height:observed.height } })
     }
   } catch {}
 })
