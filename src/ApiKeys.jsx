@@ -302,7 +302,8 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   const canSaveAdded = !!detection.value && !!targetProvider && !detection.problem && !addSaving && keyStatus !== 'loading'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontFamily: T.font }}>
+    <div className="mx-auto w-full max-w-[1000px] px-4" style={{ fontFamily: T.font }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <style>{`.mm-ai-provider-card:focus-within .mm-ai-provider-content{outline:2px solid ${T.accentFrom};outline-offset:3px}`}</style>
 
       {/* Voice first — required for Live; prevents “AI ready but Live blocked” surprise */}
@@ -499,12 +500,13 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       {/* Save stays reachable while scrolling the key form. */}
       <div role="toolbar" aria-label="API key actions" style={{ position: 'sticky', bottom: 0, zIndex: 5, padding: '10px 0', background: T.surface1, borderTop: `1px solid ${T.border}`, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
         <button onClick={save} disabled={saving || !hasEdits}
-          style={{ flex: 1, minWidth: 120, height: 42, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: T.font }}>
+          style={{ minWidth: 160, maxWidth: 280, height: 40, background: hasEdits ? T.accent : T.surface2, color: hasEdits ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: saving || !hasEdits ? 'default' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: T.font }}>
           {saving ? 'Saving…' : hasEdits ? 'Save key changes' : 'No unsaved key changes'}
         </button>
         {msg && <span role={msg.startsWith('⚠') ? 'alert' : 'status'} aria-live={msg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: 11, fontWeight: 500, color: msg.startsWith('⚠') ? T.danger : T.success }}>{msg}</span>}
       </div>
       <div style={{ fontSize: 10, color: T.text3, textAlign: 'center' }}>Keys are encrypted at rest on this machine (OS keychain when available).</div>
+      </div>
     </div>
   )
 }
