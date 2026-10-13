@@ -31,3 +31,16 @@ describe('ARCH interview completeness policy', () => {
     expect(showFullCodeDuringStream('Approach\n```typescript\nfunction f()')).toBe(true)
   })
 })
+
+ describe('ARCH diagram requests', () => {
+  it.each(['draw that', 'show the architecture diagram', 'visualize the RAG pipeline'])('provides a renderable diagram contract for %s', question => {
+    const policy = interviewAnswerPolicy({question,classification:{isFollowUp:true,parentType:'system_design'},baseBudget:380})
+    expect(policy.requiresDiagram).toBe(true)
+    expect(policy.directive).toContain('fenced mermaid')
+    expect(policy.maxTokens).toBeGreaterThanOrEqual(3600)
+  })
+  it('respects no-diagram and coach requests', () => {
+    expect(interviewAnswerPolicy({question:'Explain without a diagram',classification:{questionType:'system_design'},baseBudget:380}).requiresDiagram).toBe(false)
+    expect(interviewAnswerPolicy({question:'draw that',mode:'coach',classification:{questionType:'system_design'},baseBudget:380}).requiresDiagram).toBe(false)
+  })
+})

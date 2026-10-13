@@ -258,10 +258,11 @@ export function archRuntimeSummary(options = {}) {
 
 export function interviewAnswerPolicy({ question, classification, style = 'balanced', mode = 'answer', baseBudget }) {
   const quality = runtimePlan().answerQuality
+  const requiresDiagram = mode !== 'coach' && /\b(?:draw|diagram|visuali[sz]e)\b/i.test(String(question)) && !/\b(?:no diagram|without (?:a )?diagram)\b/i.test(String(question))
   const requiresCode = requiresImplementation(question,classification,mode)
   const budgets = quality.codingBudgets || { concise:3600,balanced:4800,detailed:6000 }
-  return { version:quality.version || 'answer_quality_v1', requiresCode,
-    maxTokens:requiresCode ? Math.max(baseBudget,budgets[style] || budgets.balanced) : baseBudget,
-    directive:requiresCode ? '\n\nIMPLEMENTATION CONTRACT: Give one complete runnable fenced implementation early, after at most two short assumption/approach sentences. Include the requested signature, imports/setup and a small executable example where appropriate. Do not replace code with explanation or stop at clarifying questions. Put complexity, dry-run and edge cases after the code; concise means shorter explanation, not incomplete code. Follow the latest requested return type and language. Never claim the code was executed.' : /\b(?:no code|without code|explain only|approach only|pseudocode only|only pseudocode)\b/i.test(String(question)) ? '\n\nOUTPUT SCOPE: Follow the requested explanation/pseudocode-only scope; do not force a runnable implementation.' : '',
+  return { version:quality.version || 'answer_quality_v1', requiresCode, requiresDiagram,
+    maxTokens:(requiresCode || requiresDiagram) ? Math.max(baseBudget,budgets[style] || budgets.balanced) : baseBudget,
+    directive:requiresDiagram ? '\n\nDIAGRAM CONTRACT: Resolve that/it against the active question and previous answer. Provide a complete fenced mermaid flowchart TD or sequenceDiagram with labelled components and connected edges. Use plain quoted labels, no HTML, links, click handlers, configuration directives or front matter. Keep at most 12 components and explain the main flow and one trade-off briefly. Do not answer a request to draw with prose alone.' : requiresCode ? '\n\nIMPLEMENTATION CONTRACT: Give one complete runnable fenced implementation early, after at most two short assumption/approach sentences. Include the requested signature, imports/setup and a small executable example where appropriate. Do not replace code with explanation or stop at clarifying questions. Put complexity, dry-run and edge cases after the code; concise means shorter explanation, not incomplete code. Follow the latest requested return type and language. Never claim the code was executed.' : /\b(?:no code|without code|explain only|approach only|pseudocode only|only pseudocode)\b/i.test(String(question)) ? '\n\nOUTPUT SCOPE: Follow the requested explanation/pseudocode-only scope; do not force a runnable implementation.' : '',
   }
 }

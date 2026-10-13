@@ -9,7 +9,7 @@ export const LANGUAGES = [
 
 // Coding languages offered in the screen-analysis + coding-mode pickers (was duplicated,
 // with two different lists, in App.jsx and LiveCompanion.jsx).
-export const CODING_LANGUAGES = ['Python', 'Java', 'C++', 'JavaScript', 'TypeScript', 'Go', 'C#', 'Ruby']
+export const CODING_LANGUAGES = ['Python', 'Java', 'C++', 'JavaScript', 'TypeScript', 'Go', 'C#', 'Ruby', 'Rust', 'Kotlin', 'Swift', 'C']
 
 // Label → BCP-47 code for the browser speech engine (so it transcribes the right language).
 export const STT_LANG = {
