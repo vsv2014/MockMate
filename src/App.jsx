@@ -1564,24 +1564,27 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
   // Collapsed → on-screen logo pill (never a full close). Protection follows the
   // explicit Stealth toggle; collapsing does not silently enable it.
   if (minimized) return (
-    <div id="mockmate-overlay" style={{ position: 'fixed', inset: 0, background: 'transparent', pointerEvents: 'none', zIndex: 9999 }}>
-      <button type="button" data-mm-hit="1"
-        onMouseDown={startPillDrag}
-        onClick={() => { if (!pillDragged.current) onMinimize?.() }}
-        title="MockMate — click to expand · drag to move"
-        style={{
-          position: 'absolute', top: 6, left: 6, width: 56, height: 56, pointerEvents: 'all', cursor: 'grab',
-          background: 'linear-gradient(145deg, #0f766e, #115e59)',
-          border: '2px solid rgba(45,212,191,0.65)', borderRadius: 16,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-          display: 'grid', placeItems: 'center', padding: 0,
-        }}>
-        <img src="/icon.png" alt="" width={30} height={30}
-          style={{ borderRadius: 8, display: 'block', pointerEvents: 'none' }}
-          onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling && (e.currentTarget.nextSibling.style.display = 'grid') }} />
-        <span style={{ display: 'none', placeItems: 'center', width: 30, height: 30, borderRadius: 8, background: 'rgba(0,0,0,0.35)', color: '#5eead4', fontWeight: 800, fontSize: 16, fontFamily: T.font, pointerEvents: 'none' }}>M</span>
-      </button>
-    </div>
+    <>
+      <style>{`body { background: transparent !important; }`}</style>
+      <div id="mockmate-overlay" style={{ position: 'fixed', inset: 0, background: 'transparent', pointerEvents: 'none', zIndex: 9999 }}>
+        <button type="button" data-mm-hit="1"
+          onMouseDown={startPillDrag}
+          onClick={() => { if (!pillDragged.current) onMinimize?.() }}
+          title="MockMate — click to expand · drag to move"
+          style={{
+            position: 'absolute', top: 6, left: 6, width: 56, height: 56, pointerEvents: 'all', cursor: 'grab',
+            background: 'linear-gradient(145deg, #0f766e, #115e59)',
+            border: '2px solid rgba(45,212,191,0.65)', borderRadius: 16,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+            display: 'grid', placeItems: 'center', padding: 0,
+          }}>
+          <img src="/icon.png" alt="" width={30} height={30}
+            style={{ borderRadius: 8, display: 'block', pointerEvents: 'none' }}
+            onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling && (e.currentTarget.nextSibling.style.display = 'grid') }} />
+          <span style={{ display: 'none', placeItems: 'center', width: 30, height: 30, borderRadius: 8, background: 'rgba(0,0,0,0.35)', color: '#5eead4', fontWeight: 800, fontSize: 16, fontFamily: T.font, pointerEvents: 'none' }}>M</span>
+        </button>
+      </div>
+    </>
   )
 
   return (
