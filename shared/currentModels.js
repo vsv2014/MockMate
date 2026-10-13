@@ -61,5 +61,8 @@ export function isDiscoveredChatModel(provider, model, record = {}) {
   if (provider === 'claude_sonnet') return /^claude-(?:fable|opus|sonnet|haiku)-(?:[5-9]|[1-9]\d+)(?:-\d+)*$/i.test(model)
   // Other providers require positive chat-capability metadata for unfamiliar ids.
   const capabilities = record.capabilities || {}
-  return ['groq', 'cerebras'].includes(provider) && (capabilities.chat === true || capabilities.chat_completions === true)
+  if (['groq', 'cerebras'].includes(provider)) return capabilities.chat === true || capabilities.chat_completions === true
+  // OpenRouter serves any provider/model — accept the provider/model naming convention.
+  if (provider === 'openrouter') return /^[a-z][a-z0-9._-]*\/[a-z][a-z0-9._-]*$/i.test(model)
+  return false
 }

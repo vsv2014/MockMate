@@ -22,8 +22,8 @@ describe('detectKeyProvider (on-device only)', () => {
 
   it('recognises keys MockMate cannot use and explains why instead of suggesting a provider', () => {
     const openrouter = detectKeyProvider(`sk-or-v1-${filler(64)}`)
-    expect(openrouter).toMatchObject({ providerId: 'openrouter', provider: null, unsupported: true })
-    expect(openrouter.problem).toMatch(/OpenRouter/)
+    expect(openrouter).toMatchObject({ providerId: 'openrouter', unsupported: false })
+    expect(openrouter.provider?.name).toMatch(/OpenRouter/)
     const admin = detectKeyProvider(`sk-ant-admin01-${filler(80)}`)
     expect(admin.providerId).toBe('anthropic')
     expect(admin.problem).toMatch(/Admin key/)

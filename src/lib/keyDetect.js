@@ -9,6 +9,7 @@ export const KEY_PROVIDERS = [
   { id: 'openai', envKey: 'OPENAI_API_KEY', name: 'OpenAI' },
   { id: 'groq', envKey: 'GROQ_API_KEY', name: 'Groq' },
   { id: 'cerebras', envKey: 'CEREBRAS_API_KEY', name: 'Cerebras' },
+  { id: 'openrouter', envKey: 'OPENROUTER_API_KEY', name: 'OpenRouter (multi-model gateway)' },
   { id: 'deepgram', envKey: 'DEEPGRAM_API_KEY', name: 'Deepgram (voice transcription)' },
 ]
 
@@ -19,8 +20,8 @@ const RULES = [
   { id: 'anthropic', re: /^sk-ant-admin\d*-[A-Za-z0-9_-]{20,}$/, confidence: 'high',
     problem: 'This looks like an Anthropic Admin key. Admin keys manage an organization and cannot answer questions — create a regular API key in the Claude Console.' },
   { id: 'anthropic', re: /^sk-ant-(?:api\d+-)?[A-Za-z0-9_-]{20,}$/, confidence: 'high' },
-  { id: 'openrouter', re: /^sk-or-(?:v\d+-)?[A-Za-z0-9_-]{20,}$/, confidence: 'high', unsupported: true,
-    problem: 'This looks like an OpenRouter key. MockMate does not connect to OpenRouter yet — use a key from a provider listed below.' },
+  { id: 'openrouter', re: /^sk-or-(?:v\d+-)?[A-Za-z0-9_-]{20,}$/, confidence: 'high',
+    note: 'OpenRouter key — MockMate routes through OpenRouter\'s gateway to any supported model.' },
   { id: 'openai', re: /^sk-(?:proj|svcacct)-[A-Za-z0-9_-]{20,}$/, confidence: 'high' },
   { id: 'openai', re: /^sk-admin-[A-Za-z0-9_-]{20,}$/, confidence: 'high',
     problem: 'This looks like an OpenAI Admin key, which cannot answer questions. Create a project API key instead.' },

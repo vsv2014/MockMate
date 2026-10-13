@@ -70,6 +70,12 @@ describe('isThinkingModel', () => {
     expect(isThinkingModel('groq', 'openai/gpt-oss-120b')).toBe(true)
     expect(isThinkingModel('cerebras', 'gpt-oss-120b')).toBe(true)
   })
+  it('identifies OpenRouter provider/models as thinking models', () => {
+    expect(isThinkingModel('openrouter', 'anthropic/claude-sonnet-5.5')).toBe(true)
+    expect(isThinkingModel('openrouter', 'openai/gpt-6.1-sol')).toBe(true)
+    expect(isThinkingModel('', 'anthropic/claude-sonnet-5-5')).toBe(true)
+    expect(isThinkingModel('', 'openai/gpt-oss-120b')).toBe(true)
+  })
   it('identifies OpenAI Astra/Sol as thinking models', () => {
     expect(isThinkingModel('openai', 'gpt-6-astra')).toBe(true)
     expect(isThinkingModel('openai', 'gpt-6.1-sol')).toBe(true)

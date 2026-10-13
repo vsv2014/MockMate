@@ -8,6 +8,7 @@ export const MODEL_CATALOG = {
   gemini: { score: 200, label: 'Gemini 3.6 Flash (balanced)', envKey: 'GEMINI_API_KEY', baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/', envOverrides: ['GEMINI_MODEL'], defaultModel: 'gemini-3.6-flash' },
   groq: { score: 180, label: 'Groq · GPT-OSS 120B', envKey: 'GROQ_API_KEY', baseURL: 'https://api.groq.com/openai/v1', envOverrides: ['GROQ_MODEL'], defaultModel: 'openai/gpt-oss-120b' },
   cerebras: { score: 170, label: 'Cerebras · GPT-OSS 120B', envKey: 'CEREBRAS_API_KEY', baseURL: 'https://api.cerebras.ai/v1', envOverrides: ['CEREBRAS_MODEL'], defaultModel: 'gpt-oss-120b' },
+  openrouter: { score: 200, label: 'OpenRouter · multi-model gateway', envKey: 'OPENROUTER_API_KEY', baseURL: 'https://openrouter.ai/api/v1', envOverrides: ['OPENROUTER_MODEL'], defaultModel: 'anthropic/claude-sonnet-5.5' },
   claude_fable: { score: 240, label: 'Claude Fable 5 (maximum quality)', envKey: 'ANTHROPIC_API_KEY', baseURL: 'https://api.anthropic.com/v1/', envOverrides: ['ANTHROPIC_FABLE_MODEL'], defaultModel: 'claude-fable-5' },
   claude_opus: { score: 220, label: 'Claude Opus 5', envKey: 'ANTHROPIC_API_KEY', baseURL: 'https://api.anthropic.com/v1/', envOverrides: ['ANTHROPIC_OPUS_MODEL'], defaultModel: 'claude-opus-5' },
   claude_sonnet: { score: 200, label: 'Claude Sonnet 5.5 (balanced)', envKey: 'ANTHROPIC_API_KEY', baseURL: 'https://api.anthropic.com/v1/', envOverrides: ['ANTHROPIC_SONNET_MODEL', 'ANTHROPIC_SONNET5_MODEL'], defaultModel: 'claude-sonnet-5-5' },
@@ -25,8 +26,8 @@ export function configuredModel(alias, env = {}) {
 
 export const MODEL_PRIORITIES = {
   fast: { gemini: [MODEL_CATALOG.gemini_flash_lite.defaultModel], openai: [MODEL_CATALOG.openai_mini.defaultModel], claude_sonnet: [MODEL_CATALOG.claude_haiku.defaultModel, CLAUDE_PREVIOUS.haiku] },
-  strong: { openai: [MODEL_CATALOG.openai.defaultModel, "gpt-6-sol"], claude_sonnet: [MODEL_CATALOG.claude_sonnet.defaultModel, CLAUDE_PREVIOUS.sonnet], gemini: [MODEL_CATALOG.gemini_3_flash.defaultModel, "gemini-3.7-flash", MODEL_CATALOG.gemini.defaultModel] },
-  best: { openai: [MODEL_CATALOG.gpt_6_astra.defaultModel, MODEL_CATALOG.openai.defaultModel, "gpt-6-sol"], claude_sonnet: [MODEL_CATALOG.claude_fable.defaultModel, MODEL_CATALOG.claude_opus.defaultModel, MODEL_CATALOG.claude_sonnet.defaultModel], gemini: [MODEL_CATALOG.gemini_3_flash.defaultModel, "gemini-3.7-flash", MODEL_CATALOG.gemini.defaultModel] },
+  strong: { openai: [MODEL_CATALOG.openai.defaultModel, "gpt-6-sol"], claude_sonnet: [MODEL_CATALOG.claude_sonnet.defaultModel, CLAUDE_PREVIOUS.sonnet], gemini: [MODEL_CATALOG.gemini_3_flash.defaultModel, "gemini-3.7-flash", MODEL_CATALOG.gemini.defaultModel], openrouter: [MODEL_CATALOG.openrouter.defaultModel] },
+  best: { openai: [MODEL_CATALOG.gpt_6_astra.defaultModel, MODEL_CATALOG.openai.defaultModel, "gpt-6-sol"], claude_sonnet: [MODEL_CATALOG.claude_fable.defaultModel, MODEL_CATALOG.claude_opus.defaultModel, MODEL_CATALOG.claude_sonnet.defaultModel], gemini: [MODEL_CATALOG.gemini_3_flash.defaultModel, "gemini-3.7-flash", MODEL_CATALOG.gemini.defaultModel], openrouter: [MODEL_CATALOG.openrouter.defaultModel] },
 }
 
 // Curated secondary candidates share policy with the preferred defaults above.
@@ -80,12 +81,18 @@ export function claudeLowLatencyThinking(model) {
  * counts against the completion cap. A larger floor adds headroom; it cannot
  * guarantee visible output or reserve a separate reasoning/text allocation.
  */
-export function isThinkingModel(_providerId, model) {
+export function isThinkingModel(providerId, model) {
+  const prov = String(providerId || '')
   const id = String(model || '').toLowerCase()
   // Identify model families rather than assuming every model at a host reasons.
-  return /(?:^|\/)gpt-oss-/.test(id)
-    || /^gpt-6(?:\.\d+)?-(?:astra|sol)(?:$|-)/.test(id)
-    || /^claude-(?:fable|mythos|opus-5|sonnet-5|haiku-5)/.test(id)
+  // Handles both bare model ids (gpt-oss-120b) and provider-prefixed ids from
+  // gateways like OpenRouter (openai/gpt-oss-120b, anthropic/claude-sonnet-5.5).
+  if (/(?:^|\/)gpt-oss-/.test(id)) return true
+  if (/(?:^|\/)gpt-6(?:\.\d+)?-(?:astra|sol)(?:$|-)/.test(id)) return true
+  if (/(?:^|\/)claude-(?:fable|mythos|opus-5|sonnet-5|haiku-5)/.test(id)) return true
+  // Provider-level: OpenRouter serves thinking models from many providers.
+  if (prov === 'openrouter') return true
+  return false
 }
 
 // Human-readable model name for settings and diagnostics UI. Catalog defaults reuse
@@ -112,6 +119,7 @@ export const CURRENT_MODELS = {
   gemini: /^gemini-(?:3\.8-flash|3\.7-flash|3\.6-flash|3\.5-flash-lite)$/i,
   groq: /^(?:openai\/gpt-oss-(?:120b|20b)|qwen\/qwen3\.8-27b)$/i,
   cerebras: /^(?:gpt-oss-120b|zai-glm-4\.7)$/i,
+  openrouter: /^[a-z][a-z0-9._-]*\/[a-z][a-z0-9._-]*$/i,
 }
 
 export const EMBEDDING_MODELS = { openai: "text-embedding-3-small", gemini: "gemini-embedding-001" }
@@ -129,5 +137,6 @@ export const PROVIDER_KEY_LINKS = {
   openai: { href: 'https://platform.openai.com/api-keys', label: 'Create OpenAI API key' },
   anthropic: { href: 'https://platform.claude.com/settings/keys', label: 'Create Claude API key' },
   cerebras: { href: 'https://cloud.cerebras.ai', label: 'Cerebras Console → API Keys' },
+  openrouter: { href: 'https://openrouter.ai/keys', label: 'Create OpenRouter API key' },
   deepgram: { href: 'https://console.deepgram.com', label: 'Deepgram Console → Settings → API Keys' },
 }

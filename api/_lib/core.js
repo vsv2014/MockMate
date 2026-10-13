@@ -65,6 +65,7 @@ function modelFamily(id) {
   if (base.startsWith('openai') || base === 'gpt_6_astra') return 'openai'
   if (base.startsWith('claude')) return 'claude_sonnet'
   if (base.startsWith('gemini')) return 'gemini'
+  if (base === 'openrouter') return 'openrouter'
   return base
 }
 
@@ -139,7 +140,7 @@ export function availableProviders() {
   return list
 }
 
-const PROVIDER_TEST_IDS = new Set(['groq', 'gemini', 'openai_mini', 'claude_haiku', 'cerebras'])
+const PROVIDER_TEST_IDS = new Set(['groq', 'gemini', 'openai_mini', 'claude_haiku', 'cerebras', 'openrouter'])
 /** Make one small, explicit probe against a selected saved key; this is never part of normal routing. */
 export async function testProviderConnection(providerId) {
   const id = String(providerId || '')
@@ -192,6 +193,7 @@ export function pickFastProvider() {
   if (process.env.CEREBRAS_API_KEY) return 'cerebras'
   if (process.env.GROQ_API_KEY) return 'groq'
   if (process.env.ANTHROPIC_API_KEY) return newestDiscovered('claude_sonnet', MODEL_PRIORITIES.fast.claude_sonnet) || 'claude_haiku'
+  if (process.env.OPENROUTER_API_KEY) return newestDiscovered('openrouter', MODEL_PRIORITIES.strong.openrouter) || 'openrouter'
   return null
 }
 
@@ -213,6 +215,7 @@ export function pickStrongProvider() {
   if (process.env.OPENAI_API_KEY) return newestDiscovered('openai', MODEL_PRIORITIES.strong.openai) || 'openai'
   if (process.env.ANTHROPIC_API_KEY) return newestDiscovered('claude_sonnet', MODEL_PRIORITIES.strong.claude_sonnet) || 'claude_sonnet'
   if (process.env.GEMINI_API_KEY) return newestDiscovered('gemini', MODEL_PRIORITIES.strong.gemini) || 'gemini_3_flash'
+  if (process.env.OPENROUTER_API_KEY) return newestDiscovered('openrouter', MODEL_PRIORITIES.strong.openrouter) || 'openrouter'
   return pickFastProvider()
 }
 
@@ -299,6 +302,16 @@ export async function listModels() {
       if (!r.ok) throw new Error('Model discovery unavailable')
       ;((await r.json())?.data || []).filter(isActiveModelRecord)
         .forEach(m => push('cerebras', m.id, `Cerebras · ${m.id}`, m))
+    }),
+    // OpenRouter — multi-model gateway. Models endpoint returns { data: [{ id, ... }] }.
+    // Uses provider/model naming (e.g. anthropic/claude-sonnet-5.5).
+    process.env.OPENROUTER_API_KEY && settle('openrouter', async () => {
+      const r = await fetchWithTimeout('https://openrouter.ai/api/v1/models', {
+        headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
+      })
+      if (!r.ok) throw new Error('Model discovery unavailable')
+      ;((await r.json())?.data || []).filter(isActiveModelRecord)
+        .forEach(m => push('openrouter', m.id, `OpenRouter · ${m.name || m.id}`, m))
     }),
   ].filter(Boolean))
   lastSuccessfulDiscoveries = successful

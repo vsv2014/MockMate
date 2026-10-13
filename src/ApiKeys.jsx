@@ -33,8 +33,10 @@ const PROVIDERS = [
     note: 'Create a key scoped to your workspace; API billing is separate from a Claude subscription. Open', link: PROVIDER_KEY_LINKS.anthropic },
   { k: 'CEREBRAS_API_KEY', name: 'Cerebras', hint: 'fast inference', providerIds: ['cerebras'], testId: 'cerebras',
     note: 'Create a key at', link: PROVIDER_KEY_LINKS.cerebras },
+  { k: 'OPENROUTER_API_KEY', name: 'OpenRouter', hint: 'Multi-model gateway — one key, many providers', providerIds: ['openrouter'], testId: 'openrouter',
+    note: 'Routes to any supported model. Create a key at', link: PROVIDER_KEY_LINKS.openrouter },
 ]
-const EMPTY = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', GROQ_API_KEY: '', CEREBRAS_API_KEY: '', DEEPGRAM_API_KEY: '', OPENAI_MODEL: '', GROQ_VISION_MODEL: '', VISION_API_KEY: '', VISION_MODEL: '', VISION_BASE_URL: '', ADZUNA_APP_ID: '', ADZUNA_APP_KEY: '' }
+const EMPTY = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', GROQ_API_KEY: '', CEREBRAS_API_KEY: '', OPENROUTER_API_KEY: '', DEEPGRAM_API_KEY: '', OPENAI_MODEL: '', GROQ_VISION_MODEL: '', VISION_API_KEY: '', VISION_MODEL: '', VISION_BASE_URL: '', ADZUNA_APP_ID: '', ADZUNA_APP_KEY: '' }
 
 function Pill({ color, bg, children }) {
   return <span style={{ fontSize: 9.5, fontWeight: 600, color, background: bg, padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap' }}>{children}</span>
