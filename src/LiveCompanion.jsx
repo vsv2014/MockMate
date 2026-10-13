@@ -14,6 +14,8 @@ import CustomPromptStudio from './components/CustomPromptStudio'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import { OverlayPanel, ScreenAnalysisPanel, IconBtn, CodeBlock } from './App'
 import ApiKeysPanel from './ApiKeys'
+import { appendCapturedTurns, sqliteEnabled } from './lib/desktopSessionStore'
+import { activeAccountScope } from './lib/accountScope'
 import { preserveLiveSession } from './lib/liveSessionPersistence'
 import { saveLiveCheckpoint, loadLiveCheckpoint, clearLiveCheckpoint, checkpointToConversation } from './lib/liveCheckpoint'
 import { loadProfile, saveProfile } from './lib/profile'
@@ -847,6 +849,27 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
   }, [screenAnalysis])
 
   useEffect(() => { answerStyleRef.current = answerStyle; persistAnswerStyle(answerStyle) }, [answerStyle])
+
+  useEffect(() => {
+    const scope = activeAccountScope()
+    const committed = new Map()
+    let queue = Promise.resolve(), alive = true
+    const off = interviewStateRef.current.subscribe(snapshot => {
+      const pending = snapshot.speechTurns.map((turn,seq) => ({ ...turn,seq }))
+        .filter(turn => committed.get(turn.id) !== JSON.stringify(turn))
+      if (!pending.length) return
+      queue = queue.then(async () => {
+        for (let i=0;i<pending.length;i+=100) {
+          const batch = pending.slice(i,i+100)
+          const ack = await appendCapturedTurns(sessionIdRef.current,batch,scope)
+          if (ack?.enabled === false) return
+          for (const turn of batch) committed.set(turn.id,JSON.stringify(turn))
+        }
+      }).catch(error => { diagnostic('session','capture_commit_failed',{ runId:sessionIdRef.current,errorCode:error.code || 'capture_write_failed' },'error'); if (alive) setError('Capture could not be saved. Keep this window open and copy your transcript before leaving.') })
+    })
+    return () => { alive = false; off() }
+  }, [])
+
 
   // Save the visible Q&A feed, not profile/secrets/raw audio. A crash or
   // unexpected renderer reload can then offer explicit read-only recovery.
@@ -1833,11 +1856,11 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
   const [ending, setEnding] = useState(false)
   const evaluationRef = useRef(null)
   useEffect(() => () => evaluationRef.current?.controller.abort(), [])
-  function leaveEvaluation() {
+  async function leaveEvaluation() {
     const pending = evaluationRef.current
     evaluationRef.current = null
     pending?.controller.abort()
-    onEnd({ runId: sessionIdRef.current, conversation: pending?.conversation || [], report: null, evaluationStatus: 'cancelled' })
+    await onEnd({ runId: sessionIdRef.current, conversation: pending?.conversation || [], report: null, evaluationStatus: 'cancelled' })
   }
 
   async function endSession() {
@@ -1858,13 +1881,17 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
         .map(t => ({ role: t.role, text: t.text, ts: t.ts })),
     )
     if (conversation.length === 0) {
-      onCaptured?.({ runId: sessionIdRef.current, conversation, evaluationStatus: 'not_applicable' })
-      onEnd({ runId: sessionIdRef.current, conversation, report: null, evaluationStatus: 'not_applicable' }); return
+      await onCaptured?.({ runId: sessionIdRef.current, conversation, evaluationStatus: 'not_applicable' })
+      await onEnd({ runId: sessionIdRef.current, conversation, report: null, evaluationStatus: 'not_applicable' }); return
     }
 
     const hasCandidate = conversation.some(t => t.role === 'candidate')
     // Commit captured material before starting any evaluator request.
-    onCaptured?.({ runId: sessionIdRef.current, conversation, evaluationStatus: hasCandidate ? 'pending' : 'not_applicable' })
+    const captureCommit = await onCaptured?.({ runId: sessionIdRef.current, conversation, evaluationStatus: hasCandidate ? 'pending' : 'not_applicable' })
+    if (captureCommit && !captureCommit.stored) {
+      await onEnd({ runId: sessionIdRef.current, conversation, evaluationStatus: 'failed', report: { overallScore: null, summary: 'Evaluation was not requested because transcript preservation failed.', dimensions: [], strengths: [], improvements: [] } })
+      return
+    }
     if (!hasCandidate) {
       // Pair interviewer turns with overlay AI hints so notes can show "hints below".
       const withHints = []
@@ -1876,7 +1903,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
           if (hintText) withHints.push({ role: 'hint', text: hintText, ts: turn.ts })
         }
       }
-      onEnd({
+      await onEnd({
         runId: sessionIdRef.current, evaluationStatus: 'not_applicable',
         conversation: withHints.length ? withHints : conversation,
         report: {
@@ -1904,9 +1931,9 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
           provider: providerRef.current
         })
       }).then(async r => { if (!r.ok) throw new Error('Evaluation request failed'); return r.json() })
-      if (evaluationRef.current === pendingEvaluation) onEnd({ runId: sessionIdRef.current, conversation, report: res?.report || null, evaluationStatus: res?.report?.overallScore != null ? 'scored' : 'failed' })
+      if (evaluationRef.current === pendingEvaluation) await onEnd({ runId: sessionIdRef.current, conversation, report: res?.report || null, evaluationStatus: res?.report?.overallScore != null ? 'scored' : 'failed' })
     } catch {
-      if (evaluationRef.current === pendingEvaluation) onEnd({ runId: sessionIdRef.current, conversation, report: null, evaluationStatus: 'failed' })
+      if (evaluationRef.current === pendingEvaluation) await onEnd({ runId: sessionIdRef.current, conversation, report: null, evaluationStatus: 'failed' })
     }
     setEnding(false)
   }
@@ -2388,6 +2415,7 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
   const [sessionConfig, setSessionConfig] = useState(null)
   const [sessionNotes, setSessionNotes] = useState(null)
   const [recoveredLive, setRecoveredLive] = useState(() => loadLiveCheckpoint())
+  const startPendingRef = useRef(false)
   // Tell the parent our phase so it can size the window: setup/notes = full dashboard
   // window; live = compact invisible overlay.
   useEffect(() => { onPhaseChange?.(phase) }, [phase, onPhaseChange])
@@ -2434,8 +2462,8 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
         extra={<button type="button" onClick={onHome} style={{ fontSize: 18, padding: '8px 12px', color: T.text1, background: T.surface1, border: `1px solid ${T.borderStrong}`, borderRadius: 8 }}>← Back to dashboard</button>}>
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: T.bg }}>
           <div style={{ maxWidth: 900, margin: '0 auto', padding: '22px 26px', boxSizing: 'border-box' }}>
-            {report._storageWarning && sessionNotes?.runId && <button type="button" onClick={() => {
-              const result = preserveLiveSession({ runId: sessionNotes.runId, conversation, report,
+            {report._storageWarning && sessionNotes?.runId && <button type="button" onClick={async () => {
+              const result = await preserveLiveSession({ runId: sessionNotes.runId, conversation, report,
                 evaluationStatus: sessionNotes.evaluationStatus, final: true,
                 config: { interviewSetup: { ...sessionConfig?.interviewConfig, source: 'live' } }, profile: sessionConfig?.profile || {} })
               if (result.stored) setRecoveredLive(null)
@@ -2460,15 +2488,23 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
         setPhase('notes')
       }}
       onDiscardLive={() => { clearLiveCheckpoint(); setRecoveredLive(null) }}
-      onStart={config => {
-        const runId = createSessionId()
-        const provisional = preserveLiveSession({ runId, conversation: [], captureStatus: 'provisional', evaluationStatus: 'not_requested',
-          config: { interviewSetup: { ...config.interviewConfig, source: 'live' } }, profile: config.profile })
-        // Keep recovery until a verified final History commit.
-        // Do not auto-open Protected/PiP — user opens it explicitly from the live overlay.
-        onSessionStart?.()
-        setSessionConfig({ ...config, runId, initialStorageWarning: provisional.report._storageWarning || '', pip: null })
-        setPhase('live')
+      onStart={async config => {
+        if (startPendingRef.current) return
+        startPendingRef.current = true
+        try {
+          const runId = globalThis.crypto?.randomUUID?.() || createSessionId()
+          const provisional = await preserveLiveSession({ runId, conversation: [], captureStatus: 'provisional', evaluationStatus: 'not_requested',
+            config: { interviewSetup: { ...config.interviewConfig, source: 'live' } }, profile: config.profile })
+          if (!provisional.stored && await sqliteEnabled().catch(() => true)) {
+            setSessionNotes({ runId, conversation: [], evaluationStatus: 'not_requested', report: provisional.report })
+            setPhase('notes'); return
+          }
+          // Keep recovery until a verified final History commit.
+          // Do not auto-open Protected/PiP — user opens it explicitly from the live overlay.
+          onSessionStart?.()
+          setSessionConfig({ ...config, runId, initialStorageWarning: provisional.report._storageWarning || '', pip: null })
+          setPhase('live')
+        } finally { startPendingRef.current = false }
       }}
       onHome={onHome}
       panelSize={panelSize} stealth={stealth}
@@ -2490,9 +2526,9 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
         ...data, config: { interviewSetup: { ...sessionConfig?.interviewConfig, source: 'live' }, kitId: sessionConfig?.kitId },
         profile: sessionConfig?.profile || {},
       })}
-      onEnd={data => {
+      onEnd={async data => {
         onSessionEnd?.()
-        const result = preserveLiveSession({
+        const result = await preserveLiveSession({
           ...data, runId: data?.runId || sessionConfig.runId, final: true,
           config: { domainLabel: sessionConfig?.profile?.targetRole || 'Live interview', kitId: sessionConfig?.kitId,
             kitName: sessionConfig?.kitName, interviewSetup: { ...sessionConfig?.interviewConfig, source: 'live' } },
