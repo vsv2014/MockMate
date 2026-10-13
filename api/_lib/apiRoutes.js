@@ -2,7 +2,7 @@
 // Deployments:
 //   - Local BYOK (server.js): no auth, loopback-only.
 //   - Managed backend (backend/server.js): auth + metering/model policy.
-import { makeReport, availableProviders, allProviders, describeAutomaticRouting, listModels, getModelDiscoveryStatus, testProviderConnection, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed, isLoopbackAddress } from './core.js'
+import { makeReport, availableProviders, allProviders, describeAutomaticRouting, listModels, getModelDiscoveryStatus, testProviderConnection, deepgramConfigured, deepgramToken, searchConfigured, mintToken, embed, isLoopbackAddress, isHostedDeploy } from './core.js'
 import { interviewerTurn, evaluateSolo, generateHint, analyzeScreen, streamHint } from './interview.js'
 import { findJobs } from './jobs.js'
 import { atsScore, tailorResume, referralMessage, resumeLatex } from './career.js'
@@ -116,7 +116,7 @@ export function registerApiRoutes(app, opts = {}) {
   app.get('/api/arch', ...guardLight, (req, res) => {
     try {
       const ip = req.ip || req.socket?.remoteAddress || ''
-      const remoteHosted = ['1', 'true'].includes(String(process.env.MOCKMATE_HOSTED || '').toLowerCase())
+      const remoteHosted = isHostedDeploy()
         || (!isLoopbackAddress(ip) && Boolean(ip))
       res.json(archRuntimeSummary({ hosted: remoteHosted }))
     }

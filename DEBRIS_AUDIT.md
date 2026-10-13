@@ -149,10 +149,8 @@ Method: for every `export function|const|class` in non-test files, grep the rest
    **Disposition:** Investigate (could matter if persisted `lastClassification` from old sessions carries legacy type names — **inferred**)
 
 3. **Path:** `api/_lib/core.js:1062-1065`
-   **What it is:** A dead conditional in the vision failover loop: `if (kind === 'quota') { /* continue failover */ }` is an empty block immediately followed by `break` for all three kinds.
-   **Evidence:** lines: `if (kind === 'auth' || kind === 'bad_request' || kind === 'quota') { if (kind === 'quota') { /* continue failover */ } break }` — the inner `if` changes nothing.
-   **Severity:** Low (comment says "continue failover" but the code breaks — see also H)
-   **Disposition:** Investigate (comment/intent mismatch may hide a bug: quota on vision provider #1 never tries provider #2)
+   **RETRACTED (post-audit verification):** the `break` exits the inner attempt-retry loop only; the outer provider loop continues to the next vendor. "Continue failover" is exactly what happens — quota on provider #1 DOES try provider #2. The empty `if (kind === 'quota')` block is a comment anchor, not dead logic. Original "possible live bug" claim was a misreading of nested loops.
+   **Disposition:** Keep
 
 4. **Path:** `backend/src/arch.js:30-52` + `:251`
    **What it is:** `recordArchProductEvent`/`archProductIntelligenceSnapshot` server-side product-event buffer that is never fed in production; `archRuntimeSummary` dutifully summarizes a permanently-empty array on every `/api/arch` call.
@@ -195,7 +193,7 @@ Method: for every `export function|const|class` in non-test files, grep the rest
    **What it is:** Two generators for the per-install `.jwt-secret`: bootstrap writes it atomically and quits the app on failure; `getJwtSecret()` in main.cjs retains the pre-bootstrap logic that swallows the write error and silently falls back to an ephemeral secret — the exact failure mode the bootstrap comment says it exists to prevent.
    **Evidence:** bootstrap `:18` comment "a failed disk write can never silently turn into a one-run ephemeral JWT secret"; main.cjs `:330` `try { ...writeFileSync(f, secret...) } catch {}` then `return secret`.
    **Severity:** High
-   **Disposition:** FIXED in this PR — main.cjs getJwtSecret() is now a read-only consumer that throws into startBackend()'s error dialog.
+   **Disposition:** FIXED in this PR — main.cjs getJwtSecret() is now a read-only consumer that throws into startBackend()'s error dialog. Regression-pinned by electron/jwt-secret-ownership.test.js (creation ownership, atomic write, re-create-on-missing, load order, read-only consumer).
 
 4. **Path:** `api/_lib/interview.js:684-690` (`evaluateSolo`) vs `api/_lib/core.js:1462-1470` (`makeReport`)
    **What it is:** Two feedback-report prompt templates maintaining the identical JSON contract (`overallScore`, `verdict` enum, `dimensions[{name,score,comment}]`, `strengths`, `improvements`, `summary`) in two files.
@@ -344,8 +342,8 @@ Commented-out code blocks: none found (the candidates flagged by scan — `elect
    - `['1','true'].includes(...)`: `backend/src/arch.js:23`, `api/_lib/apiRoutes.js:119`.
    - `!== '0' && !== 'false'`: `api/_lib/core.js` deepgram fallback block.
    - `envFlag()` helper: `backend/src/hostedConfig.js:66`.
-   Consequence: `MOCKMATE_HOSTED=true` is hosted in arch.js/apiRoutes but NOT in core.js:34 (console-log branch) — same variable, different truth tables.
-   **Severity:** Medium. **Disposition:** Investigate.
+   Consequence: `MOCKMATE_HOSTED=true` was hosted in arch.js/apiRoutes but NOT in core.js:34 — same variable, four truth tables (incl. the case-sensitive Deepgram raw-key gate at core.js:1348).
+   **Severity:** Medium. **Disposition:** FIXED in this PR — `isHostedDeploy()` exported from core.js (1/true/yes/on, trimmed, lowercased, mirroring hostedConfig envFlag) now used at core.js:34, core.js:1348, apiRoutes.js /api/arch; arch.js hostedMode() delegates to envFlag. Other env flags unchanged.
 
 5. **Error payload shapes — 4 variants.**
    - `{ error, code?, retryAfterMs? }` via `errorPayload()` — `api/_lib/apiRoutes.js:20-26`.
@@ -387,9 +385,8 @@ Method: grep every `package.json` dependency name in import/require position acr
    **Disposition:** Investigate
 
 2. **Path:** `api/_lib/core.js:1062-1065`
-   **What it is:** `/* continue failover */` above a `break` that prevents failover (same lines as C.3 — the comment is the drift half).
-   **Severity:** Medium
-   **Disposition:** Investigate
+   **RETRACTED (post-audit verification):** the comment is accurate — the `break` only exits the inner retry loop and the outer provider loop continues (see C.3 retraction). No drift.
+   **Disposition:** Keep
 
 3. **Path:** `.env.example:44-49`
    **What it is:** Anthropic section headline says "Fable 5 / Opus 5 / Sonnet 5 / Haiku 4.5" and suggests `ANTHROPIC_SONNET5_MODEL=claude-sonnet-5`, `ANTHROPIC_HAIKU_MODEL=claude-haiku-4-5-20251001`, but the registry's current defaults are Sonnet 5.5 and Haiku 5.5 (`shared/modelRegistry.js:14-15`); the documented overrides would pin users to the previous generation.
@@ -430,7 +427,7 @@ Method: grep for empty `catch {}`/`catch (e) {}` and `.catch(() => null|{}|undef
 1. **Path:** `backend/src/routes/auth.js:53` and `:104`
    **What it is:** verification-email delivery result (`{delivered}`) ignored and rejections swallowed — with `REQUIRE_EMAIL_VERIFICATION=1`, an undelivered email silently locks the user out.
    **Severity:** High
-   **Disposition:** FIXED in this PR — both call sites now log loudly when delivery result is not 'email'/'console'.
+   **Disposition:** FIXED in this PR — both call sites now log loudly when delivery result is not 'email'/'console'. OPEN FOLLOW-UP: visibility is log-only; the signup response still reports success when the email could not be sent, so the affected user sees nothing. Surfacing it in the response is a product decision (response-shape change) deliberately not made here.
 
 2. **Path:** `backend/src/store.js`
    **RETRACTED (post-audit verification):** `persist()` logs and rethrows (`:58`); `createUser`/`updateUser`/`deleteUser`/`addUsage` roll back in-memory state and rethrow; reserve paths roll back and return false. Only the release paths swallow after `persist()` has already logged — a deliberate compensating-write pattern. The original "silent data loss" claim was wrong.
@@ -489,7 +486,7 @@ The repo is better than average here (`shared/liveTiming.js` names the four core
 5. `src/useDeepgram.js:322` / `src/useSystemAudio.js:548` — fixed 400 ms wake-reconnect delay bypassing the shared `computeReconnectDelayMs` both files import. **Severity:** Medium (drift between declared and actual policy). **Disposition:** Investigate.
 6. `electron/bootstrap.cjs:266` — SIGKILL escalation after `1800` ms, unnamed. **Severity:** Low. **Disposition:** Investigate.
 7. `src/LiveCompanion.jsx:722` — RAG prefetch debounce `320` ms; `:896` — `100` ms "let the OS register the window". **Severity:** Low. **Disposition:** Keep (`:896` is commented); Investigate `:722`.
-8. `src/ApiKeys.jsx:181` — provider test `timeoutMs: 12_000` (server side aborts at 8 000 — a 4 s dead zone where the client waits for a server that already gave up); `:201`/`:219` — 1 200 ms cosmetic sleeps. **Severity:** Medium (the 12s/8s mismatch). **Disposition:** Investigate.
+8. `src/ApiKeys.jsx:181` — **RETRACTED (post-audit verification):** when the server-side probe aborts at 8 s it responds with the error immediately, so the client proceeds at ~8 s; the client's 12 s is a correct OUTER guard for a hung local server (outer timeout > inner timeout is proper layering — no dead zone). `:201`/`:219` 1 200 ms cosmetic sleeps remain Cosmetic. **Disposition:** Keep.
 9. `src/auth/AuthGate.jsx:66` — `12 * 60 * 60 * 1000` refresh interval inline; `electron/main.cjs:763` — `6 * 60 * 60 * 1000` update interval inline. **Severity:** Cosmetic. **Disposition:** Keep.
 10. `electron/main.cjs:1203` — session-metrics rotation at `2 * 1024 * 1024` vs diagnostics rotation `MAX_FILE_BYTES = 5 * 1024 * 1024` (`electron/diagnostics.cjs:5`) — two JSONL rotation policies, one named, one not. **Severity:** Cosmetic. **Disposition:** Keep (different files); name the 2 MB.
 11. `src/lib/docs.js:281` — `PERSISTED_INDEX_BYTE_BUDGET = 4_000_000` (named — good) but `:473` RAG `budgetMs = 2000` default is a bare literal that callers override inconsistently. **Severity:** Low. **Disposition:** Investigate.
@@ -576,8 +573,8 @@ The repo is better than average here (`shared/liveTiming.js` names the four core
    **RETRACTED CAVEAT (post-audit verification):** the link log is already gated — `isDev = NODE_ENV !== 'production' && !process.env.HOST` (`mailer.js:22`); production/hosted logs only the redacted domain. The original hosted-token-leak caveat does not apply to current code.
    **Disposition:** Keep (owner-confirmed dev aid, correctly gated)
 5. **Path:** `api/_lib/core.js:34`
-   **What it is:** Hosted-mode diagnostics printed as raw JSON to stdout only when `MOCKMATE_HOSTED === '1'` — but the backend's own `.env.example` sets `MOCKMATE_HOSTED=1` while other code accepts `'true'` (F.4), so a `MOCKMATE_HOSTED=true` deploy silently loses all provider diagnostics.
-   **Severity:** Medium. **Disposition:** Investigate.
+   **What it is:** Hosted-mode diagnostics were gated on `MOCKMATE_HOSTED === '1'` only, so a `MOCKMATE_HOSTED=true` deploy silently lost all provider diagnostics.
+   **Severity:** Medium. **Disposition:** FIXED in this PR (see F.4 — unified isHostedDeploy()).
 6. **Path:** emitted-but-unconsumed diagnostics
    **What it is:** Of ~52 distinct diagnostic event names (39 renderer + 13 provider), the only programmatic consumers are `scripts/session-report.mjs` (~12 names: `attempt_*`, `request_usage`, `question_committed`, `stt_*`, …) and `scripts/soak-metrics.mjs`; events such as `embedding_started/succeeded/failed`, `model_discovery_completed`, `all_providers_cooling`, `thinking_setting_rejected`, `model_quarantined` are written to JSONL and read by no tool — human-export-only.
    **Evidence:** grep of event names across `scripts/` and `src/`.
