@@ -773,7 +773,7 @@ export function ReadyRoom({
         </section>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(250px, .72fr)', gap: 14, alignItems: 'start' }} className="mm-ready-layout">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, alignItems: 'start' }} className="mm-ready-layout">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <CheckCard number="01" title="Interview context" status={contextReady ? 'passed' : 'missing'} statusText={contextReady ? 'Kit context found' : 'Needs context'} action={<Button variant="quiet" onClick={() => onEditKit?.(kit)}>{contextReady ? 'Review Kit' : 'Add role or materials'}</Button>}>
                 {contextReady
@@ -848,7 +848,7 @@ export function ReadyRoom({
               </div>
             </div>
 
-            <aside style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+            <aside style={{ display: 'none' }}>
               <section style={{ ...panelStyle, padding: 16, background: 'linear-gradient(145deg, rgba(20,184,166,0.11), rgba(18,21,27,0.98) 62%)' }}>
                 <Eyebrow>THIS SESSION</Eyebrow>
                 <div style={{ color: T.text1, font: `600 17px ${T.fontDisplay}`, marginTop: 9 }}>{kit.title}</div>
