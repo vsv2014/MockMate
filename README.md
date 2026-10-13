@@ -2,9 +2,9 @@
 
 MockMate is a desktop-first interview preparation and live-performance companion. It combines Solo practice, Resume Studio, Job Matching, Documents, session history, and a content-protected Live overlay that can transcribe interview audio and generate resume-grounded guidance.
 
-## Release status — v1.6.5 unsigned personal preview
+## Release status — v1.6.6 candidate
 
-The desktop manifests target **1.6.5**. **v1.6.5** is a hotfix for the v1.6.4 preview and is published from `main` as an **unsigned personal preview** (GitHub pre-release, Windows x64 installer only), built and smoke-tested by `unsigned-public.yml`. It is not code-signed and has no auto-update feed. The latest **signed** stable installer is still **v1.5.3**.
+The desktop package and lock files target **1.6.6**. This is a release candidate for the Live usability regressions reported in v1.6.5; it is not yet a published installer. Build and automated tests pass; packaged Windows checks remain open. The previously published v1.6.5 is an unsigned personal preview with no auto-update feed. A version bump does not establish signing or publication status.
 
 - The stable Windows workflow (`release.yml`) is **signed-only**. It requires the signing certificate, password and publisher identity, verifies trusted Authenticode signatures for both the app and the installer, and runs a packaged smoke test before publication. Missing signing settings stop the stable release; it never falls back to an unsigned build or unsigned updater payload.
 - v1.6.4 shipped with a broken Ready Room (no visible Live action), dropped OpenRouter keys and a global
@@ -13,6 +13,16 @@ The desktop manifests target **1.6.5**. **v1.6.5** is a hotfix for the v1.6.4 pr
 - Release details: [process](docs/RELEASE.md), [checklist](docs/RELEASE_CHECKLIST.md), [changelog](CHANGELOG.md), [validation status](docs/evidence/VALIDATION_STATUS.md), [signing setup](SIGNING.md).
 
 The automated release workflows produce Windows x64 NSIS only. macOS/Linux builds and mobile store releases are separate tracks; no current public artifacts are implied for them.
+
+## What v1.6.6 changes
+
+- **Readable Live text:** answer text is 26–27px, rendered code is 24px, and questions and controls are twice their previous size.
+- **Usable overlay sizing:** starts at 600×720, clamped to the display; expanded windows can resize while the collapsed badge remains fixed at 72×72. Initial dimensions are applied with the window-mode transition.
+- **Microphone automatic answers:** restored after the existing speaker heuristic locks and audio is not degraded. Uncertain speakers still require confirmation; the heuristic does not verify speaker identity.
+- **Explicit answer requests:** “Answer this”, typed questions and retries disable automatic skipping. Skips show a visible failure with a retry action.
+- **Session exit controls:** session notes retain Back, minimize, close and resize controls. Report generation can be left and has a 30-second timeout.
+
+See [v1.6.6 release notes](docs/RELEASE_NOTES_v1.6.6.md) for validation and remaining limitations.
 
 ## What v1.6.5 fixes (v1.6.4 hotfix)
 

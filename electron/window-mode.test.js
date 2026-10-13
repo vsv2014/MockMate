@@ -70,7 +70,7 @@ describe('native collapse constraints', () => {
     win.setBounds({ x: 0, y: 0, width: 300, height: 360 })
     expect(win.size).toEqual([300, 360])
     expect(win.min).toEqual([240, 180])
-    expect(win.resizable).toBe(false)
+    expect(win.resizable).toBe(true)
   })
 
   it('keeps Linux opaque while removing the oversized backing window', () => {
@@ -98,6 +98,15 @@ describe('native collapse constraints', () => {
       current = { ...next.bounds, height: next.bounds.height + 4 }   // the OS adds its strip again
     }
     expect(current.height).toBe(PILL_SIZE + 4)
+  })
+
+  it('tolerates fractional-display rounding without reporting every drag as a correction', () => {
+    for (const [width, height] of [[73, 73], [72, 73], [73, 72], [71, 72]]) {
+      const next = pillDragBounds({ x: 20, y: 30, width, height }, 3, 4)
+      expect(next.drifted).toBe(false)
+      expect(next.bounds).toEqual({ x: 23, y: 34, width: 72, height: 72 })
+    }
+    expect(pillDragBounds({ width: 74, height: 72 }, 1, 0).drifted).toBe(true)
   })
 
   it('reports no drift for a badge the OS already sized correctly', () => {

@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowDrag: (dx, dy) => ipcRenderer.send('window-drag', { dx, dy }),
   windowResize: (w, h, opts) => ipcRenderer.send('window-resize', { w, h, dx: opts?.dx || 0, dy: opts?.dy || 0 }),
   // 'app' = full windowed dashboard (large, centered); 'overlay' = compact floating panel.
-  setWindowMode: mode => ipcRenderer.send('set-window-mode', mode),
+  setWindowMode: (mode, size) => ipcRenderer.send('set-window-mode', mode, size),
   onScreenCaptured: cb => {
     const handler = (_, payload) => cb(payload)
     ipcRenderer.on('screen-captured', handler)
