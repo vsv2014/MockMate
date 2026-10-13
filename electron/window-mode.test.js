@@ -70,7 +70,7 @@ describe('native collapse constraints', () => {
     win.setBounds({ x: 0, y: 0, width: 300, height: 360 })
     expect(win.size).toEqual([300, 360])
     expect(win.min).toEqual([240, 180])
-    expect(win.resizable).toBe(false)
+    expect(win.resizable).toBe(true)
   })
 
   it('keeps Linux opaque while removing the oversized backing window', () => {

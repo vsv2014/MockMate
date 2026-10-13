@@ -107,11 +107,11 @@ function ElectronShell({ auth }) {
       const raw = localStorage.getItem('mm-overlay-size')
       if (raw) {
         const p = JSON.parse(raw)
-        if (p?.w >= 240 && p?.h >= 180) return { w: p.w, h: p.h }
+        if (p?.w >= 240 && p?.h >= 180) return { w: Math.max(600, p.w), h: Math.max(600, p.h) }
       }
     } catch {}
-    // LockedIn-style: start as a compact glance HUD, not a dashboard panel.
-    return { w: 300, h: 360 }
+    // Leave enough room for readable Live text on first launch.
+    return { w: 600, h: 720 }
   })
   const [opacity, setOpacity] = useState(() => {
     try {
@@ -335,7 +335,7 @@ function ElectronShell({ auth }) {
       setMinimized(m => {
         const next = !m
         if (!next && viewRef.current === 'companion' && companionPhaseRef.current === 'live') {
-          const { w, h } = panelSizeRef.current || { w: 300, h: 360 }
+          const { w, h } = panelSizeRef.current || { w: 600, h: 720 }
           queueMicrotask(() => window.electronAPI?.windowResize?.(w, h))
         }
         return next
@@ -743,7 +743,7 @@ function ElectronShell({ auth }) {
   function expandFromPill() {
     setMinimized(false)
     if (inElectron && viewRef.current === 'companion' && companionPhaseRef.current === 'live') {
-      const { w, h } = panelSizeRef.current || { w: 300, h: 360 }
+      const { w, h } = panelSizeRef.current || { w: 600, h: 720 }
       queueMicrotask(() => window.electronAPI?.windowResize?.(w, h))
     }
   }
@@ -762,11 +762,13 @@ function ElectronShell({ auth }) {
   function startResize(e, edge = 'se') {
     resizing.current = true
     trackProductEvent('overlay_resize', { edge })
+    const native = inElectron ? window.electronAPI?.getWindowSize?.() : null
+    const size = native ? { w: native.width, h: native.height } : panelSize
     resizeStart.current = {
       x: e.screenX, y: e.screenY,
-      w: panelSize.w, h: panelSize.h,
+      w: size.w, h: size.h,
       edge,
-      _lastW: panelSize.w, _lastH: panelSize.h,
+      _lastW: size.w, _lastH: size.h,
     }
     try { e.currentTarget?.setPointerCapture?.(e.pointerId) } catch {}
     e.stopPropagation(); e.preventDefault()
@@ -798,21 +800,6 @@ function ElectronShell({ auth }) {
     }
   }
 
-  // On Live start: restore last HUD size from localStorage (never wipe a user resize).
-  useEffect(() => {
-    if (view !== 'companion' || companionPhase !== 'live') return
-    let next = panelSizeRef.current || { w: 300, h: 360 }
-    try {
-      const raw = localStorage.getItem('mm-overlay-size')
-      if (raw) {
-        const p = JSON.parse(raw)
-        if (p?.w >= 240 && p?.h >= 180) next = { w: p.w, h: p.h }
-      }
-    } catch {}
-    setPanelSize(next)
-    if (inElectron) window.electronAPI?.windowResize?.(next.w, next.h)
-  }, [view, companionPhase])
-
   // Persist manual edge-resizes so the next Live session opens at the same HUD size.
   useEffect(() => {
     if (view === 'companion' && companionPhase === 'live') {
@@ -827,7 +814,7 @@ function ElectronShell({ auth }) {
     if (minimized) mode = 'pill'                          // collapsed → tiny click-to-expand pill
     else if (view === 'companion') mode = companionPhase === 'live' ? 'overlay' : 'app'
     else mode = (!showWelcome && SHELL_VIEWS.includes(view)) ? 'app' : 'overlay'
-    window.electronAPI?.setWindowMode?.(mode)
+    window.electronAPI?.setWindowMode?.(mode, mode === 'overlay' ? panelSizeRef.current : undefined)
   }, [view, showWelcome, companionPhase, minimized])
 
   // The sessions list is a snapshot — refresh it when the Sessions tab opens so a
@@ -1080,7 +1067,7 @@ function highlightCode(code) {
 }
 
 // ── Code block with one-tap copy + syntax highlighting — the core of Coding mode ──
-export function CodeBlock({ code, runnableCode, language }) {
+export function CodeBlock({ code, runnableCode, language, fontScale = 1 }) {
   const [copied, setCopied] = useState(false)
   const [copiedRunnable, setCopiedRunnable] = useState(false)
   const [runState, setRunState] = useState(null)
@@ -1101,34 +1088,34 @@ export function CodeBlock({ code, runnableCode, language }) {
   return (
     <div style={{ background: '#0d1117', border: '1px solid #1f2733', borderRadius: 8, marginBottom: 8, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderBottom: '1px solid #1f2733', background: 'rgba(255,255,255,0.02)' }}>
-        <span style={{ fontSize: 10, color: '#7d8590', fontFamily: 'monospace' }}>{language || 'code'}</span>
+        <span style={{ fontSize: 10 * fontScale, color: '#7d8590', fontFamily: 'monospace' }}>{language || 'code'}</span>
         {runnable && <button onClick={run} disabled={runState?.running}
           title="Runs JavaScript in a disposable worker with network/DOM access disabled and a 1.5s timeout"
-          style={{ marginLeft: 'auto', background: 'rgba(94,234,212,0.1)', color: '#5eead4', border: '1px solid rgba(94,234,212,0.25)', borderRadius: 5, padding: '2px 9px', fontSize: 10, fontWeight: 600, cursor: runState?.running ? 'default' : 'pointer' }}>
+          style={{ marginLeft: 'auto', background: 'rgba(94,234,212,0.1)', color: '#5eead4', border: '1px solid rgba(94,234,212,0.25)', borderRadius: 5, padding: '2px 9px', fontSize: 10 * fontScale, fontWeight: 600, cursor: runState?.running ? 'default' : 'pointer' }}>
           {runState?.running ? 'Running…' : '▶ Run JS'}
         </button>}
         {!runnable && <span title="Execution is currently available for JavaScript only; this solution can still be copied"
-          style={{ marginLeft: 'auto', color: '#7d8590', fontSize: 9 }}>
+          style={{ marginLeft: 'auto', color: '#7d8590', fontSize: 9 * fontScale }}>
           Preview · Run supports JS only
         </span>}
-        <button onClick={copy} title="Copy the clean interview-platform solution" style={{ marginLeft: runnable ? 0 : 6, background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copied ? '#4ade80' : T.text2, border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+        <button onClick={copy} title="Copy the clean interview-platform solution" style={{ marginLeft: runnable ? 0 : 6, background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copied ? '#4ade80' : T.text2, border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10 * fontScale, fontWeight: 600, cursor: 'pointer' }}>
           {copied ? '✓ Copied' : '⧉ Solution'}
         </button>
         {hasSeparateRunnable && <button onClick={copyRunnable} title="Copy standalone code for Programiz or another online compiler"
-          style={{ background: copiedRunnable ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copiedRunnable ? '#4ade80' : T.text2, border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+          style={{ background: copiedRunnable ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copiedRunnable ? '#4ade80' : T.text2, border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10 * fontScale, fontWeight: 600, cursor: 'pointer' }}>
           {copiedRunnable ? '✓ Copied' : '⧉ Runnable'}
         </button>}
       </div>
       <pre style={{ margin: 0, padding: '10px 12px', overflowX: 'auto', maxHeight: 260 }}>
-        <code style={{ fontFamily: T.fontMono, fontSize: 12, lineHeight: 1.6, color: '#e6edf3', whiteSpace: 'pre' }}>{highlightCode(code || '')}</code>
+        <code style={{ fontFamily: T.fontMono, fontSize: 12 * fontScale, lineHeight: 1.6, color: '#e6edf3', whiteSpace: 'pre' }}>{highlightCode(code || '')}</code>
       </pre>
       {hasSeparateRunnable && <details style={{ borderTop: '1px solid #1f2733' }}>
-        <summary style={{ padding: '6px 10px', cursor: 'pointer', color: '#7d8590', fontSize: 10 }}>Runnable version · online compiler</summary>
+        <summary style={{ padding: '6px 10px', cursor: 'pointer', color: '#7d8590', fontSize: 10 * fontScale }}>Runnable version · online compiler</summary>
         <pre style={{ margin: 0, padding: '10px 12px', overflowX: 'auto', maxHeight: 220, borderTop: '1px solid #1f2733' }}>
-          <code style={{ fontFamily: T.fontMono, fontSize: 12, lineHeight: 1.6, color: '#e6edf3', whiteSpace: 'pre' }}>{highlightCode(runnableCode)}</code>
+          <code style={{ fontFamily: T.fontMono, fontSize: 12 * fontScale, lineHeight: 1.6, color: '#e6edf3', whiteSpace: 'pre' }}>{highlightCode(runnableCode)}</code>
         </pre>
       </details>}
-      {runState && !runState.running && <div role="status" style={{ padding: '6px 10px', borderTop: '1px solid #1f2733', fontFamily: T.fontMono, whiteSpace: 'pre-wrap', fontSize: 10, color: runState.ok ? '#86efac' : '#fca5a5', maxHeight: 100, overflow: 'auto' }}>
+      {runState && !runState.running && <div role="status" style={{ padding: '6px 10px', borderTop: '1px solid #1f2733', fontFamily: T.fontMono, whiteSpace: 'pre-wrap', fontSize: 10 * fontScale, color: runState.ok ? '#86efac' : '#fca5a5', maxHeight: 100, overflow: 'auto' }}>
         {runState.ok
           ? ([...(runState.logs || []), runState.result].filter(x => x != null && x !== '').join('\n') || '✓ JavaScript loaded successfully. Add a function call or console.log to see output.')
           : `✗ ${runState.error || 'Execution failed'}`}
@@ -1699,7 +1686,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
               <div key={h.edge} data-mm-hit="1" title="Drag border to resize"
                 onPointerDown={e => { e.stopPropagation(); onResize(e, h.edge) }}
                 style={{
-                  position: 'absolute', zIndex: 5, pointerEvents: 'all',
+                  position: 'absolute', zIndex: 30, pointerEvents: 'all',
                   cursor: h.cursor, ...h.style,
                 }} />
             ))}

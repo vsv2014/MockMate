@@ -366,7 +366,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
           isCandidate: isSystemLoopback ? false : !!isCandidate,
           isQuestion: looksLikeQuestion(text),
           confidence: Number.isFinite(alt?.confidence) ? alt.confidence : null,
-          diarizationLocked: isSystemLoopback || !!interviewerSpeaker.current,
+          diarizationLocked: isSystemLoopback || interviewerSpeaker.current != null,
           interviewerSpeaker: interviewerSpeaker.current,
           speakerRole: isSystemLoopback
             ? 'interviewer'
@@ -385,7 +385,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
           || (interviewerSpeaker.current != null && sp === interviewerSpeaker.current)
         if (earlyIsInterviewer && !isCandidate && confidence > 0.82 && looksLikeQuestion(text) && text !== lastEarlyTrigger.current) {
           lastEarlyTrigger.current = text
-          onEarlyRef.current?.(text, { speaker: sp, isCandidate: !!isCandidate, diarizationLocked: !!interviewerSpeaker.current })
+          onEarlyRef.current?.(text, { speaker: sp, isCandidate: !!isCandidate, speakerRole: 'interviewer', diarizationLocked: interviewerSpeaker.current != null })
         }
       }
     }

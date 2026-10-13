@@ -17,9 +17,8 @@ function prepareWindowMode(win, mode, platform = process.platform) {
   // (0, 0) is Electron's "no maximum" default (max_width/max_height unset — see
   // electron#33025), so leaving pill mode restores the normal, screen-bounded window.
   win.setMaximumSize(pill ? PILL_SIZE : 0, pill ? PILL_SIZE : 0)
-  // Keep Windows layered-window styles stable across collapse/expand.
-  // setSize/setBounds remain available to our custom resize handles.
-  win.setResizable(platform !== 'win32' && !pill)
+  // Expanded windows must permit native resizing; only the badge is fixed.
+  win.setResizable(!pill)
   win.setHasShadow(!pill)
   win.setBackgroundColor(platform === 'linux' ? '#08090e' : '#00000000')
 }

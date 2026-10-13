@@ -107,7 +107,7 @@ function renderMd(text) {
     const line = lines[i]
     if (line.trim().startsWith('```')) {            // fence open/close
       if (code === null) code = { language: line.trim().slice(3).trim(), lines: [] }
-      else { out.push(<CodeBlock key={'c' + i} code={code.lines.join('\n')} language={code.language} />); code = null }
+      else { out.push(<CodeBlock fontScale={2} key={'c' + i} code={code.lines.join('\n')} language={code.language} />); code = null }
       continue
     }
     if (code !== null) { code.lines.push(line); continue } // inside code — keep raw
@@ -129,7 +129,7 @@ function renderMd(text) {
     out.push(<div key={i} style={{ marginBottom: 4 }}>{inlineMd(trimmed)}</div>)
   }
   // Streaming: a code block may still be open (closing ``` not arrived yet) — render it live anyway.
-  if (code !== null && code.lines.length) out.push(<CodeBlock key="c-open" code={code.lines.join('\n')} language={code.language} />)
+  if (code !== null && code.lines.length) out.push(<CodeBlock fontScale={2} key="c-open" code={code.lines.join('\n')} language={code.language} />)
   return out
 }
 
@@ -1051,7 +1051,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   }
 
   // Hint generation — only after QUESTION_COMMITTED (or manual Answer this).
-  async function generateHint(question, { force, questionId: existingQuestionId } = {}) {
+  async function generateHint(question, { force, manual = false, questionId: existingQuestionId } = {}) {
     if (!question) return
     const sameQ = question === lastHintText.current
     if (!force && sameQ && hintInFlight.current) return
@@ -1292,6 +1292,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       setHintLoading(false); setStreaming(false); hintInFlight.current = false
       lastHintText.current = ''; setBuyTimePhrase(''); hintIncompleteRef.current = false
       state.markQuestionCancelled?.(questionId, 'skip')
+      upsert({ status: 'failed', hint: { failed: true, incomplete: true }, answer: '' })
+      setError('No answer: the model skipped this question. Use Answer this or retry to request an answer explicitly.')
       gen.complete()
     }
 
@@ -1332,10 +1334,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     }
     ragSpec.current = { q: '', p: null, ac: null, timer: null }
     if (!isCurrent()) return
-    const hintBody = () => composeHintBody({
+    const hintBody = () => ({ ...composeHintBody({
       qText, history: priorTurns(), prevClassification, classification,
       attachScreen, selectedScreen, ragContext,
-    })
+    }), ...(manual ? { autoSkip: false } : {}) })
 
     hintTimingRef.current = metricsRef.current?.startHint?.() || null
     let rawAnswer = '', answer = '', hintObj = null
@@ -1568,7 +1570,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     lastHintText.current = q.text
 
     const isMic = liveSourceIdRef.current === 'microphone'
-    if (isMic) {
+    if (isMic && !(diarizationLockedRef.current && !degradedRef.current)) {
       // Pre-warm RAG once while waiting for manual confirmation
       startSpeculativeRag(q.text, { immediate: true })
       pendingManualQ.current = { text: q.text, questionId: q.id }
@@ -1576,6 +1578,9 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       setManualQ(q.text)
       return
     }
+    pendingManualQ.current = null
+    manualQRef.current = ''
+    setManualQ('')
     generateHint(q.text, { force: true, questionId: q.id })
   }
   generateHintRef.current = generateHint
@@ -1583,7 +1588,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   // A clear interviewer correction invalidates the answer currently being generated.
   // Keep the old card as an explicit superseded record instead of a mysterious blank.
   handleRevisionRef.current = () => {
-    if (liveSourceIdRef.current === 'microphone') return
+    if (liveSourceIdRef.current === 'microphone' && !(diarizationLockedRef.current && !degradedRef.current)) return
     const activeId = activeQuestionIdRef.current
     if (activeGenerationRef.current?.canCommit?.()) {
       activeGenerationRef.current.cancel?.('interviewer_revision')
@@ -1606,7 +1611,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   // "Write it as code" / "be brief" modifies the active question rather than
   // becoming a second card. Regenerate the same card with the explicit contract.
   handleRefinementRef.current = ({ text }) => {
-    if (liveSourceIdRef.current === 'microphone') return
+    if (liveSourceIdRef.current === 'microphone' && !(diarizationLockedRef.current && !degradedRef.current)) return
     const activeId = activeQuestionIdRef.current || interviewStateRef.current?.getCurrentQuestionId?.()
     const current = activeId ? interviewStateRef.current?.getQuestion?.(activeId) : null
     if (!current?.text || !text) return
@@ -1623,7 +1628,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
   const onEarlyQuestion = useCallback((text, meta) => {
     if (!sessionActiveRef.current) return
-    if (liveSourceIdRef.current === 'microphone') return // inferred speakers cannot authorize automatic generation
+    if (liveSourceIdRef.current === 'microphone' && !(diarizationLockedRef.current && !degradedRef.current)) return // Wait for the microphone speaker heuristic to lock.
     const trimmed = String(text || '').trim()
     if (!trimmed) return
     if (meta?.isCandidate) {
@@ -1674,9 +1679,9 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     }
 
     const isSysAudio = Boolean(liveSourceIdRef.current && liveSourceIdRef.current !== 'microphone')
-    if (!isSysAudio) {
-      // Keep microphone transcription usable without letting role inference trigger
-      // capture revisions, refinements or paid answer generation.
+    const trustedMic = meta?.diarizationLocked && !meta?.degraded && meta?.speakerRole === 'interviewer'
+    if (!isSysAudio && !trustedMic) {
+      // Uncertain microphone speakers still need explicit confirmation.
       pendingManualQ.current = { text: trimmed, questionId: newQuestionId() }
       manualQRef.current = trimmed
       setManualQ(trimmed)
@@ -1816,13 +1821,21 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           pendingManualText: pendingManualQ.current?.text,
           lastHintText: lastHintText.current,
         })
-        if (candidateNow) generateHintRef.current?.(candidateNow, { force: true })
+        if (candidateNow) generateHintRef.current?.(candidateNow, { force: true, manual: true })
       }
     })
     return () => { try { offCmd?.() } catch {} }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [ending, setEnding] = useState(false)
+  const evaluationRef = useRef(null)
+  useEffect(() => () => evaluationRef.current?.controller.abort(), [])
+  function leaveEvaluation() {
+    const pending = evaluationRef.current
+    evaluationRef.current = null
+    pending?.controller.abort()
+    onEnd({ conversation: pending?.conversation || [], report: null })
+  }
 
   async function endSession() {
     try { metricsRef.current?.end({ tokens: usage.tokens, cost: usage.cost }) } catch {}
@@ -1867,9 +1880,12 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       return
     }
 
+    const pendingEvaluation = { controller: new AbortController(), conversation }
+    evaluationRef.current = pendingEvaluation
     setEnding(true)
     try {
       const res = await apiFetch('/api/evaluate', {
+        timeoutMs: 30000, signal: pendingEvaluation.controller.signal,
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           config: { domainLabel: profileRef.current?.targetRole || 'Live interview', roundLabel: 'Live interview' },
@@ -1878,14 +1894,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
           provider: providerRef.current
         })
       }).then(r => r.json())
-      onEnd({ conversation, report: res?.report || null })
+      if (evaluationRef.current === pendingEvaluation) onEnd({ conversation, report: res?.report || null })
     } catch {
-      onEnd({ conversation, report: null })
+      if (evaluationRef.current === pendingEvaluation) onEnd({ conversation, report: null })
     }
     setEnding(false)
   }
-  const badge = (bg, color) => ({ fontSize: 9.5, padding: '2px 7px', background: bg, color, borderRadius: 10, fontWeight: 600, whiteSpace: 'nowrap', letterSpacing: '0.01em' })
-  const btn = (bg, color) => ({ fontSize: 10.5, padding: '3px 9px', minHeight: 22, background: bg, color, border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: T.font })
+  const badge = (bg, color) => ({ fontSize: 19, padding: '2px 7px', background: bg, color, borderRadius: 10, fontWeight: 600, whiteSpace: 'nowrap', letterSpacing: '0.01em' })
+  const btn = (bg, color) => ({ fontSize: 21, padding: '3px 9px', minHeight: 22, background: bg, color, border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: T.font })
 
   // Clean status pill (left of header): one dot + one word + the timer. Nothing else.
   const isLinuxLive = typeof window !== 'undefined' && window.electronAPI?.platform === 'linux'
@@ -1894,14 +1910,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const titleExtra = (
     <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
       <span style={{ width: 7, height: 7, borderRadius: '50%', background: statusColor, boxShadow: `0 0 6px ${statusColor}`, animation: audio.active && !switchingAudio ? 'pulse 1.6s ease-in-out infinite' : 'none' }} />
-      <span style={{ fontSize: 11, fontWeight: 600, color: statusColor }}>{statusLabel}</span>
-      <span style={{ fontSize: 11, color: T.text3, fontFamily: T.fontMono, fontVariantNumeric: 'tabular-nums' }}>{fmtClock(clock)}</span>
+      <span style={{ fontSize: 22, fontWeight: 600, color: statusColor }}>{statusLabel}</span>
+      <span style={{ fontSize: 22, color: T.text3, fontFamily: T.fontMono, fontVariantNumeric: 'tabular-nums' }}>{fmtClock(clock)}</span>
       {/* Hide Sys↔Mic switch on Linux (System Audio unavailable). */}
       {!isLinuxLive && (
         <button type="button" onClick={switchAudioSource} disabled={switchingAudio}
           onMouseDown={e => e.stopPropagation()}
           title="Switch audio source mid-session (System Audio ↔ Microphone)"
-          style={{ fontSize: 10.5, padding: '3px 8px', minHeight: 22, background: 'rgba(255,255,255,0.06)', color: T.text2, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 5, cursor: switchingAudio ? 'default' : 'pointer', opacity: switchingAudio ? 0.6 : 1, fontFamily: T.font }}>
+          style={{ fontSize: 21, padding: '3px 8px', minHeight: 22, background: 'rgba(255,255,255,0.06)', color: T.text2, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 5, cursor: switchingAudio ? 'default' : 'pointer', opacity: switchingAudio ? 0.6 : 1, fontFamily: T.font }}>
           {liveSourceId === 'microphone' ? '🎤 Mic' : '🖥️ Sys'}
         </button>
       )}
@@ -1909,7 +1925,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         <button type="button" onClick={toggleTeleprompter}
           onMouseDown={e => e.stopPropagation()}
           title="Dock at top-center under webcam (Alt+T)"
-          style={{ fontSize: 10.5, padding: '3px 8px', minHeight: 22, background: teleprompter ? 'rgba(20,184,166,0.22)' : 'rgba(255,255,255,0.06)', color: teleprompter ? '#5eead4' : T.text2, border: `1px solid ${teleprompter ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.12)'}`, borderRadius: 5, cursor: 'pointer', fontFamily: T.font }}>
+          style={{ fontSize: 21, padding: '3px 8px', minHeight: 22, background: teleprompter ? 'rgba(20,184,166,0.22)' : 'rgba(255,255,255,0.06)', color: teleprompter ? '#5eead4' : T.text2, border: `1px solid ${teleprompter ? 'rgba(20,184,166,0.45)' : 'rgba(255,255,255,0.12)'}`, borderRadius: 5, cursor: 'pointer', fontFamily: T.font }}>
           ⌖ Cam
         </button>
       )}
@@ -1939,10 +1955,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         onMinimize={onMinimize} onResize={onResize} onDrag={onDrag}
         opacity={opacity} onOpacity={onOpacity}
         clickThrough={false} onClickThrough={onClickThrough}
-        onClose={() => {}} extra={<span style={{ fontSize: 11, fontWeight: 600, color: '#5eead4' }}>Ending…</span>}>
+        onClose={leaveEvaluation} extra={<span style={{ fontSize: 22, fontWeight: 600, color: '#5eead4' }}>Ending…</span>}>
         <div role="status" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24, textAlign: 'center' }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>Wrapping up…</div>
-          <div style={{ fontSize: 12, color: T.text2, lineHeight: 1.45 }}>Building your notes. This is not a fake score — wait a moment.</div>
+          <div style={{ fontSize: 28, fontWeight: 600, color: T.text1 }}>Wrapping up…</div>
+          <div style={{ fontSize: 24, color: T.text2, lineHeight: 1.45 }}>Building your notes. You can close this panel to continue without a report.</div>
         </div>
       </OverlayPanel>
     )
@@ -1956,13 +1972,13 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       onClose={endSession} extra={titleExtra}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
       {verifyTip && (
-        <div role="status" style={{ margin: '8px 12px 0', padding: '10px 12px', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.35)', borderRadius: 8, fontSize: 11.5, color: T.text2, lineHeight: 1.5 }}>
+        <div role="status" style={{ margin: '8px 12px 0', padding: '10px 12px', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.35)', borderRadius: 8, fontSize: 23, color: T.text2, lineHeight: 1.5 }}>
           <div style={{ fontWeight: 700, color: '#5eead4', marginBottom: 4 }}>Verify share preview</div>
           {stealth
             ? <>Stealth is ON and OS capture protection is enabled{inElectronLive ? ' (Electron)' : ''}. Open Zoom/Meet/Teams → Share and confirm MockMate is absent from the preview.</>
             : <>Stealth is OFF, so the main MockMate overlay may appear in screen capture. Turn on the shield in the toolbar before testing the share preview.</>}
           {pipSupported ? ' Tip: open the protected hints window (shield) and confirm that stays hidden too.' : ' (Browser PiP isn\'t available here — preview check is the real test.)'}
-          <button type="button" onClick={() => setVerifyTip(false)} style={{ display: 'block', marginTop: 8, background: 'none', border: 'none', color: '#5eead4', cursor: 'pointer', fontSize: 11, padding: 0 }}>Dismiss</button>
+          <button type="button" onClick={() => setVerifyTip(false)} style={{ display: 'block', marginTop: 8, background: 'none', border: 'none', color: '#5eead4', cursor: 'pointer', fontSize: 22, padding: 0 }}>Dismiss</button>
         </div>
       )}
       {/* ── Single scrollable chat feed ── */}
@@ -1978,23 +1994,23 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       }} style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column' }}>
         {showJumpLatest && (
           <button type="button" onClick={jumpToLatest}
-            style={{ position: 'sticky', top: 2, zIndex: 4, alignSelf: 'center', background: '#0f766e', color: '#fff', border: '1px solid rgba(94,234,212,0.55)', borderRadius: 999, padding: '5px 12px', marginBottom: 8, cursor: 'pointer', fontSize: 10.5, fontWeight: 700, boxShadow: '0 4px 14px rgba(0,0,0,0.35)' }}>
+            style={{ position: 'sticky', top: 2, zIndex: 4, alignSelf: 'center', background: '#0f766e', color: '#fff', border: '1px solid rgba(94,234,212,0.55)', borderRadius: 999, padding: '5px 12px', marginBottom: 8, cursor: 'pointer', fontSize: 21, fontWeight: 700, boxShadow: '0 4px 14px rgba(0,0,0,0.35)' }}>
             Jump to latest ↓
           </button>
         )}
         {error && (
-          <div role="alert" style={{ background: '#450a0a', border: '1px solid #ef4444', borderRadius: 5, padding: '5px 8px', fontSize: 10, color: '#fca5a5', marginBottom: 6, lineHeight: 1.4 }}>
+          <div role="alert" style={{ background: '#450a0a', border: '1px solid #ef4444', borderRadius: 5, padding: '5px 8px', fontSize: 20, color: '#fca5a5', marginBottom: 6, lineHeight: 1.4 }}>
             ⚠ {error}
             <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center' }}>
               {/transcription|deepgram|connection|captur|token grant|audio/i.test(error) && (
                 <>
                   <button onClick={retryTranscription}
-                    style={{ background: 'rgba(94,234,212,0.15)', border: '1px solid rgba(94,234,212,0.4)', color: '#5eead4', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>
+                    style={{ background: 'rgba(94,234,212,0.15)', border: '1px solid rgba(94,234,212,0.4)', color: '#5eead4', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 20, fontWeight: 700 }}>
                     Retry transcription
                   </button>
                   {!isLinuxLive && (
                     <button onClick={switchAudioSource}
-                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: T.text2, borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 10, fontWeight: 600 }}>
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: T.text2, borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 20, fontWeight: 600 }}>
                       Switch to {liveSourceId === 'microphone' ? 'System Audio' : 'Mic'}
                     </button>
                   )}
@@ -2010,12 +2026,12 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         {codingDetected && !screenAnalyzing && !screenAnalysis && (
           <button type="button" onClick={() => onCaptureScreen?.()}
             style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: 8, padding: '9px 11px', marginBottom: 8, cursor: 'pointer', textAlign: 'left', font: 'inherit', color: 'inherit' }}>
-            <span style={{ fontSize: 15 }}>💻</span>
+            <span style={{ fontSize: 30 }}>💻</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, color: '#4ade80', fontWeight: 700 }}>Coding question detected</div>
-              <div style={{ fontSize: 10, color: T.text3 }}>Tap to read the screen and get a solution · or press F7 / Ctrl+Shift+U</div>
+              <div style={{ fontSize: 24, color: '#4ade80', fontWeight: 700 }}>Coding question detected</div>
+              <div style={{ fontSize: 20, color: T.text3 }}>Tap to read the screen and get a solution · or press F7 / Ctrl+Shift+U</div>
             </div>
-            <span style={{ fontSize: 11, color: '#4ade80', fontWeight: 700, background: 'rgba(34,197,94,0.15)', padding: '4px 10px', borderRadius: 6 }}>Solve it →</span>
+            <span style={{ fontSize: 22, color: '#4ade80', fontWeight: 700, background: 'rgba(34,197,94,0.15)', padding: '4px 10px', borderRadius: 6 }}>Solve it →</span>
           </button>
         )}
 
@@ -2032,22 +2048,22 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         {/* PiP active banner */}
         {pipWindow && !pipWindow.closed && pipProtected && (
           <div style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, padding: '10px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 16 }}>🛡️</span>
+            <span style={{ fontSize: 32 }}>🛡️</span>
             <div>
-              <div style={{ fontSize: 12, color: '#4ade80', fontWeight: 700 }}>Protected window active</div>
-              <div style={{ fontSize: 10, color: T.text3 }}>Hints are in a content-protected window — verify in your share preview before a real interview</div>
+              <div style={{ fontSize: 24, color: '#4ade80', fontWeight: 700 }}>Protected window active</div>
+              <div style={{ fontSize: 20, color: T.text3 }}>Hints are in a content-protected window — verify in your share preview before a real interview</div>
             </div>
-            <button onClick={() => { pipWindow.close(); setPipWindow(null) }} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 12 }}>✕</button>
+            <button onClick={() => { pipWindow.close(); setPipWindow(null) }} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 24 }}>✕</button>
           </div>
         )}
 
         {/* Warning: screen protection could not be applied — user must know */}
         {pipWindow && !pipWindow.closed && !pipProtected && (
           <div role="alert" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 8, padding: '10px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 16 }}>⚠️</span>
+            <span style={{ fontSize: 32 }}>⚠️</span>
             <div>
-              <div style={{ fontSize: 12, color: '#f87171', fontWeight: 700 }}>Content protection unavailable — verify share preview</div>
-              <div style={{ fontSize: 10, color: T.text3 }}>This window may appear in screen share. Restart MockMate or keep hints in the main overlay and verify preview.</div>
+              <div style={{ fontSize: 24, color: '#f87171', fontWeight: 700 }}>Content protection unavailable — verify share preview</div>
+              <div style={{ fontSize: 20, color: T.text3 }}>This window may appear in screen share. Restart MockMate or keep hints in the main overlay and verify preview.</div>
             </div>
           </div>
         )}
@@ -2059,28 +2075,28 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, padding: '8px 12px', background: audio.active ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${audio.active ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`, borderRadius: 8 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: audio.active ? '#22c55e' : '#ef4444', boxShadow: audio.active ? '0 0 8px #22c55e' : 'none', flexShrink: 0, animation: audio.active ? 'pulse 1.5s ease-in-out infinite' : 'none' }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, color: audio.active ? '#4ade80' : audio.reconnecting ? '#f59e0b' : '#f87171', fontWeight: 700 }}>{audio.active ? 'Listening' : audio.reconnecting ? 'Reconnecting…' : 'Not capturing'}</div>
-                <div style={{ fontSize: 10, color: T.text3 }}>
+                <div style={{ fontSize: 24, color: audio.active ? '#4ade80' : audio.reconnecting ? '#f59e0b' : '#f87171', fontWeight: 700 }}>{audio.active ? 'Listening' : audio.reconnecting ? 'Reconnecting…' : 'Not capturing'}</div>
+                <div style={{ fontSize: 20, color: T.text3 }}>
                   {!audio.active && !audio.reconnecting
                     ? 'Transcription stopped — retry or check Deepgram in Settings → Voice'
                     : audio.reconnecting
                       ? 'Connection dropped — restoring automatically'
                       : liveSourceId === 'microphone'
-                        ? 'Microphone hears your voice too — tap Answer this for each question'
+                        ? 'Microphone: automatic answers after speaker lock; confirm while learning speakers'
                         : 'Listening for the interviewer…'}
                 </div>
               </div>
               {!audio.active && !audio.reconnecting && (
                 <button onClick={retryTranscription}
-                  style={{ background: 'rgba(94,234,212,0.15)', border: '1px solid rgba(94,234,212,0.4)', color: '#5eead4', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  style={{ background: 'rgba(94,234,212,0.15)', border: '1px solid rgba(94,234,212,0.4)', color: '#5eead4', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 22, fontWeight: 700, whiteSpace: 'nowrap' }}>
                   Retry
                 </button>
               )}
             </div>
 
-            <div style={{ fontSize: 12, color: T.text3, lineHeight: 1.6, marginBottom: 14 }}>
+            <div style={{ fontSize: 24, color: T.text3, lineHeight: 1.6, marginBottom: 14 }}>
               {liveSourceId === 'microphone'
-                ? 'Microphone questions require Answer this. Use System Audio for automatic interviewer questions.'
+                ? 'Microphone auto-answers the detected interviewer after speaker lock. Before lock, use Answer this. System Audio answers automatically.'
                 : 'Hints appear when the interviewer asks a question. Read and respond in your own words.'}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2094,8 +2110,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                 ['Type + Enter', 'Submit a question when mic/STT fails'],
               ].map(([key, desc]) => (
                 <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 10, color: '#2dd4bf', background: 'rgba(13,148,136,0.15)', padding: '2px 7px', borderRadius: 5, fontFamily: T.fontMono, fontWeight: 600, minWidth: 92, textAlign: 'center' }}>{key}</span>
-                  <span style={{ fontSize: 11, color: T.text3 }}>{desc}</span>
+                  <span style={{ fontSize: 20, color: '#2dd4bf', background: 'rgba(13,148,136,0.15)', padding: '2px 7px', borderRadius: 5, fontFamily: T.fontMono, fontWeight: 600, minWidth: 92, textAlign: 'center' }}>{key}</span>
+                  <span style={{ fontSize: 22, color: T.text3 }}>{desc}</span>
                 </div>
               ))}
             </div>
@@ -2104,23 +2120,23 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
         {/* STATE A — live transcript fragments (not yet committed) */}
         {!!liveCaptureText && !hintLoading && (
-          <div style={{ fontSize: 11, color: T.text3, marginBottom: 8, paddingLeft: 4, opacity: 0.88 }}>
+          <div style={{ fontSize: 22, color: T.text3, marginBottom: 8, paddingLeft: 4, opacity: 0.88 }}>
             {captureStatus === 'unclear' ? 'Question unclear — listening…' : 'Listening…'} {liveCaptureText}
           </div>
         )}
 
         {/* Mic waiting for lock — Answer this for the queued question */}
-        {manualQ && liveSourceId === 'microphone' && (
+        {manualQ && liveSourceId === 'microphone' && !(audio.diarizationLocked && !audio.degraded) && (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.35)', borderRadius: 8, padding: '9px 11px', marginBottom: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, color: '#fbbf24', fontWeight: 700, marginBottom: 3 }}>Microphone question — confirm before answering</div>
-              <div style={{ fontSize: 12, color: T.text1, lineHeight: 1.4 }}>❓ {manualQ}</div>
+              <div style={{ fontSize: 22, color: '#fbbf24', fontWeight: 700, marginBottom: 3 }}>Microphone question — confirm before answering</div>
+              <div style={{ fontSize: 24, color: T.text1, lineHeight: 1.4 }}>❓ {manualQ}</div>
             </div>
             <button type="button" onClick={() => {
               const pending = pendingManualQ.current
-              generateHint(manualQ, { force: true, questionId: pending?.questionId })
+              generateHint(manualQ, { force: true, manual: true, questionId: pending?.questionId })
             }}
-              style={{ background: 'rgba(94,234,212,0.15)', border: '1px solid rgba(94,234,212,0.4)', color: '#5eead4', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+              style={{ background: 'rgba(94,234,212,0.15)', border: '1px solid rgba(94,234,212,0.4)', color: '#5eead4', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 22, fontWeight: 700, whiteSpace: 'nowrap' }}>
               Answer this
             </button>
           </div>
@@ -2129,14 +2145,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         {/* STATE C — Thinking… question text stays in transcript (STATE B), not replaced */}
         {hintLoading && (
           <div style={{ marginBottom: 10, marginLeft: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 7, padding: '7px 10px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ fontSize: 11, color: '#5eead4', marginBottom: 4, fontWeight: 600 }}>{buyTimePhrase || thinkingLabel(profileRef.current?.language)}</div>
+            <div style={{ fontSize: 22, color: '#5eead4', marginBottom: 4, fontWeight: 600 }}>{buyTimePhrase || thinkingLabel(profileRef.current?.language)}</div>
             <div style={{ height: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 2, overflow: 'hidden' }}>
               <div style={{ height: '100%', width: '40%', background: `linear-gradient(90deg,${T.accentFrom},#3b82f6)`, animation: 'slide 1.2s ease-in-out infinite' }} />
             </div>
           </div>
         )}
 
-        {audio.interim && !liveCaptureText && <div style={{ fontSize: 11, color: T.text3, marginBottom: 8, paddingLeft: 4 }}>… {audio.interim}</div>}
+        {audio.interim && !liveCaptureText && <div style={{ fontSize: 22, color: T.text3, marginBottom: 8, paddingLeft: 4 }}>… {audio.interim}</div>}
 
         {[...transcript].filter(s => s.isQuestion).reverse().map((s, i) => {
           const isLatest = i === 0
@@ -2149,7 +2165,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             {/* Q bubble — never replaced by Thinking…; in Teleprompter mode, compress to a single-line context bar so spoken cues dominate */}
             <div style={{
               display: 'flex', alignItems: teleprompter ? 'center' : 'flex-start', gap: 6,
-              fontSize: teleprompter ? 11.5 : (isLatest ? 13 : 12),
+              fontSize: teleprompter ? 23 : (isLatest ? 26 : 24),
               color: teleprompter ? T.text2 : T.text1,
               background: 'rgba(255,255,255,0.055)',
               border: '1px solid rgba(255,255,255,0.06)',
@@ -2171,10 +2187,10 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
               </button>
             </div>
             {!s.answer && !s.hint && ['superseded', 'cancelled', 'failed'].includes(s.status) && (
-              <div style={{ marginLeft: 10, marginBottom: 5, fontSize: 10, color: s.status === 'failed' ? '#fbbf24' : T.text3 }}>
+              <div style={{ marginLeft: 10, marginBottom: 5, fontSize: 20, color: s.status === 'failed' ? '#fbbf24' : T.text3 }}>
                 {s.status === 'failed' ? '⚠ Answer failed — use Retry' : '↪ Replaced by the corrected/latest question'}
                 {s.status === 'failed' && (
-                  <button type="button" onClick={() => generateHint(s.text, { force: true, questionId: s.questionId })}
+                  <button type="button" onClick={() => generateHint(s.text, { force: true, manual: true, questionId: s.questionId })}
                     style={{ ...btn('rgba(251,191,36,0.15)', '#fbbf24'), marginLeft: 7 }}>Retry</button>
                 )}
               </div>
@@ -2206,7 +2222,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                   )}
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
                     {s.hint.incomplete && (
-                      <button type="button" onClick={() => generateHint(s.text, { force: true, questionId: s.questionId })} style={btn('rgba(251,191,36,0.15)', '#fbbf24')}>Retry</button>
+                      <button type="button" onClick={() => generateHint(s.text, { force: true, manual: true, questionId: s.questionId })} style={btn('rgba(251,191,36,0.15)', '#fbbf24')}>Retry</button>
                     )}
                     <button type="button" onMouseDown={e => e.stopPropagation()}
                       onClick={() => copyFeedText(`a:${s.questionId || s.ts}`, s.hint.fullAnswer || s.hint.sampleAnswer || s.answer || '')}
@@ -2215,7 +2231,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                     </button>
                   </div>
                 </div>
-                {s.hint.resumeStory && <div style={{ borderLeft: '2px solid #4ade80', paddingLeft: 7, fontSize: 10.5, color: '#86efac', marginBottom: 6 }}>{s.hint.resumeStory}</div>}
+                {s.hint.resumeStory && <div style={{ borderLeft: '2px solid #4ade80', paddingLeft: 7, fontSize: 21, color: '#86efac', marginBottom: 6 }}>{s.hint.resumeStory}</div>}
                 {(() => {
                   const streamingThis = streaming && s.text === lastHintText.current
                   const layers = glanceLayers(s.answer || '', s.hint || {})
@@ -2227,7 +2243,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                   const isResumeCard = s.hint.confidence === 'resume'
                   return (
                     <div role="log" aria-live="polite" aria-label="Suggested answer" style={{
-                      fontSize: teleprompter ? 15.5 : 13.5,
+                      fontSize: teleprompter ? 31 : 27,
                       color: isResumeCard ? '#dcfce7' : T.text1,
                       background: isResumeCard ? T.resumeAnswerBg : T.answerBg,
                       border: `1px solid ${isResumeCard ? T.resumeAnswerBorder : T.answerBorder}`,
@@ -2240,7 +2256,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                     }}>
                       {/* Glance OR full — never both (was repeating the same answer twice). */}
                       {expanded && hasMore ? (
-                        <div style={{ lineHeight: 1.68, fontSize: teleprompter ? 14.5 : 13 }}>{renderMd(layers.fullAnswer || s.answer || '')}</div>
+                        <div style={{ lineHeight: 1.68, fontSize: teleprompter ? 29 : 26 }}>{renderMd(layers.fullAnswer || s.answer || '')}</div>
                       ) : (
                         <>
                           <div style={{ fontWeight: 600, marginBottom: showBullets ? 8 : 0, lineHeight: teleprompter ? 1.48 : 1.45 }}>
@@ -2250,8 +2266,8 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                           {showBullets && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: teleprompter ? 6 : 4, marginBottom: 4 }}>
                               {layers.keyPoints.map((pt, bi) => (
-                                <div key={bi} style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: teleprompter ? 14 : 12.5, lineHeight: teleprompter ? 1.45 : 1.4, color: isResumeCard ? '#bbf7d0' : '#E2E8F0' }}>
-                                  <span style={{ color: T.accentFrom, flexShrink: 0, marginTop: 2, fontSize: 10 }}>▸</span>
+                                <div key={bi} style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: teleprompter ? 28 : 25, lineHeight: teleprompter ? 1.45 : 1.4, color: isResumeCard ? '#bbf7d0' : '#E2E8F0' }}>
+                                  <span style={{ color: T.accentFrom, flexShrink: 0, marginTop: 2, fontSize: 20 }}>▸</span>
                                   <span>{pt}</span>
                                 </div>
                               ))}
@@ -2265,11 +2281,11 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                           if (n.has(s.text)) n.delete(s.text); else n.add(s.text)
                           return n
                         })}
-                          style={{ background: 'none', border: 'none', color: '#5eead4', fontSize: 11, cursor: 'pointer', padding: '6px 0 0', fontWeight: 600 }}>
+                          style={{ background: 'none', border: 'none', color: '#5eead4', fontSize: 22, cursor: 'pointer', padding: '6px 0 0', fontWeight: 600 }}>
                           {expanded ? 'Show glance' : 'Expand full answer'}
                         </button>
                       )}
-                      {watch && <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)' }}>⚠ {watch}</div>}
+                      {watch && <div style={{ fontSize: 20, color: '#f59e0b', marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)' }}>⚠ {watch}</div>}
                     </div>
                   )
                 })()}
@@ -2288,7 +2304,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             if (!q || hintInFlight.current) return
             setTypedQ('')
             setManualQ('')
-            generateHint(q, { force: true })
+            generateHint(q, { force: true, manual: true })
           }}
           style={{ flexShrink: 0, padding: '8px 10px 10px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 6 }}
           data-mm-hit="1"
@@ -2301,15 +2317,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
             disabled={!!hintLoading || ending}
             aria-label="Type interview question"
             style={{
-              flex: 1, height: 34, padding: '0 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)',
-              background: 'rgba(0,0,0,0.35)', color: T.text1, fontSize: 12, fontFamily: T.font,
+              flex: 1, minWidth: 0, height: 48, padding: '0 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)',
+              background: 'rgba(0,0,0,0.35)', color: T.text1, fontSize: 24, fontFamily: T.font,
             }}
           />
           <button
             type="submit"
             disabled={!typedQ.trim() || !!hintLoading || ending}
             style={{
-              height: 34, padding: '0 12px', borderRadius: 8, border: 'none', fontSize: 11, fontWeight: 700,
+              height: 48, padding: '0 12px', borderRadius: 8, border: 'none', fontSize: 22, fontWeight: 700,
               background: typedQ.trim() && !hintLoading ? 'rgba(13,148,136,0.45)' : 'rgba(255,255,255,0.06)',
               color: typedQ.trim() && !hintLoading ? '#5eead4' : T.text3, cursor: typedQ.trim() && !hintLoading ? 'pointer' : 'default',
             }}
@@ -2318,14 +2334,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
 
         {/* Secondary controls — collapsed so glance path stays opener + bullets */}
         <details style={{ flexShrink: 0, padding: '0 10px 8px', borderTop: 'none' }}>
-          <summary style={{ listStyle: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700, letterSpacing: '0.07em', color: T.text3, userSelect: 'none', paddingTop: 4 }}>
+          <summary style={{ listStyle: 'none', cursor: 'pointer', fontSize: 18, fontWeight: 700, letterSpacing: '0.07em', color: T.text3, userSelect: 'none', paddingTop: 4 }}>
             OPTIONS {coachMode ? '· COACH' : ''}{answerStyle !== 'concise' ? ` · ${answerStyle.toUpperCase()}` : ''}{extraContext ? ' · CTX' : ''}{usage.tokens > 0 ? ` · ${(usage.tokens / 1000).toFixed(1)}k` : ''}
           </summary>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <button type="button" onClick={() => setAnswerStyle(s => s === 'concise' ? 'balanced' : s === 'balanced' ? 'detailed' : 'concise')}
                 title="Answer length — Concise (fastest glance) · Balanced · Detailed"
-                style={{ display: 'flex', alignItems: 'center', gap: 5, background: answerStyle === 'balanced' ? 'rgba(255,255,255,0.04)' : 'rgba(20,184,166,0.15)', border: `1px solid ${answerStyle === 'balanced' ? 'rgba(255,255,255,0.1)' : 'rgba(20,184,166,0.4)'}`, color: answerStyle === 'balanced' ? T.text2 : '#5eead4', fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', borderRadius: 100, padding: '3px 9px', cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 5, background: answerStyle === 'balanced' ? 'rgba(255,255,255,0.04)' : 'rgba(20,184,166,0.15)', border: `1px solid ${answerStyle === 'balanced' ? 'rgba(255,255,255,0.1)' : 'rgba(20,184,166,0.4)'}`, color: answerStyle === 'balanced' ? T.text2 : '#5eead4', fontSize: 18, fontWeight: 700, letterSpacing: '0.05em', borderRadius: 100, padding: '3px 9px', cursor: 'pointer' }}>
                 {answerStyle === 'concise' ? '⚡ CONCISE' : answerStyle === 'detailed' ? '📖 DETAILED' : '⚖ BALANCED'}
               </button>
               <button type="button" onClick={() => {
@@ -2336,19 +2352,19 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
                 if (q) generateHint(q, { force: true, questionId: activeQuestionIdRef.current })
               }}
                 title="Coach = structure; Answer = full spoken answer"
-                style={{ display: 'flex', alignItems: 'center', gap: 5, background: coachMode ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${coachMode ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.1)'}`, color: coachMode ? '#4ade80' : T.text2, fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', borderRadius: 100, padding: '3px 9px', cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 5, background: coachMode ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${coachMode ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.1)'}`, color: coachMode ? '#4ade80' : T.text2, fontSize: 18, fontWeight: 700, letterSpacing: '0.05em', borderRadius: 100, padding: '3px 9px', cursor: 'pointer' }}>
                 {coachMode ? '🎓 COACH' : '💬 ANSWER'}
               </button>
               {usage.tokens > 0 && (
                 <span title={`This session: ${usage.tokens.toLocaleString()} tokens · est. $${usage.cost.toFixed(3)}`}
-                  style={{ fontSize: 10, color: T.text3, fontFamily: T.fontMono, fontVariantNumeric: 'tabular-nums', marginLeft: 'auto' }}>
+                  style={{ fontSize: 20, color: T.text3, fontFamily: T.fontMono, fontVariantNumeric: 'tabular-nums', marginLeft: 'auto' }}>
                   {(usage.tokens / 1000).toFixed(1)}k tok · ~${usage.cost.toFixed(2)}
                 </span>
               )}
             </div>
             <textarea aria-label="Extra context for AI interview hints" value={extraContext} onChange={e => setExtraContext(e.target.value)}
               placeholder="Extra context — e.g. 'Focus on Python' · 'System design round'"
-              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(20,184,166,0.25)', borderRadius: 5, color: T.text1, fontSize: 10, padding: '5px 7px', resize: 'vertical', minHeight: 44, fontFamily: T.font, lineHeight: 1.5, boxSizing: 'border-box' }} rows={2} />
+              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(20,184,166,0.25)', borderRadius: 5, color: T.text1, fontSize: 20, padding: '5px 7px', resize: 'vertical', minHeight: 44, fontFamily: T.font, lineHeight: 1.5, boxSizing: 'border-box' }} rows={2} />
           </div>
         </details>
       </div>
@@ -2402,11 +2418,16 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
     const conversation = sessionNotes?.conversation || []
     const report = sessionNotes?.report || { summary: 'Session ended — your conversation is below.', overallScore: null, dimensions: [], strengths: [], improvements: [] }
     return (
-      <div style={{ minHeight: '100vh', background: T.bg, color: T.text1, fontFamily: T.font, overflowY: 'auto' }}>
-        <div style={{ maxWidth: 900, margin: '0 auto', padding: '22px 26px', boxSizing: 'border-box' }}>
-          <SoloFeedback report={report} transcript={conversation} onAgain={onHome} onAgainLabel="← Back to dashboard" />
+      <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized}
+        onMinimize={onMinimize} onResize={onResize} onDrag={onDrag}
+        onClose={() => window.electronAPI ? window.close() : onHome()}
+        extra={<button type="button" onClick={onHome} style={{ fontSize: 18, padding: '8px 12px', color: T.text1, background: T.surface1, border: `1px solid ${T.borderStrong}`, borderRadius: 8 }}>← Back to dashboard</button>}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: T.bg }}>
+          <div style={{ maxWidth: 900, margin: '0 auto', padding: '22px 26px', boxSizing: 'border-box' }}>
+            <SoloFeedback report={report} transcript={conversation} onAgain={onHome} onAgainLabel="← Back to dashboard" />
+          </div>
         </div>
-      </div>
+      </OverlayPanel>
     )
   }
 

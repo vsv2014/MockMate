@@ -52,7 +52,7 @@ let suppressBlurUntil = 0
 function suppressBlurHide(ms = 1200) { suppressBlurUntil = Date.now() + ms }
 let lastWindowMode = null
 // Remember Live HUD size so set-window-mode('overlay') never resets a user resize to 300×360.
-let lastOverlaySize = { w: 300, h: 360 }
+let lastOverlaySize = { w: 600, h: 720 }
 // PR #45 review fix: Alt+T/R/Up/Down are registered ONLY while the window is in
 // overlay/teleprompter mode (syncOverlayShortcuts). A permanently registered
 // globalShortcut makes the OS reserve the accelerator for MockMate even when the
@@ -429,7 +429,7 @@ function createMainWindow() {
     backgroundColor: isLinux ? '#08090e' : '#00000000',
     // Windows transparency must not acquire a native resize frame. Custom handles
     // still resize through the bounded window-resize IPC handler.
-    resizable: process.platform !== 'win32', skipTaskbar: !isLinux,
+    resizable: true, thickFrame: false, skipTaskbar: !isLinux,
     icon: iconPath(),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   })
@@ -1174,7 +1174,10 @@ ipcMain.on('window-resize', (_, { w, h, dx = 0, dy = 0 } = {}) => {
 })
 // Switch between the full windowed dashboard ('app'), compact overlay ('overlay'),
 // top-center camera anchor ('teleprompter'), and minimized badge ('pill').
-ipcMain.on('set-window-mode', (_, mode) => {
+ipcMain.on('set-window-mode', (_, mode, requestedSize) => {
+  if (mode === 'overlay' && Number.isFinite(requestedSize?.w) && Number.isFinite(requestedSize?.h)) {
+    lastOverlaySize = { w: requestedSize.w, h: requestedSize.h }
+  }
   if (!mainWindow || mainWindow.isDestroyed() || (mode === lastWindowMode && mode === 'app')) return
   suppressBlurHide(900)
   lastWindowMode = mode
@@ -1194,8 +1197,8 @@ ipcMain.on('set-window-mode', (_, mode) => {
     } else {
       prepareWindowMode(mainWindow, 'overlay')
       // Restore the user's last HUD size on the current display — never hard-reset to primary monitor.
-      const w = Math.min(Math.max(240, lastOverlaySize.w || 300), area.width - 40)
-      const h = Math.min(Math.max(180, lastOverlaySize.h || 360), area.height - 40)
+      const w = Math.min(Math.max(240, lastOverlaySize.w || 600), area.width - 40)
+      const h = Math.min(Math.max(180, lastOverlaySize.h || 720), area.height - 40)
       const [cx, cy] = mainWindow.getPosition()
       const x = Math.min(Math.max(area.x, cx), Math.max(area.x, area.x + area.width - w))
       const y = Math.min(Math.max(area.y, cy), Math.max(area.y, area.y + area.height - h))
