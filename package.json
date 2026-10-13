@@ -159,16 +159,9 @@
   "dependencies": {
     "@livekit/components-react": "^2.9.24",
     "@livekit/components-styles": "^1.1.6",
-    "@radix-ui/react-label": "^2.1.17",
-    "@radix-ui/react-scroll-area": "^1.4.0",
-    "@radix-ui/react-select": "^2.4.1",
-    "@radix-ui/react-separator": "^1.2.0",
-    "@radix-ui/react-slot": "^1.5.0",
     "@sentry/electron": "^7.20.0",
     "@sentry/node": "^10.76.0",
     "bcryptjs": "3.0.3",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
     "cors": "^2.8.5",
     "dotenv": "18.0.5",
     "electron-updater": "6.8.10",
@@ -179,14 +172,12 @@
     "jspdf": "^4.2.1",
     "livekit-client": "^2.22.3",
     "livekit-server-sdk": "^2.19.1",
-    "lucide-react": "^1.55.0",
     "mongoose": "^8.24.4",
     "openai": "^6.49.0",
     "pdfjs-dist": "^4.10.38",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "stripe": "^17.5.0",
-    "tailwind-merge": "^3.7.0"
+    "stripe": "^17.5.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

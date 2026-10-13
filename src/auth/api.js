@@ -127,11 +127,6 @@ export async function signup({ name, email, password }) {
 export async function resendVerification(email) {
   return request('/auth/resend-verification', { method: 'POST', body: { email } })
 }
-export async function completeEmailVerification(token) {
-  const data = await request('/auth/verify-email', { method: 'POST', body: { token } })
-  if (data?.token) await setToken(data.token)
-  return rememberUser(data?.user)
-}
 export async function login({ email, password }) {
   const data = await request('/auth/login', { method: 'POST', body: { email, password } })
   if (!data?.token) throw new ApiError('Sign-in did not return a session. Please try again.', 0)

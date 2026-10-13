@@ -14,7 +14,7 @@ import {
   SCREEN_CONTEXT_VERSION,
 } from '../../shared/screenContext.js'
 import { searchWeb, needsWebSearch } from './search.js'
-import { getPlaybook, PLAYBOOK_BY_KEY, PLAYBOOK_REGISTRY_VERSION } from './playbooks.js'
+import { getPlaybook, PLAYBOOK_REGISTRY_VERSION } from './playbooks.js'
 import { compileCustomInstructions } from '../../shared/customInstructions.js'
 
 // Web-search grounding must NEVER stall an answer — above all a live streamed hint, where
@@ -278,8 +278,7 @@ export { glanceLayers } from '../../shared/hintLayers.js'
 // ── Interview playbooks (modular registry) ───────────────────────────────────
 // Classification lives in shared/interviewClassify.js; guides in playbooks.js.
 // pickPlaybook remains the Live entry — first-match regex removed in favor of
-// intent-ordered classifyTurn (specific > broad). PLAYBOOK_BY_KEY kept for tests.
-export { PLAYBOOK_BY_KEY as PLAYBOOKS, PLAYBOOK_REGISTRY_VERSION }
+// intent-ordered classifyTurn (specific > broad).
 
 /**
  * Resolve playbook for a question. Optional history/profile enable follow-ups + role routing.
