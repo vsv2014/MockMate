@@ -394,7 +394,7 @@ function createSetupWindow() {
   // the key window as a MODAL CHILD of it — one taskbar entry, not two apps.
   const asChild = !!(mainWindow && !mainWindow.isDestroyed())
   setupWindow = new BrowserWindow({
-    width: 520, height: 700, resizable: false, center: true,
+    width: 760, height: 700, minWidth: 320, minHeight: 240, resizable: true, center: true,
     title: 'MockMate — Setup',
     icon: iconPath(),
     parent: asChild ? mainWindow : undefined,
@@ -985,13 +985,13 @@ ipcMain.on('get-userdata-path', e => { e.returnValue = app.getPath('userData') }
 // setRoomActive(on) + sendHint(payload). No-op on Linux (no capture protection there).
 const COPILOT_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#0f0f1a;color:#e2e8f0;-webkit-app-region:drag;user-select:none}
-  #wrap{padding:14px;height:100vh;box-sizing:border-box;overflow:auto}
-  .hd{font-weight:700;font-size:14px;color:#a78bfa}
-  .sub{font-size:10px;color:#475569;margin-bottom:10px}
-  .q{color:#94a3b8;font-size:11px;margin:0 0 10px;border-left:2px solid #334155;padding-left:8px;font-style:italic}
-  ul{margin:0 0 10px;padding-left:18px} li{margin-bottom:3px;font-size:13px}
-  .badge{background:#14532d;color:#4ade80;border-radius:4px;padding:2px 7px;font-size:11px;display:inline-block;margin-bottom:8px}
-  .warn{color:#f59e0b;font-size:12px} .muted{color:#64748b;margin:0}
+  #wrap{padding:14px;height:100vh;box-sizing:border-box;overflow:auto;-webkit-app-region:no-drag}
+  .hd{font-weight:700;font-size:28px;color:#a78bfa}
+  .sub{font-size:20px;color:#475569;margin-bottom:10px}
+  .q{color:#94a3b8;font-size:22px;margin:0 0 10px;border-left:2px solid #334155;padding-left:8px;font-style:italic}
+  ul{margin:0 0 10px;padding-left:18px} li{margin-bottom:3px;font-size:26px}
+  .badge{background:#14532d;color:#4ade80;border-radius:4px;padding:2px 7px;font-size:22px;display:inline-block;margin-bottom:8px}
+  .warn{color:#f59e0b;font-size:24px} .muted{color:#64748b;margin:0}
 </style></head><body><div id="wrap">
   <div class="hd">🤖 AI Co-pilot</div><div class="sub">invisible to screen capture</div>
   <div id="content"><p class="muted">Waiting for the first question…</p></div>
@@ -1210,7 +1210,16 @@ ipcMain.on('set-window-mode', (_, mode, requestedSize) => {
   if (mode === 'overlay' && Number.isFinite(requestedSize?.w) && Number.isFinite(requestedSize?.h)) {
     lastOverlaySize = expandedOverlaySize(requestedSize, activeDisplayWorkArea(mainWindow))
   }
-  if (!mainWindow || mainWindow.isDestroyed() || (mode === lastWindowMode && mode === 'app')) return
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  // Reassert expanded constraints without resetting user bounds on page navigation.
+  if (mode === 'app') {
+    clickThroughForcedOff = true
+    mainWindow.setIgnoreMouseEvents(false)
+  }
+  if (mode === lastWindowMode && mode === 'app') {
+    prepareWindowMode(mainWindow, 'app')
+    return
+  }
   suppressBlurHide(900)
   lastWindowMode = mode
   syncOverlayShortcuts()

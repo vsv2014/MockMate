@@ -1,3 +1,4 @@
+import { readableTextSize } from '../lib/typography.js'
 import React from 'react'
 import { T } from './tokens'
 
@@ -5,18 +6,18 @@ import { T } from './tokens'
 // scoped CSS in AuthShell (#mm-auth) handle hover/focus/placeholder states.
 
 export const labelStyle = {
-  display: 'block', fontSize: 11, fontWeight: 500, color: T.text2,
+  display: 'block', fontSize: readableTextSize(11), fontWeight: 500, color: T.text2,
   marginBottom: 6, letterSpacing: '0.2px',
 }
 const inputStyle = {
   width: '100%', height: 42, padding: '0 12px', boxSizing: 'border-box',
   background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCtrl,
-  color: T.text1, fontFamily: T.font, fontSize: 14, fontWeight: 400,
+  color: T.text1, fontFamily: T.font, fontSize: readableTextSize(14), fontWeight: 400,
   transition: 'border-color 0.15s',
 }
 export const linkStyle = {
   background: 'transparent', border: 'none', padding: 0,
-  color: T.accentFrom, fontFamily: T.font, fontSize: 13, cursor: 'pointer',
+  color: T.accentFrom, fontFamily: T.font, fontSize: readableTextSize(13), cursor: 'pointer',
 }
 
 // ── Field: label + input (+ optional password reveal) + inline error ──────────
@@ -37,7 +38,7 @@ export function Field({
           className="mm-input"
           style={{
             ...inputStyle,
-            paddingRight: reveal ? 42 : 12,
+            paddingRight: reveal ? 60 : 12,
             borderColor: invalid ? 'rgba(248,113,113,0.5)' : T.border,
           }}
         />
@@ -53,7 +54,7 @@ export function Field({
           ><EyeIcon off={!revealed} /></button>
         )}
       </div>
-      {invalid && <div id={`${id}-error`} style={{ marginTop: 6, fontSize: 11, fontWeight: 400, color: T.danger }}>{error}</div>}
+      {invalid && <div id={`${id}-error`} style={{ marginTop: 6, fontSize: readableTextSize(11), fontWeight: 400, color: T.danger }}>{error}</div>}
     </div>
   )
 }
@@ -63,7 +64,7 @@ export function FormError({ children }) {
   if (!children) return null
   return (
     <div role="alert" style={{
-      marginTop: 14, padding: '9px 11px', borderRadius: T.rCtrl, fontSize: 12, fontWeight: 400,
+      marginTop: 14, padding: '9px 11px', borderRadius: T.rCtrl, fontSize: readableTextSize(12), fontWeight: 400,
       lineHeight: 1.4, color: T.danger,
       background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)',
     }}>{children}</div>
@@ -78,7 +79,7 @@ export function PrimaryButton({ children, busy, busyLabel = 'Working…', disabl
       type={type} onClick={onClick} disabled={off} className="mm-primary"
       style={{
         width: '100%', height: 44, border: 'none', borderRadius: T.rCtrl,
-        background: T.accent, color: '#fff', fontFamily: T.font, fontSize: 14, fontWeight: 600,
+        background: T.accent, color: '#fff', fontFamily: T.font, fontSize: readableTextSize(14), fontWeight: 600,
         letterSpacing: '0.3px', cursor: off ? 'not-allowed' : 'pointer', opacity: off ? 0.5 : 1,
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         transition: 'transform 0.15s, box-shadow 0.15s, opacity 0.15s', ...style,
@@ -107,7 +108,7 @@ export function ProgressSteps({ step, total, label }) {
           }} />
         ))}
       </div>
-      <div style={{ fontSize: 11, fontWeight: 400, color: T.text3 }}>
+      <div style={{ fontSize: readableTextSize(11), fontWeight: 400, color: T.text3 }}>
         {label || `Step ${step} of ${total}`}
       </div>
     </div>

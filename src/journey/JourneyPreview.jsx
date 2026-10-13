@@ -1,3 +1,4 @@
+import { readableTextSize } from '../lib/typography.js'
 import React, { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AppShell } from '../Dashboard'
@@ -102,18 +103,18 @@ function JourneyPreview() {
   )
   else content = (
     <section style={{ maxWidth: 720, margin: '30px auto', padding: 24, border: `1px solid ${T.border}`, borderRadius: T.rCard, background: T.surface1 }}>
-      <div style={{ color: T.accentFrom, fontSize: 10, fontWeight: 750, letterSpacing: '0.12em', textTransform: 'uppercase' }}>DESIGN PREVIEW</div>
-      <h1 style={{ color: T.text1, font: `600 24px ${T.fontDisplay}`, margin: '9px 0' }}>{view === 'practice-preview' ? 'Solo Practice handoff' : view === 'live-handoff-preview' ? 'Live setup handoff' : view === 'history-preview' ? 'Session history' : 'Settings'}</h1>
-      <p style={{ color: T.text2, fontSize: 13, lineHeight: 1.6, margin: '0 0 16px' }}>
+      <div style={{ color: T.accentFrom, fontSize: readableTextSize(10), fontWeight: 750, letterSpacing: '0.12em', textTransform: 'uppercase' }}>DESIGN PREVIEW</div>
+      <h1 style={{ color: T.text1, font: `600 ${readableTextSize(24)}px ${T.fontDisplay}`, margin: '9px 0' }}>{view === 'practice-preview' ? 'Solo Practice handoff' : view === 'live-handoff-preview' ? 'Live setup handoff' : view === 'history-preview' ? 'Session history' : 'Settings'}</h1>
+      <p style={{ color: T.text2, fontSize: readableTextSize(13), lineHeight: 1.6, margin: '0 0 16px' }}>
         This preview is focused on Home, Interview Kits, and Ready Room. The actual practice, settings, and Live setup continue through MockMate’s existing app flows.
       </p>
-      <button type="button" onClick={() => setView(view === 'live-handoff-preview' ? 'ready-room' : 'home')} style={{ minHeight: 38, padding: '0 14px', border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, color: T.text1, background: T.surface2, cursor: 'pointer', font: `600 12.5px ${T.font}` }}>{view === 'live-handoff-preview' ? '← Back to Ready Room' : '← Back to Home'}</button>
+      <button type="button" onClick={() => setView(view === 'live-handoff-preview' ? 'ready-room' : 'home')} style={{ minHeight: 38, padding: '0 14px', border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, color: T.text1, background: T.surface2, cursor: 'pointer', font: `600 ${readableTextSize(12.5)}px ${T.font}` }}>{view === 'live-handoff-preview' ? '← Back to Ready Room' : '← Back to Home'}</button>
     </section>
   )
 
   return (
     <AppShell active={view} onNav={nav} auth={auth} meetingActive={false} stealth onStealth={() => {}} onMinimize={() => {}} onClose={() => {}}>
-      <div role="note" style={{ maxWidth: 1080, margin: '0 auto 16px', padding: '8px 11px', borderRadius: 9, border: '1px solid rgba(245,158,11,0.24)', background: 'rgba(245,158,11,0.07)', color: '#fcd34d', fontSize: 10.5, lineHeight: 1.45 }}>
+      <div role="note" style={{ maxWidth: 1080, margin: '0 auto 16px', padding: '8px 11px', borderRadius: 9, border: '1px solid rgba(245,158,11,0.24)', background: 'rgba(245,158,11,0.07)', color: '#fcd34d', fontSize: readableTextSize(10.5), lineHeight: 1.45 }}>
         INTERACTIVE DESIGN PREVIEW · Sample Kit/session data only · no data is saved · AI, microphone, and OS-capture tests are disabled.
       </div>
       {content}

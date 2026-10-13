@@ -1,3 +1,5 @@
+import WindowResizeHandles from './WindowResizeHandles'
+import { readableTextSize } from './lib/typography.js'
 import DiagramBlock from './components/DiagramBlock'
 import { showFullCodeDuringStream } from '../shared/answerQuality'
 // Debounce indexing prefetch without changing its independent retrieval deadline.
@@ -235,7 +237,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   const selectedExtraCount = documentMeta.filter(d => d.type !== 'resume' && d.type !== 'jd' && d.selected !== false).length
   const contextSourceCount = Number(!!profile.resume?.trim()) + Number(!!profile.jobDescription?.trim()) + selectedExtraCount
 
-  const inp = { width: '100%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text1, padding: '10px 12px', borderRadius: T.rCtrl, fontSize: 13, boxSizing: 'border-box', fontFamily: T.font }
+  const inp = { width: '100%', background: T.surface2, border: `1px solid ${T.border}`, color: T.text1, padding: '10px 12px', borderRadius: T.rCtrl, fontSize: readableTextSize(13), boxSizing: 'border-box', fontFamily: T.font }
   const preflightOk = (ok) => ok ? '#4ade80' : '#f87171'
 
   useEffect(() => {
@@ -291,28 +293,28 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 4 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 22, fontWeight: 600, color: T.text1, fontFamily: T.fontDisplay, letterSpacing: '-0.01em' }}>Live Interview</div>
-            <div style={{ fontSize: 13, color: T.text2, marginTop: 3 }}>Verify share preview, then start. The overlay stays glanceable over your call.</div>
+            <div style={{ fontSize: readableTextSize(13), color: T.text2, marginTop: 3 }}>Verify share preview, then start. The overlay stays glanceable over your call.</div>
           </div>
-          <button onClick={onHome} style={{ height: 38, padding: '0 16px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 13, cursor: 'pointer', fontFamily: T.font }}>← Back</button>
+          <button onClick={onHome} style={{ height: 38, padding: '0 16px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: readableTextSize(13), cursor: 'pointer', fontFamily: T.font }}>← Back</button>
         </div>
 
         {recoveredLive && (
           <div role="status" style={{ background: 'rgba(20,184,166,0.10)', border: '1px solid rgba(20,184,166,0.40)', borderRadius: T.rCard, padding: '12px 14px', color: T.text1 }}>
-            <div style={{ fontSize: 13, fontWeight: 650 }}>Recover notes from an interrupted Live session</div>
-            <div style={{ fontSize: 12, color: T.text2, marginTop: 5, lineHeight: 1.5 }}>
+            <div style={{ fontSize: readableTextSize(13), fontWeight: 650 }}>Recover notes from an interrupted Live session</div>
+            <div style={{ fontSize: readableTextSize(12), color: T.text2, marginTop: 5, lineHeight: 1.5 }}>
               {recoveredLive.transcript.length} saved question{recoveredLive.transcript.length === 1 ? '' : 's'} from your previous session. Notes are stored locally for up to 12 hours. Recovery opens a read-only timeline; it does not restart audio, reconnect the interview, or create a score.
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 9 }}>
-              <button type="button" onClick={onRecoverLive} style={{ background: T.accentFrom, color: T.bg, border: 0, borderRadius: T.rCtrl, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}>View recovered notes</button>
-              <button type="button" onClick={onDiscardLive} style={{ background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}>Discard</button>
+              <button type="button" onClick={onRecoverLive} style={{ background: T.accentFrom, color: T.bg, border: 0, borderRadius: T.rCtrl, padding: '8px 12px', fontSize: readableTextSize(12), cursor: 'pointer' }}>View recovered notes</button>
+              <button type="button" onClick={onDiscardLive} style={{ background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, padding: '8px 12px', fontSize: readableTextSize(12), cursor: 'pointer' }}>Discard</button>
             </div>
           </div>
         )}
 
         {/* Preflight — clear pass/fail before a real interview */}
         <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '12px 14px' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 8 }}>Preflight</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12.5 }}>
+          <div style={{ fontSize: readableTextSize(12), fontWeight: 600, color: T.text2, marginBottom: 8 }}>Preflight</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: readableTextSize(12.5) }}>
             <div style={{ color: preflightOk(dgAvailable) }}>{dgAvailable ? '✓' : '✗'} Deepgram (required for Live)</div>
             <div style={{ color: preflightOk(!noLLM) }}>{noLLM ? '✗' : '✓'} AI ready {managed ? '(Managed)' : '(your keys)'}</div>
             <div style={{ color: audioPreflightColor }}>
@@ -335,18 +337,18 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
         </div>
 
         {!inElectron && !isDevLocal && (
-          <div role="alert" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fca5a5' }}>
+          <div role="alert" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: readableTextSize(12), color: '#fca5a5' }}>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>Live Start blocked</div>
             <div>Live Interview needs the desktop app (Electron) for system audio + content protection. Open MockMate from the installed app, not a browser tab.</div>
           </div>
         )}
 
         {inElectron && !isLinux && (
-          <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: T.text2 }}>
+          <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: readableTextSize(12), color: T.text2 }}>
             <div style={{ fontWeight: 600, marginBottom: 6, color: '#4ade80' }}>Test Stealth Mode</div>
             <div style={{ marginBottom: 8, lineHeight: 1.45 }}>Step 1 checks whether MockMate can apply the operating-system protection flag. It cannot verify Zoom, Meet, or Teams by itself.</div>
             <button type="button" onClick={testCaptureProtection} disabled={protectionTest.status === 'testing'}
-              style={{ marginBottom: 8, background: protectionTest.status === 'passed' ? 'rgba(34,197,94,0.18)' : 'rgba(94,234,212,0.14)', border: `1px solid ${protectionTest.status === 'failed' ? '#ef4444' : 'rgba(94,234,212,0.4)'}`, color: protectionTest.status === 'failed' ? '#fca5a5' : '#5eead4', borderRadius: 5, padding: '5px 10px', cursor: protectionTest.status === 'testing' ? 'default' : 'pointer', fontSize: 11, fontWeight: 700 }}>
+              style={{ marginBottom: 8, background: protectionTest.status === 'passed' ? 'rgba(34,197,94,0.18)' : 'rgba(94,234,212,0.14)', border: `1px solid ${protectionTest.status === 'failed' ? '#ef4444' : 'rgba(94,234,212,0.4)'}`, color: protectionTest.status === 'failed' ? '#fca5a5' : '#5eead4', borderRadius: 5, padding: '5px 10px', cursor: protectionTest.status === 'testing' ? 'default' : 'pointer', fontSize: readableTextSize(11), fontWeight: 700 }}>
               {protectionTest.status === 'testing' ? 'Testing…' : protectionTest.status === 'passed' ? '✓ OS protection applied' : 'Run protection test'}
             </button>
             {protectionTest.message && <div role="status" style={{ color: protectionTest.status === 'failed' ? '#fca5a5' : protectionTest.status === 'passed' ? '#86efac' : T.text2, marginBottom: 8 }}>{protectionTest.message}</div>}
@@ -356,7 +358,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
                 {meetingContext.active ? `✓ Detected ${meetingContext.label || 'meeting app'}` : '⚠ No supported meeting app detected'}
               </span>
               <select aria-label="Meeting share preview type" value={shareMode} onChange={e => { setShareMode(e.target.value); setShareVerified(false) }}
-                style={{ marginLeft: 'auto', background: T.surface2, color: T.text1, border: `1px solid ${T.border}`, borderRadius: 5, padding: '4px 7px', fontSize: 11 }}>
+                style={{ marginLeft: 'auto', background: T.surface2, color: T.text1, border: `1px solid ${T.border}`, borderRadius: 5, padding: '4px 7px', fontSize: readableTextSize(11) }}>
                 <option value="entire-screen">Entire screen</option>
                 <option value="window">Window</option>
                 <option value="browser-tab">Browser tab</option>
@@ -371,7 +373,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
         )}
 
         {isLinux && (
-          <div role="alert" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fbbf24' }}>
+          <div role="alert" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: readableTextSize(12), color: '#fbbf24' }}>
             <div style={{ fontWeight: 600, marginBottom: 6 }}>Linux: overlay will appear in screen share</div>
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', color: T.text2 }}>
               <input type="checkbox" checked={linuxAck} onChange={e => setLinuxAck(e.target.checked)} style={{ marginTop: 2 }} />
@@ -381,28 +383,28 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
         )}
 
         {!dgAvailable && (
-          <div role="alert" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fca5a5' }}>
+          <div role="alert" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: readableTextSize(12), color: '#fca5a5' }}>
             ⚠ Live needs a <strong>Deepgram key</strong> to transcribe the interviewer. Add one in <strong>Settings → Voice</strong>, then come back.
           </div>
         )}
         {dgAvailable && noLLM && (
-          <div role="alert" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fca5a5' }}>
+          <div role="alert" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: readableTextSize(12), color: '#fca5a5' }}>
             ⚠ No AI provider connected — hints would fail on every question. Add an AI key in <strong>Settings</strong> (or switch to MockMate AI when hosted Managed is available), then come back.
           </div>
         )}
 
         {/* Audio — needed before Start; keep above the fold */}
         <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '12px 14px' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 8 }}>Audio source</div>
+          <div style={{ fontSize: readableTextSize(12), fontWeight: 600, color: T.text2, marginBottom: 8 }}>Audio source</div>
           {(() => {
             const systemId = audioSources.find(s => /screen|entire|display/i.test(s.name))?.id || 'microphone'
             const onMic = sourceId === 'microphone'
             return (
-              <div style={{ fontSize: 12.5, color: T.text2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: readableTextSize(12.5), color: T.text2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span>{onMic ? '🎤 Microphone' : '🖥️ System Audio'} <span style={{ color: T.text3 }}>· {onMic ? 'includes your voice; questions need confirmation' : 'hears the interviewer (recommended on Win/macOS)'}</span></span>
                 {!isLinux && (
                   <button type="button" onClick={() => setSourceId(onMic ? systemId : 'microphone')}
-                    style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.accentFrom, cursor: 'pointer', fontSize: 12, textDecoration: 'underline', padding: 0, fontFamily: T.font }}>
+                    style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.accentFrom, cursor: 'pointer', fontSize: readableTextSize(12), textDecoration: 'underline', padding: 0, fontFamily: T.font }}>
                     {onMic ? 'Use System Audio' : 'Use microphone instead'}
                   </button>
                 )}
@@ -424,7 +426,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           defaultOpen
           highlight
         >
-          <div style={{ fontSize: 11.5, color: T.text2, lineHeight: 1.5 }}>
+          <div style={{ fontSize: readableTextSize(11.5), color: T.text2, lineHeight: 1.5 }}>
             Pick a role playbook below or write your own rules (`VOICE:`, `TRUTH:`, `CODING/DSA:`, `SYSTEM DESIGN:`, `SQL/DATABASE:`). MockMate always retains your core rules and dynamically routes matching sections for each question.
           </div>
           <CustomPromptStudio
@@ -434,7 +436,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
         </Section>
 
         <Section n={3} title="Interview Documents" subtitle={`${contextSourceCount} source${contextSourceCount === 1 ? '' : 's'} ready · choose exactly what AI may use`} defaultOpen={false}>
-        <div style={{ fontSize: 11, color: T.text3, lineHeight: 1.45, marginBottom: 4 }}>
+        <div style={{ fontSize: readableTextSize(11), color: T.text3, lineHeight: 1.45, marginBottom: 4 }}>
           {kitScoped
             ? 'Resume & JD below feed identity answers. Supporting files belong to this Kit; check only the material you want used for this opportunity.'
             : 'Resume & JD below feed identity answers. Knowledge banks / notes go in the library — check what to use. They are not duplicated in the list.'}
@@ -443,7 +445,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           <textarea id="live-profile-resume" rows={3} style={{ ...inp, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste resume text…" onChange={e => patch({ resume: e.target.value })} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
             <button type="button" onClick={() => resumePdfRef.current?.click()} aria-label="Upload resume PDF"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px', fontFamily: T.font }}>
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: readableTextSize(10), color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px', fontFamily: T.font }}>
               📄 Upload PDF
             </button>
             <input ref={resumePdfRef} type="file" accept="application/pdf,.pdf" aria-label="Choose a resume PDF" style={{ display: 'none' }}
@@ -457,14 +459,14 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
                   else setResumePdfMsg('⚠ No text found (scanned image?) — paste it instead')
                 } catch { setResumePdfMsg('⚠ Could not read that PDF — please paste the text') }
               }} />
-            {resumePdfMsg && <span role={resumePdfMsg.startsWith('⚠') ? 'alert' : 'status'} aria-live={resumePdfMsg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: 10, color: resumePdfMsg.startsWith('⚠') ? '#fca5a5' : '#86efac' }}>{resumePdfMsg}</span>}
+            {resumePdfMsg && <span role={resumePdfMsg.startsWith('⚠') ? 'alert' : 'status'} aria-live={resumePdfMsg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: readableTextSize(10), color: resumePdfMsg.startsWith('⚠') ? '#fca5a5' : '#86efac' }}>{resumePdfMsg}</span>}
           </div>
         </Field>
         <Field label="Job description (optional — sharpens answers to this role)" htmlFor="live-profile-job-description">
           <textarea id="live-profile-job-description" rows={2} style={{ ...inp, resize: 'vertical' }} value={profile.jobDescription || ''} placeholder="Paste job description…" onChange={e => patch({ jobDescription: e.target.value })} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
             <button type="button" onClick={() => jdPdfRef.current?.click()} aria-label="Upload job description PDF"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px', fontFamily: T.font }}>
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: readableTextSize(10), color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px', fontFamily: T.font }}>
               📄 Upload PDF
             </button>
             <input ref={jdPdfRef} type="file" accept="application/pdf,.pdf" aria-label="Choose a job description PDF" style={{ display: 'none' }}
@@ -478,7 +480,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
                   else setJdPdfMsg('⚠ No text found (scanned image?) — paste it instead')
                 } catch { setJdPdfMsg('⚠ Could not read that PDF — please paste the text') }
               }} />
-            {jdPdfMsg && <span role={jdPdfMsg.startsWith('⚠') ? 'alert' : 'status'} aria-live={jdPdfMsg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: 10, color: jdPdfMsg.startsWith('⚠') ? '#fca5a5' : '#86efac' }}>{jdPdfMsg}</span>}
+            {jdPdfMsg && <span role={jdPdfMsg.startsWith('⚠') ? 'alert' : 'status'} aria-live={jdPdfMsg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: readableTextSize(10), color: jdPdfMsg.startsWith('⚠') ? '#fca5a5' : '#86efac' }}>{jdPdfMsg}</span>}
           </div>
         </Field>
         <Field label={kitScoped ? 'Kit-only knowledge & notes (checked = used for retrieval)' : 'Knowledge & notes (checked = used for retrieval)'}>
@@ -492,7 +494,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
         </Section>
 
         <Section n={4} title="More options" subtitle="Language and coding" defaultOpen={false}>
-        <div role="status" style={{ fontSize: 11.5, color: T.text2, lineHeight: 1.5 }}>
+        <div role="status" style={{ fontSize: readableTextSize(11.5), color: T.text2, lineHeight: 1.5 }}>
           <strong style={{ color: T.text1 }}>AI routing: Automatic.</strong> MockMate uses your connected AI providers, favors quick responses for straightforward questions, and allocates more reasoning to coding or system design. If a model is unavailable, it tries a compatible fallback before showing an answer.
         </div>
 
@@ -523,11 +525,11 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           }
           onStart({ profile, sourceId, provider: '', interviewConfig, kitId: initialKit?.id, kitName: initialKit?.name })
         }}
-          style={{ position: 'sticky', bottom: 0, zIndex: 3, height: 52, background: canStart ? T.accent : T.surface2, color: canStart ? '#fff' : T.text3, border: `1px solid ${canStart ? 'rgba(103,232,249,0.45)' : T.border}`, borderRadius: T.rCtrl, boxShadow: '0 -10px 24px rgba(6,12,22,0.78)', fontSize: 15, fontWeight: 700, cursor: canStart ? 'pointer' : 'default', fontFamily: T.font }}>
+          style={{ position: 'sticky', bottom: 0, zIndex: 3, height: 52, background: canStart ? T.accent : T.surface2, color: canStart ? '#fff' : T.text3, border: `1px solid ${canStart ? 'rgba(103,232,249,0.45)' : T.border}`, borderRadius: T.rCtrl, boxShadow: '0 -10px 24px rgba(6,12,22,0.78)', fontSize: readableTextSize(15), fontWeight: 700, cursor: canStart ? 'pointer' : 'default', fontFamily: T.font }}>
           Start Live →
         </button>
         {!canStart && (
-          <div style={{ fontSize: 11.5, color: T.text3, marginTop: -4 }}>
+          <div style={{ fontSize: readableTextSize(11.5), color: T.text3, marginTop: -4 }}>
             {!inElectron ? 'Open the desktop app to start.'
               : !dgAvailable ? 'Add Voice (Deepgram) in Settings first.'
               : noLLM ? 'Add an AI provider key in Settings first.'
@@ -545,8 +547,8 @@ function Field({ label, children, htmlFor }) {
   return (
     <div>
       {htmlFor
-        ? <label htmlFor={htmlFor} style={{ display: 'block', fontSize: 11.5, color: T.text2, marginBottom: 6, fontFamily: T.font }}>{label}</label>
-        : <div style={{ fontSize: 11.5, color: T.text2, marginBottom: 6, fontFamily: T.font }}>{label}</div>}
+        ? <label htmlFor={htmlFor} style={{ display: 'block', fontSize: readableTextSize(11.5), color: T.text2, marginBottom: 6, fontFamily: T.font }}>{label}</label>
+        : <div style={{ fontSize: readableTextSize(11.5), color: T.text2, marginBottom: 6, fontFamily: T.font }}>{label}</div>}
       {children}
     </div>
   )
@@ -565,12 +567,12 @@ function Section({ n, title, subtitle, defaultOpen = true, highlight = false, ch
     }}>
       <button onClick={() => setOpen(o => !o)}
         style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '13px 16px', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: T.font, textAlign: 'left' }}>
-        <span style={{ width: 24, height: 24, borderRadius: '50%', background: highlight ? 'rgba(34,211,238,0.16)' : T.surface2, border: `1px solid ${highlight ? 'rgba(34,211,238,0.55)' : T.border}`, color: highlight ? '#67e8f9' : T.text2, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{n}</span>
+        <span style={{ width: 24, height: 24, borderRadius: '50%', background: highlight ? 'rgba(34,211,238,0.16)' : T.surface2, border: `1px solid ${highlight ? 'rgba(34,211,238,0.55)' : T.border}`, color: highlight ? '#67e8f9' : T.text2, display: 'grid', placeItems: 'center', fontSize: readableTextSize(12), fontWeight: 700, flexShrink: 0 }}>{n}</span>
         <span style={{ flex: 1 }}>
-          <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: highlight ? '#ecfeff' : T.text1 }}>{title}</span>
-          {subtitle && <span style={{ display: 'block', fontSize: 11.5, color: highlight ? '#67e8f9' : T.text3, marginTop: 1 }}>{subtitle}</span>}
+          <span style={{ display: 'block', fontSize: readableTextSize(14), fontWeight: 600, color: highlight ? '#ecfeff' : T.text1 }}>{title}</span>
+          {subtitle && <span style={{ display: 'block', fontSize: readableTextSize(11.5), color: highlight ? '#67e8f9' : T.text3, marginTop: 1 }}>{subtitle}</span>}
         </span>
-        <span style={{ color: T.text3, fontSize: 12 }}>{open ? '▾' : '▸'}</span>
+        <span style={{ color: T.text3, fontSize: readableTextSize(12) }}>{open ? '▾' : '▸'}</span>
       </button>
       {open && <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>}
     </div>
@@ -1940,7 +1942,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
     }
     setEnding(false)
   }
-  const badge = (bg, color) => ({ fontSize: 19, padding: '2px 7px', background: bg, color, borderRadius: 10, fontWeight: 600, whiteSpace: 'nowrap', letterSpacing: '0.01em' })
+  const badge = (bg, color) => ({ fontSize: readableTextSize(19), padding: '2px 7px', background: bg, color, borderRadius: 10, fontWeight: 600, whiteSpace: 'nowrap', letterSpacing: '0.01em' })
   const btn = (bg, color) => ({ fontSize: 21, padding: '3px 9px', minHeight: 22, background: bg, color, border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: T.font })
 
   // Clean status pill (left of header): one dot + one word + the timer. Nothing else.
@@ -2376,14 +2378,14 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
 
         {/* Secondary controls — collapsed so glance path stays opener + bullets */}
         <details style={{ flexShrink: 0, padding: '0 10px 8px', borderTop: 'none' }}>
-          <summary style={{ listStyle: 'none', cursor: 'pointer', fontSize: 18, fontWeight: 700, letterSpacing: '0.07em', color: T.text3, userSelect: 'none', paddingTop: 4 }}>
+          <summary style={{ listStyle: 'none', cursor: 'pointer', fontSize: readableTextSize(18), fontWeight: 700, letterSpacing: '0.07em', color: T.text3, userSelect: 'none', paddingTop: 4 }}>
             OPTIONS {coachMode ? '· COACH' : ''}{answerStyle !== 'concise' ? ` · ${answerStyle.toUpperCase()}` : ''}{extraContext ? ' · CTX' : ''}{usage.tokens > 0 ? ` · ${(usage.tokens / 1000).toFixed(1)}k` : ''}
           </summary>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <button type="button" onClick={() => setAnswerStyle(s => s === 'concise' ? 'balanced' : s === 'balanced' ? 'detailed' : 'concise')}
                 title="Answer length — Concise (fastest glance) · Balanced · Detailed"
-                style={{ display: 'flex', alignItems: 'center', gap: 5, background: answerStyle === 'balanced' ? 'rgba(255,255,255,0.04)' : 'rgba(20,184,166,0.15)', border: `1px solid ${answerStyle === 'balanced' ? 'rgba(255,255,255,0.1)' : 'rgba(20,184,166,0.4)'}`, color: answerStyle === 'balanced' ? T.text2 : '#5eead4', fontSize: 18, fontWeight: 700, letterSpacing: '0.05em', borderRadius: 100, padding: '3px 9px', cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 5, background: answerStyle === 'balanced' ? 'rgba(255,255,255,0.04)' : 'rgba(20,184,166,0.15)', border: `1px solid ${answerStyle === 'balanced' ? 'rgba(255,255,255,0.1)' : 'rgba(20,184,166,0.4)'}`, color: answerStyle === 'balanced' ? T.text2 : '#5eead4', fontSize: readableTextSize(18), fontWeight: 700, letterSpacing: '0.05em', borderRadius: 100, padding: '3px 9px', cursor: 'pointer' }}>
                 {answerStyle === 'concise' ? '⚡ CONCISE' : answerStyle === 'detailed' ? '📖 DETAILED' : '⚖ BALANCED'}
               </button>
               <button type="button" onClick={() => {
@@ -2394,7 +2396,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
                 if (q) generateHint(q, { force: true, questionId: activeQuestionIdRef.current })
               }}
                 title="Coach = structure; Answer = full spoken answer"
-                style={{ display: 'flex', alignItems: 'center', gap: 5, background: coachMode ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${coachMode ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.1)'}`, color: coachMode ? '#4ade80' : T.text2, fontSize: 18, fontWeight: 700, letterSpacing: '0.05em', borderRadius: 100, padding: '3px 9px', cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 5, background: coachMode ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${coachMode ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.1)'}`, color: coachMode ? '#4ade80' : T.text2, fontSize: readableTextSize(18), fontWeight: 700, letterSpacing: '0.05em', borderRadius: 100, padding: '3px 9px', cursor: 'pointer' }}>
                 {coachMode ? '🎓 COACH' : '💬 ANSWER'}
               </button>
               {usage.tokens > 0 && (
@@ -2428,10 +2430,11 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
   if (phase === 'notes' && sessionNotes?.recovered) {
     const recovered = sessionNotes.checkpoint
     return (
-      <div style={{ minHeight: '100vh', background: T.bg, color: T.text1, fontFamily: T.font, overflowY: 'auto' }}>
+      <div style={{ height: '100dvh', background: T.bg, color: T.text1, fontFamily: T.font, overflowY: 'auto' }}>
+        <WindowResizeHandles />
         <div style={{ maxWidth: 900, margin: '0 auto', padding: '22px 26px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <h2 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Recovered Live notes</h2>
-          <p style={{ fontSize: 13, color: T.text2, lineHeight: 1.6, margin: 0 }}>
+          <p style={{ fontSize: readableTextSize(13), color: T.text2, lineHeight: 1.6, margin: 0 }}>
             These are questions and AI suggestions from an interrupted session, not your spoken answers or a scored interview.
             Audio and pending requests are not resumed. The original notes remain on this device for up to 12 hours unless discarded.
           </p>
@@ -2444,11 +2447,11 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
           {recovered.transcript.map((item, i) => {
             const suggested = item.answer || item.hint?.fullAnswer || ''
             return <div key={item.questionId || i} style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '14px 16px' }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: T.accentFrom }}>QUESTION {i + 1}</div>
-              <div style={{ fontSize: 13, marginTop: 6, whiteSpace: 'pre-wrap' }}>{item.text}</div>
+              <div style={{ fontSize: readableTextSize(11), fontWeight: 600, color: T.accentFrom }}>QUESTION {i + 1}</div>
+              <div style={{ fontSize: readableTextSize(13), marginTop: 6, whiteSpace: 'pre-wrap' }}>{item.text}</div>
               {suggested && <>
-                <div style={{ fontSize: 11, fontWeight: 600, color: T.text3, marginTop: 12 }}>AI SUGGESTION {item.hint?.incomplete ? '— INCOMPLETE' : ''}</div>
-                <div style={{ fontSize: 12.5, color: T.text2, marginTop: 5, whiteSpace: 'pre-wrap' }}>{suggested}</div>
+                <div style={{ fontSize: readableTextSize(11), fontWeight: 600, color: T.text3, marginTop: 12 }}>AI SUGGESTION {item.hint?.incomplete ? '— INCOMPLETE' : ''}</div>
+                <div style={{ fontSize: readableTextSize(12.5), color: T.text2, marginTop: 5, whiteSpace: 'pre-wrap' }}>{suggested}</div>
               </>}
             </div>
           })}
@@ -2464,9 +2467,10 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
       <OverlayPanel panelSize={panelSize} stealth={stealth} minimized={minimized}
         onMinimize={onMinimize} onResize={onResize} onDrag={onDrag}
         onClose={() => window.electronAPI ? window.close() : onHome()}
-        extra={<button type="button" onClick={onHome} style={{ fontSize: 18, padding: '8px 12px', color: T.text1, background: T.surface1, border: `1px solid ${T.borderStrong}`, borderRadius: 8 }}>← Back to dashboard</button>}>
+        extra={<button type="button" onClick={onHome} style={{ fontSize: readableTextSize(18), padding: '8px 12px', color: T.text1, background: T.surface1, border: `1px solid ${T.borderStrong}`, borderRadius: 8 }}>← Back to dashboard</button>}>
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: T.bg }}>
-          <div style={{ maxWidth: 900, margin: '0 auto', padding: '22px 26px', boxSizing: 'border-box' }}>
+          <WindowResizeHandles />
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '22px 26px', boxSizing: 'border-box' }}>
             {report._storageWarning && sessionNotes?.runId && <button type="button" onClick={async () => {
               const result = await preserveLiveSession({ runId: sessionNotes.runId, conversation, report,
                 evaluationStatus: sessionNotes.evaluationStatus, final: true,

@@ -1,3 +1,4 @@
+import { readableTextSize } from './lib/typography.js'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { loadProfile, saveProfile, applyTailorToResume, applyTailorWithBackup, restoreResumeBackup } from './lib/profile'
@@ -210,7 +211,7 @@ export default function Career({
       {!embedded && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
           <button type="button" onClick={onHome} style={S.btnGhost}>← Back</button>
-          <div style={{ fontWeight: 600, fontSize: 15, color: T.text1 }}>Resume Studio</div>
+          <div style={{ fontWeight: 600, fontSize: readableTextSize(15), color: T.text1 }}>Resume Studio</div>
         </div>
       )}
 
@@ -235,8 +236,8 @@ export default function Career({
       )}
 
       <div style={S.panel}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: T.text1, marginBottom: 4 }}>Your materials</div>
-        <div style={{ fontSize: 12, color: T.text3, marginBottom: 12, lineHeight: 1.45 }}>
+        <div style={{ fontSize: readableTextSize(14), fontWeight: 600, color: T.text1, marginBottom: 4 }}>Your materials</div>
+        <div style={{ fontSize: readableTextSize(12), color: T.text3, marginBottom: 12, lineHeight: 1.45 }}>
           <strong style={{ color: T.text2 }}>Resume and target role</strong> are shared with Solo, Live, and Job Matching.
           The analysis JD below is saved on this device for Resume Studio only — it does not change your Live/Solo JD until you click “Use for Solo/Live”.
         </div>
@@ -333,7 +334,7 @@ export default function Career({
         </div>
       )}
       {!hasResume && !noProviders && (
-        <div role="status" style={{ fontSize: 12, color: T.text3, marginTop: -4, marginBottom: 12 }}>
+        <div role="status" style={{ fontSize: readableTextSize(12), color: T.text3, marginTop: -4, marginBottom: 12 }}>
           Add a resume above to enable this action.
         </div>
       )}
@@ -350,7 +351,7 @@ export default function Career({
           {applyMsg}
           {profile.resumeBackup?.text != null && (
             <button type="button" onClick={undoTailor}
-              style={{ display: 'block', marginTop: 8, padding: 0, background: 'none', border: 'none', color: T.accentFrom, cursor: 'pointer', fontFamily: T.font, fontSize: 12.5, textDecoration: 'underline' }}>
+              style={{ display: 'block', marginTop: 8, padding: 0, background: 'none', border: 'none', color: T.accentFrom, cursor: 'pointer', fontFamily: T.font, fontSize: readableTextSize(12.5), textDecoration: 'underline' }}>
               Undo last resume update
             </button>
           )}
@@ -399,14 +400,14 @@ function SkillsMatrixResult({ report, hasJd, targetRole, onInjectPlaybook, onSwi
       <div style={{ ...S.card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ textAlign: 'center', flexShrink: 0 }}>
-            <div style={{ fontSize: 32, fontWeight: 700, color: scoreColor(pct), lineHeight: 1 }}>{pct}</div>
-            <div style={{ fontSize: 11, color: T.text3, marginTop: 4 }}>Skill readiness /100</div>
+            <div style={{ fontSize: readableTextSize(32), fontWeight: 700, color: scoreColor(pct), lineHeight: 1 }}>{pct}</div>
+            <div style={{ fontSize: readableTextSize(11), color: T.text3, marginTop: 4 }}>Skill readiness /100</div>
           </div>
           <div>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: T.text1 }}>
+            <div style={{ fontSize: readableTextSize(13.5), fontWeight: 600, color: T.text1 }}>
               {report.matched.length} matched · {report.missing.length} gap{report.missing.length === 1 ? '' : 's'} · {report.bonus.length} differentiator{report.bonus.length === 1 ? '' : 's'}
             </div>
-            <div style={{ fontSize: 12, color: T.text3, marginTop: 3, lineHeight: 1.45 }}>
+            <div style={{ fontSize: readableTextSize(12), color: T.text3, marginTop: 3, lineHeight: 1.45 }}>
               {hasJd
                 ? 'Compared your resume directly against the pasted Job Description across 5 technical & leadership dimensions.'
                 : `Compared your resume against baseline expectations for ${targetRole || 'your target role'}. Paste a specific JD above for exact role matching.`}
@@ -419,7 +420,7 @@ function SkillsMatrixResult({ report, hasJd, targetRole, onInjectPlaybook, onSwi
               type="button"
               onClick={onInjectPlaybook}
               style={{
-                fontSize: 12, fontWeight: 600, padding: '7px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
+                fontSize: readableTextSize(12), fontWeight: 600, padding: '7px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
                 background: 'rgba(20,184,166,0.15)', border: '1px solid rgba(20,184,166,0.4)', color: T.accentFrom,
               }}>
               ⚡ Inject Gap Strategy into Playbook
@@ -429,7 +430,7 @@ function SkillsMatrixResult({ report, hasJd, targetRole, onInjectPlaybook, onSwi
             type="button"
             onClick={() => onSwitchTab('tailor')}
             style={{
-              fontSize: 12, fontWeight: 600, padding: '7px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
+              fontSize: readableTextSize(12), fontWeight: 600, padding: '7px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
               background: T.surface2, border: `1px solid ${T.border}`, color: T.text1,
             }}>
             ✎ Tailor Missing Skills
@@ -444,9 +445,9 @@ function SkillsMatrixResult({ report, hasJd, targetRole, onInjectPlaybook, onSwi
           if (activeSkills === 0) return null
           return (
             <div key={cat.id} style={{ marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid ${T.border}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5, marginBottom: 5 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: readableTextSize(12.5), marginBottom: 5 }}>
                 <span style={{ fontWeight: 600, color: T.text1 }}>{cat.label}</span>
-                <span style={{ fontSize: 11.5, color: cat.totalTarget > 0 ? scoreColor(cat.coveragePct) : T.text3 }}>
+                <span style={{ fontSize: readableTextSize(11.5), color: cat.totalTarget > 0 ? scoreColor(cat.coveragePct) : T.text3 }}>
                   {cat.totalTarget > 0 ? `${cat.matched.length}/${cat.totalTarget} target skills (${cat.coveragePct}%)` : `${cat.bonus.length} resume strength${cat.bonus.length === 1 ? '' : 's'}`}
                 </span>
               </div>
@@ -480,27 +481,27 @@ function SkillsMatrixResult({ report, hasJd, targetRole, onInjectPlaybook, onSwi
       {report.gapBridges.length > 0 && (
         <div style={S.card}>
           <div style={S.sectionLbl}>How to Bridge Missing Skills in Interviews ({report.gapBridges.length})</div>
-          <div style={{ fontSize: 12, color: T.text3, marginBottom: 10, lineHeight: 1.45 }}>
+          <div style={{ fontSize: readableTextSize(12), color: T.text3, marginBottom: 10, lineHeight: 1.45 }}>
             Never fabricate direct ownership of a missing tool. Use these honest pivot strategies or drill them in Solo Practice:
           </div>
           {report.gapBridges.map((g, i) => (
             <div key={i} style={{ padding: '10px 12px', borderRadius: T.rCtrl, background: 'rgba(255,255,255,0.02)', border: `1px solid ${T.border}`, marginBottom: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#fcd34d' }}>⚠ {g.skill} <span style={{ fontSize: 11, fontWeight: 400, color: T.text3 }}>· {g.category}</span></span>
+                <span style={{ fontSize: readableTextSize(13), fontWeight: 600, color: '#fcd34d' }}>⚠ {g.skill} <span style={{ fontSize: readableTextSize(11), fontWeight: 400, color: T.text3 }}>· {g.category}</span></span>
                 {onDrillSkill && (
                   <button
                     type="button"
                     onClick={() => onDrillSkill(g)}
                     style={{
-                      fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
+                      fontSize: readableTextSize(11), fontWeight: 600, padding: '4px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
                       background: 'rgba(20,184,166,0.14)', border: '1px solid rgba(20,184,166,0.35)', color: T.accentFrom,
                     }}>
                     Drill in Solo →
                   </button>
                 )}
               </div>
-              <div style={{ fontSize: 12.5, color: T.text2, lineHeight: 1.5 }}>{g.bridgeTip}</div>
-              <div style={{ fontSize: 11.5, color: T.text3, marginTop: 4, fontStyle: 'italic' }}> Likely question: “{g.practiceQuestion}”</div>
+              <div style={{ fontSize: readableTextSize(12.5), color: T.text2, lineHeight: 1.5 }}>{g.bridgeTip}</div>
+              <div style={{ fontSize: readableTextSize(11.5), color: T.text3, marginTop: 4, fontStyle: 'italic' }}> Likely question: “{g.practiceQuestion}”</div>
             </div>
           ))}
         </div>
@@ -515,10 +516,10 @@ function AtsResult({ r, onSwitchTab }) {
     <div style={{ marginTop: 4 }} aria-live="polite">
       <div style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{ textAlign: 'center', flexShrink: 0 }}>
-          <div style={{ fontSize: 32, fontWeight: 700, color: scoreColor(pct), lineHeight: 1 }}>{pct}</div>
-          <div style={{ fontSize: 11, color: T.text3, marginTop: 4 }}>AI match estimate /100</div>
+          <div style={{ fontSize: readableTextSize(32), fontWeight: 700, color: scoreColor(pct), lineHeight: 1 }}>{pct}</div>
+          <div style={{ fontSize: readableTextSize(11), color: T.text3, marginTop: 4 }}>AI match estimate /100</div>
         </div>
-        <div style={{ fontSize: 13, color: T.text2, lineHeight: 1.55 }}>{r.verdict}</div>
+        <div style={{ fontSize: readableTextSize(13), color: T.text2, lineHeight: 1.55 }}>{r.verdict}</div>
       </div>
       <div role="note" style={{ ...S.note, marginTop: 8 }}>
         Advisory estimate from the resume and pasted job description—not a score from an employer's ATS.
@@ -530,14 +531,14 @@ function AtsResult({ r, onSwitchTab }) {
             const ds = Math.max(0, Math.min(5, Number(d.score) || 0))
             return (
               <div key={i} style={{ marginBottom: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: readableTextSize(12.5) }}>
                   <span style={{ fontWeight: 600, color: T.text1 }}>{d.name}</span>
                   <span style={{ color: scoreColor((ds / 5) * 100) }}>{ds} / 5</span>
                 </div>
                 <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, margin: '5px 0' }}>
                   <div style={{ height: '100%', width: `${(ds / 5) * 100}%`, background: scoreColor((ds / 5) * 100), borderRadius: 2 }} />
                 </div>
-                {d.comment && <div style={{ fontSize: 12, color: T.text3 }}>{d.comment}</div>}
+                {d.comment && <div style={{ fontSize: readableTextSize(12), color: T.text3 }}>{d.comment}</div>}
               </div>
             )
           })}
@@ -553,7 +554,7 @@ function AtsResult({ r, onSwitchTab }) {
 function TailorResult({ r, onApply, onDownloadPdf, onDownloadTxt, onDownloadLatex, latexBusy, pdfBusy, canLatex }) {
   const full = [r.summary && `SUMMARY:\n${r.summary}`, r.rewrittenBullets?.length && 'REWRITTEN BULLETS:\n' + r.rewrittenBullets.map(b => `• ${b.after}`).join('\n'), r.keywordsToAdd?.length && `KEYWORDS TO ADD: ${r.keywordsToAdd.join(', ')}`].filter(Boolean).join('\n\n')
   const dlBtn = {
-    fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
+    fontSize: readableTextSize(12), fontWeight: 600, padding: '6px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
     background: T.surface2, border: `1px solid ${T.border}`, color: T.text1,
   }
   return (
@@ -562,7 +563,7 @@ function TailorResult({ r, onApply, onDownloadPdf, onDownloadTxt, onDownloadLate
         <CopyBtn text={full} />
         <button type="button" onClick={onApply}
           style={{
-            fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
+            fontSize: readableTextSize(12), fontWeight: 600, padding: '6px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
             background: 'rgba(20,184,166,0.15)', border: '1px solid rgba(20,184,166,0.4)', color: T.accentFrom,
           }}>
           Apply summary + bullets to my resume
@@ -585,7 +586,7 @@ function TailorResult({ r, onApply, onDownloadPdf, onDownloadTxt, onDownloadLate
           {latexBusy ? 'Building LaTeX…' : 'Download .tex'}
         </button>
       </div>
-      <div style={{ fontSize: 11.5, color: T.text3, marginBottom: 10, lineHeight: 1.45 }}>
+      <div style={{ fontSize: readableTextSize(11.5), color: T.text3, marginBottom: 10, lineHeight: 1.45 }}>
         <strong style={{ color: T.text2 }}>Download PDF</strong> is the normal path — your resume text with tailor edits, single-column, usually 1–2 pages.
         .tex is optional (Overleaf). No invented experience.
       </div>
@@ -595,8 +596,8 @@ function TailorResult({ r, onApply, onDownloadPdf, onDownloadTxt, onDownloadLate
           <div style={S.sectionLbl}>Stronger bullets</div>
           {r.rewrittenBullets.map((b, i) => (
             <div key={i} style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 12, color: T.text3, textDecoration: 'line-through' }}>{b.before}</div>
-              <div style={{ fontSize: 13, color: '#dcfce7', marginTop: 3 }}>→ {b.after}</div>
+              <div style={{ fontSize: readableTextSize(12), color: T.text3, textDecoration: 'line-through' }}>{b.before}</div>
+              <div style={{ fontSize: readableTextSize(13), color: '#dcfce7', marginTop: 3 }}>→ {b.after}</div>
             </div>
           ))}
         </div>
@@ -627,7 +628,7 @@ function ReferralResult({ r, company, role }) {
           <li style={li}>Wait 4 business days before sending the single follow-up nudge above.</li>
         </ul>
       </div>
-      {r.why && <div style={{ fontSize: 12, color: T.accentFrom, marginTop: 4 }}>✓ {r.why}</div>}
+      {r.why && <div style={{ fontSize: readableTextSize(12), color: T.accentFrom, marginTop: 4 }}>✓ {r.why}</div>}
     </div>
   )
 }
@@ -641,5 +642,5 @@ function Block({ title, children }) {
   )
 }
 
-const li = { fontSize: 12.5, color: T.text2, lineHeight: 1.5, marginBottom: 4, listStylePosition: 'inside', width: '100%' }
-const para = { fontSize: 13, color: T.text2, lineHeight: 1.6 }
+const li = { fontSize: readableTextSize(12.5), color: T.text2, lineHeight: 1.5, marginBottom: 4, listStylePosition: 'inside', width: '100%' }
+const para = { fontSize: readableTextSize(13), color: T.text2, lineHeight: 1.6 }

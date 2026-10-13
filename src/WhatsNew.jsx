@@ -1,3 +1,4 @@
+import { readableTextSize } from './lib/typography.js'
 import React, { useState, useEffect, useRef } from 'react'
 import { T } from './auth/tokens'
 import changelog from '../CHANGELOG.md?raw'
@@ -77,19 +78,19 @@ export default function WhatsNew({ openSignal = 0 }) {
         style={{ width: '100%', maxWidth: 460, maxHeight: '80vh', overflowY: 'auto', background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', fontFamily: T.font }}
       >
         <div style={{ padding: '16px 18px', borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: T.surface1 }}>
-          <span style={{ fontSize: 18 }} aria-hidden="true">🎉</span>
+          <span style={{ fontSize: readableTextSize(18) }} aria-hidden="true">🎉</span>
           <div style={{ flex: 1 }}>
-            <div id="mm-whatsnew-title" style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>What's new</div>
-            <div style={{ fontSize: 11.5, color: T.text3 }}>{data.title}</div>
+            <div id="mm-whatsnew-title" style={{ fontSize: readableTextSize(15), fontWeight: 600, color: T.text1 }}>What's new</div>
+            <div style={{ fontSize: readableTextSize(11.5), color: T.text3 }}>{data.title}</div>
           </div>
-          <button ref={closeBtnRef} onClick={dismiss} aria-label="Close what's new" style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.border}`, background: 'transparent', color: T.text2, cursor: 'pointer', fontSize: 14 }}>✕</button>
+          <button ref={closeBtnRef} onClick={dismiss} aria-label="Close what's new" style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.border}`, background: 'transparent', color: T.text2, cursor: 'pointer', fontSize: readableTextSize(14) }}>✕</button>
         </div>
         <div style={{ padding: '14px 18px' }}>
           {data.groups.map((g, i) => (
             <div key={i} style={{ marginBottom: 14 }}>
-              {g.header && <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', color: '#5eead4', textTransform: 'uppercase', marginBottom: 6 }}>{g.header}</div>}
+              {g.header && <div style={{ fontSize: readableTextSize(11), fontWeight: 700, letterSpacing: '0.05em', color: '#5eead4', textTransform: 'uppercase', marginBottom: 6 }}>{g.header}</div>}
               {g.items.map((it, j) => (
-                <div key={j} style={{ display: 'flex', gap: 8, marginBottom: 5, fontSize: 12.5, color: T.text2, lineHeight: 1.5 }}>
+                <div key={j} style={{ display: 'flex', gap: 8, marginBottom: 5, fontSize: readableTextSize(12.5), color: T.text2, lineHeight: 1.5 }}>
                   <span style={{ color: T.accentFrom, flexShrink: 0 }} aria-hidden="true">•</span><span>{clean(it)}</span>
                 </div>
               ))}
@@ -97,7 +98,7 @@ export default function WhatsNew({ openSignal = 0 }) {
           ))}
         </div>
         <div style={{ padding: '12px 18px', borderTop: `1px solid ${T.border}`, position: 'sticky', bottom: 0, background: T.surface1 }}>
-          <button onClick={dismiss} style={{ width: '100%', height: 40, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>Got it</button>
+          <button onClick={dismiss} style={{ width: '100%', height: 40, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: readableTextSize(13), fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>Got it</button>
         </div>
       </div>
     </div>

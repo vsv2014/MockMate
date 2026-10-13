@@ -1,3 +1,4 @@
+import { readableTextSize } from '../lib/typography.js'
 import { diagnostic } from '../lib/diagnostics'
 import React, { useState, useMemo } from 'react'
 import { T } from '../auth/tokens'
@@ -252,11 +253,11 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
       {/* Top bar: Role templates (LockedIn style 1-click presets) */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: T.text2 }}>
+          <span style={{ fontSize: readableTextSize(11), fontWeight: 600, color: T.text2 }}>
             1-Click Role Playbooks <span style={{ color: T.text3, fontWeight: 400 }}>· auto-routes sections per question</span>
           </span>
           {statusMsg && (
-            <span role="status" style={{ fontSize: 10.5, color: '#5eead4', fontWeight: 600 }}>
+            <span role="status" style={{ fontSize: readableTextSize(10.5), color: '#5eead4', fontWeight: 600 }}>
               {statusMsg}
             </span>
           )}
@@ -273,7 +274,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
                 style={{
                   padding: compact ? '4px 9px' : '5px 11px',
                   borderRadius: 999,
-                  fontSize: compact ? 10.5 : 11.5,
+                  fontSize: readableTextSize(compact ? 10.5 : 11.5),
                   fontWeight: active ? 600 : 500,
                   fontFamily: T.font,
                   cursor: 'pointer',
@@ -293,7 +294,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
       {/* Saved user playbooks bar (if any exist) */}
       {savedList.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 10.5, color: T.text3, fontWeight: 600 }}>Saved:</span>
+          <span style={{ fontSize: readableTextSize(10.5), color: T.text3, fontWeight: 600 }}>Saved:</span>
           {savedList.map(slot => {
             const isCurrent = value?.trim() === slot.prompt.trim()
             return (
@@ -314,7 +315,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
                   onClick={() => { onChange?.(slot.prompt); flash(`✓ Loaded "${slot.name}"`) }}
                   style={{
                     background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                    fontSize: 11, fontWeight: isCurrent ? 600 : 500, color: isCurrent ? '#7dd3fc' : T.text1, fontFamily: T.font,
+                    fontSize: readableTextSize(11), fontWeight: isCurrent ? 600 : 500, color: isCurrent ? '#7dd3fc' : T.text1, fontFamily: T.font,
                   }}
                 >
                   bookmark · {slot.name}
@@ -326,7 +327,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
                   onClick={() => handleDeleteSlot(slot.id, slot.name)}
                   style={{
                     background: 'none', border: 'none', color: T.text3, cursor: 'pointer',
-                    fontSize: 11, padding: '0 4px', lineHeight: 1,
+                    fontSize: readableTextSize(11), padding: '0 4px', lineHeight: 1,
                   }}
                 >
                   ×
@@ -340,7 +341,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
       {/* Modular rule snippet chips */}
       {!compact && (
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5 }}>
-          <span style={{ fontSize: 10.5, color: T.text3, marginRight: 2 }}>Add block:</span>
+          <span style={{ fontSize: readableTextSize(10.5), color: T.text3, marginRight: 2 }}>Add block:</span>
           {QUICK_SNIPPETS.map(snip => {
             const exists = String(value || '').toUpperCase().includes(`${snip.heading}:`)
             return (
@@ -351,7 +352,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
                 style={{
                   padding: '3px 8px',
                   borderRadius: 6,
-                  fontSize: 10.5,
+                  fontSize: readableTextSize(10.5),
                   fontFamily: T.fontMono,
                   cursor: 'pointer',
                   background: exists ? 'rgba(34,197,94,0.10)' : 'rgba(255,255,255,0.035)',
@@ -378,7 +379,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
           color: T.text1,
           padding: compact ? '8px 10px' : '10px 12px',
           borderRadius: T.rCtrl,
-          fontSize: compact ? 11.5 : 12.5,
+          fontSize: readableTextSize(compact ? 11.5 : 12.5),
           lineHeight: 1.55,
           fontFamily: T.font,
           resize: 'vertical',
@@ -397,7 +398,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
           background: 'rgba(8,145,178,0.07)', border: '1px solid rgba(34,211,238,0.20)',
           borderRadius: 8, padding: '6px 9px',
         }}>
-          <span style={{ fontSize: 10, fontWeight: 600, color: '#67e8f9', marginRight: 3 }}>
+          <span style={{ fontSize: readableTextSize(10), fontWeight: 600, color: '#67e8f9', marginRight: 3 }}>
             Compiled ({coreCount} always · {routedCount} auto-routed):
           </span>
           {modules.map((m, idx) => (
@@ -407,7 +408,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
                 ? 'Always injected on every interview turn'
                 : 'Dynamically injected when the question matches this topic'}
               style={{
-                fontSize: 9.5,
+                fontSize: readableTextSize(9.5),
                 fontFamily: T.fontMono,
                 fontWeight: 600,
                 padding: '1px 7px',
@@ -424,7 +425,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
       )}
 
       {/* Footer: Character budget + Save preset + Clear */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, fontSize: 10.5, color: T.text3 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, fontSize: readableTextSize(10.5), color: T.text3 }}>
         <span>
           {value?.trim()
             ? `✓ Active · routes core + matching sections up to ${CUSTOM_INSTRUCTIONS_PACK_MAX.toLocaleString()} chars`
@@ -437,7 +438,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
               onClick={() => setShowSaveBox(true)}
               style={{
                 background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.32)',
-                color: '#5eead4', borderRadius: 6, padding: '2px 8px', fontSize: 10.5, fontWeight: 600, cursor: 'pointer', fontFamily: T.font,
+                color: '#5eead4', borderRadius: 6, padding: '2px 8px', fontSize: readableTextSize(10.5), fontWeight: 600, cursor: 'pointer', fontFamily: T.font,
               }}
             >
               ★ Save preset
@@ -448,7 +449,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
               type="button"
               onClick={() => onChange?.('')}
               style={{
-                background: 'none', border: 'none', color: T.text3, fontSize: 10.5, cursor: 'pointer', padding: 0, fontFamily: T.font,
+                background: 'none', border: 'none', color: T.text3, fontSize: readableTextSize(10.5), cursor: 'pointer', padding: 0, fontFamily: T.font,
               }}
             >
               Clear
@@ -471,7 +472,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
             maxLength={48}
             style={{
               flex: 1, height: 30, padding: '0 9px', borderRadius: 7,
-              background: T.surface2, border: `1px solid ${T.accentBorder}`, color: T.text1, fontSize: 11.5, fontFamily: T.font,
+              background: T.surface2, border: `1px solid ${T.accentBorder}`, color: T.text1, fontSize: readableTextSize(11.5), fontFamily: T.font,
             }}
           />
           <button
@@ -479,7 +480,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
             disabled={!savingName.trim()}
             style={{
               height: 30, padding: '0 11px', borderRadius: 7, border: 'none',
-              background: savingName.trim() ? T.accent : T.surface2, color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: T.font,
+              background: savingName.trim() ? T.accent : T.surface2, color: '#fff', fontSize: readableTextSize(11), fontWeight: 600, cursor: 'pointer', fontFamily: T.font,
             }}
           >
             Save
@@ -489,7 +490,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
             onClick={() => { setShowSaveBox(false); setSavingName('') }}
             style={{
               height: 30, padding: '0 9px', borderRadius: 7, border: `1px solid ${T.border}`,
-              background: 'transparent', color: T.text3, fontSize: 11, cursor: 'pointer', fontFamily: T.font,
+              background: 'transparent', color: T.text3, fontSize: readableTextSize(11), cursor: 'pointer', fontFamily: T.font,
             }}
           >
             Cancel

@@ -1,3 +1,4 @@
+import { readableTextSize } from './lib/typography.js'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { loadProfile, saveProfile } from './lib/profile'
@@ -56,13 +57,13 @@ function JobCard({ j, saved, resumeText, onToggleSave, onOpenCareer, onUseForInt
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
         <div style={{
           minWidth: 34, height: 34, borderRadius: 9, border: `1.5px solid ${scoreColor(j.score)}`,
-          color: scoreColor(j.score), display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0,
+          color: scoreColor(j.score), display: 'grid', placeItems: 'center', fontSize: readableTextSize(13), fontWeight: 700, flexShrink: 0,
         }}>{j.score}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontWeight: 600, fontSize: 13.5, lineHeight: 1.35, flex: 1, minWidth: 0, color: T.text1 }}>{j.title}</span>
+            <span style={{ fontWeight: 600, fontSize: readableTextSize(13.5), lineHeight: 1.35, flex: 1, minWidth: 0, color: T.text1 }}>{j.title}</span>
             <span style={{
-              flexShrink: 0, fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+              flexShrink: 0, fontSize: readableTextSize(10), fontWeight: 600, padding: '2px 8px', borderRadius: 999,
               color: j.source === 'local' ? T.success : '#7dd3fc',
               background: j.source === 'local' ? 'rgba(16,185,129,0.12)' : 'rgba(56,189,248,0.12)',
               border: `1px solid ${j.source === 'local' ? 'rgba(16,185,129,0.3)' : 'rgba(56,189,248,0.3)'}`,
@@ -70,13 +71,13 @@ function JobCard({ j, saved, resumeText, onToggleSave, onOpenCareer, onUseForInt
               {j.source === 'local' ? 'On-site' : 'Remote'} · {j.sourceName || (j.source === 'local' ? 'Adzuna' : 'Remotive')}
             </span>
           </div>
-          <div style={{ fontSize: 12, color: T.text3, marginTop: 3 }}>
+          <div style={{ fontSize: readableTextSize(12), color: T.text3, marginTop: 3 }}>
             {j.company}{j.location ? ` · ${j.location}` : ''}{j.jobType ? ` · ${j.jobType}` : ''}{j.salary ? ` · ${j.salary}` : ''}{j.postedTs ? ` · ${ago(j.postedTs)}` : ''}
           </div>
         </div>
       </div>
-      {j.reason && <div style={{ fontSize: 12.5, color: T.text2, marginTop: 8, lineHeight: 1.5 }}>✓ {j.reason}</div>}
-      {j.gaps && <div style={{ fontSize: 12, color: T.warning, marginTop: 4, lineHeight: 1.5 }}>Gap: {j.gaps}</div>}
+      {j.reason && <div style={{ fontSize: readableTextSize(12.5), color: T.text2, marginTop: 8, lineHeight: 1.5 }}>✓ {j.reason}</div>}
+      {j.gaps && <div style={{ fontSize: readableTextSize(12), color: T.warning, marginTop: 4, lineHeight: 1.5 }}>Gap: {j.gaps}</div>}
       {(skillOverlap.matched.length > 0 || skillOverlap.missing.length > 0) && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 7 }}>
           {skillOverlap.matched.map(s => (
@@ -103,7 +104,7 @@ function JobCard({ j, saved, resumeText, onToggleSave, onOpenCareer, onUseForInt
             {SAVED_STATUSES.map(st => (
               <button key={st} type="button" onClick={() => onUpdateSaved?.(j, { status: st })}
                 style={{
-                  fontSize: 11, fontWeight: 600, padding: '4px 9px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
+                  fontSize: readableTextSize(11), fontWeight: 600, padding: '4px 9px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
                   border: `1px solid ${(j.status || 'interested') === st ? 'rgba(20,184,166,0.45)' : T.border}`,
                   background: (j.status || 'interested') === st ? 'rgba(20,184,166,0.16)' : 'transparent',
                   color: (j.status || 'interested') === st ? T.accentFrom : T.text3,
@@ -118,31 +119,31 @@ function JobCard({ j, saved, resumeText, onToggleSave, onOpenCareer, onUseForInt
             value={j.notes || ''}
             placeholder="Notes (local only)…"
             onChange={e => onUpdateSaved?.(j, { notes: e.target.value })}
-            style={{ ...S.input, resize: 'vertical', marginBottom: 0, fontSize: 12 }}
+            style={{ ...S.input, resize: 'vertical', marginBottom: 0, fontSize: readableTextSize(12) }}
           />
         </div>
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
         {/^https?:\/\//.test(j.url || '')
-          ? <a href={j.url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: T.accentFrom, textDecoration: 'none' }}>Open original listing →</a>
-          : <span style={{ fontSize: 12.5, color: T.text3 }}>No link</span>}
+          ? <a href={j.url} target="_blank" rel="noreferrer" style={{ fontSize: readableTextSize(12.5), fontWeight: 600, color: T.accentFrom, textDecoration: 'none' }}>Open original listing →</a>
+          : <span style={{ fontSize: readableTextSize(12.5), color: T.text3 }}>No link</span>}
         {onOpenCareer && (
           <>
             <button type="button" onClick={() => onOpenCareer(j, 'skills')}
-              style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
+              style={{ fontSize: readableTextSize(12), fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
               Skills Matrix
             </button>
             <button type="button" onClick={() => onOpenCareer(j, 'ats')}
-              style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
+              style={{ fontSize: readableTextSize(12), fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
               Score in Resume Studio
             </button>
             <button type="button" onClick={() => onOpenCareer(j, 'tailor')}
-              style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
+              style={{ fontSize: readableTextSize(12), fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
               Tailor for this role
             </button>
             <button type="button" onClick={() => onOpenCareer(j, 'referral')}
-              style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
+              style={{ fontSize: readableTextSize(12), fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
               Draft referral DM
             </button>
           </>
@@ -150,18 +151,18 @@ function JobCard({ j, saved, resumeText, onToggleSave, onOpenCareer, onUseForInt
         {onUseForInterview && (
           <>
             <button type="button" onClick={() => onUseForInterview(j, 'solo')}
-              style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
+              style={{ fontSize: readableTextSize(12), fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
               Use for Solo
             </button>
             <button type="button" onClick={() => onUseForInterview(j, 'live')}
-              style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
+              style={{ fontSize: readableTextSize(12), fontWeight: 600, background: 'none', border: 'none', color: T.text2, cursor: 'pointer', padding: 0, fontFamily: T.font, textDecoration: 'underline' }}>
               Use for Live
             </button>
           </>
         )}
         <button type="button" onClick={() => onToggleSave(j)} aria-pressed={saved} aria-label={saved ? 'Unsave job' : 'Save job'}
           style={{
-            marginLeft: 'auto', fontSize: 12, fontWeight: 600, background: 'transparent', border: '1px solid',
+            marginLeft: 'auto', fontSize: readableTextSize(12), fontWeight: 600, background: 'transparent', border: '1px solid',
             borderRadius: T.rCtrl, padding: '5px 12px', cursor: 'pointer', fontFamily: T.font,
             color: saved ? '#fbbf24' : T.text3, borderColor: saved ? 'rgba(251,191,36,0.4)' : T.border,
           }}>
@@ -295,7 +296,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
       {!embedded && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
           <button type="button" onClick={onHome} style={S.btnGhost}>← Back</button>
-          <div style={{ fontWeight: 600, fontSize: 15, color: T.text1 }}>Job Matching</div>
+          <div style={{ fontWeight: 600, fontSize: readableTextSize(15), color: T.text1 }}>Job Matching</div>
         </div>
       )}
 
@@ -324,7 +325,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
                 Saved list is full ({SAVED_MAX} max). Saving another drops the oldest.
               </div>
             )}
-            <div style={{ fontSize: 12, color: T.text3, marginBottom: 10, lineHeight: 1.45 }}>
+            <div style={{ fontSize: readableTextSize(12), color: T.text3, marginBottom: 10, lineHeight: 1.45 }}>
               Status and notes stay on this device. Open Resume Studio from a card to score or tailor against the listing.
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -332,7 +333,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
                 type="button"
                 onClick={() => setSavedStatusFilter('all')}
                 style={{
-                  fontSize: 11.5, fontWeight: 600, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
+                  fontSize: readableTextSize(11.5), fontWeight: 600, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
                   border: `1px solid ${savedStatusFilter === 'all' ? 'rgba(20,184,166,0.45)' : T.border}`,
                   background: savedStatusFilter === 'all' ? 'rgba(20,184,166,0.16)' : 'transparent',
                   color: savedStatusFilter === 'all' ? T.accentFrom : T.text3,
@@ -347,7 +348,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
                     type="button"
                     onClick={() => setSavedStatusFilter(st)}
                     style={{
-                      fontSize: 11.5, fontWeight: 600, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
+                      fontSize: readableTextSize(11.5), fontWeight: 600, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
                       border: `1px solid ${savedStatusFilter === st ? 'rgba(20,184,166,0.45)' : T.border}`,
                       background: savedStatusFilter === st ? 'rgba(20,184,166,0.16)' : 'transparent',
                       color: savedStatusFilter === st ? T.accentFrom : T.text3,
@@ -359,7 +360,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
             </div>
             {filteredSavedJobs.map(j => (
               <div key={savedKeyOf(j)}>
-                <div style={{ fontSize: 11, color: T.text3, marginBottom: 4 }}>
+                <div style={{ fontSize: readableTextSize(11), color: T.text3, marginBottom: 4 }}>
                   Saved {ago(j.savedTs) || 'today'}
                   {j.status ? ` · ${STATUS_LABEL[j.status] || j.status}` : ''}
                 </div>
@@ -373,8 +374,8 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
       ) : (
         <>
           <div style={S.panel}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: T.text1, marginBottom: 4 }}>Your materials</div>
-            <div style={{ fontSize: 12, color: T.text3, marginBottom: 12, lineHeight: 1.45 }}>
+            <div style={{ fontSize: readableTextSize(14), fontWeight: 600, color: T.text1, marginBottom: 4 }}>Your materials</div>
+            <div style={{ fontSize: readableTextSize(12), color: T.text3, marginBottom: 12, lineHeight: 1.45 }}>
               Shared with Solo and Live. Paste or upload a PDF so matches reflect your background.
             </div>
             <ResumeMaterials resume={profile.resume} onPatch={patch} />
@@ -400,7 +401,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
             />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '6px 0 2px' }}>
               <span style={{
-                fontSize: 11.5, fontWeight: 600, padding: '4px 10px', borderRadius: 999,
+                fontSize: readableTextSize(11.5), fontWeight: 600, padding: '4px 10px', borderRadius: 999,
                 border: '1px solid rgba(20,184,166,0.4)', background: 'rgba(20,184,166,0.12)', color: T.accentFrom,
               }}>
                 📍 {effLoc.location || 'Not set'} · {locationSourceLabel(effLoc.source)}
@@ -430,7 +431,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
               onChange={e => { setCompanyUrl(e.target.value); try { localStorage.setItem(JOB_COMPANY_KEY, e.target.value) } catch {} }}
               style={S.input}
             />
-            <div style={{ fontSize: 11, color: T.text3, marginTop: 4, lineHeight: 1.4 }}>
+            <div style={{ fontSize: readableTextSize(11), color: T.text3, marginTop: 4, lineHeight: 1.4 }}>
               Greenhouse &amp; Lever public boards are read directly — no scraping — and merged on top of your matches.
             </div>
             <div style={S.lbl}>Experience</div>
@@ -459,7 +460,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
             {loading ? 'Finding roles…' : result ? 'Refresh matches' : 'Find matching jobs'}
           </button>
           {!canSearch && (
-            <div role="status" style={{ fontSize: 12, color: T.text3, marginTop: -4, marginBottom: 12 }}>
+            <div role="status" style={{ fontSize: readableTextSize(12), color: T.text3, marginTop: -4, marginBottom: 12 }}>
               Add a resume or target role to search.
             </div>
           )}
@@ -476,25 +477,25 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
 
           {result && (
             <div>
-              <div style={{ fontSize: 12, color: T.text3, marginBottom: 10, display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: readableTextSize(12), color: T.text3, marginBottom: 10, display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                 <span>Searched: <strong style={{ color: T.text2 }}>{result.search}</strong></span>
                 <span>{result.ranker === 'ai' ? 'AI-ranked' : 'Keyword-ranked'}</span>
               </div>
 
               {result.jobs.length > 1 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 11.5, color: T.text3 }}>Sort:</span>
+                  <span style={{ fontSize: readableTextSize(11.5), color: T.text3 }}>Sort:</span>
                   {SORTS.filter(([k]) => k !== 'salary' || hasSalaryData).map(([k, label]) => (
                     <button key={k} type="button" onClick={() => setSort(k)}
                       style={{
-                        fontSize: 11.5, fontWeight: 600, padding: '5px 10px', borderRadius: 999, cursor: 'pointer',
+                        fontSize: readableTextSize(11.5), fontWeight: 600, padding: '5px 10px', borderRadius: 999, cursor: 'pointer',
                         border: `1px solid ${sort === k ? 'rgba(20,184,166,0.45)' : T.border}`,
                         background: sort === k ? 'rgba(20,184,166,0.16)' : 'transparent',
                         color: sort === k ? T.accentFrom : T.text3, fontFamily: T.font,
                       }}>{label}</button>
                   ))}
                   {!hasSalaryData && (
-                    <span title="No salary data in these results" style={{ fontSize: 11, color: T.text3 }}>
+                    <span title="No salary data in these results" style={{ fontSize: readableTextSize(11), color: T.text3 }}>
                       Salary sort unavailable
                     </span>
                   )}
@@ -507,7 +508,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
                   Showing remote roles (Remotive). Add free <strong style={{ color: T.text1 }}>Adzuna</strong> keys in Settings for local on-site listings — without them we won’t invent local jobs.
                   {onSettings && (
                     <button type="button" onClick={onSettings}
-                      style={{ display: 'block', marginTop: 8, background: 'none', border: 'none', color: T.accentFrom, cursor: 'pointer', padding: 0, fontSize: 12.5, fontFamily: T.font, textDecoration: 'underline' }}>
+                      style={{ display: 'block', marginTop: 8, background: 'none', border: 'none', color: T.accentFrom, cursor: 'pointer', padding: 0, fontSize: readableTextSize(12.5), fontFamily: T.font, textDecoration: 'underline' }}>
                       Open Settings → Adzuna
                     </button>
                   )}
@@ -524,7 +525,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
                   ].map(([id, label]) => (
                     <button key={id} type="button" onClick={() => setMatchFilter(id)}
                       style={{
-                        fontSize: 11.5, fontWeight: 600, padding: '5px 10px', borderRadius: 999, cursor: 'pointer',
+                        fontSize: readableTextSize(11.5), fontWeight: 600, padding: '5px 10px', borderRadius: 999, cursor: 'pointer',
                         border: `1px solid ${matchFilter === id ? 'rgba(20,184,166,0.45)' : T.border}`,
                         background: matchFilter === id ? 'rgba(20,184,166,0.16)' : 'transparent',
                         color: matchFilter === id ? T.accentFrom : T.text3, fontFamily: T.font,
@@ -535,7 +536,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     placeholder="Filter by skill or company…"
-                    style={{ ...S.input, width: 180, marginBottom: 0, padding: '5px 10px', fontSize: 12, marginLeft: 'auto' }}
+                    style={{ ...S.input, width: 180, marginBottom: 0, padding: '5px 10px', fontSize: readableTextSize(12), marginLeft: 'auto' }}
                   />
                 </div>
               )}
@@ -552,7 +553,7 @@ export default function Jobs({ onHome, noProviders, onSettings, onOpenCareer, on
                 </button>
               )}
               {filteredMatches.length > 0 && visible >= filteredMatches.length && filteredMatches.length > 8 && (
-                <div style={{ fontSize: 11.5, color: T.text3, textAlign: 'center', marginTop: 8 }}>That’s all {filteredMatches.length} matches.</div>
+                <div style={{ fontSize: readableTextSize(11.5), color: T.text3, textAlign: 'center', marginTop: 8 }}>That’s all {filteredMatches.length} matches.</div>
               )}
 
               {result.jobs.length === 0 && !result.note && (

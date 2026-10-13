@@ -2,14 +2,14 @@ import React, { useEffect, useRef } from 'react'
 import { windowResizeGeometry } from './lib/windowResizeGeometry'
 
 const edges = [
-  ['n', 'ns-resize', { top: 0, left: 12, right: 12, height: 6 }],
-  ['s', 'ns-resize', { bottom: 0, left: 12, right: 12, height: 6 }],
-  ['w', 'ew-resize', { left: 0, top: 12, bottom: 12, width: 6 }],
-  ['e', 'ew-resize', { right: 0, top: 12, bottom: 12, width: 6 }],
-  ['nw', 'nwse-resize', { top: 0, left: 0, width: 12, height: 12 }],
-  ['ne', 'nesw-resize', { top: 0, right: 0, width: 12, height: 12 }],
-  ['sw', 'nesw-resize', { bottom: 0, left: 0, width: 12, height: 12 }],
-  ['se', 'nwse-resize', { bottom: 0, right: 0, width: 12, height: 12 }],
+  ['n', 'ns-resize', { top: 0, left: 12, right: 12, height: 10 }],
+  ['s', 'ns-resize', { bottom: 0, left: 12, right: 12, height: 10 }],
+  ['w', 'ew-resize', { left: 0, top: 12, bottom: 12, width: 10 }],
+  ['e', 'ew-resize', { right: 0, top: 12, bottom: 12, width: 10 }],
+  ['nw', 'nwse-resize', { top: 0, left: 0, width: 18, height: 18 }],
+  ['ne', 'nesw-resize', { top: 0, right: 0, width: 18, height: 18 }],
+  ['sw', 'nesw-resize', { bottom: 0, left: 0, width: 18, height: 18 }],
+  ['se', 'nwse-resize', { bottom: 0, right: 0, width: 18, height: 18 }],
 ]
 
 // Dashboard views use native window bounds, not the separately persisted Live HUD size.
@@ -48,6 +48,6 @@ export default function WindowResizeHandles({ disabled = false }) {
         gesture.current = { edge, pointerId: event.pointerId, x: event.screenX, y: event.screenY, w: nativeSize?.width || window.innerWidth, h: nativeSize?.height || window.innerHeight, lastX: 0, lastY: 0 }
         try { event.currentTarget.setPointerCapture(event.pointerId) } catch {}
       }}
-      style={{ position: 'fixed', ...bounds, zIndex: 10000, cursor, touchAction: 'none' }} />
+      style={{ position: 'fixed', ...bounds, zIndex: 2147483646, cursor, touchAction: 'none' }} />
   ))
 }

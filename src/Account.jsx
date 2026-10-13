@@ -1,3 +1,4 @@
+import { readableTextSize } from './lib/typography.js'
 import React, { useState, useEffect } from 'react'
 import { startCheckout, openBillingPortal, deleteAccount } from './auth/api'
 import { T } from './auth/tokens'
@@ -70,10 +71,10 @@ export default function Account({ auth, onManageKeys }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 700, color: '#fff', background: T.accent }}>{initials}</div>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: readableTextSize(15), fontWeight: 700, color: '#fff', background: T.accent }}>{initials}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{isGuest ? 'Guest session' : (name || 'Your account')}</div>
-            <div style={{ fontSize: 11, color: T.text3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{isGuest ? 'Local only · BYOK on this device' : (user.email || '')}</div>
+            <div style={{ fontSize: readableTextSize(14), fontWeight: 700, color: T.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{isGuest ? 'Guest session' : (name || 'Your account')}</div>
+            <div style={{ fontSize: readableTextSize(11), color: T.text3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{isGuest ? 'Local only · BYOK on this device' : (user.email || '')}</div>
           </div>
           {isGuest ? <GuestBadge /> : <PlanBadge pro={isPro} />}
         </div>
@@ -81,14 +82,14 @@ export default function Account({ auth, onManageKeys }) {
 
       {isGuest ? (
         <div style={card}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: T.text1, marginBottom: 6 }}>Exploring as a guest</div>
-          <div style={{ fontSize: 12, color: T.text2, lineHeight: 1.5 }}>Sessions and keys stay on this device. Sign in for an account and Managed AI when the hosted backend is available.</div>
+          <div style={{ fontSize: readableTextSize(13), fontWeight: 600, color: T.text1, marginBottom: 6 }}>Exploring as a guest</div>
+          <div style={{ fontSize: readableTextSize(12), color: T.text2, lineHeight: 1.5 }}>Sessions and keys stay on this device. Sign in for an account and Managed AI when the hosted backend is available.</div>
         </div>
       ) : (
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
           <span style={sectionLabel}>USAGE THIS MONTH</span>
-          <span style={{ fontSize: 10, color: T.text3 }}>{planLabel} plan{usage.period ? ` · ${usage.period}` : ''}</span>
+          <span style={{ fontSize: readableTextSize(10), color: T.text3 }}>{planLabel} plan{usage.period ? ` · ${usage.period}` : ''}</span>
         </div>
         <UsageBar label="AI responses" used={usage.llmCalls || 0} limit={limits.llmCalls} unit="calls" />
         <div style={{ height: 10 }} />
@@ -96,35 +97,35 @@ export default function Account({ auth, onManageKeys }) {
         {!isPro ? (
           <>
             <button onClick={upgrade} disabled={billingBusy} style={{ ...upgradeBtn, opacity: billingBusy ? 0.6 : 1, cursor: billingBusy ? 'default' : 'pointer' }}>{billingBusy ? 'Opening checkout…' : '⚡ Upgrade to Pro'}</button>
-            <div style={{ fontSize: 10, color: T.text3, textAlign: 'center', marginTop: 6 }}>Pro — unlimited AI responses under fair use. Cancel anytime.</div>
+            <div style={{ fontSize: readableTextSize(10), color: T.text3, textAlign: 'center', marginTop: 6 }}>Pro — unlimited AI responses under fair use. Cancel anytime.</div>
           </>
         ) : (
           <>
-            <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '9px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 8, fontSize: 12, color: '#fbbf24', fontWeight: 600 }}>✦ Pro is active</div>
-            <button onClick={manageSubscription} disabled={billingBusy} style={{ width: '100%', marginTop: 10, padding: '9px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderStrong}`, color: T.text1, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: billingBusy ? 'default' : 'pointer', opacity: billingBusy ? 0.6 : 1 }}>{billingBusy ? 'Opening…' : 'Manage subscription'}</button>
+            <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '9px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 8, fontSize: readableTextSize(12), color: '#fbbf24', fontWeight: 600 }}>✦ Pro is active</div>
+            <button onClick={manageSubscription} disabled={billingBusy} style={{ width: '100%', marginTop: 10, padding: '9px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderStrong}`, color: T.text1, borderRadius: 8, fontSize: readableTextSize(12), fontWeight: 600, cursor: billingBusy ? 'default' : 'pointer', opacity: billingBusy ? 0.6 : 1 }}>{billingBusy ? 'Opening…' : 'Manage subscription'}</button>
           </>
         )}
-        {billingMsg && <div role="alert" aria-live="assertive" style={{ fontSize: 11, color: '#fbbf24', textAlign: 'center', marginTop: 8 }}>{billingMsg}</div>}
+        {billingMsg && <div role="alert" aria-live="assertive" style={{ fontSize: readableTextSize(11), color: '#fbbf24', textAlign: 'center', marginTop: 8 }}>{billingMsg}</div>}
       </div>
       )}
 
       <button onClick={() => onManageKeys?.()} style={{ ...card, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', textAlign: 'left', width: '100%' }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: T.text1 }}>API keys</div>
-          <div style={{ fontSize: 10, color: T.text3, marginTop: 2 }}>Bring your own OpenAI / Claude / Gemini / Groq / Deepgram keys — managed in Settings.</div>
+          <div style={{ fontSize: readableTextSize(13), fontWeight: 600, color: T.text1 }}>API keys</div>
+          <div style={{ fontSize: readableTextSize(10), color: T.text3, marginTop: 2 }}>Bring your own OpenAI / Claude / Gemini / Groq / Deepgram keys — managed in Settings.</div>
         </div>
-        <span style={{ fontSize: 12, color: '#5eead4', fontWeight: 600, whiteSpace: 'nowrap' }}>Manage in Settings →</span>
+        <span style={{ fontSize: readableTextSize(12), color: '#5eead4', fontWeight: 600, whiteSpace: 'nowrap' }}>Manage in Settings →</span>
       </button>
 
-      <button onClick={signOut} disabled={signingOut || deleting} style={{ width: '100%', padding: '10px', background: '#3a1518', border: '1px solid #5a2228', color: '#ff8b8b', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: signingOut ? 'default' : 'pointer', opacity: signingOut ? 0.6 : 1 }}>
+      <button onClick={signOut} disabled={signingOut || deleting} style={{ width: '100%', padding: '10px', background: '#3a1518', border: '1px solid #5a2228', color: '#ff8b8b', borderRadius: 8, fontSize: readableTextSize(12), fontWeight: 600, cursor: signingOut ? 'default' : 'pointer', opacity: signingOut ? 0.6 : 1 }}>
         {signingOut ? (isGuest ? 'Leaving…' : 'Signing out…') : (isGuest ? 'Leave guest session' : 'Sign out')}
       </button>
       {!isGuest && (
-        <button onClick={removeAccount} disabled={deleting || signingOut} style={{ width: '100%', padding: '9px', background: 'transparent', border: `1px solid ${T.borderStrong}`, color: '#f87171', borderRadius: 8, fontSize: 11, cursor: deleting ? 'default' : 'pointer', opacity: deleting ? 0.6 : 1 }}>
+        <button onClick={removeAccount} disabled={deleting || signingOut} style={{ width: '100%', padding: '9px', background: 'transparent', border: `1px solid ${T.borderStrong}`, color: '#f87171', borderRadius: 8, fontSize: readableTextSize(11), cursor: deleting ? 'default' : 'pointer', opacity: deleting ? 0.6 : 1 }}>
           {deleting ? 'Deleting account…' : 'Delete account and hosted data'}
         </button>
       )}
-      {accountMsg && <div role="alert" aria-live="assertive" style={{ fontSize: 11, color: '#f87171', textAlign: 'center' }}>{accountMsg}</div>}
+      {accountMsg && <div role="alert" aria-live="assertive" style={{ fontSize: readableTextSize(11), color: '#f87171', textAlign: 'center' }}>{accountMsg}</div>}
     </div>
   )
 }
@@ -137,8 +138,8 @@ function UsageBar({ label, used, limit, unit }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-        <span style={{ fontSize: 12, color: T.text1 }}>{label}</span>
-        <span style={{ fontSize: 11, color: T.text2, fontVariantNumeric: 'tabular-nums' }}>{used} / {limit} {unit}</span>
+        <span style={{ fontSize: readableTextSize(12), color: T.text1 }}>{label}</span>
+        <span style={{ fontSize: readableTextSize(11), color: T.text2, fontVariantNumeric: 'tabular-nums' }}>{used} / {limit} {unit}</span>
       </div>
       <div role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={limit > 0 ? limit : 100}
         aria-valuenow={limit > 0 ? Math.min(used, limit) : 0} aria-valuetext={`${used} of ${limit} ${unit}${over ? ', limit reached' : ''}`}
@@ -149,9 +150,9 @@ function UsageBar({ label, used, limit, unit }) {
   )
 }
 
-function PlanBadge({ pro }) { return <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', padding: '2px 8px', borderRadius: 5, color: pro ? '#fbbf24' : T.text2, background: pro ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.06)', border: `1px solid ${pro ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.1)'}` }}>{pro ? 'PRO' : 'FREE'}</span> }
-function GuestBadge() { return <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', padding: '2px 8px', borderRadius: 5, color: '#5eead4', background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.3)' }}>GUEST</span> }
+function PlanBadge({ pro }) { return <span style={{ fontSize: readableTextSize(9), fontWeight: 700, letterSpacing: '0.06em', padding: '2px 8px', borderRadius: 5, color: pro ? '#fbbf24' : T.text2, background: pro ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.06)', border: `1px solid ${pro ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.1)'}` }}>{pro ? 'PRO' : 'FREE'}</span> }
+function GuestBadge() { return <span style={{ fontSize: readableTextSize(9), fontWeight: 700, letterSpacing: '0.06em', padding: '2px 8px', borderRadius: 5, color: '#5eead4', background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.3)' }}>GUEST</span> }
 
 const card = { background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.borderStrong}`, borderRadius: 10, padding: '14px', fontFamily: T.font }
-const sectionLabel = { fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: T.text3 }
-const upgradeBtn = { width: '100%', marginTop: 14, padding: '10px', border: 'none', borderRadius: 8, background: T.accent, color: '#fff', fontSize: 13, fontWeight: 600, fontFamily: T.font }
+const sectionLabel = { fontSize: readableTextSize(9), fontWeight: 700, letterSpacing: '0.1em', color: T.text3 }
+const upgradeBtn = { width: '100%', marginTop: 14, padding: '10px', border: 'none', borderRadius: 8, background: T.accent, color: '#fff', fontSize: readableTextSize(13), fontWeight: 600, fontFamily: T.font }

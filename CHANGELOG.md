@@ -2,6 +2,7 @@
 
 ## v1.6.6 — 2026-10-13 (release candidate)
 
+- Apply readable typography throughout desktop screens: body text 24–28px, supporting text at least 20px; enlarge controls, wrap Settings actions, correct sidebar/content CSS ownership, and expose viewport scrolling and wider resize handles. Make setup resizable and disable click-through upon returning to dashboard.
 - Double Live answer, question and control typography, including code (12→24px); main answer is 27px and full answer is 26px.
 - Start the overlay at 600×720, clamp it to the display, and restore resizing for expanded Windows windows while retaining fixed collapsed-badge dimensions. Apply initial size with the mode transition and use native dimensions as the resize baseline.
 - Tolerate ±1px native rounding in collapsed-badge drift reporting and ignore zero-distance drag requests. Badge bounds remain fixed; movement is not delayed by a cooldown.

@@ -1,3 +1,4 @@
+import { readableTextSize } from './lib/typography.js'
 import React, { useState } from 'react'
 import { T } from './auth/tokens'
 import Room from './Room'
@@ -44,8 +45,8 @@ function saveRecentRoom(entry) {
 }
 
 function Field({ label, htmlFor, children, group = false }) {
-  if (group) return <fieldset style={{ minWidth: 0, margin: '0 0 12px', padding: 0, border: 0 }}><legend style={{ fontSize: 11.5, color: T.text2, marginBottom: 6 }}>{label}</legend>{children}</fieldset>
-  return <div style={{ marginBottom: 12 }}><label htmlFor={htmlFor} style={{ display: 'block', fontSize: 11.5, color: T.text2, marginBottom: 6 }}>{label}</label>{children}</div>
+  if (group) return <fieldset style={{ minWidth: 0, margin: '0 0 12px', padding: 0, border: 0 }}><legend style={{ fontSize: readableTextSize(11.5), color: T.text2, marginBottom: 6 }}>{label}</legend>{children}</fieldset>
+  return <div style={{ marginBottom: 12 }}><label htmlFor={htmlFor} style={{ display: 'block', fontSize: readableTextSize(11.5), color: T.text2, marginBottom: 6 }}>{label}</label>{children}</div>
 }
 function RoleBtn({ label, hint, active, onSelect }) {
   return (
@@ -53,8 +54,8 @@ function RoleBtn({ label, hint, active, onSelect }) {
       style={{ flex: 1, textAlign: 'left', padding: '10px 12px', borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font,
         background: active ? 'rgba(167,139,250,0.15)' : T.surface2,
         border: `1px solid ${active ? 'rgba(167,139,250,0.5)' : T.border}`, color: active ? '#c4b5fd' : T.text2 }}>
-      <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 10.5, color: T.text3, marginTop: 2 }}>{hint}</div>
+      <div style={{ fontSize: readableTextSize(13), fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: readableTextSize(10.5), color: T.text3, marginTop: 2 }}>{hint}</div>
     </button>
   )
 }
@@ -169,7 +170,7 @@ export default function Duo({ onHome }) {
             onClick={exportReportMarkdown}
             style={{
               height: 34, padding: '0 14px', background: T.surface2, color: T.text1,
-              border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12,
+              border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: readableTextSize(12),
               fontWeight: 600, cursor: 'pointer', fontFamily: T.font,
             }}>
             ⬇ Export Session Markdown
@@ -185,19 +186,19 @@ export default function Duo({ onHome }) {
     )
   }
 
-  const inp = { width: '100%', height: 40, background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: 13, padding: '0 12px', fontFamily: T.font, boxSizing: 'border-box' }
+  const inp = { width: '100%', height: 40, background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: readableTextSize(13), padding: '0 12px', fontFamily: T.font, boxSizing: 'border-box' }
   return (
     <div style={{ maxWidth: 660, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>Duo <span style={{ fontSize: 11, color: '#c4b5fd', background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: 999, padding: '2px 8px', verticalAlign: 'middle' }}>Collaborative Room</span></div>
-          <div style={{ fontSize: 13, color: T.text2, marginTop: 3 }}>A friend or mentor joins your interview live — shared transcript, question bank &amp; screen share, plus a private AI co-pilot only the candidate sees.</div>
+          <div style={{ fontSize: readableTextSize(22), fontWeight: 600, color: T.text1 }}>Duo <span style={{ fontSize: readableTextSize(11), color: '#c4b5fd', background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: 999, padding: '2px 8px', verticalAlign: 'middle' }}>Collaborative Room</span></div>
+          <div style={{ fontSize: readableTextSize(13), color: T.text2, marginTop: 3 }}>A friend or mentor joins your interview live — shared transcript, question bank &amp; screen share, plus a private AI co-pilot only the candidate sees.</div>
         </div>
-        <button type="button" onClick={onHome} style={{ height: 38, padding: '0 16px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 13, cursor: 'pointer', fontFamily: T.font }}>← Back</button>
+        <button type="button" onClick={onHome} style={{ height: 38, padding: '0 16px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: readableTextSize(13), cursor: 'pointer', fontFamily: T.font }}>← Back</button>
       </div>
 
-      {invited && <div role="status" style={{ background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#c4b5fd', marginBottom: 12 }}>🎟️ You were invited to room <strong>{invited}</strong>. Enter your name and join.</div>}
-      {err && <div role="alert" aria-live="assertive" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fca5a5', marginBottom: 12 }}>{err}</div>}
+      {invited && <div role="status" style={{ background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: readableTextSize(12), color: '#c4b5fd', marginBottom: 12 }}>🎟️ You were invited to room <strong>{invited}</strong>. Enter your name and join.</div>}
+      {err && <div role="alert" aria-live="assertive" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: readableTextSize(12), color: '#fca5a5', marginBottom: 12 }}>{err}</div>}
 
       <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: 18 }}>
         <Field label="Your name" htmlFor="duo-name"><input id="duo-name" style={inp} value={name} autoComplete="name" placeholder="e.g. Charan" onChange={e => setName(e.target.value)} /></Field>
@@ -222,7 +223,7 @@ export default function Duo({ onHome }) {
                 onChange={e => setJobDescription(e.target.value)}
               />
             </Field>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11.5, color: T.text3, marginBottom: 12, padding: '8px 10px', borderRadius: T.rCtrl, background: T.surface2, border: `1px solid ${T.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: readableTextSize(11.5), color: T.text3, marginBottom: 12, padding: '8px 10px', borderRadius: T.rCtrl, background: T.surface2, border: `1px solid ${T.border}` }}>
               <span>
                 Resume: <strong style={{ color: prof.resume ? T.success : T.warning }}>{prof.resume ? '✓ Loaded' : 'Not set'}</strong>
                 {' · '}
@@ -233,20 +234,20 @@ export default function Duo({ onHome }) {
         )}
 
         {invited ? (
-          <button type="button" onClick={() => start(false)} style={{ width: '100%', height: 46, marginTop: 6, background: '#a78bfa', color: '#1a1033', border: 'none', borderRadius: T.rCtrl, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>Join room {invited} →</button>
+          <button type="button" onClick={() => start(false)} style={{ width: '100%', height: 46, marginTop: 6, background: '#a78bfa', color: '#1a1033', border: 'none', borderRadius: T.rCtrl, fontSize: readableTextSize(15), fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>Join room {invited} →</button>
         ) : (
           <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-            <button type="button" onClick={() => start(true)} style={{ flex: 1, minWidth: 160, height: 46, background: '#a78bfa', color: '#1a1033', border: 'none', borderRadius: T.rCtrl, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>Create a room →</button>
+            <button type="button" onClick={() => start(true)} style={{ flex: 1, minWidth: 160, height: 46, background: '#a78bfa', color: '#1a1033', border: 'none', borderRadius: T.rCtrl, fontSize: readableTextSize(14), fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>Create a room →</button>
             <div style={{ display: 'flex', gap: 6, flex: 1.3, minWidth: 240 }}>
               <input type="text" autoComplete="off" spellCheck={false} style={{ ...inp, height: 46 }} value={room} placeholder="join code e.g. mock-7f3a9c1d8b22e4aa10..." aria-label="Duo room code" onChange={e => setRoom(e.target.value)} />
-              <button type="button" onClick={() => start(false)} style={{ height: 46, padding: '0 16px', background: 'transparent', color: T.text1, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Join</button>
+              <button type="button" onClick={() => start(false)} style={{ height: 46, padding: '0 16px', background: 'transparent', color: T.text1, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: readableTextSize(13), fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Join</button>
             </div>
           </div>
         )}
 
         {recentRooms.length > 0 && !invited && (
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: T.text3, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.4px' }}>Recent Duo Rooms (Quick Rejoin)</div>
+            <div style={{ fontSize: readableTextSize(11), fontWeight: 600, color: T.text3, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.4px' }}>Recent Duo Rooms (Quick Rejoin)</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {recentRooms.map(r => (
                 <button
@@ -254,7 +255,7 @@ export default function Duo({ onHome }) {
                   type="button"
                   onClick={() => { setRoom(r.room); start(false, r.room) }}
                   style={{
-                    fontSize: 11.5, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
+                    fontSize: readableTextSize(11.5), padding: '5px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font,
                     background: T.surface2, border: `1px solid ${T.border}`, color: T.text2,
                   }}>
                   ↻ {r.room.slice(0, 13)}… ({r.targetRole || r.role})
@@ -264,7 +265,7 @@ export default function Duo({ onHome }) {
           </div>
         )}
 
-        <div style={{ fontSize: 10.5, color: T.text3, marginTop: 10 }}>Share the generated room code with your partner. Completed Duo sessions are saved to your local History.</div>
+        <div style={{ fontSize: readableTextSize(10.5), color: T.text3, marginTop: 10 }}>Share the generated room code with your partner. Completed Duo sessions are saved to your local History.</div>
       </div>
     </div>
   )

@@ -161,4 +161,19 @@ describe('expanded overlay restoration', () => {
     scope.ipcMain.handler({},'overlay',{w:72,h:73})
     expect(win.size).toEqual([600,720]); expect(win.max).toEqual([0,0]); expect(win.resizable).toBe(true)
   })
+  it('re-enables dashboard mouse input and resize without resetting existing app bounds', () => {
+    const main=fs.readFileSync(new URL('./main.cjs',import.meta.url),'utf8')
+    const start=main.indexOf("ipcMain.on('set-window-mode'")
+    const source=main.slice(start,main.indexOf('// MERGE the submitted keys',start))
+    const win=nativeWindow(); win.size=[980,680]; win.resizable=false; win.max=[72,72]; win.clickThrough=true
+    const scope={mainWindow:win,lastWindowMode:'app',clickThroughForcedOff:false,prepareWindowMode,ipcMain:{on(_name,handler){this.handler=handler}}}
+    vm.runInNewContext(source,scope)
+    scope.ipcMain.handler({},'app')
+    expect(win.size).toEqual([980,680])
+    expect(win.resizable).toBe(true)
+    expect(win.max).toEqual([0,0])
+    expect(win.clickThrough).toBe(false)
+    expect(scope.clickThroughForcedOff).toBe(true)
+  })
+
 })

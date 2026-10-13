@@ -1,3 +1,4 @@
+import { readableTextSize } from './lib/typography.js'
 import React, { useEffect, useState, useRef } from 'react'
 import {
   LiveKitRoom, RoomAudioRenderer, useParticipants, useDataChannel,
@@ -12,12 +13,12 @@ import { isManaged } from './lib/aiMode'
 import { loadModelSelection } from './lib/modelPicker'
 import { retrieveContext } from './lib/docs'
 
-const btnGhost = { background: 'transparent', border: `1px solid ${T.borderStrong}`, color: T.text1, padding: '8px 14px', borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }
+const btnGhost = { background: 'transparent', border: `1px solid ${T.borderStrong}`, color: T.text1, padding: '8px 14px', borderRadius: T.rCtrl, fontSize: readableTextSize(13), fontWeight: 600, cursor: 'pointer', fontFamily: T.font }
 const btnPrimary = { ...btnGhost, background: T.accent, border: 'none', color: '#fff' }
 const btnDanger = { ...btnGhost, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)', color: '#ff8b8b' }
-const metaStyle = { color: T.text2, fontSize: 13 }
-const labelStyle = { display: 'block', fontSize: 13, fontWeight: 600, color: T.text2, marginBottom: 6 }
-const smallGhost = { ...btnGhost, padding: '2px 8px', fontSize: 11 }
+const metaStyle = { color: T.text2, fontSize: readableTextSize(13) }
+const labelStyle = { display: 'block', fontSize: readableTextSize(13), fontWeight: 600, color: T.text2, marginBottom: 6 }
+const smallGhost = { ...btnGhost, padding: '2px 8px', fontSize: readableTextSize(11) }
 
 function randomId(prefix = 'seg') {
   try { return `${prefix}_${crypto.randomUUID()}` } catch { return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}` }
@@ -67,7 +68,7 @@ export default function Room({ session, onEnd, onLeave }) {
   }, [session.room, session.identity, session.name, session.role])
 
   const narrow = { maxWidth: 720, margin: '0 auto', padding: '40px 24px', fontFamily: T.font, color: T.text1 }
-  if (err) return <div style={narrow}><div role="alert" aria-live="assertive" style={{ display: 'flex', gap: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: '#f5c66b', padding: '12px 16px', borderRadius: 10, marginBottom: 18, fontSize: 13 }}><span aria-hidden="true">⚠</span><span>{err}</span></div><button type="button" style={btnGhost} onClick={onLeave}>← Back</button></div>
+  if (err) return <div style={narrow}><div role="alert" aria-live="assertive" style={{ display: 'flex', gap: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: '#f5c66b', padding: '12px 16px', borderRadius: 10, marginBottom: 18, fontSize: readableTextSize(13) }}><span aria-hidden="true">⚠</span><span>{err}</span></div><button type="button" style={btnGhost} onClick={onLeave}>← Back</button></div>
   if (!conn) return <div role="status" aria-live="polite" style={narrow}><p style={{ color: T.text2 }}>Connecting to room <strong style={{ color: T.text1 }}>{session.room}</strong>…</p></div>
 
   return (
@@ -169,7 +170,7 @@ function RoomInner({ session, onEnd }) {
 
   function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
   function renderHintToPip(pip, { hint: h, hintLoading: loading, question }) {
-    pip.document.body.innerHTML = `<div style="font-family:${T.font};font-size:13px;color:${T.text1};padding:14px;height:100%;box-sizing:border-box;background:${T.bg};"><div style="font-weight:700;font-size:14px;margin-bottom:4px;color:#a78bfa;">🤖 AI Co-pilot</div><div style="font-size:10px;color:${T.text3};margin-bottom:10px;">floating hint window — always verify your meeting share preview</div>${question ? `<div style="color:${T.text2};font-size:11px;margin-bottom:10px;border-left:2px solid ${T.borderStrong};padding-left:8px;font-style:italic">${escapeHtml(question)}</div>` : ''}${loading ? `<p style="color:${T.text3};margin:0">Generating hints…</p>` : h ? `${h.resumeRelevant ? '<span style="background:#14532d;color:#4ade80;border-radius:4px;padding:2px 7px;font-size:11px;margin-bottom:8px;display:inline-block">✓ Resume-relevant</span>' : ''}<div style="font-weight:600;margin:8px 0 4px;color:${T.text1}">Key points:</div><ul style="margin:0 0 10px;padding-left:18px;color:${T.text1}">${(h.keyPoints || []).map(p => `<li style="margin-bottom:3px">${escapeHtml(p)}</li>`).join('')}</ul>${h.watchOut ? `<div style="color:#f59e0b;font-size:12px">⚠ ${escapeHtml(h.watchOut)}</div>` : ''}` : `<p style="color:${T.text3};margin:0">Waiting for next question…</p>`}</div>`
+    pip.document.body.innerHTML = `<div style="font-family:${T.font};font-size: 26.0px;color:${T.text1};padding:14px;height:100%;box-sizing:border-box;background:${T.bg};"><div style="font-weight:700;font-size: 28.0px;margin-bottom:4px;color:#a78bfa;">🤖 AI Co-pilot</div><div style="font-size: 20px;color:${T.text3};margin-bottom:10px;">floating hint window — always verify your meeting share preview</div>${question ? `<div style="color:${T.text2};font-size: 22.0px;margin-bottom:10px;border-left:2px solid ${T.borderStrong};padding-left:8px;font-style:italic">${escapeHtml(question)}</div>` : ''}${loading ? `<p style="color:${T.text3};margin:0">Generating hints…</p>` : h ? `${h.resumeRelevant ? '<span style="background:#14532d;color:#4ade80;border-radius:4px;padding:2px 7px;font-size: 22.0px;margin-bottom:8px;display:inline-block">✓ Resume-relevant</span>' : ''}<div style="font-weight:600;margin:8px 0 4px;color:${T.text1}">Key points:</div><ul style="margin:0 0 10px;padding-left:18px;color:${T.text1}">${(h.keyPoints || []).map(p => `<li style="margin-bottom:3px">${escapeHtml(p)}</li>`).join('')}</ul>${h.watchOut ? `<div style="color:#f59e0b;font-size: 24.0px">⚠ ${escapeHtml(h.watchOut)}</div>` : ''}` : `<p style="color:${T.text3};margin:0">Waiting for next question…</p>`}</div>`
   }
 
   async function openPip() {
@@ -305,14 +306,14 @@ function RoomInner({ session, onEnd }) {
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 24px', fontFamily: T.font, color: T.text1 }}>
       <style>{`@keyframes mm-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }`}</style>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 650, color: T.text1 }}>Room {session.room}</h2><span style={metaStyle}>· you are <strong style={{ color: T.text1 }}>{session.role}</strong></span><span style={{ flex: 1 }} />
+        <h2 style={{ margin: 0, fontSize: readableTextSize(17), fontWeight: 650, color: T.text1 }}>Room {session.room}</h2><span style={metaStyle}>· you are <strong style={{ color: T.text1 }}>{session.role}</strong></span><span style={{ flex: 1 }} />
         {session.role === 'candidate' && pipSupported && <button type="button" style={meetingMode ? btnPrimary : btnGhost} title="Moves AI hints to a floating window; always verify the meeting share preview" aria-pressed={meetingMode} onClick={toggleMeetingMode}>{meetingMode ? '🛡️ Meeting mode — on' : '🛡️ Meeting mode'}</button>}
         <button type="button" style={sharing ? btnPrimary : btnGhost} aria-pressed={sharing} onClick={toggleShare}>{sharing ? '🟢 Sharing — stop' : '🖥️ Share screen'}</button>
         <button type="button" style={btnGhost} onClick={shareLink} data-pi-target="room_share_code" title={`Room code ${session.room}`}>{copied ? `📋 Code: ${session.room}` : '🔗 Share room code'}</button>
         <button type="button" style={{ ...btnDanger, opacity: ending ? 0.5 : 1 }} onClick={end} disabled={ending}>{ending ? 'Scoring…' : 'End & get feedback'}</button>
       </div>
 
-      {screenTracks.length > 0 && <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>{screenTracks.map(tr => <div style={{ position: 'relative', border: `1px solid ${T.border}`, borderRadius: 10, overflow: 'hidden', maxWidth: '100%' }} key={tr.publication.trackSid}><VideoTrack trackRef={tr} /><div style={{ position: 'absolute', bottom: 6, left: 6, fontSize: 10, background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '2px 6px', borderRadius: 6 }}>🖥️ {tr.participant?.name || tr.participant?.identity}{tr.participant?.isLocal ? ' (you)' : ''}</div></div>)}</div>}
+      {screenTracks.length > 0 && <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>{screenTracks.map(tr => <div style={{ position: 'relative', border: `1px solid ${T.border}`, borderRadius: 10, overflow: 'hidden', maxWidth: '100%' }} key={tr.publication.trackSid}><VideoTrack trackRef={tr} /><div style={{ position: 'absolute', bottom: 6, left: 6, fontSize: readableTextSize(10), background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '2px 6px', borderRadius: 6 }}>🖥️ {tr.participant?.name || tr.participant?.identity}{tr.participant?.isLocal ? ' (you)' : ''}</div></div>)}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div>
@@ -325,7 +326,7 @@ function RoomInner({ session, onEnd }) {
 
         <div>
           {session.role === 'candidate' && receivedNote && (
-            <div style={{ background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 12.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+            <div style={{ background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.4)', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: readableTextSize(12.5), display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
               <span>💡 <strong>Coaching note from {receivedNote.from}:</strong> {receivedNote.text}</span>
               <button type="button" style={smallGhost} onClick={() => setReceivedNote(null)}>Dismiss</button>
             </div>
@@ -339,13 +340,13 @@ function RoomInner({ session, onEnd }) {
                 onChange={e => setManualPrompt(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && manualPrompt.trim()) { requestHintForQuestion(manualPrompt); setManualPrompt('') } }}
                 placeholder="Ask private AI co-pilot a question or coding prompt…"
-                style={{ flex: 1, height: 36, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: 12.5, padding: '0 10px', fontFamily: T.font }}
+                style={{ flex: 1, height: 36, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: readableTextSize(12.5), padding: '0 10px', fontFamily: T.font }}
               />
               <button
                 type="button"
                 disabled={!manualPrompt.trim() || hintLoading}
                 onClick={() => { requestHintForQuestion(manualPrompt); setManualPrompt('') }}
-                style={{ ...btnPrimary, padding: '0 12px', height: 36, fontSize: 12, opacity: manualPrompt.trim() && !hintLoading ? 1 : 0.5 }}>
+                style={{ ...btnPrimary, padding: '0 12px', height: 36, fontSize: readableTextSize(12), opacity: manualPrompt.trim() && !hintLoading ? 1 : 0.5 }}>
                 ⚡ Ask AI
               </button>
             </div>
@@ -353,7 +354,7 @@ function RoomInner({ session, onEnd }) {
 
           {session.role === 'interviewer' && (
             <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
-              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>🧑‍🏫 Helper Question Bank &amp; Coaching</div>
+              <div style={{ fontWeight: 600, fontSize: readableTextSize(13), marginBottom: 8 }}>🧑‍🏫 Helper Question Bank &amp; Coaching</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                 {[
                   `Walk me through the most complex system you architected for ${session.targetRole || 'this role'} and its key trade-offs.`,
@@ -367,7 +368,7 @@ function RoomInner({ session, onEnd }) {
                     data-pi-target="room_ask_question"
                     aria-label={`Ask this interview question: ${q}`}
                     onClick={() => sendInterviewerQuestion(q)}
-                    style={{ ...smallGhost, textAlign: 'left', padding: '4px 8px', fontSize: 11 }}>
+                    style={{ ...smallGhost, textAlign: 'left', padding: '4px 8px', fontSize: readableTextSize(11) }}>
                     + Ask Q{idx + 1}
                   </button>
                 ))}
@@ -379,9 +380,9 @@ function RoomInner({ session, onEnd }) {
                   onChange={e => setHelperQuestion(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && helperQuestion.trim()) sendInterviewerQuestion(helperQuestion) }}
                   placeholder="Type an interview question to send to the room…"
-                  style={{ flex: 1, height: 34, background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: 12, padding: '0 10px', fontFamily: T.font }}
+                  style={{ flex: 1, height: 34, background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: readableTextSize(12), padding: '0 10px', fontFamily: T.font }}
                 />
-                <button type="button" onClick={() => sendInterviewerQuestion(helperQuestion)} disabled={!helperQuestion.trim()} style={{ ...btnPrimary, padding: '0 12px', height: 34, fontSize: 12, opacity: helperQuestion.trim() ? 1 : 0.5 }}>Ask</button>
+                <button type="button" onClick={() => sendInterviewerQuestion(helperQuestion)} disabled={!helperQuestion.trim()} style={{ ...btnPrimary, padding: '0 12px', height: 34, fontSize: readableTextSize(12), opacity: helperQuestion.trim() ? 1 : 0.5 }}>Ask</button>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <input
@@ -390,26 +391,26 @@ function RoomInner({ session, onEnd }) {
                   onChange={e => setHelperNote(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && helperNote.trim()) broadcastHelperNote() }}
                   placeholder="Send a private coaching nudge to the candidate…"
-                  style={{ flex: 1, height: 34, background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: 12, padding: '0 10px', fontFamily: T.font }}
+                  style={{ flex: 1, height: 34, background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: readableTextSize(12), padding: '0 10px', fontFamily: T.font }}
                 />
-                <button type="button" onClick={broadcastHelperNote} disabled={!helperNote.trim()} style={{ ...btnGhost, padding: '0 12px', height: 34, fontSize: 12, opacity: helperNote.trim() ? 1 : 0.5 }}>💡 Nudge</button>
+                <button type="button" onClick={broadcastHelperNote} disabled={!helperNote.trim()} style={{ ...btnGhost, padding: '0 12px', height: 34, fontSize: readableTextSize(12), opacity: helperNote.trim() ? 1 : 0.5 }}>💡 Nudge</button>
               </div>
             </div>
           )}
 
-          {session.role === 'candidate' && !inElectron && pipSupported && !pipPrompted && (hintLoading || hint) && !pipWindow && <div style={{ background: '#1e1b4b', border: '1px solid #4338ca', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: 12, display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ color: '#a5b4fc' }}>🛡️ <strong>Sharing your screen?</strong> Move hints to a floating window and verify your preview.</span><button style={{ ...smallGhost, marginLeft: 'auto', whiteSpace: 'nowrap' }} onClick={openPip}>🪟 Pop out</button><button type="button" aria-label="Dismiss pop-out reminder" style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 16 }} onClick={() => setPipPrompted(true)}>×</button></div>}
+          {session.role === 'candidate' && !inElectron && pipSupported && !pipPrompted && (hintLoading || hint) && !pipWindow && <div style={{ background: '#1e1b4b', border: '1px solid #4338ca', borderRadius: 10, padding: '10px 14px', marginBottom: 10, fontSize: readableTextSize(12), display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ color: '#a5b4fc' }}>🛡️ <strong>Sharing your screen?</strong> Move hints to a floating window and verify your preview.</span><button style={{ ...smallGhost, marginLeft: 'auto', whiteSpace: 'nowrap' }} onClick={openPip}>🪟 Pop out</button><button type="button" aria-label="Dismiss pop-out reminder" style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: readableTextSize(16) }} onClick={() => setPipPrompted(true)}>×</button></div>}
 
           {session.role === 'candidate' && (hintLoading || hint) && (
-            electronProtection ? <div style={{ background: '#0d1117', border: '1px solid #4338ca', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#a5b4fc' }}>🛡️ Hints are in the OS-protected Electron window — still verify the meeting share preview.</div>
-              : pipWindow ? <div style={{ background: T.surface1, border: `1px solid ${T.borderStrong}`, borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: T.text3 }}>AI hints are in the floating window — verify your share preview. <button style={smallGhost} onClick={() => { pipWindow.close(); setPipWindow(null) }}>Close</button></div>
-                : sharing ? <div style={{ background: '#1c1917', border: '1px solid #57534e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#a8a29e' }}>🔒 AI hints hidden while screen sharing.{pipSupported ? ' Pop them out only after checking your share preview.' : ''}{pipSupported && <button style={{ ...smallGhost, marginLeft: 8 }} onClick={openPip}>🪟 Pop out</button>}</div>
-                  : <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}><span style={{ fontWeight: 600, fontSize: 13 }}>🤖 AI Co-pilot <span style={{ color: T.text3, fontWeight: 400, fontSize: 12 }}>· private UI; verify share preview</span></span><div style={{ display: 'flex', gap: 6 }}>{pipSupported && <button style={smallGhost} onClick={openPip}>🪟 Pop out</button>}<button style={smallGhost} onClick={() => setHintOpen(v => !v)}>{hintOpen ? 'Hide' : 'Show'}</button></div></div>{hintOpen && (hintLoading ? <p style={{ color: T.text3, fontSize: 13, margin: 0 }}>Generating hints…</p> : hint && <div style={{ fontSize: 13 }}>{hint.resumeRelevant && <span style={{ display: 'inline-block', background: '#22c55e22', color: '#4ade80', borderRadius: 6, padding: '1px 8px', fontSize: 11, marginBottom: 8 }}>✓ Resume-relevant</span>}{hint.opener && <div style={{ fontWeight: 600, color: '#e2e8f0', marginBottom: 8, padding: '6px 9px', borderRadius: 6, background: 'rgba(20,184,166,0.10)', borderLeft: `3px solid ${T.accent}` }}>{hint.opener}</div>}<div style={{ fontWeight: 600, marginBottom: 4 }}>Key points to hit:</div><ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>{(hint.keyPoints || []).map((pt, i) => <li key={i}>{pt}</li>)}</ul>{(hint.fullAnswer || hint.sampleAnswer) && <div style={{ marginTop: 6 }}><button type="button" style={smallGhost} onClick={() => setShowFullHint(v => !v)}>{showFullHint ? 'Hide full answer' : 'Show full answer / code'}</button>{showFullHint && <div style={{ marginTop: 6, padding: 10, borderRadius: 8, background: T.surface2, fontSize: 12.5, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{hint.fullAnswer || hint.sampleAnswer}</div>}</div>}{hint.watchOut && <div style={{ color: '#f59e0b', fontSize: 12, marginTop: 6 }}>⚠ {hint.watchOut}</div>}</div>)}</div>
+            electronProtection ? <div style={{ background: '#0d1117', border: '1px solid #4338ca', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: readableTextSize(12), color: '#a5b4fc' }}>🛡️ Hints are in the OS-protected Electron window — still verify the meeting share preview.</div>
+              : pipWindow ? <div style={{ background: T.surface1, border: `1px solid ${T.borderStrong}`, borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: readableTextSize(12), color: T.text3 }}>AI hints are in the floating window — verify your share preview. <button style={smallGhost} onClick={() => { pipWindow.close(); setPipWindow(null) }}>Close</button></div>
+                : sharing ? <div style={{ background: '#1c1917', border: '1px solid #57534e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: readableTextSize(12), color: '#a8a29e' }}>🔒 AI hints hidden while screen sharing.{pipSupported ? ' Pop them out only after checking your share preview.' : ''}{pipSupported && <button style={{ ...smallGhost, marginLeft: 8 }} onClick={openPip}>🪟 Pop out</button>}</div>
+                  : <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}><span style={{ fontWeight: 600, fontSize: readableTextSize(13) }}>🤖 AI Co-pilot <span style={{ color: T.text3, fontWeight: 400, fontSize: readableTextSize(12) }}>· private UI; verify share preview</span></span><div style={{ display: 'flex', gap: 6 }}>{pipSupported && <button style={smallGhost} onClick={openPip}>🪟 Pop out</button>}<button style={smallGhost} onClick={() => setHintOpen(v => !v)}>{hintOpen ? 'Hide' : 'Show'}</button></div></div>{hintOpen && (hintLoading ? <p style={{ color: T.text3, fontSize: readableTextSize(13), margin: 0 }}>Generating hints…</p> : hint && <div style={{ fontSize: readableTextSize(13) }}>{hint.resumeRelevant && <span style={{ display: 'inline-block', background: '#22c55e22', color: '#4ade80', borderRadius: 6, padding: '1px 8px', fontSize: readableTextSize(11), marginBottom: 8 }}>✓ Resume-relevant</span>}{hint.opener && <div style={{ fontWeight: 600, color: '#e2e8f0', marginBottom: 8, padding: '6px 9px', borderRadius: 6, background: 'rgba(20,184,166,0.10)', borderLeft: `3px solid ${T.accent}` }}>{hint.opener}</div>}<div style={{ fontWeight: 600, marginBottom: 4 }}>Key points to hit:</div><ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>{(hint.keyPoints || []).map((pt, i) => <li key={i}>{pt}</li>)}</ul>{(hint.fullAnswer || hint.sampleAnswer) && <div style={{ marginTop: 6 }}><button type="button" style={smallGhost} onClick={() => setShowFullHint(v => !v)}>{showFullHint ? 'Hide full answer' : 'Show full answer / code'}</button>{showFullHint && <div style={{ marginTop: 6, padding: 10, borderRadius: 8, background: T.surface2, fontSize: readableTextSize(12.5), whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{hint.fullAnswer || hint.sampleAnswer}</div>}</div>}{hint.watchOut && <div style={{ color: '#f59e0b', fontSize: readableTextSize(12), marginTop: 6 }}>⚠ {hint.watchOut}</div>}</div>)}</div>
           )}
 
           <div role="log" aria-label="Live transcript" aria-live="polite" aria-relevant="additions" style={{ border: `1px solid ${T.border}`, borderRadius: 10, background: T.surface1, padding: 14, height: 420, overflowY: 'auto' }}>
             <div style={{ ...labelStyle, marginTop: 0 }}>Live transcript</div>
             {transcript.length === 0 && !speech.interim && <p style={metaStyle}>Start talking — finalized turns are synchronized with your partner.</p>}
-            {transcript.map(s => <div key={s.id} style={{ marginBottom: 12 }}><div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}><span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px', color: s.role === 'candidate' ? '#7fb0ff' : '#f5c66b' }}>{s.speaker} · {s.role}</span>{session.role === 'candidate' && s.role === 'interviewer' && <button type="button" style={smallGhost} onClick={() => requestHintForQuestion(s.text, s.id)}>⚡ Hint</button>}</div><div>{s.text}</div></div>)}
+            {transcript.map(s => <div key={s.id} style={{ marginBottom: 12 }}><div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}><span style={{ fontSize: readableTextSize(11), fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px', color: s.role === 'candidate' ? '#7fb0ff' : '#f5c66b' }}>{s.speaker} · {s.role}</span>{session.role === 'candidate' && s.role === 'interviewer' && <button type="button" style={smallGhost} onClick={() => requestHintForQuestion(s.text, s.id)}>⚡ Hint</button>}</div><div>{s.text}</div></div>)}
             {speech.interim && <div style={{ marginBottom: 12 }}><div style={{ color: T.text3, fontStyle: 'italic' }}>{speech.interim}…</div></div>}<div ref={bottomRef} />
           </div>
         </div>

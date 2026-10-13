@@ -1,3 +1,5 @@
+import WindowResizeHandles from '../WindowResizeHandles'
+import { readableTextSize } from '../lib/typography.js'
 import React from 'react'
 import { T } from './tokens'
 import { startWindowDrag } from '../lib/windowDrag'
@@ -14,7 +16,7 @@ export function WindowControls() {
   const btn = {
     width: 30, height: 30, display: 'grid', placeItems: 'center', borderRadius: 9,
     border: `1px solid ${T.border}`, background: 'rgba(255,255,255,0.035)', color: T.text2,
-    cursor: 'pointer', fontSize: 14, lineHeight: 1, fontFamily: T.font,
+    cursor: 'pointer', fontSize: readableTextSize(14), lineHeight: 1, fontFamily: T.font,
     transition: 'background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease',
   }
   const noDrag = e => e.stopPropagation()
@@ -28,7 +30,7 @@ export function WindowControls() {
       borderBottom: `1px solid ${T.border}`,
     }}>
       <img src="/icon.png" alt="" width={24} height={24} style={{ borderRadius: 7, display: 'block', boxShadow: '0 4px 16px rgba(20,184,166,0.18)' }} />
-      <span style={{ fontSize: 13, fontWeight: 600, color: T.text1, letterSpacing: '0.15px' }}>MockMate</span>
+      <span style={{ fontSize: readableTextSize(13), fontWeight: 600, color: T.text1, letterSpacing: '0.15px' }}>MockMate</span>
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 7 }}>
         <button className="mm-window-btn" title="Minimize" aria-label="Minimize" onMouseDown={noDrag}
           onClick={() => api.hideWindow?.()} style={btn}>–</button>
@@ -43,7 +45,7 @@ export function WindowControls() {
 // Full-window branded composition. On desktop widths the form sits beside a calm
 // product context panel instead of floating alone in a black void; on compact
 // windows the context panel collapses and the form remains focused and usable.
-export function AuthShell({ children, maxWidth = 360 }) {
+export function AuthShell({ children, maxWidth = 600 }) {
   return (
     <div id="mm-auth" data-mm-surface="opaque" style={{
       position: 'fixed', inset: 0, overflow: 'auto',
@@ -57,6 +59,7 @@ export function AuthShell({ children, maxWidth = 360 }) {
       fontFamily: T.font, color: T.text1,
     }}>
       <WindowControls />
+      <WindowResizeHandles />
 
       <div className="mm-auth-stage">
         <section className="mm-auth-story" aria-hidden="true">
@@ -91,7 +94,7 @@ export function AuthShell({ children, maxWidth = 360 }) {
         #mm-auth .mm-auth-story { max-width: 470px; padding: 18px 4px 18px 8px; }
         #mm-auth .mm-auth-eyebrow {
           display: flex; align-items: center; gap: 9px; margin-bottom: 22px;
-          color: #7dd3c7; font-size: 11px; font-weight: 600; letter-spacing: .15em;
+          color: #7dd3c7; font-size: 22.0px; font-weight: 600; letter-spacing: .15em;
         }
         #mm-auth .mm-auth-eyebrow > span {
           width: 7px; height: 7px; border-radius: 999px; background: #2dd4bf;
@@ -102,7 +105,7 @@ export function AuthShell({ children, maxWidth = 360 }) {
           line-height: 1.02; font-weight: 600; letter-spacing: -1.4px;
         }
         #mm-auth .mm-auth-story > p {
-          margin: 18px 0 28px; max-width: 430px; color: #9A9FA9; font-size: 14px; line-height: 1.7;
+          margin: 18px 0 28px; max-width: 430px; color: #9A9FA9; font-size: 28.0px; line-height: 1.7;
         }
         #mm-auth .mm-auth-points { display: grid; gap: 11px; }
         #mm-auth .mm-auth-points > div {
@@ -110,10 +113,10 @@ export function AuthShell({ children, maxWidth = 360 }) {
           padding: 13px 14px; border: 1px solid rgba(255,255,255,.065); border-radius: 13px;
           background: linear-gradient(120deg, rgba(255,255,255,.035), rgba(255,255,255,.014));
         }
-        #mm-auth .mm-auth-points > div > span { color: #5eead4; font-size: 10px; font-weight: 600; padding-top: 2px; }
-        #mm-auth .mm-auth-points strong { display: block; color: #E8EAEE; font-size: 12.5px; font-weight: 600; }
-        #mm-auth .mm-auth-points small { display: block; margin-top: 3px; color: #787E88; font-size: 10.5px; line-height: 1.45; }
-        #mm-auth .mm-auth-foot { margin-top: 22px; color: #646A74; font-size: 10.5px; }
+        #mm-auth .mm-auth-points > div > span { color: #5eead4; font-size: 20px; font-weight: 600; padding-top: 2px; }
+        #mm-auth .mm-auth-points strong { display: block; color: #E8EAEE; font-size: 25.0px; font-weight: 600; }
+        #mm-auth .mm-auth-points small { display: block; margin-top: 3px; color: #787E88; font-size: 21.0px; line-height: 1.45; }
+        #mm-auth .mm-auth-foot { margin-top: 22px; color: #646A74; font-size: 21.0px; }
         #mm-auth .mm-auth-card-wrap { display: flex; justify-content: center; width: 100%; }
         #mm-auth .mm-auth-card {
           width: 100%; padding: 30px;

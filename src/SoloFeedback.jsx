@@ -1,3 +1,4 @@
+import { readableTextSize } from './lib/typography.js'
 import React, { useState } from 'react'
 import { T } from './auth/tokens'
 import { scoreColor } from './lib/ui'
@@ -22,7 +23,7 @@ function Ring({ value, size = 128 }) {
       <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
         <div>
           <div style={{ fontSize: size * 0.28, fontWeight: 600, color: T.text1, lineHeight: 1 }}>{(pct / 10).toFixed(1)}</div>
-          <div style={{ fontSize: 11, color: T.text3, marginTop: 3 }}>/ 10</div>
+          <div style={{ fontSize: readableTextSize(11), color: T.text3, marginTop: 3 }}>/ 10</div>
         </div>
       </div>
     </div>
@@ -34,7 +35,7 @@ function CopyBtn({ text, label }) {
 }
 
 const panel = { background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '18px 20px' }
-const h2 = { fontSize: 13, fontWeight: 600, color: T.text2, letterSpacing: '0.03em', marginBottom: 12 }
+const h2 = { fontSize: readableTextSize(13), fontWeight: 600, color: T.text2, letterSpacing: '0.03em', marginBottom: 12 }
 
 // Pair the transcript into Question → Answer items for the timeline.
 function pairs(transcript) {
@@ -60,19 +61,19 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
     const qa = pairs(transcript)
     return (
       <div style={{ maxWidth: 720, margin: '0 auto', fontFamily: T.font, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>Scoring unavailable</div>
-        <div role="alert" style={{ ...panel, borderColor: 'rgba(248,113,113,0.35)', background: 'rgba(248,113,113,0.08)', color: '#fca5a5', fontSize: 13, lineHeight: 1.5 }}>
+        <div style={{ fontSize: readableTextSize(22), fontWeight: 600, color: T.text1 }}>Scoring unavailable</div>
+        <div role="alert" style={{ ...panel, borderColor: 'rgba(248,113,113,0.35)', background: 'rgba(248,113,113,0.08)', color: '#fca5a5', fontSize: readableTextSize(13), lineHeight: 1.5 }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>{report?._storageWarning ? 'Evaluation and local save need attention' : 'Session saved — evaluation failed'}</div>
           <div>{report?.error || 'The session ended without enough answers to score.'}</div>
-          <div style={{ marginTop: 8, color: '#fda4af', fontSize: 12 }}>{report?._storageWarning || 'Your transcript is kept in Sessions. You can practice again when ready.'}</div>
+          <div style={{ marginTop: 8, color: '#fda4af', fontSize: readableTextSize(12) }}>{report?._storageWarning || 'Your transcript is kept in Sessions. You can practice again when ready.'}</div>
         </div>
         {qa.length > 0 && (
           <div style={panel}>
             <div style={h2}>WHAT YOU PRACTICED</div>
-            <div style={{ fontSize: 12.5, color: T.text2 }}>{qa.length} question{qa.length === 1 ? '' : 's'} · transcript kept locally</div>
+            <div style={{ fontSize: readableTextSize(12.5), color: T.text2 }}>{qa.length} question{qa.length === 1 ? '' : 's'} · transcript kept locally</div>
           </div>
         )}
-        <button onClick={onAgain} style={{ alignSelf: 'flex-start', height: 44, padding: '0 22px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>← {onAgainLabel}</button>
+        <button onClick={onAgain} style={{ alignSelf: 'flex-start', height: 44, padding: '0 22px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: readableTextSize(14), fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>← {onAgainLabel}</button>
       </div>
     )
   }
@@ -90,12 +91,12 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', fontFamily: T.font, display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
       <div>
-        <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>Your feedback</div>
-        <div style={{ fontSize: 13, color: T.text2, marginTop: 3 }}>Honest, specific notes to help you improve — not a verdict on you.</div>
+        <div style={{ fontSize: readableTextSize(22), fontWeight: 600, color: T.text1 }}>Your feedback</div>
+        <div style={{ fontSize: readableTextSize(13), color: T.text2, marginTop: 3 }}>Honest, specific notes to help you improve — not a verdict on you.</div>
       </div>
 
       {report._storageWarning && (
-        <div role="alert" style={{ ...panel, borderColor: 'rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#fbbf24', fontSize: 12.5, lineHeight: 1.5 }}>
+        <div role="alert" style={{ ...panel, borderColor: 'rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#fbbf24', fontSize: readableTextSize(12.5), lineHeight: 1.5 }}>
           {report._storageWarning}
         </div>
       )}
@@ -104,10 +105,10 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
       <div style={{ ...panel, display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
         {pct != null && <Ring value={pct} />}
         <div style={{ flex: 1, minWidth: 240 }}>
-          {report.verdict && <div style={{ fontSize: 16, fontWeight: 600, color: T.text1, marginBottom: 6 }}>{report.verdict}</div>}
-          {report.summary && <div style={{ fontSize: 13.5, color: T.text2, lineHeight: 1.6 }}>{report.summary}</div>}
+          {report.verdict && <div style={{ fontSize: readableTextSize(16), fontWeight: 600, color: T.text1, marginBottom: 6 }}>{report.verdict}</div>}
+          {report.summary && <div style={{ fontSize: readableTextSize(13.5), color: T.text2, lineHeight: 1.6 }}>{report.summary}</div>}
           {answered.length > 0 && (
-            <div style={{ fontSize: 12, color: T.text3, marginTop: 8 }}>
+            <div style={{ fontSize: readableTextSize(12), color: T.text3, marginTop: 8 }}>
               Answers: {spokenN} spoken · {typedN} typed
             </div>
           )}
@@ -118,7 +119,7 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
       {report.dimensions?.length > 0 && (
         <div style={panel}>
           <div style={h2}>SCORE BREAKDOWN</div>
-          <div style={{ fontSize: 11.5, color: T.text3, marginBottom: 12, lineHeight: 1.4 }}>
+          <div style={{ fontSize: readableTextSize(11.5), color: T.text3, marginBottom: 12, lineHeight: 1.4 }}>
             Overall above is out of 10. Each dimension below is scored out of 5.
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -126,14 +127,14 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
               const s = Math.max(0, Math.min(5, Number(dim.score) || 0))
               return (
                 <div key={i}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 5 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: readableTextSize(13), marginBottom: 5 }}>
                     <span style={{ color: T.text1, fontWeight: 500 }}>{dim.name}</span>
                     <span style={{ color: scoreColor((s / 5) * 100), fontWeight: 600 }}>{s} / 5</span>
                   </div>
                   <div style={{ height: 6, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${(s / 5) * 100}%`, background: scoreColor((s / 5) * 100), borderRadius: 3 }} />
                   </div>
-                  {dim.comment && <div style={{ fontSize: 11.5, color: T.text3, marginTop: 5, lineHeight: 1.45 }}>{dim.comment}</div>}
+                  {dim.comment && <div style={{ fontSize: readableTextSize(11.5), color: T.text3, marginTop: 5, lineHeight: 1.45 }}>{dim.comment}</div>}
                 </div>
               )
             })}
@@ -168,7 +169,7 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
         <div style={panel}>
           <div style={h2}>DELIVERY</div>
           {mostlyTyped && (
-            <div role="status" style={{ fontSize: 12, color: '#fbbf24', marginBottom: 10, lineHeight: 1.45 }}>
+            <div role="status" style={{ fontSize: readableTextSize(12), color: '#fbbf24', marginBottom: 10, lineHeight: 1.45 }}>
               Most answers were typed — pace/filler stats reflect text, not spoken delivery.
             </div>
           )}
@@ -180,7 +181,7 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
             {d.hedges?.count > 0 && <Stat>{d.hedges.count} hedges</Stat>}
           </div>
           {report.delivery?.tip && !mostlyTyped && (
-            <div style={{ fontSize: 12.5, color: '#fbbf24', marginTop: 12, lineHeight: 1.5 }}>Next time: {report.delivery.tip}</div>
+            <div style={{ fontSize: readableTextSize(12.5), color: '#fbbf24', marginTop: 12, lineHeight: 1.5 }}>Next time: {report.delivery.tip}</div>
           )}
         </div>
       )}
@@ -196,26 +197,26 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
                 <div key={i} style={{ border: `1px solid ${T.border}`, borderRadius: T.rCtrl, overflow: 'hidden' }}>
                   <button onClick={() => setOpenQ(open ? null : i)}
                     style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: open ? T.surface2 : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: T.font }}>
-                    <span style={{ width: 24, height: 24, flexShrink: 0, borderRadius: 6, background: 'rgba(20,184,166,0.16)', color: T.accentFrom, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>Q{i + 1}</span>
-                    <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: T.text1, whiteSpace: open ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.q}</span>
+                    <span style={{ width: 24, height: 24, flexShrink: 0, borderRadius: 6, background: 'rgba(20,184,166,0.16)', color: T.accentFrom, display: 'grid', placeItems: 'center', fontSize: readableTextSize(11), fontWeight: 700 }}>Q{i + 1}</span>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: readableTextSize(13), color: T.text1, whiteSpace: open ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.q}</span>
                     {item.hasMeta && (
-                      <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 600, color: item.spoken ? '#5eead4' : T.text3, background: item.spoken ? 'rgba(20,184,166,0.12)' : T.surface2, border: `1px solid ${item.spoken ? 'rgba(20,184,166,0.3)' : T.border}`, borderRadius: 999, padding: '2px 8px' }}>
+                      <span style={{ flexShrink: 0, fontSize: readableTextSize(10), fontWeight: 600, color: item.spoken ? '#5eead4' : T.text3, background: item.spoken ? 'rgba(20,184,166,0.12)' : T.surface2, border: `1px solid ${item.spoken ? 'rgba(20,184,166,0.3)' : T.border}`, borderRadius: 999, padding: '2px 8px' }}>
                         {item.spoken ? 'Spoken' : 'Typed'}
                       </span>
                     )}
-                    <span style={{ color: T.text3, fontSize: 12 }}>{open ? '▾' : '▸'}</span>
+                    <span style={{ color: T.text3, fontSize: readableTextSize(12) }}>{open ? '▾' : '▸'}</span>
                   </button>
                   {open && (
                     <div style={{ padding: '2px 14px 14px 46px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ fontSize: 10.5, fontWeight: 600, color: T.text3, letterSpacing: '0.04em' }}>YOUR ANSWER</div>
+                        <div style={{ fontSize: readableTextSize(10.5), fontWeight: 600, color: T.text3, letterSpacing: '0.04em' }}>YOUR ANSWER</div>
                         {item.hasMeta && (
-                          <span style={{ fontSize: 10, color: item.spoken ? '#5eead4' : T.text3 }}>
+                          <span style={{ fontSize: readableTextSize(10), color: item.spoken ? '#5eead4' : T.text3 }}>
                             {item.spoken ? 'Spoken (voice contributed)' : 'Typed'}
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: 13, color: T.text2, lineHeight: 1.6 }}>{item.a || <span style={{ color: T.text3, fontStyle: 'italic' }}>No answer recorded.</span>}</div>
+                      <div style={{ fontSize: readableTextSize(13), color: T.text2, lineHeight: 1.6 }}>{item.a || <span style={{ color: T.text3, fontStyle: 'italic' }}>No answer recorded.</span>}</div>
                     </div>
                   )}
                 </div>
@@ -227,7 +228,7 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button onClick={onAgain} style={{ height: 44, padding: '0 22px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>{onAgainLabel}</button>
+        <button onClick={onAgain} style={{ height: 44, padding: '0 22px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: readableTextSize(14), fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>{onAgainLabel}</button>
         <CopyBtn text={feedbackToText(report)} label="Copy feedback" />
         {transcript.length > 0 && <CopyBtn text={transcriptToText(transcript)} label="Copy transcript" />}
       </div>
@@ -237,12 +238,12 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
 
 function Bullet({ children, color, mark }) {
   return (
-    <div style={{ display: 'flex', gap: 9, fontSize: 13, color: T.text2, lineHeight: 1.5 }}>
-      <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 5, background: `${color}22`, color, display: 'grid', placeItems: 'center', fontSize: 10.5, fontWeight: 700, marginTop: 1 }}>{mark}</span>
+    <div style={{ display: 'flex', gap: 9, fontSize: readableTextSize(13), color: T.text2, lineHeight: 1.5 }}>
+      <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 5, background: `${color}22`, color, display: 'grid', placeItems: 'center', fontSize: readableTextSize(10.5), fontWeight: 700, marginTop: 1 }}>{mark}</span>
       <span>{children}</span>
     </div>
   )
 }
 function Stat({ children }) {
-  return <span style={{ fontSize: 11.5, color: T.text2, background: T.surface2, border: `1px solid ${T.border}`, borderRadius: 999, padding: '4px 11px' }}>{children}</span>
+  return <span style={{ fontSize: readableTextSize(11.5), color: T.text2, background: T.surface2, border: `1px solid ${T.border}`, borderRadius: 999, padding: '4px 11px' }}>{children}</span>
 }

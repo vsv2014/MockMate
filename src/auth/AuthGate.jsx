@@ -1,3 +1,4 @@
+import { readableTextSize } from '../lib/typography.js'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { T } from './tokens'
 import { Spinner } from './ui'
@@ -169,14 +170,14 @@ export default function AuthGate({ children }) {
             backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
             box-shadow: 0 8px 30px rgba(0,0,0,.12);
           }
-          .mm-ready-stage .mm-shell > div:nth-of-type(2) > div:not([style*="overflow-y"]) {
+          .mm-ready-stage .mm-shell-sidebar {
             background: linear-gradient(180deg, rgba(18,21,27,.98), rgba(15,18,24,.98)) !important;
           }
-          .mm-ready-stage .mm-shell > div:nth-of-type(2) > div[style*="overflow-y"] {
+          .mm-ready-stage .mm-shell-content {
             padding: 28px clamp(24px, 3vw, 38px) 38px !important;
             scroll-behavior: smooth;
           }
-          .mm-ready-stage .mm-shell > div:nth-of-type(2) > div[style*="overflow-y"] > * {
+          .mm-ready-stage .mm-shell-content > * {
             width: min(1180px, 100%); margin-left: auto; margin-right: auto;
           }
           .mm-ready-stage .mm-shell button,
@@ -192,7 +193,7 @@ export default function AuthGate({ children }) {
             to { opacity: 1; transform: translateY(0) scale(1); }
           }
           @media (max-width: 900px) {
-            .mm-ready-stage .mm-shell > div:nth-of-type(2) > div[style*="overflow-y"] {
+            .mm-ready-stage .mm-shell-content {
               padding: 22px 20px 30px !important;
             }
           }
@@ -235,16 +236,16 @@ function VerifyEmailSent({ email, deliveryFailed = false, onResend, onBackToLogi
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24 }}>
         {brandMark(40)}
         <h1 style={{
-          marginTop: 14, fontSize: 22, fontWeight: 600, letterSpacing: '0.2px',
+          marginTop: 14, fontSize: readableTextSize(22), fontWeight: 600, letterSpacing: '0.2px',
           background: T.chrome, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent',
         }}>Check your email</h1>
-        <p style={{ marginTop: 8, fontSize: 13, fontWeight: 400, color: T.text2, textAlign: 'center', lineHeight: 1.6, maxWidth: 340 }}>
+        <p style={{ marginTop: 8, fontSize: readableTextSize(13), fontWeight: 400, color: T.text2, textAlign: 'center', lineHeight: 1.6, maxWidth: 340 }}>
           We created your MockMate account{email ? <> for <strong style={{ color: T.text }}>{email}</strong></> : ''}, but you
           need to verify that email before signing in. Click the link in the message we just sent
           (valid for 24 hours), then come back and sign in.
         </p>
         {deliveryFailed && (
-          <p style={{ marginTop: 10, fontSize: 12.5, color: '#fbbf24', textAlign: 'center', lineHeight: 1.55, maxWidth: 340 }}>
+          <p style={{ marginTop: 10, fontSize: readableTextSize(12.5), color: '#fbbf24', textAlign: 'center', lineHeight: 1.55, maxWidth: 340 }}>
             We couldn’t send the email just now. Your account was created — wait a moment, then use
             “Resend verification email” below.
           </p>
@@ -254,7 +255,7 @@ function VerifyEmailSent({ email, deliveryFailed = false, onResend, onBackToLogi
         <PrimaryButton onClick={onBackToLogin}>I’ve verified — sign in</PrimaryButton>
         <div style={{ textAlign: 'center' }}>
           {resendState === 'sent'
-            ? <span style={{ fontSize: 12, color: T.text2 }}>Verification email sent again. Check your inbox (and spam).</span>
+            ? <span style={{ fontSize: readableTextSize(12), color: T.text2 }}>Verification email sent again. Check your inbox (and spam).</span>
             : <TextLink onClick={async () => {
                 if (resendState === 'busy') return
                 setResendState('busy')
@@ -277,7 +278,7 @@ function LoadingScreen() {
       <WindowControls />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, animation: 'mm-load-in 220ms ease both' }}>
         <Spinner />
-        <span style={{ fontSize: 12 }}>Opening MockMate…</span>
+        <span style={{ fontSize: readableTextSize(12) }}>Opening MockMate…</span>
       </div>
       <style>{`@keyframes mm-load-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}`}</style>
     </div>
