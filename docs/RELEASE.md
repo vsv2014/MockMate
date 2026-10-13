@@ -1,8 +1,8 @@
 # Signed public Windows release
 
-Current source version: **1.6.4** (desktop package and lock). v1.6.3 is published only as an unsigned personal preview (see below); no signed v1.6.x build exists, and the latest signed stable installer is v1.5.3. A source version is not proof of a signed or published installer. In the steps below, `X.Y.Z` is the version being released.
+Current source version: **1.6.5** (desktop package and lock). v1.6.4 and v1.6.5 are published only as unsigned personal previews (see below); v1.6.5 is the v1.6.4 hotfix (collapsed badge, Ready Room action, OpenRouter keys, global Tailwind reset). No signed v1.6.x build exists, and the latest signed stable installer is v1.5.3. A source version is not proof of a signed or published installer. In the steps below, `X.Y.Z` is the version being released.
 
-The stable `release.yml` workflow is signed-only. Missing or incomplete signing settings fail before packaging; no unsigned fallback is permitted. v1.6.1, v1.6.2 and v1.6.3 are unsigned personal previews. Do not move or replace those tags.
+The stable `release.yml` workflow is signed-only. Missing or incomplete signing settings fail before packaging; no unsigned fallback is permitted. v1.6.1, v1.6.2, v1.6.3 and v1.6.4 are unsigned personal previews, and v1.6.5 is the v1.6.4 hotfix preview. Do not move or replace those tags.
 
 ## Signing configuration
 
@@ -31,7 +31,7 @@ Existing `personal-preview.yml` and `unsigned-personal-prerelease.yml` are separ
 
 ## Unsigned public preview (`unsigned-public.yml`)
 
-This is the route used for v1.6.2 and v1.6.3. It is an explicit request, never a fallback from the signed workflow.
+This is the route used for v1.6.2, v1.6.3, v1.6.4 and v1.6.5. It is an explicit request, never a fallback from the signed workflow.
 
 1. In a reviewed pull request, set `package.json`, the root lock version and the root lock package entry to `X.Y.Z`. Add the `CHANGELOG.md` section. Set `.github/unsigned-release-request.json` to `{ "tag": "vX.Y.Z", "mode": "unsigned-public", "source_commit": "<reviewed head>" }`. `source_commit` is informational provenance; the workflow does not check it.
 2. Merge after CI passes. A push to `main` that changes the request file starts the workflow.

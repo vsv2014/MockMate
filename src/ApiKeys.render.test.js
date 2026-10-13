@@ -15,12 +15,18 @@ describe('ApiKeysPanel (bring your own key)', () => {
     expect(html).toContain('id="mm-add-api-key"')
     expect(html).toContain('id="mm-add-api-key-provider"')
     expect(html).toContain('The key is not sent anywhere to identify it.')
-    for (const name of ['Google Gemini', 'Anthropic (Claude)', 'OpenAI', 'Groq', 'Cerebras', 'Deepgram (voice transcription)']) {
+    for (const name of ['Google Gemini', 'Anthropic (Claude)', 'OpenAI', 'Groq', 'Cerebras', 'OpenRouter (multi-model gateway)']) {
       expect(html).toContain(`>${name}</option>`)
     }
     // The old one-input-per-provider stack is gone; Deepgram keeps its own voice field.
     expect(html).not.toContain('id="mm-key-anthropic"')
     expect(html).not.toContain('id="mm-key-google-gemini"')
     expect(html).toContain('id="mm-key-deepgram"')
+  })
+
+  it('lays the panel out with the shared design-system container, not Tailwind utilities', () => {
+    const html = renderToString(React.createElement(ApiKeysPanel))
+    expect(html).toContain('class="mm-content-medium"')
+    expect(html).not.toContain('max-w-[1000px]')
   })
 })

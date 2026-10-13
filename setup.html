@@ -17,6 +17,7 @@
 <div class="row"><label><span>OPENAI API KEY</span><a href="https://platform.openai.com/api-keys" target="_blank">Get key →</a></label><input id="OPENAI_API_KEY" placeholder="sk-..." /></div>
 <div class="row"><label><span>ANTHROPIC API KEY</span><a href="https://console.anthropic.com" target="_blank">Get key →</a></label><input id="ANTHROPIC_API_KEY" placeholder="sk-ant-..." /></div>
 <div class="row"><label><span>CEREBRAS API KEY</span><a href="https://cloud.cerebras.ai" target="_blank">Get key →</a></label><input id="CEREBRAS_API_KEY" placeholder="csk-..." /></div>
+<div class="row"><label><span>OPENROUTER API KEY</span><a href="https://openrouter.ai/keys" target="_blank">Get key →</a></label><input id="OPENROUTER_API_KEY" placeholder="sk-or-..." /><div class="hint">One key for many providers through OpenRouter's gateway</div></div>
 <div class="section opt">OPTIONAL — voice transcription</div>
 <div class="row"><label><span>DEEPGRAM API KEY</span><a href="https://console.deepgram.com" target="_blank">Get key →</a></label><input id="DEEPGRAM_API_KEY" placeholder="Deepgram key" /><div class="hint">Only required for microphone/system-audio transcription; typed interviews still work without it.</div></div>
 <div class="section opt">OPTIONAL — Web search</div>
@@ -26,8 +27,8 @@
 <button id="btn" disabled onclick="save()">Save &amp; Start MockMate →</button>
 <div class="saving" id="saving">Saving and applying…</div>
 <script>
-const KEYS = ['GROQ_API_KEY','GEMINI_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY','CEREBRAS_API_KEY','DEEPGRAM_API_KEY','TAVILY_API_KEY']
-const LLM  = ['GROQ_API_KEY','GEMINI_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY','CEREBRAS_API_KEY']
+const KEYS = ['GROQ_API_KEY','GEMINI_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY','CEREBRAS_API_KEY','OPENROUTER_API_KEY','DEEPGRAM_API_KEY','TAVILY_API_KEY']
+const LLM  = ['GROQ_API_KEY','GEMINI_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY','CEREBRAS_API_KEY','OPENROUTER_API_KEY']
 function vals(){const v={};KEYS.forEach(k=>{v[k]=document.getElementById(k).value.trim()});return v}
 function check(){const hasLLM=LLM.some(k=>vals()[k]);document.getElementById('btn').disabled=!hasLLM;document.getElementById('req').style.display=hasLLM?'none':'block'}
 KEYS.forEach(k=>document.getElementById(k).addEventListener('input',check))

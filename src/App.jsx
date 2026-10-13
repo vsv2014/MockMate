@@ -730,6 +730,16 @@ function ElectronShell({ auth }) {
     if (minimized) resizing.current = false
   }, [minimized])
 
+  // Collapsed to the badge: the native window can be bigger than the badge (a Windows
+  // transparent-window artifact) and the app must not paint anything across it, or the
+  // excess shows as a black rectangle. src/styles.css owns the rule; this only toggles it.
+  // Layout effect, not effect: the class must be in place before the collapse paints,
+  // otherwise the badge flashes a black frame on the way in.
+  useLayoutEffect(() => {
+    document.body.classList.toggle('mm-collapsed', minimized)
+    return () => document.body.classList.remove('mm-collapsed')
+  }, [minimized])
+
   function expandFromPill() {
     setMinimized(false)
     if (inElectron && viewRef.current === 'companion' && companionPhaseRef.current === 'live') {
@@ -1564,9 +1574,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
   // Collapsed → on-screen logo pill (never a full close). Protection follows the
   // explicit Stealth toggle; collapsing does not silently enable it.
   if (minimized) return (
-    <>
-      <style>{`body { background: transparent !important; }`}</style>
-      <div id="mockmate-overlay" style={{ position: 'fixed', inset: 0, background: 'transparent', pointerEvents: 'none', zIndex: 9999 }}>
+    <div id="mockmate-overlay" style={{ position: 'fixed', inset: 0, background: 'transparent', pointerEvents: 'none', zIndex: 9999 }}>
         <button type="button" data-mm-hit="1"
           onMouseDown={startPillDrag}
           onClick={() => { if (!pillDragged.current) onMinimize?.() }}
@@ -1581,10 +1589,9 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
           <img src="/icon.png" alt="" width={30} height={30}
             style={{ borderRadius: 8, display: 'block', pointerEvents: 'none' }}
             onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling && (e.currentTarget.nextSibling.style.display = 'grid') }} />
-          <span style={{ display: 'none', placeItems: 'center', width: 30, height: 30, borderRadius: 8, background: 'rgba(0,0,0,0.35)', color: '#5eead4', fontWeight: 800, fontSize: 16, fontFamily: T.font, pointerEvents: 'none' }}>M</span>
-        </button>
-      </div>
-    </>
+        <span style={{ display: 'none', placeItems: 'center', width: 30, height: 30, borderRadius: 8, background: 'rgba(0,0,0,0.35)', color: '#5eead4', fontWeight: 800, fontSize: 16, fontFamily: T.font, pointerEvents: 'none' }}>M</span>
+      </button>
+    </div>
   )
 
   return (

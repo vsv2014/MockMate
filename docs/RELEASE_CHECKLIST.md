@@ -1,6 +1,6 @@
 # MockMate release checklist
 
-**Current source version: 1.6.3, published as an unsigned personal preview.** The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
+**Current source version: 1.6.5, published as an unsigned personal preview (the v1.6.4 hotfix).** The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
 
 **Rule: do not describe any build as physically certified until every applicable box below is checked on a REAL packaged build.** The separate explicit manual unsigned-preview path may publish only as an isolated, manual-update pre-release after automated CI; it is not a substitute for these physical checks.
 Every 1.4.2 defect (CSP broke Solo+Live, STT coupled to the LLM cap, dangling `mintToken` import,
@@ -60,6 +60,7 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] Benchmark the same recorded input and context, with the same provider and model, against a **named baseline release**: the one the regression report compared against or, if none was recorded, the latest stable public Windows release (v1.5.3). Record the selected model, TTFT, completion/truncation status, capture-to-answer latency and token usage/cost from diagnostics (never transcript content), with the baseline tag, in `docs/evidence/VALIDATION_STATUS.md`
 - [ ] Concise style: coding/design answers still contain complete code or architecture within 1,800 tokens, and simple answers on the blocking `/api/hint` path (Live JSON compatibility fallback, Duo or mobile) finish within **380 tokens** with no truncation and no JSON-repair request (`request_usage` `requestIndex` stays 0)
 - [ ] Windows transparent overlay: collapse to the badge, drag, expand and resize with the custom edge handles at 100% and one non-default page zoom. Transparency survives every step. Repeat with microphone and system-playback sources
+- [ ] **Collapsed badge stays transparent (v1.6.5 blocker — the reported black rectangle):** collapse to the badge on the packaged Windows build with the default display. No black or opaque rectangle may surround it, at any display scaling, and the surrounding desktop must stay visible through the badge window. Drag the badge at least ten times in all four directions and collapse/expand twice: the window must not grow, no artifact may accumulate behind the cursor, and the badge must stay 72×72. Then tick "Include usage breadcrumbs in diagnostic logs", collapse again and drag: the log must contain no `pill_geometry_phantom` row, and `pill_geometry_corrected` rows only if Windows reported a drifted size (a corrected row is a pass — it is the guard working — but include it in the report either way). Repeat on the display with the largest available resolution if reported symptoms were resolution-dependent. Note: if Windows reserves an invisible strip below the badge, it is now transparent but can still intercept clicks in that strip — record it as a residual, not a blocker
 - [ ] **Long answers finish:** with a real provider, a coding or system-design answer that streams for more than 11 seconds completes without an "outage" error. Diagnostics show no `attempt_timed_out`, or only `timeoutKind: first_token` before failover
 - [ ] **Early answer start:** with system audio in BYOK mode, a clear question's answer starts sooner than with `localStorage['mm-live-early-answer'] = '0'`, and diagnostics show `speculative_hint` `claimed`. When the interviewer pauses and then adds to the question, no answer to the shorter question is shown, the answer covers the full question, and diagnostics show `cancelled` with `speech_continued`
 - [ ] **Claude:** with only an Anthropic key, quick answers use Claude Haiku 5.5 and coding/design answers use Claude Sonnet 5.5. First words arrive without a long silent pause, and there is no `thinking_setting_rejected`
@@ -68,10 +69,12 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
   - The panel shows only fixed identifiers (for example `document_remove`, `nav_account`), never names or text.
   - With **Include usage breadcrumbs in diagnostic logs** off, an exported log bundle contains no `product_intel` rows; with it on, it does.
 - [ ] **Settings key setup:**
-  - Paste an Anthropic, Gemini, Groq, OpenAI, Cerebras and Deepgram key: each is suggested correctly.
-  - An unknown format requires choosing the provider; a mismatched choice asks for confirmation; OpenRouter and admin keys are refused.
+  - Paste an Anthropic, Gemini, Groq, OpenAI, Cerebras, OpenRouter and Deepgram key: each is suggested correctly.
+  - An unknown format requires choosing the provider; a mismatched choice asks for confirmation; admin keys are refused.
   - Keys saved by the previous release still appear and work after upgrading; Test, Replace and Remove work.
   - "Which model answers" matches the models seen in diagnostics.
+- [ ] **Ready Room → Live (v1.6.5 hotfix):** the Ready Room shows the session summary, the four checks, the readiness rail and the action button in one visible column; with every check passed the button reads "Continue to Live setup →" and opens the Live setup. No check may be reachable only from a hidden container.
+- [ ] **OpenRouter key persists (v1.6.5 hotfix):** on the packaged build, save an OpenRouter key in Settings, restart the app, and confirm it still shows under "Saved AI keys" with the model routing summary populated; `Remove` clears it; the first-run setup screen offers an OpenRouter field; a user with only an OpenRouter key is not returned to setup on every launch.
 
 ## 5. Screenshot solve
 - [ ] Ctrl+Shift+U / F7 on a coding problem **from Live** → answer-first solution, no refusal

@@ -119,7 +119,7 @@ export function AppShell({ active, onNav, auth, meetingActive, stealth, onStealt
   const sidebarW = sidebarHidden ? 0 : sidebarIcons ? 64 : 216
 
   return (
-    <div className="mm-shell" style={{ display: 'flex', flexDirection: 'column', height: '100dvh', minHeight: 0, minWidth: 0, background: T.bg, color: T.text1, fontFamily: T.font, overflow: 'hidden' }}>
+    <div className="mm-shell" data-mm-surface="opaque" style={{ display: 'flex', flexDirection: 'column', height: '100dvh', minHeight: 0, minWidth: 0, background: T.bg, color: T.text1, fontFamily: T.font, overflow: 'hidden' }}>
       <style>{`
         .mm-shell *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.16) transparent}
         .mm-shell ::-webkit-scrollbar{width:8px;height:8px}

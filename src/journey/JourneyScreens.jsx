@@ -774,6 +774,16 @@ export function ReadyRoom({
       ) : (
         <>
           <div className="mm-content-narrow mm-section">
+              {/* Session summary leads the linear flow (v1.6.4 layout); it must never be
+                  hidden — the Live readiness panel below it owns the only primary action. */}
+              <section style={{ ...panelStyle, padding: 16, background: 'linear-gradient(145deg, rgba(20,184,166,0.11), rgba(18,21,27,0.98) 62%)' }}>
+                <Eyebrow>THIS SESSION</Eyebrow>
+                <div style={{ color: T.text1, font: `600 17px ${T.fontDisplay}`, marginTop: 9 }}>{kit.title}</div>
+                <div style={{ color: T.text2, fontSize: 11.5, lineHeight: 1.55, marginTop: 5 }}>{[kit.targetRole, kit.targetCompany].filter(Boolean).join(' · ') || 'Add a target role or company in the Kit.'}</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 11 }}><Pill>{kit.interviewType || 'Technical'}</Pill>{kit.yearsExp && <Pill>{kit.yearsExp}</Pill>}<Pill>{kit.language || 'English'}</Pill></div>
+                <Button variant="quiet" onClick={() => onEditKit?.(kit)} style={{ marginTop: 13, width: '100%' }}>Edit Kit context</Button>
+              </section>
+
               <CheckCard number="01" title="Interview context" status={contextReady ? 'passed' : 'missing'} statusText={contextReady ? 'Kit context found' : 'Needs context'} action={<Button variant="quiet" onClick={() => onEditKit?.(kit)}>{contextReady ? 'Review Kit' : 'Add role or materials'}</Button>}>
                 {contextReady
                   ? `${kit.targetRole || 'Role not set'}${kit.targetCompany ? ` · ${kit.targetCompany}` : ''}. ${selectedKitMaterialCount ? `${selectedKitMaterialCount} selected Kit-only attachment${selectedKitMaterialCount === 1 ? '' : 's'} can ground Live answers. ` : ''}Session context will be copied into a snapshot; it won’t update your shared profile.`
@@ -846,37 +856,26 @@ export function ReadyRoom({
                 </CheckCard>
               </div>
 
-            <aside style={{ display: 'none' }}>
-              <section style={{ ...panelStyle, padding: 16, background: 'linear-gradient(145deg, rgba(20,184,166,0.11), rgba(18,21,27,0.98) 62%)' }}>
-                <Eyebrow>THIS SESSION</Eyebrow>
-                <div style={{ color: T.text1, font: `600 17px ${T.fontDisplay}`, marginTop: 9 }}>{kit.title}</div>
-                <div style={{ color: T.text2, fontSize: 11.5, lineHeight: 1.55, marginTop: 5 }}>{[kit.targetRole, kit.targetCompany].filter(Boolean).join(' · ') || 'Add a target role or company in the Kit.'}</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 11 }}><Pill>{kit.interviewType || 'Technical'}</Pill>{kit.yearsExp && <Pill>{kit.yearsExp}</Pill>}<Pill>{kit.language || 'English'}</Pill></div>
-                <Button variant="quiet" onClick={() => onEditKit?.(kit)} style={{ marginTop: 13, width: '100%' }}>Edit Kit context</Button>
-              </section>
+            <section style={{ ...panelStyle, padding: 16 }} aria-label="Live readiness">
+              <Eyebrow>LIVE READINESS</Eyebrow>
+              <div style={{ color: T.text1, fontSize: 13, fontWeight: 700, marginTop: 9 }}>{allReady ? 'Checks complete' : 'A few checks remain'}</div>
+              <div style={{ color: T.text2, fontSize: 11, lineHeight: 1.55, marginTop: 5 }}>{allReady ? 'Continue to the existing Live setup. Its final start gate remains in place.' : 'Each status is based on a real test or an explicit manual confirmation—not just a saved setting.'}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px 10px', alignItems: 'center', borderTop: `1px solid ${T.border}`, paddingTop: 12, marginTop: 13 }}>
+                <span style={{ color: T.text3, fontSize: 10.5 }}>Kit context</span><Pill tone={contextReady ? 'teal' : 'red'}>{contextReady ? 'OK' : 'TODO'}</Pill>
+                <span style={{ color: T.text3, fontSize: 10.5 }}>AI round trip</span><Pill tone={aiTest.status === 'passed' ? 'teal' : 'neutral'}>{aiTest.status === 'passed' ? 'OK' : 'TODO'}</Pill>
+                <span style={{ color: T.text3, fontSize: 10.5 }}>{audioSource === 'microphone' ? 'Microphone transcript' : 'System transcript'}</span><Pill tone={voiceTest.status === 'passed' ? 'teal' : 'neutral'}>{voiceTest.status === 'passed' ? 'OK' : 'TODO'}</Pill>
+                <span style={{ color: T.text3, fontSize: 10.5 }}>Privacy check</span><Pill tone={privacyReady ? 'teal' : 'neutral'}>{privacyReady ? 'OK' : 'TODO'}</Pill>
+              </div>
+            </section>
 
-              <section style={{ ...panelStyle, padding: 16 }}>
-                <Eyebrow>LIVE READINESS</Eyebrow>
-                <div style={{ color: T.text1, fontSize: 13, fontWeight: 700, marginTop: 9 }}>{allReady ? 'Checks complete' : 'A few checks remain'}</div>
-                <div style={{ color: T.text2, fontSize: 11, lineHeight: 1.55, marginTop: 5 }}>{allReady ? 'Continue to the existing Live setup. Its final start gate remains in place.' : 'Each status is based on a real test or an explicit manual confirmation—not just a saved setting.'}</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px 10px', alignItems: 'center', borderTop: `1px solid ${T.border}`, paddingTop: 12, marginTop: 13 }}>
-                  <span style={{ color: T.text3, fontSize: 10.5 }}>Kit context</span><Pill tone={contextReady ? 'teal' : 'red'}>{contextReady ? 'OK' : 'TODO'}</Pill>
-                  <span style={{ color: T.text3, fontSize: 10.5 }}>AI round trip</span><Pill tone={aiTest.status === 'passed' ? 'teal' : 'neutral'}>{aiTest.status === 'passed' ? 'OK' : 'TODO'}</Pill>
-                  <span style={{ color: T.text3, fontSize: 10.5 }}>{audioSource === 'microphone' ? 'Microphone transcript' : 'System transcript'}</span><Pill tone={voiceTest.status === 'passed' ? 'teal' : 'neutral'}>{voiceTest.status === 'passed' ? 'OK' : 'TODO'}</Pill>
-                  <span style={{ color: T.text3, fontSize: 10.5 }}>Privacy check</span><Pill tone={privacyReady ? 'teal' : 'neutral'}>{privacyReady ? 'OK' : 'TODO'}</Pill>
-                </div>
-              </section>
-
-              <section style={{ ...panelStyle, padding: 15, borderColor: allReady ? 'rgba(20,184,166,0.4)' : T.border }}>
-                <Button variant="primary" disabled={previewMode || aiBusy || service.status === 'checking' || (voiceTest.status === 'listening' && voice.active)} onClick={primaryAction} style={{ width: '100%', minHeight: 45, fontSize: 13 }}>
-                  {allReady ? 'Continue to Live setup →' : primaryLabel || 'Complete readiness checks'}
-                </Button>
-                {!allReady && <div role="status" style={{ color: primaryMessage ? '#fcd34d' : T.text3, fontSize: 10.5, lineHeight: 1.5, marginTop: 8 }}>{primaryMessage || 'Choose the next action above. You can return here at any time.'}</div>}
-                <div style={{ color: T.text3, fontSize: 10, lineHeight: 1.5, marginTop: 10 }}>Passing this room does not start a call or audio capture. Live’s existing start gate still checks its required platform protections and inputs.</div>
-              </section>
-            </aside>
+            <section style={{ ...panelStyle, padding: 15, borderColor: allReady ? 'rgba(20,184,166,0.4)' : T.border }}>
+              <Button variant="primary" data-mm-ready-room-primary="1" disabled={previewMode || aiBusy || service.status === 'checking' || (voiceTest.status === 'listening' && voice.active)} onClick={primaryAction} style={{ width: '100%', minHeight: 45, fontSize: 13 }}>
+                {allReady ? 'Continue to Live setup →' : primaryLabel || 'Complete readiness checks'}
+              </Button>
+              {!allReady && <div role="status" style={{ color: primaryMessage ? '#fcd34d' : T.text3, fontSize: 10.5, lineHeight: 1.5, marginTop: 8 }}>{primaryMessage || 'Choose the next action above. You can return here at any time.'}</div>}
+              <div style={{ color: T.text3, fontSize: 10, lineHeight: 1.5, marginTop: 10 }}>Passing this room does not start a call or audio capture. Live’s existing start gate still checks its required platform protections and inputs.</div>
+            </section>
           </div>
-          <style>{`@media(max-width:820px){.mm-ready-layout{grid-template-columns:1fr!important}}`}</style>
         </>
       )}
     </div>

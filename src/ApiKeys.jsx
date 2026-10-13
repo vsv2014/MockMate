@@ -302,7 +302,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   const canSaveAdded = !!detection.value && !!targetProvider && !detection.problem && !addSaving && keyStatus !== 'loading'
 
   return (
-    <div className="mx-auto w-full max-w-[1000px] px-4" style={{ fontFamily: T.font }}>
+    <div className="mm-content-medium" style={{ fontFamily: T.font }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <style>{`.mm-ai-provider-card:focus-within .mm-ai-provider-content{outline:2px solid ${T.accentFrom};outline-offset:3px}`}</style>
 

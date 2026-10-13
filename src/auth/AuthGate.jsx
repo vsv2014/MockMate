@@ -152,7 +152,9 @@ export default function AuthGate({ children }) {
       refresh: loadSession,
     })
     return (
-      <div className="mm-ready-stage">
+      // data-mm-surface="opaque" — src/styles.css neutralises this full-window
+      // background while the app is collapsed to the badge.
+      <div className="mm-ready-stage" data-mm-surface="opaque">
         {app}
         <style>{`
           .mm-ready-stage { position: fixed; inset: 0; overflow: hidden; background: ${T.bg}; }
@@ -267,7 +269,7 @@ function VerifyEmailSent({ email, deliveryFailed = false, onResend, onBackToLogi
 
 function LoadingScreen() {
   return (
-    <div style={{
+    <div data-mm-surface="opaque" style={{
       position: 'fixed', inset: 0, display: 'grid', placeItems: 'center', color: T.text2, fontFamily: T.font,
       background: '#0B0D12',
       backgroundImage: 'radial-gradient(circle at 50% 38%, rgba(20,184,166,.10), transparent 28%), linear-gradient(180deg,#0B0D12,#090A0F)',

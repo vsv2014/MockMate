@@ -45,7 +45,7 @@ export function WindowControls() {
 // windows the context panel collapses and the form remains focused and usable.
 export function AuthShell({ children, maxWidth = 360 }) {
   return (
-    <div id="mm-auth" style={{
+    <div id="mm-auth" data-mm-surface="opaque" style={{
       position: 'fixed', inset: 0, overflow: 'auto',
       padding: '76px 34px 34px',
       background: '#0B0D12',
