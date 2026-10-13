@@ -7,6 +7,7 @@ import {
   FATAL_CLOSE,
   PERMANENT_TOKEN_STATUSES,
   computeReconnectDelayMs,
+  WAKE_RECONNECT_DELAY_MS,
   buildDeepgramListenUrl,
   abandonDeepgramSocket,
   enqueueOrSendPcm,
@@ -111,7 +112,6 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const recoverCaptureRef = useRef(null)
   const connecting = useRef(false)
   const suspendPaused = useRef(false)
-  const attemptsAtSuspend = useRef(0)
   const pcmQueue = useRef([]), pcmQueueBytes = useRef(0), pcmDroppedBytes = useRef(0)
   const keytermsRef = useRef([])
   const langRef = useRef('en-US')
@@ -537,7 +537,6 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       }
       if (userStop.current || !ctx.current) return
       if (wasSuspended) reconnectAttempts.current = 0
-      attemptsAtSuspend.current = 0
       const sock = activeSocketRef.current || ws.current
       if (sock && sock.readyState === 1 && !wasSuspended) return
       if (connecting.current && sock && sock.readyState === 0) return
@@ -546,11 +545,10 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       clearTimeout(reconnectTimer.current)
       reconnectTimer.current = setTimeout(() => {
         if (!userStop.current && !suspendPaused.current) connectSocket().catch(() => {})
-      }, 400)
+      }, WAKE_RECONNECT_DELAY_MS)
     }
     const onSuspend = () => {
       suspendPaused.current = true
-      attemptsAtSuspend.current = reconnectAttempts.current
       clearTimeout(reconnectTimer.current); reconnectTimer.current = null
       connectGen.current += 1
       connecting.current = false

@@ -91,6 +91,13 @@ export function registerApiRoutes(app, opts = {}) {
   const report = typeof opts.report === 'function' ? opts.report : () => {}
   const onLlm = typeof opts.onLlm === 'function' ? opts.onLlm : null
   const onLlmFailure = typeof opts.onLlmFailure === 'function' ? opts.onLlmFailure : null
+  // Metering must never fail a user request, but a silently failing meter is a
+  // quota-accounting bug — log every failure instead of swallowing it.
+  const runMeter = async (fn, req, path, kind) => {
+    if (!fn) return
+    try { await fn(req, path) }
+    catch (e) { console.error(`[api] metering ${kind} failed for ${path}:`, e?.message || e) }
+  }
   const resolveReasoningPolicy = typeof opts.reasoningPolicy === 'function' ? opts.reasoningPolicy : defaultReasoningPolicy
 
   const bodyWithPolicy = (path, raw = {}) => applyArchReasoningPolicy(path, raw, resolveReasoningPolicy)
@@ -131,7 +138,7 @@ export function registerApiRoutes(app, opts = {}) {
       try { return res.json(issueManagedSttTicket(req)) }
       catch (error) { return res.status(error.status || 503).json({ error: error.message }) }
     }
-    const remoteHosted = ['1', 'true'].includes(String(process.env.MOCKMATE_HOSTED || '').toLowerCase())
+    const remoteHosted = isHostedDeploy()
     if (remoteHosted || Boolean(process.env.VERCEL)) return res.status(503).json({
       error: 'Managed transcription gateway is not configured. Streaming access is disabled.',
       code: 'managed_stt_gateway_required',
@@ -141,7 +148,7 @@ export function registerApiRoutes(app, opts = {}) {
       const allowApiKeyFallback = isLoopbackAddress(ip) || !ip
       res.json(await deepgramToken({ allowApiKeyFallback }))
     } catch (e) {
-      if (onSttRelease) { try { await onSttRelease(req) } catch {} }
+      await runMeter(onSttRelease, req, '/api/deepgram-token', 'stt-release')
       report(e); setRetryAfterHeader(res, e); res.status(e.status || 500).json(errorPayload(e))
     }
   })
@@ -159,7 +166,7 @@ export function registerApiRoutes(app, opts = {}) {
       const input = (Array.isArray(raw) ? raw : [raw]).filter(Boolean)
       if (input.length > 64) return res.status(413).json({ error: 'Too many embedding inputs in one request.' })
       const vectors = await embed(input)
-      if (onLlm) { try { await onLlm(req, '/api/embed') } catch {} }
+      await runMeter(onLlm, req, '/api/embed', 'consume')
       res.json({
         vectors,
         provider: vectors?.provider || null,
@@ -167,7 +174,7 @@ export function registerApiRoutes(app, opts = {}) {
         embeddingModel: vectors?.embeddingModel || null,
       })
     } catch (e) {
-      if (onLlmFailure) { try { await onLlmFailure(req, '/api/embed') } catch {} }
+      await runMeter(onLlmFailure, req, '/api/embed', 'release')
       report(e); setRetryAfterHeader(res, e); res.status(e.status || 500).json(errorPayload(e))
     }
   })
@@ -182,10 +189,10 @@ export function registerApiRoutes(app, opts = {}) {
       // Operation-scoped latency: adaptive routing must see THIS operation's p95,
       // not a global bucket contaminated by unrelated slow operations.
       recordArchMetric(`turn_latency_ms:${OPERATION_BY_PATH[path] || 'default'}`, Date.now() - startedAt)
-      if (onLlm) { try { await onLlm(req, path) } catch {} }
+      await runMeter(onLlm, req, path, 'consume')
       if (!closed) res.json(key ? { [key]: out } : out)
     } catch (e) {
-      if (onLlmFailure) { try { await onLlmFailure(req, path) } catch {} }
+      await runMeter(onLlmFailure, req, path, 'release')
       if (closed || ac.signal.aborted || e?.name === 'AbortError') return
       if (isProviderFailureError(e, { closed, signal: ac.signal })) {
         recordArchMetric('provider_failure_count', 1)
@@ -209,10 +216,10 @@ export function registerApiRoutes(app, opts = {}) {
     try {
       const out = await analyzeScreen({ ...bodyWithPolicy('/api/analyze-screen', req.body || {}), signal: ac.signal })
       recordArchMetric('turn_latency_ms:screen', Date.now() - startedAt)
-      if (onLlm) { try { await onLlm(req, '/api/analyze-screen') } catch {} }
+      await runMeter(onLlm, req, '/api/analyze-screen', 'consume')
       if (!ac.signal.aborted) res.json({ analysis: out })
     } catch (e) {
-      if (onLlmFailure) { try { await onLlmFailure(req, '/api/analyze-screen') } catch {} }
+      await runMeter(onLlmFailure, req, '/api/analyze-screen', 'release')
       if (closed || ac.signal.aborted || e?.name === 'AbortError') return
       if (isProviderFailureError(e, { closed, signal: ac.signal })) {
         recordArchMetric('provider_failure_count', 1)
@@ -229,66 +236,80 @@ export function registerApiRoutes(app, opts = {}) {
   post('/api/referral', referralMessage)
   post('/api/resume-latex', resumeLatex)
 
-  app.post('/api/hint-stream', ...guard, async (req, res) => {
-    const startedAt = Date.now()
-    res.setHeader('Content-Type', 'text/event-stream')
-    res.setHeader('Cache-Control', 'no-cache, no-transform')
-    res.setHeader('Connection', 'keep-alive')
-    res.flushHeaders?.()
-    let closed = false
-    let providerStarted = false
-    let emittedToken = false
-    let reservationSettled = false
-    const ac = new AbortController()
-    res.on('close', () => { closed = true; ac.abort() })
-    const send = (event, data) => { if (!closed) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`) }
-    const consumeReservation = async () => {
-      if (reservationSettled) return
-      reservationSettled = true
-      if (onLlm) { try { await onLlm(req, '/api/hint-stream') } catch {} }
-    }
-    const releaseReservation = async () => {
-      if (reservationSettled) return
-      reservationSettled = true
-      if (onLlmFailure) { try { await onLlmFailure(req, '/api/hint-stream') } catch {} }
-    }
+  app.post('/api/hint-stream', ...guard, (req, res) => streamHintOverSse(req, res, bodyWithPolicy('/api/hint-stream', req.body || {}), {
+    onConsume: onLlm ? () => onLlm(req, '/api/hint-stream') : null,
+    onRelease: onLlmFailure ? () => onLlmFailure(req, '/api/hint-stream') : null,
+    report,
+  }))
+}
 
-    try {
-      const out = await streamHint(bodyWithPolicy('/api/hint-stream', req.body || {}), {
-        onMeta: m => send('meta', m),
-        onToken: t => {
-          if (!emittedToken) recordArchMetric('llm_ttft_ms', Date.now() - startedAt)
-          emittedToken = true
-          send('token', t)
-        },
-        onUsage: u => send('usage', u),
-        onProviderEvent: e => {
-          providerStarted = true
-          if (e?.event === 'fallback' || (e?.type === 'started' && Number(e?.attemptIndex) > 0)) {
-            recordArchMetric('fallback_count', 1)
-          }
-          send('provider', e)
-        },
-        signal: ac.signal,
-      })
-      recordArchMetric('turn_latency_ms:hint', Date.now() - startedAt)
-      if (out?.skipped) await releaseReservation()
-      else await consumeReservation()
-      if (out?.emptyOutput) {
-        recordArchMetric('empty_output_count', 1)
-        send('error', { error: 'The model returned no visible answer. Please retry.', code: 'empty_output' })
-      } else send(out?.skipped ? 'skip' : 'done', {})
-    } catch (e) {
-      if (emittedToken || providerStarted) await consumeReservation()
-      else await releaseReservation()
-      if (!closed && !ac.signal.aborted && e?.name !== 'AbortError') {
-        if (isProviderFailureError(e, { closed, signal: ac.signal })) {
-          recordArchMetric('provider_failure_count', 1)
+// ── Shared /api/hint-stream SSE core ─────────────────────────────────────────
+// ONE implementation for both deploy targets: the Express route above and the
+// serverless wrapper (api/hint-stream.js). These used to be two hand-maintained
+// copies that drifted (reservation handling, fallback_count, flushHeaders,
+// error payload shape); keep every behavior change here so both stay identical.
+// onConsume/onRelease are the managed-metering reservation hooks (null in BYOK
+// and serverless deploys): consume when the model produced work, release when
+// the request never reached a provider.
+export async function streamHintOverSse(req, res, body, { onConsume = null, onRelease = null, report = () => {} } = {}) {
+  const startedAt = Date.now()
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache, no-transform')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders?.()
+  let closed = false
+  let providerStarted = false
+  let emittedToken = false
+  let reservationSettled = false
+  const ac = new AbortController()
+  res.on('close', () => { closed = true; try { ac.abort() } catch {} })
+  const ended = () => closed || res.writableEnded
+  const send = (event, data) => { if (!ended()) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`) }
+  const settleReservation = async (fn, kind) => {
+    if (reservationSettled) return
+    reservationSettled = true
+    if (!fn) return
+    try { await fn() }
+    catch (e) { console.error(`[api] hint-stream metering ${kind} failed:`, e?.message || e) }
+  }
+  const consumeReservation = () => settleReservation(onConsume, 'consume')
+  const releaseReservation = () => settleReservation(onRelease, 'release')
+
+  try {
+    const out = await streamHint(body, {
+      onMeta: m => send('meta', m),
+      onToken: t => {
+        if (!emittedToken) recordArchMetric('llm_ttft_ms', Date.now() - startedAt)
+        emittedToken = true
+        send('token', t)
+      },
+      onUsage: u => send('usage', u),
+      onProviderEvent: e => {
+        providerStarted = true
+        if (e?.event === 'fallback' || (e?.type === 'started' && Number(e?.attemptIndex) > 0)) {
+          recordArchMetric('fallback_count', 1)
         }
-        report(e)
-        send('error', errorPayload(e))
+        send('provider', e)
+      },
+      signal: ac.signal,
+    })
+    recordArchMetric('turn_latency_ms:hint', Date.now() - startedAt)
+    if (out?.skipped) await releaseReservation()
+    else await consumeReservation()
+    if (out?.emptyOutput) {
+      recordArchMetric('empty_output_count', 1)
+      send('error', { error: 'The model returned no visible answer. Please retry.', code: 'empty_output' })
+    } else send(out?.skipped ? 'skip' : 'done', {})
+  } catch (e) {
+    if (emittedToken || providerStarted) await consumeReservation()
+    else await releaseReservation()
+    if (!ended() && !ac.signal.aborted && e?.name !== 'AbortError') {
+      if (isProviderFailureError(e, { closed, signal: ac.signal })) {
+        recordArchMetric('provider_failure_count', 1)
       }
+      report(e)
+      send('error', errorPayload(e))
     }
-    if (!closed) res.end()
-  })
+  }
+  if (!ended()) res.end()
 }

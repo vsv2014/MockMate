@@ -57,7 +57,10 @@ router.post('/signup', signupLimiter, async (req, res) => {
       if (delivery?.delivered !== 'email' && delivery?.delivered !== 'console') {
         console.error(`[signup] verification email NOT delivered (${delivery?.delivered || 'unknown'}) for user ${user.id}; account cannot verify until delivery is restored`)
       }
-      return res.status(201).json({ verificationRequired: true, user: toSafeUser(user) })
+      // emailDelivery is additive: the client may surface a "we could not send it" notice.
+      // Safe to expose here (the creator already knows the account exists); deliberately NOT
+      // added to /resend-verification, which must stay enumeration-proof.
+      return res.status(201).json({ verificationRequired: true, user: toSafeUser(user), emailDelivery: delivery?.delivered || 'failed' })
     }
     res.status(201).json({ token: signToken(user.id, user.tokenVersion || 0), user: toSafeUser(user) })
   } catch (error) {

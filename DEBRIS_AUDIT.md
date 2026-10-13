@@ -179,9 +179,9 @@ Method: for every `export function|const|class` in non-test files, grep the rest
 
 1. **Path:** `api/_lib/apiRoutes.js:232-294` vs `api/hint-stream.js:1-48`
    **What it is:** The SSE hint-stream endpoint implemented twice — once for Express (local/managed) and once for Vercel serverless — with near-identical body and already-divergent behavior.
-   **Evidence:** both set the same 3 SSE headers, same `send(event,data)` helper, same `recordArchMetric('llm_ttft_ms'/'turn_latency_ms:hint'/'empty_output_count')` calls; the Express copy additionally handles STT/LLM reservation release (`:245-254`) and `flushHeaders`, the serverless copy does not. Not guaranteed identical results.
+   **Evidence:** both set the same 3 SSE headers, same `send(event,data)` helper; residual drift was reservation hooks, `fallback_count`, `flushHeaders`, `report()`, and error payload shape (the arch-metric claim was partially stale — the serverless copy already had llm_ttft_ms/turn_latency/empty_output).
    **Severity:** High
-   **Disposition:** Investigate (known instance; consolidating requires the serverless wrapper to grow stream support)
+   **Disposition:** FIXED in this PR — single `streamHintOverSse()` exported from apiRoutes.js; Express route and api/hint-stream.js are now thin wrappers over the same implementation (reservation hooks are optional and null in serverless/BYOK).
 
 2. **Path:** `api/_handler.js:13-17`, `api/hint-stream.js:7-9`, `api/providers.js:4-11`, `api/deepgram-token.js:7-11`, `api/token.js:8-12`
    **What it is:** The "public Vercel deploy disabled" guard copy-pasted five times with three different user-facing error strings.
@@ -203,9 +203,9 @@ Method: for every `export function|const|class` in non-test files, grep the rest
 
 5. **Path:** `src/useDeepgram.js:302-330` vs `src/useSystemAudio.js:528-560`
    **What it is:** Two parallel Deepgram hook state machines (mic vs system audio) with duplicated suspend/wake/reconnect logic that has already drifted.
-   **Evidence:** the `afterWake`/`onSuspend` handlers are line-for-line copies except `useSystemAudio` adds `attemptsAtSuspend` bookkeeping (`:540`, `:553`) that `useDeepgram` lacks; both also hard-code the same 400 ms wake delay instead of `computeReconnectDelayMs` used elsewhere in the same files (`useDeepgram.js:322`, `useSystemAudio.js:548`).
+   **Evidence (corrected after reading):** `attemptsAtSuspend` was WRITE-ONLY state in useSystemAudio — written at :114/:540/:553, read by nothing; the audit had the drift backwards (it was dead bookkeeping, not a feature useDeepgram lacked). The 400 ms wake delay was duplicated as a bare literal in both hooks.
    **Severity:** High (bug fixed in one hook will not fix the other)
-   **Disposition:** Investigate
+   **Disposition:** PARTIALLY FIXED in this PR — dead attemptsAtSuspend removed; wake delay extracted to WAKE_RECONNECT_DELAY_MS in deepgramTransport.js (shared, documented). Full state-machine unification deliberately NOT done: live-audio hot path with no behavioral test harness; the wake/suspend seam is now drift-free.
 
 6. **Path:** `src/index.css:3-48` vs `src/styles.css:3-40`
    **What it is:** The Tailwind `@theme` brand palette duplicated in a live and a dead stylesheet.
@@ -427,7 +427,7 @@ Method: grep for empty `catch {}`/`catch (e) {}` and `.catch(() => null|{}|undef
 1. **Path:** `backend/src/routes/auth.js:53` and `:104`
    **What it is:** verification-email delivery result (`{delivered}`) ignored and rejections swallowed — with `REQUIRE_EMAIL_VERIFICATION=1`, an undelivered email silently locks the user out.
    **Severity:** High
-   **Disposition:** FIXED in this PR — both call sites now log loudly when delivery result is not 'email'/'console'. OPEN FOLLOW-UP: visibility is log-only; the signup response still reports success when the email could not be sent, so the affected user sees nothing. Surfacing it in the response is a product decision (response-shape change) deliberately not made here.
+   **Disposition:** FIXED in this PR — both call sites log loudly on non-delivery, AND the signup response now carries an additive `emailDelivery` field surfaced in the UI (VerifyEmailSent shows a "we couldn't send it — use resend" notice). Deliberately NOT added to /resend-verification, which must stay enumeration-proof.
 
 2. **Path:** `backend/src/store.js`
    **RETRACTED (post-audit verification):** `persist()` logs and rethrows (`:58`); `createUser`/`updateUser`/`deleteUser`/`addUsage` roll back in-memory state and rethrow; reserve paths roll back and return false. Only the release paths swallow after `persist()` has already logged — a deliberate compensating-write pattern. The original "silent data loss" claim was wrong.
@@ -438,10 +438,10 @@ Method: grep for empty `catch {}`/`catch (e) {}` and `.catch(() => null|{}|undef
    **Severity:** Medium
    **Disposition:** Investigate
 
-4. **Path:** `api/_lib/apiRoutes.js:144,162,170,185,188,212,215,248,253`
-   **What it is:** Managed-mode metering callbacks (`onLlm`, `onLlmFailure`, `onSttRelease`) wrapped in `try {} catch {}` — a failing meter means usage is silently not recorded/released; quota enforcement degrades without trace.
-   **Severity:** Medium (availability-over-accounting is plausibly intended, but it is undistinguishable from a bug)
-   **Disposition:** Investigate
+4. **Path:** `api/_lib/apiRoutes.js` metering callbacks
+   **What it is:** Managed-mode metering callbacks (`onLlm`, `onLlmFailure`, `onSttRelease`) were wrapped in `try {} catch {}` — a failing meter meant usage silently not recorded/released.
+   **Severity:** Medium
+   **Disposition:** FIXED in this PR — all 9 sites route through `runMeter()`/`settleReservation()` which still never fail the user request but log every metering failure with path and kind.
 
 5. **Path:** `backend/src/routes/billing.js:141`
    **What it is:** Stripe webhook: `findUserById(...).catch(() => null)` — a DB blip during `checkout.session.completed` silently drops the plan upgrade (Stripe will retry the webhook, which masks it — **inferred**).
