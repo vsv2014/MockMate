@@ -321,13 +321,16 @@ function startApiServer(onReady) {
   })
 }
 
-// Persistent per-install JWT secret. Generated once, kept in userData (0600),
-// and handed to the local account service so tokens stay valid across app restarts.
+// Persistent per-install JWT secret, handed to the local account service so tokens stay
+// valid across app restarts. bootstrap.cjs owns creation: it writes and verifies this file
+// before this module's app.whenReady callback starts the backend, and quits the app if
+// persistence fails. Read-only here — never regenerate on failure, because a silently
+// ephemeral secret would invalidate every user session on the next launch. A read failure
+// throws into startBackend()'s catch (diag event + "account service unavailable" dialog).
 function getJwtSecret() {
   const f = path.join(app.getPath('userData'), '.jwt-secret')
-  try { if (fs.existsSync(f)) return fs.readFileSync(f, 'utf8').trim() } catch {}
-  const secret = crypto.randomBytes(48).toString('hex')
-  try { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, secret, { mode: 0o600 }) } catch {}
+  const secret = fs.readFileSync(f, 'utf8').trim()
+  if (secret.length < 64) throw new Error('local sign-in secret file is invalid; reinstall or check disk permissions')
   return secret
 }
 

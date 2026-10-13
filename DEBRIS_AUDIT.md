@@ -140,7 +140,7 @@ Method: for every `export function|const|class` in non-test files, grep the rest
    **What it is:** `ROLE_RULES` maps program/project managers to family `'customer_management'`, a value absent from the `RoleFamily` typedef; meanwhile `pickPlaybookKey` (:243) and the domain rule (:355) test `roleFamily === 'program_management'`, a value `inferRoleFamily` can never return. The `operations_process` playbook is therefore unreachable for every program-manager profile.
    **Evidence:** `grep -rn "program_management\|customer_management"` — `'customer_management'` produced at :35, consumed nowhere; `'program_management'` consumed at :243/:355, produced nowhere.
    **Severity:** High (silent functional gap, not just dead code)
-   **Disposition:** Investigate
+   **Disposition:** FIXED in this PR — role rule now emits 'program_management'; regression tests added.
 
 2. **Path:** `shared/interviewClassify.js:222` (`case 'project'`), `:224` (`'resume'`), `:226` (`'leadership'`), `:235` (`'customer_scenario'`), `:237` (`'marketing'`)
    **What it is:** `pickPlaybookKey`/`contextNeedsFor` switch cases for questionTypes that `classifyTurn` never emits (it emits `project_walkthrough`, `experience`, `behavioral`, `sales_roleplay`, `strategy`).
@@ -195,7 +195,7 @@ Method: for every `export function|const|class` in non-test files, grep the rest
    **What it is:** Two generators for the per-install `.jwt-secret`: bootstrap writes it atomically and quits the app on failure; `getJwtSecret()` in main.cjs retains the pre-bootstrap logic that swallows the write error and silently falls back to an ephemeral secret — the exact failure mode the bootstrap comment says it exists to prevent.
    **Evidence:** bootstrap `:18` comment "a failed disk write can never silently turn into a one-run ephemeral JWT secret"; main.cjs `:330` `try { ...writeFileSync(f, secret...) } catch {}` then `return secret`.
    **Severity:** High
-   **Disposition:** Investigate (main.cjs copy should become read-only consumer)
+   **Disposition:** FIXED in this PR — main.cjs getJwtSecret() is now a read-only consumer that throws into startBackend()'s error dialog.
 
 4. **Path:** `api/_lib/interview.js:684-690` (`evaluateSolo`) vs `api/_lib/core.js:1462-1470` (`makeReport`)
    **What it is:** Two feedback-report prompt templates maintaining the identical JSON contract (`overallScore`, `verdict` enum, `dimensions[{name,score,comment}]`, `strengths`, `improvements`, `summary`) in two files.
@@ -428,16 +428,13 @@ Method: grep every `package.json` dependency name in import/require position acr
 Method: grep for empty `catch {}`/`catch (e) {}` and `.catch(() => null|{}|undefined)`. Totals: **243** empty-catch sites (incl. tests), **37** silent promise catches in prod code. The dominant population — ~120 `try { win.webContents.send(...) } catch {}`-style guards in `electron/main.cjs`/`bootstrap.cjs` and the `onProviderEvent`/`providerDiagnostic` guards in `api/_lib/core.js` — is deliberate best-effort IPC and is **Keep**. The ones that hide correctness failures:
 
 1. **Path:** `backend/src/routes/auth.js:53` and `:104`
-   **What it is:** `await sendVerificationEmail(...).catch(() => {})` — if the email provider fails during signup/resend, the API still returns success; with `REQUIRE_EMAIL_VERIFICATION=1` the user is permanently locked out with no error anywhere (mailer logs only the domain, `mailer.js:29`).
-   **Caller distinguish success/failure?** No.
+   **What it is:** verification-email delivery result (`{delivered}`) ignored and rejections swallowed — with `REQUIRE_EMAIL_VERIFICATION=1`, an undelivered email silently locks the user out.
    **Severity:** High
-   **Disposition:** Investigate
+   **Disposition:** FIXED in this PR — both call sites now log loudly when delivery result is not 'email'/'console'.
 
-2. **Path:** `backend/src/store.js:125` and `:145` (plus `:52`, `:66`, `:76` writeChain)
-   **What it is:** File-store `persist()` failures swallowed after user mutations — account/plan/usage writes can silently never reach disk (data loss on restart).
-   **Caller distinguish?** No — mutation APIs resolve successfully.
-   **Severity:** High
-   **Disposition:** Investigate
+2. **Path:** `backend/src/store.js`
+   **RETRACTED (post-audit verification):** `persist()` logs and rethrows (`:58`); `createUser`/`updateUser`/`deleteUser`/`addUsage` roll back in-memory state and rethrow; reserve paths roll back and return false. Only the release paths swallow after `persist()` has already logged — a deliberate compensating-write pattern. The original "silent data loss" claim was wrong.
+   **Disposition:** Keep
 
 3. **Path:** `electron/main.cjs:330`
    **What it is:** JWT-secret write failure swallowed, returning an in-memory secret → every user session invalidates on next launch. Partially mitigated by the bootstrap guard (D.3) which quits first — but only if bootstrap's own `app.whenReady()` chain (which ends in `.catch(() => {})`, `bootstrap.cjs:35`) didn't itself swallow the failure.
@@ -576,9 +573,8 @@ The repo is better than average here (`shared/liveTiming.js` names the four core
    **What it is:** Child-process stdout piped wholesale to `console.log('[API]', ...)` / `('[backend]', ...)` — every server log line duplicated into the Electron main console in production.
    **Severity:** Low. **Disposition:** Keep (owner-confirmed dev aid).
 4. **Path:** `backend/src/mailer.js:24`
-   **What it is:** `console.log(`[${tag}] link for ${to}: ${link}`)` — prints live verification/reset links to stdout when RESEND is not configured. Owner-confirmed dev aid for local testing. Residual caveat: nothing restricts it to dev, so a hosted deploy that loses its RESEND key starts logging auth tokens.
-   **Severity:** Low in dev (High only if hosted without RESEND)
-   **Disposition:** Keep (owner-confirmed dev aid) — optionally gate on NODE_ENV for hosted
+   **RETRACTED CAVEAT (post-audit verification):** the link log is already gated — `isDev = NODE_ENV !== 'production' && !process.env.HOST` (`mailer.js:22`); production/hosted logs only the redacted domain. The original hosted-token-leak caveat does not apply to current code.
+   **Disposition:** Keep (owner-confirmed dev aid, correctly gated)
 5. **Path:** `api/_lib/core.js:34`
    **What it is:** Hosted-mode diagnostics printed as raw JSON to stdout only when `MOCKMATE_HOSTED === '1'` — but the backend's own `.env.example` sets `MOCKMATE_HOSTED=1` while other code accepts `'true'` (F.4), so a `MOCKMATE_HOSTED=true` deploy silently loses all provider diagnostics.
    **Severity:** Medium. **Disposition:** Investigate.

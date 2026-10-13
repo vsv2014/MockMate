@@ -32,7 +32,7 @@ const ROLE_RULES = [
   { family: 'finance', re: /\b(finance|accountant|fp&a|controller|investment analyst)\b/i },
   { family: 'HR', re: /\b(human resources|\bhr\b|recruiter|talent acquisition|people ops)\b/i },
   { family: 'design', re: /\b(ux|ui|product designer|visual designer|design systems?)\b/i },
-  { family: 'customer_management', re: /\b(program manager|project manager|scrum master|delivery manager)\b/i },
+  { family: 'program_management', re: /\b(program manager|project manager|scrum master|delivery manager)\b/i },
   { family: 'business_analysis', re: /\b(business analyst|\bba\b|requirements analyst)\b/i },
   { family: 'operations', re: /\b(operations|ops manager|process improvement|supply chain)\b/i },
   { family: 'customer_success', re: /\b(customer success|\bcs\b manager|csm)\b/i },
