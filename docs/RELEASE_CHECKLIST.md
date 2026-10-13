@@ -1,6 +1,6 @@
 # MockMate release checklist
 
-**Current source version: 1.6.5, published as an unsigned personal preview (the v1.6.4 hotfix).** The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
+**Current source version: 1.6.6, prepared as a release candidate; not yet tagged or published.** The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
 
 **Rule: do not describe any build as physically certified until every applicable box below is checked on a REAL packaged build.** The separate explicit manual unsigned-preview path may publish only as an isolated, manual-update pre-release after automated CI; it is not a substitute for these physical checks.
 Every 1.4.2 defect (CSP broke Solo+Live, STT coupled to the LLM cap, dangling `mintToken` import,
@@ -129,3 +129,12 @@ npm ci && npm run verify        # verify = doctor (install/bin integrity) + buil
 `npm run doctor` alone catches the "install looks fine but a bin/dep is missing" class (e.g. a
 missing electron shim) that build+test miss. *The manual packaged pass is the part that actually
 protects the moat — do not skip it.*
+
+## v1.6.6 Live acceptance checks
+
+- [ ] Enter Live from Ready Room without collapsing first: initial dimensions fit the display and every edge/corner can resize.
+- [ ] Verify main answer 27px, full answer 26px and code 24px remain readable at supported display scaling; longer content scrolls.
+- [ ] Collapse/expand and drag the badge repeatedly: no growing black background; expanded resize still works.
+- [ ] Microphone interviewer questions auto-answer after speaker lock; candidate/unknown speech does not auto-trigger. Verify speaker ID 0 and degraded audio.
+- [ ] Explicit Answer this and retry never intentionally auto-skip; failures remain visible.
+- [ ] End a session: Back/minimize/close stay reachable on notes. During report generation, leaving works and timeout returns notes without a report.
