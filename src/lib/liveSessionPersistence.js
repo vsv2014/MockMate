@@ -1,11 +1,13 @@
 // Transitional localStorage preservation. SQLite/outbox migration is separate.
-import { saveSession } from '../history.js'
+import { activeAccountScope } from './accountScope.js'
+import { saveSessionAsync } from '../history.js'
 import { clearLiveCheckpoint, loadLiveCheckpoint } from './liveCheckpoint.js'
 import { diagnostic } from './diagnostics.js'
 
-export function preserveLiveSession({ runId, conversation = [], report, config, profile,
+export async function preserveLiveSession({ runId, conversation = [], report, config, profile,
   captureStatus = 'captured', evaluationStatus = 'failed', final = false },
-  { save = saveSession, clear = clearLiveCheckpoint, readCheckpoint = loadLiveCheckpoint, log = diagnostic } = {}) {
+  { save = saveSessionAsync, clear = clearLiveCheckpoint, readCheckpoint = loadLiveCheckpoint, log = diagnostic } = {}) {
+  const scope = activeAccountScope()
   if (!runId) throw new Error('Live preservation requires runId')
   const fallbackReport = {
     overallScore: null, dimensions: [], strengths: [], improvements: [],
@@ -20,7 +22,9 @@ export function preserveLiveSession({ runId, conversation = [], report, config, 
     transcript: conversation, config, profile }
   const bytes = new TextEncoder().encode(JSON.stringify(payload)).length
   log('session', 'history_commit_started', { runId, captureStatus, evaluationStatus, bytes })
-  const stored = save(payload)
+  let stored = null
+  try { stored = await save(payload) } catch {}
+  if (scope !== activeAccountScope()) stored = null
   log('session', stored ? 'history_commit_succeeded' : 'history_commit_failed', {
     runId, captureStatus, evaluationStatus, bytes, ...(!stored ? { errorCode: 'local_write_failed' } : {}),
   }, stored ? 'info' : 'error')

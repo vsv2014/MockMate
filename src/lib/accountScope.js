@@ -38,7 +38,10 @@ function migrateVersion(scope, fromVersion) {
     for (const key of LEGACY_KEYS) {
       const oldValue = localStorage.getItem(key)
       const nextKey = scopedKey(key, scope)
-      if (oldValue !== null && localStorage.getItem(nextKey) === null) localStorage.setItem(nextKey, oldValue)
+      if (oldValue !== null && localStorage.getItem(nextKey) === null) {
+        localStorage.setItem(nextKey, oldValue)
+        if (localStorage.getItem(nextKey) !== oldValue) throw new Error('Legacy account migration verification failed')
+      }
       if (oldValue !== null) localStorage.removeItem(key)
     }
   }
@@ -47,7 +50,8 @@ function migrateVersion(scope, fromVersion) {
     for (const key of ['mm-docs', 'mm-sessions']) {
       const full = scopedKey(key, scope)
       const raw = localStorage.getItem(full)
-      if (raw !== null && !Array.isArray(safeJson(raw, null))) localStorage.setItem(full, '[]')
+      // Preserve unreadable original bytes for verified import/recovery; readers handle corruption.
+      if (raw !== null && !Array.isArray(safeJson(raw, null))) continue
     }
     const modeKey = scopedKey('mm-ai-mode', scope)
     const mode = localStorage.getItem(modeKey)
