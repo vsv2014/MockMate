@@ -144,6 +144,37 @@ const PROVIDER_TEST_IDS = new Set(['groq', 'gemini', 'openai_mini', 'claude_haik
 /** Make one small, explicit probe against a selected saved key; this is never part of normal routing. */
 export async function testProviderConnection(providerId) {
   const id = String(providerId || '')
+
+  // Deepgram is STT, not an LLM — verify the key via the auth/grant endpoint.
+  if (id === 'deepgram') {
+    if (!process.env.DEEPGRAM_API_KEY) {
+      const error = new Error('No Deepgram key configured.')
+      error.status = 404
+      throw error
+    }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8_000)
+    try {
+      const response = await fetch('https://api.deepgram.com/v1/auth/token', {
+        method: 'GET',
+        headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}` },
+        signal: controller.signal,
+      })
+      if (!response.ok) {
+        const error = new Error(
+          response.status === 401 || response.status === 403
+            ? 'Deepgram key is invalid or expired. Check Settings → Voice.'
+            : `Deepgram connection test failed (HTTP ${response.status}).`
+        )
+        error.status = response.status
+        throw error
+      }
+      return { ok: true, provider: 'deepgram', model: 'stt' }
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   if (!PROVIDER_TEST_IDS.has(id) || !availableProviders().some(provider => provider.id === id)) {
     const error = aiError('no_provider', 404)
     error.message = 'That provider is not configured on this device.'
