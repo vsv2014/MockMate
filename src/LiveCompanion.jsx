@@ -14,7 +14,7 @@ import CustomPromptStudio from './components/CustomPromptStudio'
 import { buildInterviewConfig, CUSTOM_INSTRUCTIONS_STORE_MAX, CUSTOM_INSTRUCTIONS_PACK_MAX } from './lib/interviewConfig'
 import { OverlayPanel, ScreenAnalysisPanel, IconBtn, CodeBlock } from './App'
 import ApiKeysPanel from './ApiKeys'
-import { saveSession } from './history'
+import { preserveLiveSession } from './lib/liveSessionPersistence'
 import { saveLiveCheckpoint, loadLiveCheckpoint, clearLiveCheckpoint, checkpointToConversation } from './lib/liveCheckpoint'
 import { loadProfile, saveProfile } from './lib/profile'
 import { fmtClock } from './lib/ui'
@@ -574,7 +574,7 @@ function Section({ n, title, subtitle, defaultOpen = true, highlight = false, ch
 }
 
 // ── Live overlay ──────────────────────────────────────────────────────────────
-function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, pip: initialPip, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId, interviewConfig: initialInterviewConfig, kitId }) {
+function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, sourceId, provider: initialProvider, onEnd, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, screenAnalysis, screenAnalyzing, screenFlowStatus, onDismissScreen, codingDetected, onCaptureScreen, onContinueScreen, onNewScreen, onUndoScreen, onReanalyze, onPipActive, pip: initialPip, clickThrough, onClickThrough, onLiveSpokenQuestion, captureDisplays, captureDisplayId, onCaptureDisplayId, interviewConfig: initialInterviewConfig, kitId }) {
   const interviewConfigRef = useRef(initialInterviewConfig || {
     ...buildInterviewConfig({
       profile,
@@ -602,7 +602,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
   const [answerStyle, setAnswerStyle] = useState(() => getAnswerStyle())
   const answerStyleRef = useRef(getAnswerStyle())
   const [clock, setClock] = useState(0)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(initialStorageWarning)
   const [extraContext, setExtraContext] = useState('')
   const [expandedAnswers, setExpandedAnswers] = useState(() => new Set())
   const autoExpandedCodeRef = useRef(new Set())
@@ -619,7 +619,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     window.electronAPI?.setWindowMode?.(next ? 'teleprompter' : 'overlay')
   }
 
-  const sessionIdRef = useRef(createSessionId())
+  const sessionIdRef = useRef(runId || createSessionId())
   const interviewStateRef = useRef(null)
   if (!interviewStateRef.current) {
     interviewStateRef.current = createInterviewState({ sessionId: sessionIdRef.current, profile })
@@ -1782,7 +1782,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     finalizeOffOnceRef.current = false
     audio.start(liveSourceId, audioOpts())
     warmDocs(interviewConfigRef.current?.selectedDocumentIds, { kitId: interviewConfigRef.current?.kitId || kitId })   // pre-embed selected docs only
-    metricsRef.current = createSessionMetrics('live')
+    metricsRef.current = createSessionMetrics('live', { runId: sessionIdRef.current })
     hintTimingRef.current = null
     if (initialPip && !initialPip.closed) {
       initialPip.addEventListener('pagehide', () => {
@@ -1837,10 +1837,11 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     const pending = evaluationRef.current
     evaluationRef.current = null
     pending?.controller.abort()
-    onEnd({ conversation: pending?.conversation || [], report: null })
+    onEnd({ runId: sessionIdRef.current, conversation: pending?.conversation || [], report: null, evaluationStatus: 'cancelled' })
   }
 
   async function endSession() {
+    if (!sessionActiveRef.current) return
     try { metricsRef.current?.end({ tokens: usage.tokens, cost: usage.cost }) } catch {}
     metricsRef.current = null
     sessionActiveRef.current = false
@@ -1856,9 +1857,14 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         .filter(t => t.role === 'interviewer' || t.role === 'candidate')
         .map(t => ({ role: t.role, text: t.text, ts: t.ts })),
     )
-    if (conversation.length === 0) { onEnd(); return }
+    if (conversation.length === 0) {
+      onCaptured?.({ runId: sessionIdRef.current, conversation, evaluationStatus: 'not_applicable' })
+      onEnd({ runId: sessionIdRef.current, conversation, report: null, evaluationStatus: 'not_applicable' }); return
+    }
 
     const hasCandidate = conversation.some(t => t.role === 'candidate')
+    // Commit captured material before starting any evaluator request.
+    onCaptured?.({ runId: sessionIdRef.current, conversation, evaluationStatus: hasCandidate ? 'pending' : 'not_applicable' })
     if (!hasCandidate) {
       // Pair interviewer turns with overlay AI hints so notes can show "hints below".
       const withHints = []
@@ -1871,6 +1877,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         }
       }
       onEnd({
+        runId: sessionIdRef.current, evaluationStatus: 'not_applicable',
         conversation: withHints.length ? withHints : conversation,
         report: {
           summary: 'No candidate speech was captured (System Audio hears the interviewer only, or Mic diarization never locked). Hints are below — this is not a scored interview.',
@@ -1891,15 +1898,15 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         timeoutMs: 30000, signal: pendingEvaluation.controller.signal,
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: { domainLabel: profileRef.current?.targetRole || 'Live interview', roundLabel: 'Live interview' },
+          config: { runId: sessionIdRef.current, domainLabel: profileRef.current?.targetRole || 'Live interview', roundLabel: 'Live interview' },
           transcript: conversation,
           profile: profileRef.current,
           provider: providerRef.current
         })
-      }).then(r => r.json())
-      if (evaluationRef.current === pendingEvaluation) onEnd({ conversation, report: res?.report || null })
+      }).then(async r => { if (!r.ok) throw new Error('Evaluation request failed'); return r.json() })
+      if (evaluationRef.current === pendingEvaluation) onEnd({ runId: sessionIdRef.current, conversation, report: res?.report || null, evaluationStatus: res?.report?.overallScore != null ? 'scored' : 'failed' })
     } catch {
-      if (evaluationRef.current === pendingEvaluation) onEnd({ conversation, report: null })
+      if (evaluationRef.current === pendingEvaluation) onEnd({ runId: sessionIdRef.current, conversation, report: null, evaluationStatus: 'failed' })
     }
     setEnding(false)
   }
@@ -2427,6 +2434,14 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
         extra={<button type="button" onClick={onHome} style={{ fontSize: 18, padding: '8px 12px', color: T.text1, background: T.surface1, border: `1px solid ${T.borderStrong}`, borderRadius: 8 }}>← Back to dashboard</button>}>
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: T.bg }}>
           <div style={{ maxWidth: 900, margin: '0 auto', padding: '22px 26px', boxSizing: 'border-box' }}>
+            {report._storageWarning && sessionNotes?.runId && <button type="button" onClick={() => {
+              const result = preserveLiveSession({ runId: sessionNotes.runId, conversation, report,
+                evaluationStatus: sessionNotes.evaluationStatus, final: true,
+                config: { interviewSetup: { ...sessionConfig?.interviewConfig, source: 'live' } }, profile: sessionConfig?.profile || {} })
+              if (result.stored) setRecoveredLive(null)
+              setSessionNotes({ ...sessionNotes, report: result.report })
+            }} style={{ padding: '10px 16px', marginBottom: 12, color: T.text1, background: T.surface1,
+              border: `1px solid ${T.borderStrong}`, borderRadius: 8 }}>Retry local save</button>}
             <SoloFeedback report={report} transcript={conversation} onAgain={onHome} onAgainLabel="← Back to dashboard" />
           </div>
         </div>
@@ -2446,11 +2461,13 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
       }}
       onDiscardLive={() => { clearLiveCheckpoint(); setRecoveredLive(null) }}
       onStart={config => {
-        clearLiveCheckpoint()
-        setRecoveredLive(null)
+        const runId = createSessionId()
+        const provisional = preserveLiveSession({ runId, conversation: [], captureStatus: 'provisional', evaluationStatus: 'not_requested',
+          config: { interviewSetup: { ...config.interviewConfig, source: 'live' } }, profile: config.profile })
+        // Keep recovery until a verified final History commit.
         // Do not auto-open Protected/PiP — user opens it explicitly from the live overlay.
         onSessionStart?.()
-        setSessionConfig({ ...config, pip: null })
+        setSessionConfig({ ...config, runId, initialStorageWarning: provisional.report._storageWarning || '', pip: null })
         setPhase('live')
       }}
       onHome={onHome}
@@ -2469,23 +2486,20 @@ export default function LiveCompanion({ onHome, onPhaseChange, onSessionStart, o
       onStealth={onStealth} onMinimize={onMinimize}
       onResize={onResize} onDrag={onDrag}
       opacity={opacity} onOpacity={onOpacity}
+      onCaptured={data => preserveLiveSession({
+        ...data, config: { interviewSetup: { ...sessionConfig?.interviewConfig, source: 'live' }, kitId: sessionConfig?.kitId },
+        profile: sessionConfig?.profile || {},
+      })}
       onEnd={data => {
-        clearLiveCheckpoint()
-        setRecoveredLive(null)
         onSessionEnd?.()
-        let nextData = data
-        // Persist to Sessions only when we actually scored candidate speech.
-        if (data?.report && data.report.overallScore != null && data?.conversation?.length) {
-          const stored = saveSession({
-            report: data.report,
-            transcript: data.conversation,
-            config: { domainLabel: (sessionConfig?.profile?.targetRole) || 'Live interview', kitId: sessionConfig?.kitId, kitName: sessionConfig?.kitName, interviewSetup: sessionConfig?.interviewConfig },
-            profile: sessionConfig?.profile || {},
-          })
-          if (!stored) nextData = { ...data, report: { ...data.report, _storageWarning: 'This session could not be saved. Copy the transcript before leaving this screen.' } }
-          else if (stored.storagePruned) nextData = { ...data, report: { ...data.report, _storageWarning: `Saved this session after removing ${stored.storagePruned} oldest local session${stored.storagePruned === 1 ? '' : 's'} to free space.` } }
-        }
-        setSessionNotes(nextData); setPhase('notes')
+        const result = preserveLiveSession({
+          ...data, runId: data?.runId || sessionConfig.runId, final: true,
+          config: { domainLabel: sessionConfig?.profile?.targetRole || 'Live interview', kitId: sessionConfig?.kitId,
+            kitName: sessionConfig?.kitName, interviewSetup: { ...sessionConfig?.interviewConfig, source: 'live' } },
+          profile: sessionConfig?.profile || {},
+        })
+        if (result.stored) setRecoveredLive(null)
+        setSessionNotes({ ...data, report: result.report }); setPhase('notes')
       }}
       screenAnalysis={screenAnalysis} screenAnalyzing={screenAnalyzing} onDismissScreen={onDismissScreen}
       screenFlowStatus={screenFlowStatus} onContinueScreen={onContinueScreen} onNewScreen={onNewScreen}

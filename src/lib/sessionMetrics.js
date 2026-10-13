@@ -17,8 +17,8 @@ export function sanitizeMetric(obj = {}) {
   return out
 }
 
-export function createSessionMetrics(kind = 'live') {
-  const sessionId = `${kind}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+export function createSessionMetrics(kind = 'live', { runId } = {}) {
+  const sessionId = runId || `${kind}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
   const startedAt = Date.now()
   const counters = {
     hints: 0, ttftMs: [], sttReconnects: 0,

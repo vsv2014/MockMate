@@ -673,7 +673,7 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
 }
 
 
-export async function evaluateSolo({ config = {}, transcript = [], profile = {}, provider }) {
+export async function evaluateSolo({ config = {}, transcript = [], profile = {}, provider, signal }) {
   const candidateText = transcript.filter(t => t.role === 'candidate').map(t => t.text).join('\n')
   const delivery = analyze(candidateText)
   const convo = transcript.map(t => `${t.role === 'interviewer' ? 'INTERVIEWER' : 'CANDIDATE'}: ${t.text}`).join('\n\n')
@@ -690,7 +690,7 @@ Return ONE JSON object, no prose:
 ${REPORT_JSON_FIELDS}
   "summary": "<3-5 sentences; the single most important thing to improve next>" }`
   const report = await completeJSON({
-    maxTokens: 2600, provider,
+    maxTokens: 2600, provider, signal,
     messages: [{ role: 'system', content: system }, { role: 'user', content: `Transcript:\n${convo}` }]
   })
   report._delivery = delivery

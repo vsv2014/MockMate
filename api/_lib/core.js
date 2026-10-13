@@ -444,6 +444,16 @@ export function extractJSON(text) {
 // (missing commas, truncation, etc.), make ONE repair pass asking the model to
 // fix its own output. Handles the messy ways Gemini emits JSON.
 const sleep = ms => new Promise(r => setTimeout(r, ms))
+const abortableSleep = (ms, signal) => {
+  if (!signal) return sleep(ms)
+  signal.throwIfAborted()
+  return new Promise((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener('abort', abort)
+    const timer = setTimeout(() => { cleanup(); resolve() }, ms)
+    const abort = () => { clearTimeout(timer); cleanup(); reject(signal.reason) }
+    signal.addEventListener('abort', abort, { once: true })
+  })
+}
 // Error classifiers live in shared/ (single source shared with the client retry path).
 
 // Text-lane health (Live hints, Solo, Career, Jobs ranking). Vision has its own lane in
@@ -781,7 +791,8 @@ function enqueueActiveModelRecovery(queue, currentIndex, provId, previousModel, 
   providerDiagnostic('model_replacement_selected', { provider: family, previousModel, replacementModel: nextModel })
 }
 
-export async function completeJSON({ messages, maxTokens = 1600, provider, thinkingTokenFloor = 0 }) {
+export async function completeJSON({ messages, maxTokens = 1600, provider, thinkingTokenFloor = 0, signal }) {
+  signal?.throwIfAborted()
   assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
   if (!providerQueue.length) throw textProviderCoolingError()
@@ -789,6 +800,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
 
   const recoveredFamilies = new Set()
   for (let queueIndex = 0; queueIndex < providerQueue.length; queueIndex++) {
+    signal?.throwIfAborted()
     const provId = providerQueue[queueIndex]
     let prov
     try { prov = resolveProvider(provId) } catch { continue }
@@ -813,13 +825,15 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
       let useExtras = true   // JSON-mode / reasoning / thinking params; dropped if this provider 400s on them
       for (let attempt = 0; ; attempt++) {
         try {
+          signal?.throwIfAborted()
           const params = { model, ...completionBudget(prov, maxTokens, thinkingTokenFloor), messages: msgs }
           if (useExtras && isGemini) params.reasoning_effort = 'none'
           if (useExtras && jsonMode) params.response_format = { type: 'json_object' }
           if (useExtras && claudeThinking) params.thinking = claudeThinking
           const requestIndex = requestCount++
           const requestStartedAt = Date.now()
-          const r = await llm.chat.completions.create(params)
+          const r = await llm.chat.completions.create(params, signal ? { signal } : undefined)
+          signal?.throwIfAborted()
           providerDiagnostic('request_usage', {
             attemptId, operation: 'json', provider: provId, model,
             requestIndex, retryCount: requestIndex, status: 200,
@@ -835,6 +849,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
           if (!choice?.message) { const e = new Error('provider returned no choices'); e.status = 503; throw e }
           return choice.message.content ?? ''
         } catch (e) {
+          if (signal?.aborted || e?.name === 'AbortError' || e?.name === 'APIUserAbortError') throw e
           // A 400 while sending the optional JSON-mode/reasoning params usually means THIS
           // provider/model rejects one of them (e.g. some Gemini models 400 on reasoning_effort).
           // Drop the extras and retry once before treating it as a real failure.
@@ -847,7 +862,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
           }
           // Retry rate-limits AND transient 5xx/network hiccups with growing backoff.
           if ((!isRateLimit(e) && !isTransient(e)) || attempt >= 2) throw e
-          await sleep(800 * (attempt + 1))
+          await abortableSleep(800 * (attempt + 1), signal)
         }
       }
     }
@@ -868,6 +883,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
       providerDiagnostic('attempt_succeeded', { attemptId, operation: 'json', provider: provId, model, durationMs: Date.now() - providerStartedAt })
       return parsed
     } catch (e) {
+      if (signal?.aborted || e?.name === 'AbortError' || e?.name === 'APIUserAbortError') throw e
       lastError = e
       if (quarantineModel(provId, model, e)) {
         enqueueActiveModelRecovery(providerQueue, queueIndex, provId, model, e, recoveredFamilies)

@@ -79,10 +79,11 @@ function newSessionId(ts) {
   return `s_${ts}_${Math.random().toString(36).slice(2, 10)}`
 }
 
-export function saveSession({ report, transcript = [], config = {}, profile = {}, note } = {}) {
+export function saveSession({ report, transcript = [], config = {}, profile = {}, note, runId, captureStatus, evaluationStatus } = {}) {
   if (!report) return null
   try {
-    const ts = Date.now(); const isError = !!report.error; const setup = config.interviewSetup || config
+    const previous = runId ? loadSessions().find(row => row.id === runId) : null
+    const ts = previous?.ts || Date.now(); const isError = !!report.error; const setup = config.interviewSetup || config
     const company = setup.targetCompany || profile.targetCompany || ''
     const role = setup.targetRole || config.domainLabel || profile.targetRole || ''
     const kitId = setup.kitId || config.kitId || ''
@@ -104,7 +105,8 @@ export function saveSession({ report, transcript = [], config = {}, profile = {}
       createdAt: setup.createdAt || new Date(ts).toISOString(),
     } : null
     const entry = {
-      id: newSessionId(ts), ts,
+      id: runId || newSessionId(ts), ts,
+      ...(runId ? { runId, captureStatus, evaluationStatus } : {}),
       label: [company, role].filter(Boolean).join(' · ') || 'Interview',
       mode: setup.source === 'live' ? 'live' : 'solo', company, role,
       setup: {
@@ -122,9 +124,14 @@ export function saveSession({ report, transcript = [], config = {}, profile = {}
       verdict: report.verdict || (isError ? 'Evaluation failed' : null), report, transcript,
       note: note || (isError ? 'evaluate_error' : undefined),
     }
-    const next = [entry, ...loadSessions()].slice(0, MAX_SESSIONS)
+    const next = [entry, ...loadSessions().filter(row => row.id !== entry.id)].slice(0, MAX_SESSIONS)
     for (let keep = next.length; keep >= 1; keep--) {
-      try { writeSessions(next.slice(0, keep)); return keep < next.length ? { ...entry, storagePruned: next.length - keep } : entry }
+      try {
+        writeSessions(next.slice(0, keep))
+        // Verify the actual scoped bytes before the caller discards recovery data.
+        const committed = JSON.parse(getScopedItem(KEY, '[]'))?.find(row => row.id === entry.id)
+        if (JSON.stringify(committed) !== JSON.stringify(entry)) throw new Error('history verification failed')
+        return keep < next.length ? { ...entry, storagePruned: next.length - keep } : entry }
       catch {}
     }
     return null
