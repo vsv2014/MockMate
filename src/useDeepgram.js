@@ -7,6 +7,7 @@ import {
   FATAL_CLOSE,
   PERMANENT_TOKEN_STATUSES,
   computeReconnectDelayMs,
+  WAKE_RECONNECT_DELAY_MS,
   buildDeepgramListenUrl,
   abandonDeepgramSocket,
   enqueueOrSendPcm,
@@ -319,7 +320,7 @@ export function useDeepgram(onFinal, onFail, lang = 'en-US') {
       if (connecting.current && sock && sock.readyState === 0) return
       setActive(false); setReconnecting(true)
       clearTimeout(reconnectTimer.current)
-      reconnectTimer.current = setTimeout(() => { if (!userStop.current && !suspendPaused.current) connectSocket().catch(() => {}) }, 400)
+      reconnectTimer.current = setTimeout(() => { if (!userStop.current && !suspendPaused.current) connectSocket().catch(() => {}) }, WAKE_RECONNECT_DELAY_MS)
     }
     const onSuspend = () => {
       suspendPaused.current = true

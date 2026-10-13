@@ -40,7 +40,6 @@ export default defineConfig({
             // the broader @livekit UI group under Rolldown's first-match rules.
             { name: 'vendor-livekit-client', test: /node_modules[\\/]livekit-client[\\/]/, priority: 100 },
             { name: 'vendor-livekit-ui', test: /node_modules[\\/]@livekit[\\/]/, priority: 90 },
-            { name: 'vendor-html2canvas', test: /node_modules[\\/]html2canvas[\\/]/, priority: 70 },
             { name: 'vendor-jspdf', test: /node_modules[\\/]jspdf[\\/]/, priority: 60 },
             { name: 'vendor-pdf-reader', test: /node_modules[\\/]pdfjs-dist[\\/]/, priority: 50 },
             {

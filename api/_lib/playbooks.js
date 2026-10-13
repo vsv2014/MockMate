@@ -100,27 +100,6 @@ Keep 2-5 spoken sentences unless they asked for detail. confidence usually "gene
   },
 }
 
-/** Ordered legacy-compatible list for first-match fallbacks / tests. */
-export const PLAYBOOKS = [
-  PLAYBOOK_BY_KEY.project_walkthrough,
-  PLAYBOOK_BY_KEY.system_design,
-  PLAYBOOK_BY_KEY.dsa,
-  PLAYBOOK_BY_KEY.company,
-  PLAYBOOK_BY_KEY.behavioral,
-  PLAYBOOK_BY_KEY.intro,
-  PLAYBOOK_BY_KEY.experience,
-  PLAYBOOK_BY_KEY.follow_up,
-  PLAYBOOK_BY_KEY.product_case,
-  PLAYBOOK_BY_KEY.sales_objection,
-  PLAYBOOK_BY_KEY.customer_scenario,
-  PLAYBOOK_BY_KEY.marketing_strategy,
-  PLAYBOOK_BY_KEY.hr_situational,
-  PLAYBOOK_BY_KEY.design_portfolio,
-  PLAYBOOK_BY_KEY.operations_process,
-  PLAYBOOK_BY_KEY.technical,
-  PLAYBOOK_BY_KEY.general,
-]
-
 export function getPlaybook(key) {
   return PLAYBOOK_BY_KEY[key] || PLAYBOOK_BY_KEY.general
 }

@@ -26,12 +26,21 @@ import {
 // Forward metadata-only provider events to Electron's local diagnostic store when running in
 // its local API service (Node fork in development, utility process in packaged builds).
 // Hosted/serverless runtimes have no IPC channel and simply skip it.
+
+// Single truth table for the hosted flag — 1/true/yes/on, trimmed, case-insensitive
+// (mirrors backend/src/hostedConfig.js envFlag). Divergent parsers previously meant a
+// MOCKMATE_HOSTED=true deploy counted as hosted for /api/arch but silently lost all
+// provider diagnostics here (=== '1'), and the Deepgram raw-key gate was case-sensitive.
+export function isHostedDeploy(env = process.env) {
+  return ['1', 'true', 'yes', 'on'].includes(String(env.MOCKMATE_HOSTED || '').trim().toLowerCase())
+}
+
 function providerDiagnostic(event, fields = {}, level = 'info') {
   const row = { component: 'llm', event, level, ...fields }
   try {
     if (typeof process.send === 'function') process.send({ type: 'diagnostic', row })
     else if (process.parentPort) process.parentPort.postMessage({ type: 'diagnostic', row })
-    else if (process.env.MOCKMATE_HOSTED === '1') console.log(JSON.stringify({ ts: new Date().toISOString(), ...row }))
+    else if (isHostedDeploy()) console.log(JSON.stringify({ ts: new Date().toISOString(), ...row }))
   } catch {}
 }
 
@@ -1345,7 +1354,7 @@ export async function deepgramToken(opts = {}) {
   }, 8000)
   if (r.ok) return await r.json()   // { access_token, expires_in }
 
-  const remoteHosted = process.env.MOCKMATE_HOSTED === '1' || process.env.MOCKMATE_HOSTED === 'true'
+  const remoteHosted = isHostedDeploy()
   const envAllowsFallback = process.env.MOCKMATE_DEEPGRAM_KEY_FALLBACK !== '0'
     && process.env.MOCKMATE_DEEPGRAM_KEY_FALLBACK !== 'false'
   // Route must opt in (typically after loopback check). Local managed is allowed; remote hosted is not.

@@ -24,6 +24,7 @@ export default function AuthGate({ children }) {
   const [view, setView] = useState('welcome')
   const [session, setSession] = useState(null)
   const [pendingEmail, setPendingEmail] = useState('')
+  const [pendingDeliveryFailed, setPendingDeliveryFailed] = useState(false)
   const authRevision = useRef(0)
 
   const loadSession = useCallback(async () => {
@@ -82,6 +83,7 @@ export default function AuthGate({ children }) {
     // "check your email" state instead.
     if (result?.verificationRequired) {
       setPendingEmail(form?.email || result?.user?.email || '')
+      setPendingDeliveryFailed(Boolean(result?.emailDelivery) && !['email', 'console'].includes(result.emailDelivery))
       setView('verify-email')
       setStatus('auth')
       return
@@ -212,8 +214,9 @@ export default function AuthGate({ children }) {
   if (view === 'onboarding') return <Onboarding onComplete={handleOnboarding} />
   if (view === 'verify-email') return <VerifyEmailSent
     email={pendingEmail}
+    deliveryFailed={pendingDeliveryFailed}
     onResend={handleResendVerification}
-    onBackToLogin={() => { setPendingEmail(''); setView('login') }}
+    onBackToLogin={() => { setPendingEmail(''); setPendingDeliveryFailed(false); setView('login') }}
   />
   return <Login onSubmit={handleLogin} onSwitchToSignup={() => setView('signup')}
     onForgot={usesDeviceLocalAccounts ? undefined : forgotPassword} onGuest={enterGuest}
@@ -223,7 +226,7 @@ export default function AuthGate({ children }) {
 // ── VerifyEmailSent ───────────────────────────────────────────────────────────
 // Shown after a signup that requires email verification: the backend created the
 // account but issued NO token, so this is a waiting state — not a session.
-function VerifyEmailSent({ email, onResend, onBackToLogin }) {
+function VerifyEmailSent({ email, deliveryFailed = false, onResend, onBackToLogin }) {
   const [resendState, setResendState] = useState('idle') // idle | busy | sent | error
   return (
     <AuthShell>
@@ -238,6 +241,12 @@ function VerifyEmailSent({ email, onResend, onBackToLogin }) {
           need to verify that email before signing in. Click the link in the message we just sent
           (valid for 24 hours), then come back and sign in.
         </p>
+        {deliveryFailed && (
+          <p style={{ marginTop: 10, fontSize: 12.5, color: '#fbbf24', textAlign: 'center', lineHeight: 1.55, maxWidth: 340 }}>
+            We couldn’t send the email just now. Your account was created — wait a moment, then use
+            “Resend verification email” below.
+          </p>
+        )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <PrimaryButton onClick={onBackToLogin}>I’ve verified — sign in</PrimaryButton>

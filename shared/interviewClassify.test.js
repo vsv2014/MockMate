@@ -11,6 +11,18 @@ describe('inferRoleFamily', () => {
   it('unknown when empty', () => {
     expect(inferRoleFamily({})).toBe('unknown')
   })
+  it('routes program/project managers to program_management (regression: was emitting a family no consumer tested)', () => {
+    expect(inferRoleFamily({ targetRole: 'Technical Program Manager' })).toBe('program_management')
+    expect(inferRoleFamily({ targetRole: 'Scrum Master' })).toBe('program_management')
+    expect(inferRoleFamily({ targetRole: 'IT Project Manager' })).toBe('program_management')
+  })
+  it('program managers asked a process question reach the operations_process playbook', () => {
+    const c = classifyTurn({
+      question: 'How would you improve the process for handling production incidents across teams?',
+      profile: { targetRole: 'Technical Program Manager' },
+    })
+    expect(c.playbookKey).toBe('operations_process')
+  })
 })
 
 describe('classifyTurn P0 experience vs technical', () => {

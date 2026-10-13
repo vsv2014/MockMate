@@ -119,18 +119,13 @@ export async function signup({ name, email, password }) {
   const data = await request('/auth/signup', { method: 'POST', body: { name, email, password } })
   if (data?.verificationRequired || !data?.token) {
     if (!data?.verificationRequired) diagnostic('auth', 'signup_no_token_no_verification', {}, 'warn')
-    return { verificationRequired: true, user: data?.user || null }
+    return { verificationRequired: true, user: data?.user || null, emailDelivery: data?.emailDelivery || null }
   }
   await setToken(data.token)
   return { verificationRequired: false, user: rememberUser(data.user) }
 }
 export async function resendVerification(email) {
   return request('/auth/resend-verification', { method: 'POST', body: { email } })
-}
-export async function completeEmailVerification(token) {
-  const data = await request('/auth/verify-email', { method: 'POST', body: { token } })
-  if (data?.token) await setToken(data.token)
-  return rememberUser(data?.user)
 }
 export async function login({ email, password }) {
   const data = await request('/auth/login', { method: 'POST', body: { email, password } })

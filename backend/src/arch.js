@@ -1,4 +1,5 @@
 import { compileAblRuntime } from './abl.js'
+import { envFlag } from './hostedConfig.js'
 import { redactInteractionEvent, summarizeProductIntelligence } from '../../shared/productIntelligence.js'
 
 const LLM_PROVIDERS = [
@@ -20,7 +21,7 @@ function runtimePlan() { return compileAblRuntime() }
 function configured(name) { return Boolean(String(process.env[name] || '').trim()) }
 function configuredProviders(entries = LLM_PROVIDERS) { return entries.filter(([, env]) => configured(env)).map(([provider]) => provider) }
 function firstConfigured(entries) { return configuredProviders(entries)[0] || null }
-function hostedMode() { return ['1', 'true'].includes(String(process.env.MOCKMATE_HOSTED || '').toLowerCase()) }
+function hostedMode() { return envFlag('MOCKMATE_HOSTED') }
 function circuitOpen(key, now = Date.now()) { const until = circuits.get(key) || 0; if (until <= now) { circuits.delete(key); return false } return true }
 function openCircuit(key, cooldownMs = DEFAULT_COOLDOWN_MS) { circuits.set(key, Date.now() + cooldownMs) }
 export function resetArchCircuits() { circuits.clear() }

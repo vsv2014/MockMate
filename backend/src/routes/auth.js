@@ -50,8 +50,17 @@ router.post('/signup', signupLimiter, async (req, res) => {
     })
     if (verifyRequired) {
       const base = process.env.VERIFY_URL_BASE || process.env.RESET_URL_BASE || 'http://localhost:5174/verify.html'
-      await sendVerificationEmail(user.email, `${base}?verify_token=${rawVerify}`).catch(() => {})
-      return res.status(201).json({ verificationRequired: true, user: toSafeUser(user) })
+      // Never swallow delivery failures: with REQUIRE_EMAIL_VERIFICATION on, an undelivered
+      // email means this user is locked out until they resend — make that loud in the logs.
+      const delivery = await sendVerificationEmail(user.email, `${base}?verify_token=${rawVerify}`)
+        .catch((e) => { console.error('[signup] verification email send threw:', e?.message); return { delivered: 'failed' } })
+      if (delivery?.delivered !== 'email' && delivery?.delivered !== 'console') {
+        console.error(`[signup] verification email NOT delivered (${delivery?.delivered || 'unknown'}) for user ${user.id}; account cannot verify until delivery is restored`)
+      }
+      // emailDelivery is additive: the client may surface a "we could not send it" notice.
+      // Safe to expose here (the creator already knows the account exists); deliberately NOT
+      // added to /resend-verification, which must stay enumeration-proof.
+      return res.status(201).json({ verificationRequired: true, user: toSafeUser(user), emailDelivery: delivery?.delivered || 'failed' })
     }
     res.status(201).json({ token: signToken(user.id, user.tokenVersion || 0), user: toSafeUser(user) })
   } catch (error) {
@@ -101,7 +110,11 @@ router.post('/resend-verification', recoveryLimiter, async (req, res) => {
       const rawVerify = crypto.randomBytes(32).toString('hex')
       await store().updateUser(user.id, { verifyTokenHash: sha256(rawVerify), verifyTokenExp: Date.now() + VERIFY_TTL_MS })
       const base = process.env.VERIFY_URL_BASE || process.env.RESET_URL_BASE || 'http://localhost:5174/verify.html'
-      await sendVerificationEmail(user.email, `${base}?verify_token=${rawVerify}`).catch(() => {})
+      const delivery = await sendVerificationEmail(user.email, `${base}?verify_token=${rawVerify}`)
+        .catch((e) => { console.error('[resend-verification] send threw:', e?.message); return { delivered: 'failed' } })
+      if (delivery?.delivered !== 'email' && delivery?.delivered !== 'console') {
+        console.error(`[resend-verification] verification email NOT delivered (${delivery?.delivered || 'unknown'}) for user ${user.id}`)
+      }
     }
     res.json({ ok: true })
   } catch { res.json({ ok: true }) }

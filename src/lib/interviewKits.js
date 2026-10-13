@@ -165,5 +165,3 @@ export function interviewKitFromProfile(kit, profile = {}) {
     updatedAt: nowIso(),
   })
 }
-
-export function currentKitOwnerScope() { return activeAccountScope() }

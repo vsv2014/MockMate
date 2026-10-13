@@ -106,12 +106,6 @@ export function paceRating(wpm) {
   return { rating: 'weak', label: 'too fast' }
 }
 
-export function fillerRating(per100) {
-  if (per100 <= 2) return 'good'
-  if (per100 <= 5) return 'ok'
-  return 'weak'
-}
-
 export function lengthRating(words, spoken) {
   // Spoken answers should land in a focused window; typed answers can run longer.
   const ceiling = spoken ? 230 : 320

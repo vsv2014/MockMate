@@ -15,6 +15,12 @@ export const BYTES_PER_SEC = 16000 * 2
 // Cover the maximum 8s reconnect backoff plus token and handshake latency.
 export const MAX_QUEUE_BYTES = 15 * BYTES_PER_SEC
 
+// Fast reconnect after an OS suspend/wake: skip the exponential backoff (the
+// socket died because the machine slept, not because Deepgram is unhealthy),
+// but wait one beat for the network stack to come back. Shared by useDeepgram
+// (microphone) and useSystemAudio — keep them identical.
+export const WAKE_RECONNECT_DELAY_MS = 400
+
 export function computeReconnectDelayMs(attempt = 1, retryAfterMs = 0) {
   const n = Math.max(1, Number(attempt) || 1)
   const backoffMs = Math.min(8000, 500 * 2 ** Math.min(n - 1, 4))
