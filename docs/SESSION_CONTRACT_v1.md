@@ -62,3 +62,48 @@ Capabilities advertises supported schema versions, minimum client version, paylo
 ## Release gates
 
 Guest/offline start -> capture -> End -> restart preserves all committed turns. No-candidate session persists without evaluator. Evaluator failure/cancel preserves capture. Crash before/after local commit is recoverable. Lost ack replay creates no duplicate. Two-device metadata conflict loses neither draft. Delete plus stale replay does not resurrect content. Oversize batch remains local. Account switching cannot read or sync another account. Old-version import preserves all eligible raw rows. These run against packaged Windows, including disk-full and upgrade fixtures; unit tests alone are insufficient.
+
+
+## Concrete wire examples
+
+Creation uses runId as session identity and operationId as mutation replay identity. serverRevision is a monotonically increasing per-session integer, not a vector clock. The server receipt is checked before rejecting an already-committed replay for its old expectedRevision.
+
+```json
+{
+  "schemaVersion": 1,
+  "operationId": "4b6f8d9e-59ed-4f60-a9d7-06dbfa265d12",
+  "expectedRevision": null,
+  "payloadHash": "sha256-of-canonical-mutation-payload",
+  "session": {
+    "runId": "e52c8454-1aee-4a8e-8790-3a66a33fb8a9",
+    "originatingDeviceId": "34cd0860-2751-4412-b755-947e45f4326c",
+    "mode": "live",
+    "source": "desktop",
+    "captureStatus": "provisional",
+    "evaluationStatus": "not_requested"
+  }
+}
+```
+
+Canonical payload hashing uses RFC 8785 JSON canonicalization, SHA-256 UTF-8, excluding payloadHash itself and transport-only credentials/lease headers. expectedRevision and operationId are included. A reused operation ID with any changed canonical mutation is rejected.
+
+```json
+{
+  "schemaVersion": 1,
+  "runId": "e52c8454-1aee-4a8e-8790-3a66a33fb8a9",
+  "operationId": "4b6f8d9e-59ed-4f60-a9d7-06dbfa265d12",
+  "serverRevision": 1,
+  "committedAt": "2026-10-13T12:00:00Z",
+  "nextCursor": "opaque-server-change-cursor"
+}
+```
+
+Transcript batches carry the same envelope with a new operationId and turns array; each turn has turnId, streamId, sequence, role, text and capturedAt. Independent device streams are retained, not interleaved by client clocks; cross-stream display ordering is server commit order with explicit stream labels. Changing an already-uploaded turn requires a distinct correction event, not overwriting immutable content. Delete is a revision-checked mutation; its separate tombstone contains owner, runId, deletedAt, serverRevision and operationId, never transcript content. No last-write-wins for notes/report; 409 requires explicit conflict resolution.
+
+New runs use UUIDs. Existing local/P0 run IDs remain stable opaque identifiers (max 180 characters) through import; the v1 server must accept this compatibility form instead of breaking diagnostic joins.
+
+## Desktop and mobile authentication
+
+Current backend signs/verifies JWT with sub and tv in backend/src/middleware/auth.js. Desktop stores a token in auth-token.bin (electron/main.cjs); mobile stores its token in Expo SecureStore (mobile/src/api.ts). This does not prove they authenticate to the same deployed issuer: desktop can use its local account backend and a different JWT secret/user store.
+
+Sync must authenticate against the selected hosted account service. A local-account JWT is not forwarded as if it were a hosted JWT. Both clients send the hosted Bearer token; the server verifies signature, expiry, token version and tenant ownership. Guest/local-account transfer to a hosted account requires explicit selection. Token expiry pauses sync, not SQLite capture. Offline authenticated-profile access is a separate auth-UX gate; the current AuthGate can still require /me and must not be described as fully offline-capable for signed-in users.

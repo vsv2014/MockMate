@@ -23,7 +23,7 @@ Import-on-first-launch with a read-only legacy fallback. Read raw mm-sessions::<
 
 1. Back up exact source bytes and record hash; corrupt data is preserved for recovery, not overwritten.
 2. Parse and validate every raw row, retaining unscored/error records and original timestamps. Unknown fields are retained in legacy_payload for export; hint is never remapped to candidate.
-3. In one SQLite transaction insert sessions/turns and migration-ledger records. Map existing legacy IDs deterministically through the ledger, allocating a UUID once. Identical retries do not duplicate. Changed legacy payload is a conflict requiring preservation, not silent overwrite.
+3. In one SQLite transaction insert sessions/turns and migration-ledger records. Preserve valid existing run IDs through the ledger; allocate a UUID once only for a record that needs a new identity, retaining its source identity for support. Identical retries do not duplicate. Changed legacy payload is a conflict requiring preservation, not silent overwrite.
 4. Read back counts and canonical content hashes. Only after verification mark source imported. Keep original localStorage bytes through the compatibility window; do not clear as part of import.
 5. SQLite History becomes the write path. Read-through legacy rows remain visible when import is incomplete, labelled with retry/export. Imported data is local-only until explicit sync consent.
 
@@ -44,3 +44,10 @@ Phase 0: ship preservation/cancellation P0 independently, retaining existing sto
 DB schema uses monotonically increasing user_version and transactional migrations with backups and fixture tests. An older executable must refuse unsupported DB schemas and offer export/update; it must not overwrite a newer database. Rollback disables sync/new feature behavior while preserving DB and queued operations. Downgrading to an old localStorage-only build cannot display new SQLite sessions; export/compatibility tooling is required before such a downgrade. Restoring an old backup is never an automatic substitute for preserving newer sessions.
 
 Large user counts do not require repeatedly replacing storage. They require stable interfaces, additive schema evolution and controlled deployments. Database schema migrations will still exist; the promise is automatic, tested migrations rather than recurring user-led data transfers.
+
+
+## Local retention and quota decision
+
+Initial pilot defaults: 10,000 sessions per account scope, 16 MiB logical content per session including its local journal/final row, 512 MiB logical session/turn content per account. History pages contain 100 summaries. No automatic 60-row cap or 90-day deletion applies in SQLite. At a policy limit, reject the new transaction with a clear error; offer export and user-confirmed deletion. Do not erase old sessions to make a new capture look successful. Disk-full remains a possible explicit failure even below logical limits; WAL/index/encryption overhead and backups use additional space. Legacy source import is bounded to 32 MiB per request in the pilot; larger/corrupt sources remain unchanged for export/recovery.
+
+These are documented pilot limits, not a guaranteed disk reservation or permanent commercial plan. Automatic pruning is disabled. Any later retention/pruning feature must require explicit policy, exclude active/pending/unsynced runs, and delete session+turns in one transaction.
