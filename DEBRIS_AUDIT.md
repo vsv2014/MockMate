@@ -53,7 +53,7 @@ Method: import graph built from every entry point (`package.json` main → `elec
    **What it is:** A standalone preview harness only reachable when `MOCKMATE_JOURNEY_PREVIEW=1` rewrites `/` in the dev server.
    **Evidence:** `vite.config.js:13-27` (`journeyPreviewEntry`, `MOCKMATE_JOURNEY_PREVIEW === '1'`); no production path serves `journey-preview.html`.
    **Severity:** Low
-   **Disposition:** Investigate (dev tool; dead weight in production builds since Vite treats it as a second HTML entry)
+   **Disposition:** Keep (owner-confirmed dev/testing harness)
 
 10. **Path:** `mobile/scripts/validate-build-env.mjs:1`
     **Category:** A (false positive candidate — documented so it is not deleted by mistake)
@@ -253,6 +253,8 @@ Checked and NOT duplicated (for the record): cost calculator (`src/cost.js` is t
 
 Method: pattern grep for TODO/FIXME/HACK, "for now/temporar*/stub/placeholder", `_old/_v2/_tmp` names, and 3+-line commented-out code.
 
+> **Owner note (post-audit):** the owner confirmed the session/planning markers below (round-N, PR #45, Phase N, M1/M2, P0-A) were added deliberately as development breadcrumbs. Items E.2–E.9 are reclassified **Keep (owner-confirmed dev aid)**. Only E.1 (user-visible "TODO" pill text) remains flagged, since it ships to end users.
+
 1. **Path:** `src/journey/JourneyScreens.jsx:863-866`
    **What it is:** The literal string `'TODO'` rendered to end users as a status pill in the Ready Room checklist.
    **Evidence:** `<Pill tone={contextReady ? 'teal' : 'red'}>{contextReady ? 'OK' : 'TODO'}</Pill>` (×4).
@@ -263,24 +265,24 @@ Method: pattern grep for TODO/FIXME/HACK, "for now/temporar*/stub/placeholder", 
    **What it is:** Comment addressed to a code-review conversation that is not in the repo: "NOTE (PR #45 review): … acceptable for the current single-digit-user deployment, must be scoped … before hosted scale-out."
    **Evidence:** quoted.
    **Severity:** Low (un-actionable deferred-work marker)
-   **Disposition:** Investigate (convert to issue or delete)
+   **Disposition:** Keep (owner-confirmed dev aid)
 
 3. **Path:** `electron/main.cjs:56`, `:572`, `:640`
    **What it is:** Three "PR #45 review fix:" comments narrating a review thread instead of the invariant.
    **Evidence:** e.g. `:640` "Display selection precedence (PR #45 review fix):".
    **Severity:** Cosmetic
-   **Disposition:** Investigate
+   **Disposition:** Keep (owner-confirmed dev aid)
 
 4. **Path:** `src/auth/api.js:112`, `src/auth/AuthGate.jsx:80`, `backend/src/hostedConfig.js:82`
    **What it is:** "round-5 review P1" markers — session-planning jargon from an AI-assisted review cycle.
    **Evidence:** `api.js:112` " * Signup response is an EXPLICIT UNION (round-5 review P1):".
    **Severity:** Cosmetic
-   **Disposition:** Investigate
+   **Disposition:** Keep (owner-confirmed dev aid)
 
 5. **Path:** `backend/src/middleware/meter.js:16`, `backend/src/store.js:128`, `:214`, `backend/server.js:123`, `api/_lib/apiRoutes.js:84`
    **What it is:** "round-5/6 review" markers, same residue family.
    **Severity:** Cosmetic
-   **Disposition:** Investigate
+   **Disposition:** Keep (owner-confirmed dev aid)
 
 6. **Path:** `shared/hintLayers.js:154`
    **What it is:** "LP-20 (LockedIn autopsy):" — ticket id + competitor post-mortem reference with no corresponding tracker in-repo.
@@ -291,18 +293,18 @@ Method: pattern grep for TODO/FIXME/HACK, "for now/temporar*/stub/placeholder", 
 7. **Path:** `shared/interviewState.js:2`, `shared/contextSelection.js:2,89`, `shared/interviewClassify.js:59`, `src/LiveCompanion.jsx:726`
    **What it is:** "M1"/"M2" milestone jargon in doc comments ("M1 observability + contamination guards", "M2 question capture pipeline") — meaningless without the private planning doc.
    **Severity:** Cosmetic
-   **Disposition:** Investigate
+   **Disposition:** Keep (owner-confirmed dev aid)
 
 8. **Path:** `src/lib/sessionMetrics.js:1` ("Phase 6"), `electron/main.cjs:967` ("Phase 3"), `:1189` ("Phase 6"), `:1269` ("Phase 4"), `src/auth/Login.jsx:15` ("Phase 2"), `src/useSystemAudio.js:91` ("P0-A")
    **What it is:** Phase-number labels from a roadmap that is not in the repo.
    **Severity:** Cosmetic
-   **Disposition:** Investigate
+   **Disposition:** Keep (owner-confirmed dev aid)
 
 9. **Path:** `shared/questionCapture.js:451`
    **What it is:** Comment "// Temporarily evaluate flushed text" above permanent (not temporary) logic.
    **Evidence:** the flushed-lane assessment below it is the standing behavior.
    **Severity:** Cosmetic
-   **Disposition:** Investigate
+   **Disposition:** Keep (owner-confirmed dev aid)
 
 10. **Path:** `api/_lib/core.js:663`
     **What it is:** "(the v1.4.9 log tried four Claude aliases)" — debugging-session reference as justification comment, three minor versions old.
@@ -566,17 +568,17 @@ The repo is better than average here (`shared/liveTiming.js` names the four core
    **What it is:** Directives for a linter that does not exist — there is no `.eslintrc*`/`eslint.config.*` anywhere in the repo and no eslint devDependency.
    **Evidence:** `ls .eslintrc* eslint.config.*` → nothing; `package.json` devDependencies contain no eslint.
    **Severity:** Low (22 inert comments; or the real finding is the missing linter)
-   **Disposition:** Investigate (either add the linter back or drop the directives)
+   **Disposition:** Keep (owner-confirmed dev aid — likely serves an editor-level linter)
 2. **Path:** `src/LiveCompanion.jsx:909` and `:1796`
    **What it is:** `console.log('[MockMate] Screen protection confirmed on hints window', result.id)` — debug confirmation shipped in the production renderer (behind an eslint-disable for a linter that isn't there).
-   **Severity:** Low. **Disposition:** Investigate (route to `diagnostic()`).
+   **Severity:** Low. **Disposition:** Keep (owner-confirmed dev aid).
 3. **Path:** `electron/main.cjs:290` / `:360`
    **What it is:** Child-process stdout piped wholesale to `console.log('[API]', ...)` / `('[backend]', ...)` — every server log line duplicated into the Electron main console in production.
-   **Severity:** Low. **Disposition:** Investigate.
+   **Severity:** Low. **Disposition:** Keep (owner-confirmed dev aid).
 4. **Path:** `backend/src/mailer.js:24`
-   **What it is:** `console.log(`[${tag}] link for ${to}: ${link}`)` — prints live verification/reset links (with tokens) to stdout when RESEND is not configured. Dev convenience, but nothing restricts it to dev; a hosted deploy that loses its RESEND key starts logging auth tokens.
-   **Severity:** High
-   **Disposition:** Investigate
+   **What it is:** `console.log(`[${tag}] link for ${to}: ${link}`)` — prints live verification/reset links to stdout when RESEND is not configured. Owner-confirmed dev aid for local testing. Residual caveat: nothing restricts it to dev, so a hosted deploy that loses its RESEND key starts logging auth tokens.
+   **Severity:** Low in dev (High only if hosted without RESEND)
+   **Disposition:** Keep (owner-confirmed dev aid) — optionally gate on NODE_ENV for hosted
 5. **Path:** `api/_lib/core.js:34`
    **What it is:** Hosted-mode diagnostics printed as raw JSON to stdout only when `MOCKMATE_HOSTED === '1'` — but the backend's own `.env.example` sets `MOCKMATE_HOSTED=1` while other code accepts `'true'` (F.4), so a `MOCKMATE_HOSTED=true` deploy silently loses all provider diagnostics.
    **Severity:** Medium. **Disposition:** Investigate.
@@ -612,8 +614,8 @@ The repo is better than average here (`shared/liveTiming.js` names the four core
 ## O. Leftover experimentation
 
 1. **Path:** `vite.config.js:13-27` + `journey-preview.html` + `src/journey/JourneyPreview.jsx`
-   **What it is:** `MOCKMATE_JOURNEY_PREVIEW=1` dev-middleware that rewrites `/` to a design-review harness; an experiment runner living in the production build config, with its flag documented nowhere.
-   **Severity:** Low. **Disposition:** Investigate.
+   **What it is:** `MOCKMATE_JOURNEY_PREVIEW=1` dev-middleware that rewrites `/` to a design-review harness; its flag is documented nowhere.
+   **Severity:** Low. **Disposition:** Keep (owner-confirmed dev/testing harness).
 2. **Path:** `backend/src/abl.js` + `arch/mockmate.abl.json` + `backend/src/arch.js` (lanes/funnels/adaptivePolicies)
    **What it is:** An "architecture-by-language" runtime (ABL) that compiles a JSON spec into reasoning-lane routing, circuit cooldowns, telemetry allowlists and PI funnels. It IS wired (`server.js:11` `reasoningPolicy`, `apiRoutes.js:70-80`), but half its surface (server-side product events C.4, `reasoningLane` export, funnels) has no production producer/consumer — scaffolding for an adaptive system that only partially shipped.
    **Severity:** Medium
@@ -717,7 +719,7 @@ The repo is better than average here (`shared/liveTiming.js` names the four core
 ## 2. Top 20 by severity
 
 1. **I.1** `backend/src/routes/auth.js:53,104` — verification email failures swallowed; users silently locked out. (High)
-2. **M.4** `backend/src/mailer.js:24` — auth links with tokens printed to stdout whenever RESEND is unset. (High)
+2. **M.4** `backend/src/mailer.js:24` — auth links printed to stdout when RESEND is unset. (Owner-confirmed dev aid; High only for a hosted deploy without RESEND)
 3. **I.2** `backend/src/store.js:125,145` — file-store persistence failures swallowed; silent data loss. (High)
 4. **D.3 / I.3** `electron/bootstrap.cjs:19` vs `electron/main.cjs:326` — duplicated JWT-secret logic; the surviving legacy copy reintroduces the exact ephemeral-secret bug the new copy exists to prevent. (High)
 5. **C.1 / P.2** `shared/interviewClassify.js:35/243/355` — `customer_management` vs `program_management` mismatch; ops playbook unreachable for PM roles. (High)
@@ -769,7 +771,7 @@ The repo is better than average here (`shared/liveTiming.js` names the four core
 - 29 undocumented env vars (P.4); `.env.example` Anthropic drift (H.3)
 - Styling-system decision (F.1/G.13); palette source of truth (D.7)
 - Renames: `bootstrap-v153.cjs` (H.4 — string-pinned by tests L.4), misnamed test files (L.1-2), same-name module pairs (R.1-3), `arch/` folder (R.5)
-- Journey preview harness (A.9/O.1); comment residue sweep (E.1-E.9 — coordinate with string-pinning tests L.4)
+- E.1 only: user-visible 'TODO' pill text (JourneyScreens.jsx:863-866)
 - `package.json` overrides pins (G.11); legacy localStorage migrations sunset (K.2, K.3); retrieval legacy format (K.5); Deepgram raw-key fallback (K.8)
 
 ## 5. Leave alone (looks like debris, has a reason)
@@ -787,6 +789,7 @@ The repo is better than average here (`shared/liveTiming.js` names the four core
 - `LP-20` autopsy comment — documents a real guarded regression (E.6)
 - Diagnostics events without tool consumers — support-export is their stated purpose (M.6)
 - `updater-handoff` ENOENT wait (K.7) and `bootstrap-v153` guards — tested Windows regression armor
+- **Owner-confirmed dev/testing aids (reclassified post-audit):** eslint-disable comments (M.1), debug console.logs (M.2, M.3), mailer link logging (M.4, dev mode), planning-marker comments (E.2–E.9), journey preview harness (A.9/O.1), MOCKMATE_DEBUG_VISION, verify-* scripts
 
 ## 6. Codebase metrics
 
@@ -805,3 +808,4 @@ js 25,407 · jsx 12,312 · md 7,769 · cjs 2,171 · mjs 1,513 · tsx 684 · html
 **Diagnostic events emitted:** ≈52 distinct named events (39 renderer `diagnostic()` + 13 server `providerDiagnostic()`), plus electron-main lifecycle events and ~20 `recordArchMetric` series.
 
 **Diagnostic events actually consumed by tooling:** ≈12-15 event names (`scripts/session-report.mjs`, `scripts/soak-metrics.mjs`) plus the arch metric series read solely by `/api/arch` → `ProductIntelligencePanel`. Everything else is write-only until a human exports the JSONL.
+Diagnostic events actually consumed by tooling:** ≈12-15 event names (`scripts/session-report.mjs`, `scripts/soak-metrics.mjs`) plus the arch metric series read solely by `/api/arch` → `ProductIntelligencePanel`. Everything else is write-only until a human exports the JSONL.
