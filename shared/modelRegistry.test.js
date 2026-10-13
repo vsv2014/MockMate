@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { claudeLowLatencyThinking, modelDisplayName, modelPreferenceScore, MODEL_CATALOG, MODEL_PRIORITIES } from './modelRegistry.js'
+import { claudeLowLatencyThinking, isThinkingModel, modelDisplayName, modelPreferenceScore, MODEL_CATALOG, MODEL_PRIORITIES } from './modelRegistry.js'
 import { isCurrentChatModel } from './currentModels.js'
 
 describe('Claude model generation', () => {
@@ -57,5 +57,26 @@ describe('modelDisplayName', () => {
     ['some-custom-model', 'some-custom-model'],
   ])('%s → %s', (model, expected) => {
     expect(modelDisplayName(model)).toBe(expected)
+  })
+})
+
+describe('isThinkingModel', () => {
+  it('identifies Claude models as thinking models', () => {
+    expect(isThinkingModel('claude_sonnet', 'claude-sonnet-5-5')).toBe(true)
+    expect(isThinkingModel('claude_sonnet', 'claude-haiku-5-5')).toBe(true)
+    expect(isThinkingModel('claude_sonnet', 'claude-fable-5')).toBe(true)
+  })
+  it('identifies Groq and Cerebras as thinking models', () => {
+    expect(isThinkingModel('groq', 'openai/gpt-oss-120b')).toBe(true)
+    expect(isThinkingModel('cerebras', 'gpt-oss-120b')).toBe(true)
+  })
+  it('identifies OpenAI Astra/Sol as thinking models', () => {
+    expect(isThinkingModel('openai', 'gpt-6-astra')).toBe(true)
+    expect(isThinkingModel('openai', 'gpt-6.1-sol')).toBe(true)
+  })
+  it('does not flag fast non-thinking models', () => {
+    expect(isThinkingModel('openai', 'gpt-6-luna')).toBe(false)
+    expect(isThinkingModel('gemini', 'gemini-3.5-flash-lite')).toBe(false)
+    expect(isThinkingModel('gemini', 'gemini-3.8-flash')).toBe(false)
   })
 })

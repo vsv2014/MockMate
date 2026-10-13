@@ -30,7 +30,12 @@ export default async function handler(req, res) {
       signal: ac.signal,
     })
     recordArchMetric('turn_latency_ms:hint', Date.now() - startedAt)
-    send(out?.skipped ? 'skip' : 'done', {})
+    if (out?.emptyOutput) {
+      recordArchMetric('empty_output_count', 1)
+      send('error', { error: 'The model produced no visible output. This may be caused by internal reasoning consuming the token budget. Please retry.', code: 'empty_output' })
+    } else {
+      send(out?.skipped ? 'skip' : 'done', {})
+    }
   } catch (e) {
     if (!ac.signal.aborted) {
       if (isProviderFailureError(e, { signal: ac.signal })) recordArchMetric('provider_failure_count', 1)

@@ -1,6 +1,7 @@
 // Solo (you-vs-AI) interview engine for the web app. Open-ended, speech-first,
 // no difficulty knob — the interviewer calibrates to the target role.
 import { completeJSON, visionComplete, extractJSON, streamText, pickFastProvider, pickStrongProvider, pickBestProvider, completeTextQuick } from './core.js'
+import { isThinkingModel } from '../../shared/modelRegistry.js'
 import { analyze, BANNED_WORDS } from '../../shared/delivery.js'
 import { glanceLayers, stripHintMeta } from '../../shared/hintLayers.js'
 import { classifyTurn, inferRoleFamily, isLogisticalCheck } from '../../shared/interviewClassify.js'
@@ -69,6 +70,41 @@ export function buildHintUserContext({ question, packed = '', conversationHistor
 
 export function hintAnswerStyle(style, tier, mode) {
   return styleFor(style, (tier === 'strong' || mode === 'coach') ? 2400 : 700)
+}
+
+// Thinking models (Claude 5-gen, Groq gpt-oss, etc.) use internal reasoning that
+// counts against max_tokens. A 380-token cap can be entirely consumed by reasoning,
+// producing zero visible output. This floor ensures thinking models always have
+// enough budget for both reasoning and a concise visible answer.
+// Minimums: 800 tokens for concise, 1200 for balanced, 1600 for detailed.
+const THINKING_FLOOR = { concise: 800, balanced: 1200, detailed: 1600 }
+
+/**
+ * Resolve the provider ID for budget adjustment. The chosen provider may be
+ * 'auto', a specific provider ID, or a provider::model pair.
+ */
+function resolveProviderFamily(chosen) {
+  if (!chosen || chosen === 'auto') return null
+  if (chosen.includes('::')) return chosen.slice(0, chosen.indexOf('::'))
+  return chosen
+}
+
+/**
+ * Apply the thinking-model budget floor. If the chosen provider is a thinking
+ * model, ensure maxTokens is at least the floor for the given style. This
+ * prevents reasoning from exhausting the entire budget and producing zero
+ * visible output.
+ */
+export function applyThinkingBudgetFloor(maxTokens, style, chosen) {
+  const family = resolveProviderFamily(chosen)
+  if (!family) return maxTokens
+  // We don't know the exact model yet, but if the family is a thinking family,
+  // apply the floor. isThinkingModel needs both family and model; for auto-routing
+  // we apply the floor conservatively if ANY model in that family thinks.
+  const thinkingFamilies = new Set(['claude_sonnet', 'groq', 'cerebras', 'openai', 'gpt_6_astra'])
+  if (!thinkingFamilies.has(family)) return maxTokens
+  const floor = THINKING_FLOOR[style] || THINKING_FLOOR.balanced
+  return Math.max(maxTokens, floor)
 }
 
 function profileBlock(p = {}) {
@@ -488,7 +524,9 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   const chosen = userPicked ? provider : (automatic || provider)
 
   // Apply the verbosity control on top of the tier's base budget.
-  const { directive, maxTokens } = hintAnswerStyle(style, tier, mode)
+  const { directive, maxTokens: rawMaxTokens } = hintAnswerStyle(style, tier, mode)
+  // Thinking models need a higher floor so reasoning cannot exhaust the entire budget.
+  const maxTokens = applyThinkingBudgetFloor(rawMaxTokens, style, chosen)
   // Auto-skip OFF → force an answer for every input (override the [SKIP] instruction).
   const skipDirective = autoSkip ? '' : '\n\nALWAYS ANSWER: respond to every input — do NOT output [SKIP], even for small talk, filler, or a partial/unclear question. Do your best with what was said.'
   const system = baseSystem + directive + skipDirective + classificationBlock(classification)
@@ -551,9 +589,9 @@ export async function streamHint({ question, profile = {}, conversationHistory =
     if (searchSources.length) meta.searchSources = searchSources
     onMeta?.(meta)
     emitProse(stripped.prose)
-    return proseEmitted ? { skipped: false, searchSources, classification, screenRelevance: relevance } : { skipped: true, classification, screenRelevance: relevance }
+    return proseEmitted ? { skipped: false, searchSources, classification, screenRelevance: relevance } : { skipped: false, emptyOutput: true, classification, screenRelevance: relevance }
   }
-  if (metaSent !== 'done' || !proseEmitted) return { skipped: true, classification, screenRelevance: relevance }
+  if (metaSent !== 'done' || !proseEmitted) return { skipped: false, emptyOutput: true, classification, screenRelevance: relevance }
   return { skipped: false, searchSources, classification, screenRelevance: relevance }
 }
 
@@ -611,7 +649,8 @@ async function generateHintImpl({ question, profile = {}, conversationHistory = 
     : strategy === 'fast' ? escalateFast
       : (pb.tier === 'strong' ? escalateStrong : escalateFast)
   const chosen = userPicked ? provider : (automatic || provider)
-  const { directive, maxTokens } = hintAnswerStyle(style, pb.tier, mode)
+  const { directive, maxTokens: rawMaxTokens } = hintAnswerStyle(style, pb.tier, mode)
+  const maxTokens = applyThinkingBudgetFloor(rawMaxTokens, style, chosen)
   const skipDirective = autoSkip
     ? ''
     : '\n\nALWAYS ANSWER: respond to every input — do NOT skip, even for small talk or a partial question.'

@@ -783,7 +783,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
           // Drop the extras and retry once before treating it as a real failure.
           if (e?.status === 400 && useExtras && (jsonMode || isGemini || claudeThinking)) {
             console.warn(`[llm] ${provId} rejected optional JSON-mode/reasoning/thinking params (400) → retrying without them`)
-            if (claudeThinking) providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'json', provider: provId, model }, 'warn')
+            if (claudeThinking) providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'json', provider: provId, model, errorMessage: e?.error?.message || e?.message || '', errorCode: e?.error?.code || e?.error?.type || '', status: e?.status || 0 }, 'warn')
             useExtras = false
             attempt--   // param-probe shouldn't consume a real transient/rate retry
             continue
@@ -1146,13 +1146,20 @@ function claudeThinkingFor(prov) {
 // If Anthropic rejects the thinking setting for a model (for example because a
 // future effort default no longer allows it), retry once without the field rather
 // than failing the answer. Only a 400 before any output triggers the retry.
+// The raw error body is logged so we can see WHICH field was rejected — the
+// thinking_setting_rejected event alone is not enough to diagnose the cause.
 async function createWithThinkingFallback(llm, params, requestOpts, onRejected) {
   try {
     return await llm.chat.completions.create(params, requestOpts)
   } catch (e) {
     if (!params.thinking || Number(e?.status) !== 400 || requestOpts?.signal?.aborted) throw e
     const { thinking: _rejected, ...withoutThinking } = params
-    try { onRejected?.(e) } catch {}
+    // Capture the raw error for diagnostics — this tells us whether the rejection
+    // was caused by the thinking type, budget_tokens, effort, or an extra field.
+    const errorBody = e?.error || e?.body || {}
+    const errorMessage = typeof errorBody === 'string' ? errorBody : (errorBody.message || e?.message || '')
+    const errorCode = errorBody.code || errorBody.type || ''
+    try { onRejected?.(e, { message: errorMessage, code: errorCode, error: errorBody }) } catch {}
     return await llm.chat.completions.create(withoutThinking, requestOpts)
   }
 }
@@ -1195,8 +1202,8 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       // After the first token only a stall ends the stream (no new text for
       // LIVE_STREAM_STALL_TIMEOUT_MS), so a long, healthy answer is never cut off.
       const requestOpts = { timeout: 9000, signal: deadline.signal }
-      const stream = await createWithThinkingFallback(llm, params, requestOpts, () => {
-        providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'stream', provider: provId, model }, 'warn')
+      const stream = await createWithThinkingFallback(llm, params, requestOpts, (_e, details = {}) => {
+        providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'stream', provider: provId, model, errorMessage: details.message || '', errorCode: details.code || '', status: 400 }, 'warn')
       })
       for await (const chunk of stream) {
         if (chunk?.usage) usage = chunk.usage
