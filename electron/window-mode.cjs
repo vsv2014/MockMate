@@ -42,7 +42,8 @@ function pillDragBounds(current = {}, dx = 0, dy = 0, size = PILL_SIZE) {
   }
   return {
     bounds: { x: number(current.x) + number(dx), y: number(current.y) + number(dy), width: size, height: size },
-    drifted: observed.width !== size || observed.height !== size,
+    // Native DIP rounding can report one extra pixel at fractional display scaling.
+    drifted: Math.abs(observed.width - size) > 1 || Math.abs(observed.height - size) > 1,
     observed,
   }
 }

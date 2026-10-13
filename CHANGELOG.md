@@ -4,6 +4,7 @@
 
 - Double Live answer, question and control typography, including code (12→24px); main answer is 27px and full answer is 26px.
 - Start the overlay at 600×720, clamp it to the display, and restore resizing for expanded Windows windows while retaining fixed collapsed-badge dimensions. Apply initial size with the mode transition and use native dimensions as the resize baseline.
+- Tolerate ±1px native rounding in collapsed-badge drift reporting and ignore zero-distance drag requests. Badge bounds remain fixed; movement is not delayed by a cooldown.
 - Restore microphone auto-answering after the existing speaker heuristic locks with non-degraded audio; keep uncertain speakers gated. Treat speaker ID 0 as a valid lock and pass the role for early question events.
 - Disable automatic skipping for manual answer requests and retries; surface skipped responses as visible failures.
 - Keep Back/minimize/close/resize controls on session notes. Allow leaving report generation, abort abandoned evaluation requests and apply a 30-second evaluation timeout.

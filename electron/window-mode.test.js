@@ -100,6 +100,15 @@ describe('native collapse constraints', () => {
     expect(current.height).toBe(PILL_SIZE + 4)
   })
 
+  it('tolerates fractional-display rounding without reporting every drag as a correction', () => {
+    for (const [width, height] of [[73, 73], [72, 73], [73, 72], [71, 72]]) {
+      const next = pillDragBounds({ x: 20, y: 30, width, height }, 3, 4)
+      expect(next.drifted).toBe(false)
+      expect(next.bounds).toEqual({ x: 23, y: 34, width: 72, height: 72 })
+    }
+    expect(pillDragBounds({ width: 74, height: 72 }, 1, 0).drifted).toBe(true)
+  })
+
   it('reports no drift for a badge the OS already sized correctly', () => {
     const { bounds, drifted } = pillDragBounds({ x: 0, y: 0, width: PILL_SIZE, height: PILL_SIZE }, 5, 5)
     expect(drifted).toBe(false)

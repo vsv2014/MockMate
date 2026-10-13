@@ -1119,6 +1119,7 @@ ipcMain.on('window-drag', (_, { dx, dy }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const moveX = Math.round(Number(dx) || 0)
   const moveY = Math.round(Number(dy) || 0)
+  if (!moveX && !moveY) return
   if (lastWindowMode === 'pill') {
     // The badge stays exactly PILL_SIZE while it is dragged. Never move with
     // setPosition here: on Windows a non-resizable window re-applies min/max from its
