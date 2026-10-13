@@ -274,7 +274,10 @@ export function registerApiRoutes(app, opts = {}) {
       recordArchMetric('turn_latency_ms:hint', Date.now() - startedAt)
       if (out?.skipped) await releaseReservation()
       else await consumeReservation()
-      send(out?.skipped ? 'skip' : 'done', {})
+      if (out?.emptyOutput) {
+        recordArchMetric('empty_output_count', 1)
+        send('error', { error: 'The model returned no visible answer. Please retry.', code: 'empty_output' })
+      } else send(out?.skipped ? 'skip' : 'done', {})
     } catch (e) {
       if (emittedToken || providerStarted) await consumeReservation()
       else await releaseReservation()

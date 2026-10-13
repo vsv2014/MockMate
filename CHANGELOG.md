@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.6.4 — 2026-10-13 (unsigned personal preview)
+
+- **OpenRouter provider support:** Full integration for OpenRouter as a supported provider. Users can connect with a single OpenRouter API key and access any model available through the platform. Model selection, usage tracking, and provider testing all work seamlessly.
+- **Modern UI foundation:** Integrated Tailwind CSS and shadcn/ui component library (Button, Card, Input, Badge, Separator) for consistent, maintainable design. Design tokens centralized in `@theme` for easy customization.
+- **Settings improvements:** Constrained Settings screen to max-width 1000px for better readability on large displays. Fixed save button visibility and positioning.
+- **Linear Ready Room workflow:** Converted pre-flight checks from a two-column grid layout to a clean single-column linear workflow. Session summary, progress tracking, and action buttons now present in a focused vertical sequence.
+- **Deepgram UI enhancements:** Added eye toggle to show/hide API key in Settings. Added dedicated test button to verify Deepgram configuration without leaving the settings screen.
+- **Answer budget corrections:** Fixed thinking token budget application to work correctly per model. Implemented proper floor values for thinking budgets and improved empty-output detection and surfacing.
+- **Desktop stability:** Replaced black overlay window with informative fallback panel for unrecognized views. Fixed collapsed pill icon showing black background rectangle by making body background transparent when collapsed.
+
+Published by `unsigned-public.yml` as an unsigned GitHub pre-release (Windows x64 NSIS, no auto-update feed); not code-signed.
+
 ## v1.6.3 — 2026-10-13 (unsigned personal preview)
 
 - Preserve Live follow-up context in both streamed and blocking hints: send the complete current question (previously clipped at 800 characters); honour `includeLastAnswer`, which Live already requested but `getLlmHistory` ignored, so the last completed AI suggestion is included and labelled as AI text, never candidate speech; and replace 300-character history clipping with whole recent turns under a shared 24,000-character budget.

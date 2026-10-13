@@ -33,8 +33,11 @@ const PROVIDERS = [
     note: 'Create a key scoped to your workspace; API billing is separate from a Claude subscription. Open', link: PROVIDER_KEY_LINKS.anthropic },
   { k: 'CEREBRAS_API_KEY', name: 'Cerebras', hint: 'fast inference', providerIds: ['cerebras'], testId: 'cerebras',
     note: 'Create a key at', link: PROVIDER_KEY_LINKS.cerebras },
+  { k: 'OPENROUTER_API_KEY', name: 'OpenRouter', hint: 'Multi-model gateway — one key, many providers', providerIds: ['openrouter'], testId: 'openrouter',
+    link: PROVIDER_KEY_LINKS.openrouter },
+  { k: 'DEEPGRAM_API_KEY', name: 'Deepgram', hint: 'Voice transcription (STT)', providerIds: ['deepgram'], testId: 'deepgram' },
 ]
-const EMPTY = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', GROQ_API_KEY: '', CEREBRAS_API_KEY: '', DEEPGRAM_API_KEY: '', OPENAI_MODEL: '', GROQ_VISION_MODEL: '', VISION_API_KEY: '', VISION_MODEL: '', VISION_BASE_URL: '', ADZUNA_APP_ID: '', ADZUNA_APP_KEY: '' }
+const EMPTY = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', GROQ_API_KEY: '', CEREBRAS_API_KEY: '', OPENROUTER_API_KEY: '', DEEPGRAM_API_KEY: '', OPENAI_MODEL: '', GROQ_VISION_MODEL: '', VISION_API_KEY: '', VISION_MODEL: '', VISION_BASE_URL: '', ADZUNA_APP_ID: '', ADZUNA_APP_KEY: '' }
 
 function Pill({ color, bg, children }) {
   return <span style={{ fontSize: 9.5, fontWeight: 600, color, background: bg, padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap' }}>{children}</span>
@@ -49,6 +52,9 @@ function KeyField({ name, hint, value, onChange, added, status = 'ready', secret
   const testing = testState?.status === 'testing'
   const badge = keyFieldStatus({ added, edited, status, testStatus: testState?.status })
   const statusColor = status === 'ready' && testState?.status === 'ok' && !edited ? T.success : '#fbbf24'
+  const [revealed, setRevealed] = React.useState(false)
+  const inputType = secret && !revealed ? 'password' : 'text'
+  const hasValue = added || edited
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -58,7 +64,7 @@ function KeyField({ name, hint, value, onChange, added, status = 'ready', secret
           <Pill color={statusColor} bg={statusColor === T.success ? 'rgba(34,197,94,0.14)' : 'rgba(251,191,36,0.12)'}>{badge}</Pill>
         </span>
         {added && onTest && <button type="button" onClick={onTest} disabled={testing || edited || status !== 'ready'}
-          title={edited ? 'Save the replacement key before testing it.' : 'Sends one short text request; the provider may charge a small amount.'}
+          title={edited ? 'Save the replacement key before testing it.' : 'Verifies the key with a small probe request; the provider may charge a small amount.'}
           aria-label={`Test ${name} connection`} aria-describedby={testState?.message ? testId : undefined}
           style={{ background: 'none', border: '1px solid rgba(94,234,212,0.3)', color: '#5eead4', fontSize: 10, cursor: testing || edited ? 'not-allowed' : 'pointer', opacity: testing || edited ? 0.55 : 1, padding: '3px 7px', borderRadius: 6 }}>
           {testing ? 'Testing…' : testState?.status === 'ok' || testState?.status === 'error' ? 'Test again' : 'Test connection'}
@@ -66,12 +72,21 @@ function KeyField({ name, hint, value, onChange, added, status = 'ready', secret
         {added && onRemove && <button type="button" onClick={onRemove} aria-label={`Remove saved ${name} key`}
           style={{ background: 'none', border: 'none', color: '#fca5a5', fontSize: 10, cursor: 'pointer', padding: '2px 0 2px 5px' }}>Remove</button>}
       </div>
-      <input id={id} type={secret ? 'password' : 'text'} placeholder={status !== 'ready' ? 'Key status not confirmed' : added ? 'Key already detected — leave blank to keep it' : `Paste your ${name} key`}
-        value={value} autoComplete="off" spellCheck={false} onChange={onChange}
-        aria-describedby={note ? noteId : undefined}
-        style={inp}
-        onFocus={e => e.target.style.borderColor = T.accentFrom}
-        onBlur={e => e.target.style.borderColor = T.border} />
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        <input id={id} type={inputType} placeholder={status !== 'ready' ? 'Key status not confirmed' : added ? 'Key already detected — leave blank to keep it' : `Paste your ${name} key`}
+          value={value} autoComplete="off" spellCheck={false} onChange={onChange}
+          aria-describedby={note ? noteId : undefined}
+          style={{ ...inp, paddingRight: secret && hasValue ? 32 : undefined, flex: 1 }}
+          onFocus={e => e.target.style.borderColor = T.accentFrom}
+          onBlur={e => e.target.style.borderColor = T.border} />
+        {secret && hasValue && (
+          <button type="button" onClick={() => setRevealed(r => !r)} aria-label={revealed ? `Hide ${name} key` : `Show ${name} key`}
+            title={revealed ? 'Hide key' : 'Show key'}
+            style={{ position: 'absolute', right: 6, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: revealed ? T.accentFrom : T.text3, fontSize: 13, lineHeight: 1 }}>
+            {revealed ? '🙈' : '👁'}
+          </button>
+        )}
+      </div>
       {!edited && status === 'ready' && testState?.message && <div id={testId} role={testState.status === 'error' ? 'alert' : 'status'} aria-live={testState.status === 'error' ? 'assertive' : 'polite'} style={{ fontSize: 10.5, color: testState.status === 'error' ? T.danger : T.success }}>{testState.message}</div>}
       {note && <div id={noteId} style={{ fontSize: 10, color: T.text2, lineHeight: 1.4 }}>{note}{added && onTest && ' Testing sends one short request to the provider and may incur a small usage charge.'}{link && <> <a href={link.href} target="_blank" rel="noopener noreferrer" style={{ color: T.accentFrom }}>{link.label}</a></>}</div>}
     </div>
@@ -169,7 +184,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok || !data.ok) throw new Error(data.error || `Provider test returned HTTP ${response.status}`)
-      setTestResults(results => ({ ...results, [provider.k]: { status: 'ok', message: `Text connection passed just now. Screenshot and voice capture are separate checks.` } }))
+      setTestResults(results => ({ ...results, [provider.k]: { status: 'ok', message: provider.testId === 'deepgram' ? 'Deepgram key verified — transcription connection is valid.' : 'Text connection passed just now. Screenshot and voice capture are separate checks.' } }))
     } catch (error) {
       setTestResults(results => ({ ...results, [provider.k]: { status: 'error', message: error?.message || 'Connection test failed.' } }))
     }
@@ -287,7 +302,8 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   const canSaveAdded = !!detection.value && !!targetProvider && !detection.problem && !addSaving && keyStatus !== 'loading'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontFamily: T.font }}>
+    <div className="mx-auto w-full max-w-[1000px] px-4" style={{ fontFamily: T.font }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <style>{`.mm-ai-provider-card:focus-within .mm-ai-provider-content{outline:2px solid ${T.accentFrom};outline-offset:3px}`}</style>
 
       {/* Voice first — required for Live; prevents “AI ready but Live blocked” surprise */}
@@ -296,6 +312,8 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
         <KeyField name="Deepgram" hint="voice transcription · separate from AI answers" added={dg} status={keyStatus}
           value={keyVals.DEEPGRAM_API_KEY} onChange={set('DEEPGRAM_API_KEY')}
           onRemove={() => removeProvider('deepgram', 'Deepgram')}
+          onTest={() => testProvider({ k: 'DEEPGRAM_API_KEY', testId: 'deepgram', name: 'Deepgram' })}
+          testState={testResults.DEEPGRAM_API_KEY}
           note="Required for Live and Solo voice. Create a project key with speech transcription access; usage consumes project credits. Open" link={PROVIDER_KEY_LINKS.deepgram} />
         {mode === 'managed' && !dg && (
           <div role="status" style={{ fontSize: 11, color: '#fbbf24', lineHeight: 1.4 }}>Managed voice is included on supported hosted plans. BYOK/private mode requires your own Deepgram key.</div>
@@ -482,12 +500,13 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       {/* Save stays reachable while scrolling the key form. */}
       <div role="toolbar" aria-label="API key actions" style={{ position: 'sticky', bottom: 0, zIndex: 5, padding: '10px 0', background: T.surface1, borderTop: `1px solid ${T.border}`, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
         <button onClick={save} disabled={saving || !hasEdits}
-          style={{ flex: 1, minWidth: 120, height: 42, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: T.font }}>
+          style={{ minWidth: 160, maxWidth: 280, height: 40, background: hasEdits ? T.accent : T.surface2, color: hasEdits ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: saving || !hasEdits ? 'default' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: T.font }}>
           {saving ? 'Saving…' : hasEdits ? 'Save key changes' : 'No unsaved key changes'}
         </button>
         {msg && <span role={msg.startsWith('⚠') ? 'alert' : 'status'} aria-live={msg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: 11, fontWeight: 500, color: msg.startsWith('⚠') ? T.danger : T.success }}>{msg}</span>}
       </div>
       <div style={{ fontSize: 10, color: T.text3, textAlign: 'center' }}>Keys are encrypted at rest on this machine (OS keychain when available).</div>
+      </div>
     </div>
   )
 }

@@ -761,20 +761,19 @@ export function ReadyRoom({
                 : 'Configured · not tested'
 
   return (
-    <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+    <div className="mm-content-medium">
       <PageHeading eyebrow="LIVE INTERVIEW · PRE-FLIGHT" title="Ready Room" detail="Check the real connections and screen-share conditions before you enter Live. A configured key is not a successful test, and OS protection is not a meeting-preview check." action={kit && <Pill tone="teal">KIT · {kit.title}</Pill>} />
 
       {!kit ? (
-        <section style={{ ...panelStyle, padding: 24, textAlign: 'center', maxWidth: 680, margin: '0 auto' }}>
-          <div style={{ color: T.accentFrom, fontSize: 26, marginBottom: 9 }}>▤</div>
-          <h2 style={{ color: T.text1, font: `600 21px ${T.fontDisplay}`, margin: '0 0 7px' }}>Choose the context you’ll bring.</h2>
-          <p style={{ color: T.text2, fontSize: 12.5, lineHeight: 1.6, margin: '0 auto 15px', maxWidth: 470 }}>A Kit keeps this role’s resume and job description separate from your shared profile. Create or select one before running the Live preflight.</p>
+        <section className="mm-panel" style={{ padding: 24, textAlign: 'center', maxWidth: 680, margin: '0 auto' }}>
+          <div style={{ color: 'var(--color-accent)', fontSize: 26, marginBottom: 9 }}>▤</div>
+          <h2 className="mm-title" style={{ fontSize: 21, fontWeight: 600, margin: '0 0 7px' }}>Choose the context you'll bring.</h2>
+          <p className="mm-body-muted" style={{ margin: '0 auto 15px', maxWidth: 470 }}>A Kit keeps this role's resume and job description separate from your shared profile. Create or select one before running the Live preflight.</p>
           <Button variant="primary" onClick={onOpenKits}>Open Interview Kits →</Button>
         </section>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(250px, .72fr)', gap: 14, alignItems: 'start' }} className="mm-ready-layout">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="mm-content-narrow mm-section">
               <CheckCard number="01" title="Interview context" status={contextReady ? 'passed' : 'missing'} statusText={contextReady ? 'Kit context found' : 'Needs context'} action={<Button variant="quiet" onClick={() => onEditKit?.(kit)}>{contextReady ? 'Review Kit' : 'Add role or materials'}</Button>}>
                 {contextReady
                   ? `${kit.targetRole || 'Role not set'}${kit.targetCompany ? ` · ${kit.targetCompany}` : ''}. ${selectedKitMaterialCount ? `${selectedKitMaterialCount} selected Kit-only attachment${selectedKitMaterialCount === 1 ? '' : 's'} can ground Live answers. ` : ''}Session context will be copied into a snapshot; it won’t update your shared profile.`
@@ -846,9 +845,8 @@ export function ReadyRoom({
                   )}
                 </CheckCard>
               </div>
-            </div>
 
-            <aside style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+            <aside style={{ display: 'none' }}>
               <section style={{ ...panelStyle, padding: 16, background: 'linear-gradient(145deg, rgba(20,184,166,0.11), rgba(18,21,27,0.98) 62%)' }}>
                 <Eyebrow>THIS SESSION</Eyebrow>
                 <div style={{ color: T.text1, font: `600 17px ${T.fontDisplay}`, marginTop: 9 }}>{kit.title}</div>

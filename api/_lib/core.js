@@ -1,4 +1,4 @@
-import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget, claudeLowLatencyThinking, modelDisplayName } from '../../shared/modelRegistry.js'
+import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget, claudeLowLatencyThinking, isThinkingModel, modelDisplayName } from '../../shared/modelRegistry.js'
 // Shared logic for the serverless functions (api/*.js) and the local dev server
 // (server.js). Files prefixed with _ are not treated as routes by Vercel.
 import OpenAI from 'openai'
@@ -65,6 +65,7 @@ function modelFamily(id) {
   if (base.startsWith('openai') || base === 'gpt_6_astra') return 'openai'
   if (base.startsWith('claude')) return 'claude_sonnet'
   if (base.startsWith('gemini')) return 'gemini'
+  if (base === 'openrouter') return 'openrouter'
   return base
 }
 
@@ -139,10 +140,41 @@ export function availableProviders() {
   return list
 }
 
-const PROVIDER_TEST_IDS = new Set(['groq', 'gemini', 'openai_mini', 'claude_haiku', 'cerebras'])
+const PROVIDER_TEST_IDS = new Set(['groq', 'gemini', 'openai_mini', 'claude_haiku', 'cerebras', 'openrouter'])
 /** Make one small, explicit probe against a selected saved key; this is never part of normal routing. */
 export async function testProviderConnection(providerId) {
   const id = String(providerId || '')
+
+  // Deepgram is STT, not an LLM — verify the key via the auth/grant endpoint.
+  if (id === 'deepgram') {
+    if (!process.env.DEEPGRAM_API_KEY) {
+      const error = new Error('No Deepgram key configured.')
+      error.status = 404
+      throw error
+    }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8_000)
+    try {
+      const response = await fetch('https://api.deepgram.com/v1/auth/token', {
+        method: 'GET',
+        headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}` },
+        signal: controller.signal,
+      })
+      if (!response.ok) {
+        const error = new Error(
+          response.status === 401 || response.status === 403
+            ? 'Deepgram key is invalid or expired. Check Settings → Voice.'
+            : `Deepgram connection test failed (HTTP ${response.status}).`
+        )
+        error.status = response.status
+        throw error
+      }
+      return { ok: true, provider: 'deepgram', model: 'stt' }
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   if (!PROVIDER_TEST_IDS.has(id) || !availableProviders().some(provider => provider.id === id)) {
     const error = aiError('no_provider', 404)
     error.message = 'That provider is not configured on this device.'
@@ -192,6 +224,7 @@ export function pickFastProvider() {
   if (process.env.CEREBRAS_API_KEY) return 'cerebras'
   if (process.env.GROQ_API_KEY) return 'groq'
   if (process.env.ANTHROPIC_API_KEY) return newestDiscovered('claude_sonnet', MODEL_PRIORITIES.fast.claude_sonnet) || 'claude_haiku'
+  if (process.env.OPENROUTER_API_KEY) return newestDiscovered('openrouter', MODEL_PRIORITIES.strong.openrouter) || 'openrouter'
   return null
 }
 
@@ -213,6 +246,7 @@ export function pickStrongProvider() {
   if (process.env.OPENAI_API_KEY) return newestDiscovered('openai', MODEL_PRIORITIES.strong.openai) || 'openai'
   if (process.env.ANTHROPIC_API_KEY) return newestDiscovered('claude_sonnet', MODEL_PRIORITIES.strong.claude_sonnet) || 'claude_sonnet'
   if (process.env.GEMINI_API_KEY) return newestDiscovered('gemini', MODEL_PRIORITIES.strong.gemini) || 'gemini_3_flash'
+  if (process.env.OPENROUTER_API_KEY) return newestDiscovered('openrouter', MODEL_PRIORITIES.strong.openrouter) || 'openrouter'
   return pickFastProvider()
 }
 
@@ -300,6 +334,16 @@ export async function listModels() {
       ;((await r.json())?.data || []).filter(isActiveModelRecord)
         .forEach(m => push('cerebras', m.id, `Cerebras · ${m.id}`, m))
     }),
+    // OpenRouter — multi-model gateway. Models endpoint returns { data: [{ id, ... }] }.
+    // Uses provider/model naming (e.g. anthropic/claude-sonnet-5.5).
+    process.env.OPENROUTER_API_KEY && settle('openrouter', async () => {
+      const r = await fetchWithTimeout('https://openrouter.ai/api/v1/models', {
+        headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
+      })
+      if (!r.ok) throw new Error('Model discovery unavailable')
+      ;((await r.json())?.data || []).filter(isActiveModelRecord)
+        .forEach(m => push('openrouter', m.id, `OpenRouter · ${m.name || m.id}`, m))
+    }),
   ].filter(Boolean))
   lastSuccessfulDiscoveries = successful
   providerDiagnostic('model_discovery_completed', {
@@ -354,7 +398,8 @@ function clientFor(prov) {
 
 // GPT-6 Chat Completions rejects the old max_tokens field; other providers
 // have different OpenAI-compatible contracts. Scope this change to OpenAI GPT-6.
-export function completionBudget(prov, maxTokens) {
+export function completionBudget(prov, maxTokens, thinkingTokenFloor = 0) {
+  if (isThinkingModel('', prov.model)) maxTokens = Math.max(maxTokens, thinkingTokenFloor)
   return usesCompletionTokenBudget(prov.baseURL, prov.model)
     ? { max_completion_tokens: maxTokens }
     : { max_tokens: maxTokens }
@@ -724,7 +769,7 @@ function enqueueActiveModelRecovery(queue, currentIndex, provId, previousModel, 
   providerDiagnostic('model_replacement_selected', { provider: family, previousModel, replacementModel: nextModel })
 }
 
-export async function completeJSON({ messages, maxTokens = 1600, provider }) {
+export async function completeJSON({ messages, maxTokens = 1600, provider, thinkingTokenFloor = 0 }) {
   assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
   if (!providerQueue.length) throw textProviderCoolingError()
@@ -738,7 +783,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
     const llm = clientFor(prov), model = prov.model
     const providerStartedAt = Date.now()
     const attemptId = newProviderAttemptId()
-    providerDiagnostic('attempt_started', { attemptId, operation: 'json', provider: provId, model, maxTokens, attemptIndex: queueIndex, contextChars: JSON.stringify(messages).length })
+    providerDiagnostic('attempt_started', { attemptId, operation: 'json', provider: provId, model, maxTokens: Object.values(completionBudget(prov, maxTokens, thinkingTokenFloor))[0], attemptIndex: queueIndex, contextChars: JSON.stringify(messages).length })
 
     // Gemini 2.5 models THINK by default — reasoning silently eats the token
     // budget, so the actual answer gets truncated into invalid JSON. Disable it
@@ -756,7 +801,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
       let useExtras = true   // JSON-mode / reasoning / thinking params; dropped if this provider 400s on them
       for (let attempt = 0; ; attempt++) {
         try {
-          const params = { model, ...completionBudget(prov, maxTokens), messages: msgs }
+          const params = { model, ...completionBudget(prov, maxTokens, thinkingTokenFloor), messages: msgs }
           if (useExtras && isGemini) params.reasoning_effort = 'none'
           if (useExtras && jsonMode) params.response_format = { type: 'json_object' }
           if (useExtras && claudeThinking) params.thinking = claudeThinking
@@ -783,7 +828,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
           // Drop the extras and retry once before treating it as a real failure.
           if (e?.status === 400 && useExtras && (jsonMode || isGemini || claudeThinking)) {
             console.warn(`[llm] ${provId} rejected optional JSON-mode/reasoning/thinking params (400) → retrying without them`)
-            if (claudeThinking) providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'json', provider: provId, model }, 'warn')
+            if (claudeThinking) providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'json', provider: provId, model, ...thinkingRejectionDetails(e) }, 'warn')
             useExtras = false
             attempt--   // param-probe shouldn't consume a real transient/rate retry
             continue
@@ -1146,18 +1191,32 @@ function claudeThinkingFor(prov) {
 // If Anthropic rejects the thinking setting for a model (for example because a
 // future effort default no longer allows it), retry once without the field rather
 // than failing the answer. Only a 400 before any output triggers the retry.
+// A 400 with a thinking field is not proof that thinking caused the rejection.
+export function thinkingRejectionDetails(error) {
+  const body = error?.error?.error || error?.error || error?.body || {}
+  const text = String(typeof body === 'string' ? body : body.message || error?.message || '')
+  const fields = ['thinking', 'budget_tokens', 'output_config.effort', 'max_tokens', 'temperature', 'display', 'block_binding']
+    .filter(field => text.includes(field))
+  return {
+    status: Number(error?.status) || 400,
+    rejectedFields: fields,
+    rejectionKind: /not supported|unsupported/i.test(text) ? 'unsupported_setting'
+      : /extra|unexpected|not permitted/i.test(text) ? 'unexpected_field'
+        : /effort/i.test(text) ? 'effort_constraint' : 'unclassified_400',
+  }
+}
 async function createWithThinkingFallback(llm, params, requestOpts, onRejected) {
   try {
     return await llm.chat.completions.create(params, requestOpts)
   } catch (e) {
     if (!params.thinking || Number(e?.status) !== 400 || requestOpts?.signal?.aborted) throw e
     const { thinking: _rejected, ...withoutThinking } = params
-    try { onRejected?.(e) } catch {}
+    try { onRejected?.(e, thinkingRejectionDetails(e)) } catch {}
     return await llm.chat.completions.create(withoutThinking, requestOpts)
   }
 }
 
-export async function streamText({ messages, maxTokens = 700, provider, onToken, onUsage, onProviderEvent, signal }) {
+export async function streamText({ messages, maxTokens = 700, provider, thinkingTokenFloor = 0, onToken, onUsage, onProviderEvent, signal }) {
   assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
   if (!providerQueue.length) throw textProviderCoolingError()
@@ -1176,12 +1235,12 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       stallMs: Number(process.env.LLM_STREAM_STALL_TIMEOUT_MS) || LIVE_STREAM_STALL_TIMEOUT_MS,
     })
     providerDiagnostic('attempt_started', {
-      attemptId, operation: 'stream', provider: provId, model, maxTokens, attemptIndex, contextChars: JSON.stringify(messages).length,
+      attemptId, operation: 'stream', provider: provId, model, maxTokens: Object.values(completionBudget(prov, maxTokens, thinkingTokenFloor))[0], attemptIndex, contextChars: JSON.stringify(messages).length,
       requestedProvider: provider || 'auto', selectionReason: attemptIndex > 0 ? 'fallback' : (provider && provider !== 'auto' ? 'requested' : 'automatic'),
     })
     try { onProviderEvent?.({ type: 'started', attemptId, attemptIndex, provider: provId, model }) } catch {}
     try {
-      const params = { model, ...completionBudget(prov, maxTokens), messages, stream: true }
+      const params = { model, ...completionBudget(prov, maxTokens, thinkingTokenFloor), messages, stream: true }
       if (/gemini/i.test(model)) params.reasoning_effort = 'none'
       const claudeThinking = claudeThinkingFor(prov)
       if (claudeThinking) params.thinking = claudeThinking
@@ -1195,8 +1254,8 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       // After the first token only a stall ends the stream (no new text for
       // LIVE_STREAM_STALL_TIMEOUT_MS), so a long, healthy answer is never cut off.
       const requestOpts = { timeout: 9000, signal: deadline.signal }
-      const stream = await createWithThinkingFallback(llm, params, requestOpts, () => {
-        providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'stream', provider: provId, model }, 'warn')
+      const stream = await createWithThinkingFallback(llm, params, requestOpts, (_e, details = {}) => {
+        providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'stream', provider: provId, model, ...details }, 'warn')
       })
       for await (const chunk of stream) {
         if (chunk?.usage) usage = chunk.usage

@@ -71,6 +71,10 @@ export function hintAnswerStyle(style, tier, mode) {
   return styleFor(style, (tier === 'strong' || mode === 'coach') ? 2400 : 700)
 }
 
+// Heuristic headroom, not a guarantee of visible output. Applied to the actual
+// resolved model on every provider attempt in core.js, including fallbacks.
+const THINKING_FLOOR = { concise: 800, balanced: 1200, detailed: 1600 }
+
 function profileBlock(p = {}) {
   let s = ''
   if (p.name) s += `\nCandidate name: ${p.name}`
@@ -488,14 +492,17 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   const chosen = userPicked ? provider : (automatic || provider)
 
   // Apply the verbosity control on top of the tier's base budget.
-  const { directive, maxTokens } = hintAnswerStyle(style, tier, mode)
+  const { directive, maxTokens: rawMaxTokens } = hintAnswerStyle(style, tier, mode)
+  // Request heuristic headroom for known thinking models on each resolved attempt.
+  const maxTokens = rawMaxTokens
+  const thinkingTokenFloor = THINKING_FLOOR[style] || THINKING_FLOOR.balanced
   // Auto-skip OFF → force an answer for every input (override the [SKIP] instruction).
   const skipDirective = autoSkip ? '' : '\n\nALWAYS ANSWER: respond to every input — do NOT output [SKIP], even for small talk, filler, or a partial/unclear question. Do your best with what was said.'
   const system = baseSystem + directive + skipDirective + classificationBlock(classification)
     + answerRequirementBlock(question, profile, classification)
 
   let buf = '', metaSent = false, skipped = false, proseEmitted = false
-  const emitProse = t => { if (t) { proseEmitted = true; onToken?.(t) } }
+  const emitProse = t => { if (t) { if (t.trim()) proseEmitted = true; onToken?.(t) } }
   const ragSources = parseRetrievedSources(extraContext)
   const routingExtra = {
     roleFamily: classification.roleFamily,
@@ -512,7 +519,7 @@ export async function streamHint({ question, profile = {}, conversationHistory =
     ...(ragSources.length ? { ragSources } : {}),
   }
   await streamText({
-    provider: chosen, maxTokens, onProviderEvent,
+    provider: chosen, maxTokens, thinkingTokenFloor, onProviderEvent,
     onUsage, signal,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     onToken: tok => {
@@ -551,9 +558,9 @@ export async function streamHint({ question, profile = {}, conversationHistory =
     if (searchSources.length) meta.searchSources = searchSources
     onMeta?.(meta)
     emitProse(stripped.prose)
-    return proseEmitted ? { skipped: false, searchSources, classification, screenRelevance: relevance } : { skipped: true, classification, screenRelevance: relevance }
+    return proseEmitted ? { skipped: false, searchSources, classification, screenRelevance: relevance } : { skipped: false, emptyOutput: true, classification, screenRelevance: relevance }
   }
-  if (metaSent !== 'done' || !proseEmitted) return { skipped: true, classification, screenRelevance: relevance }
+  if (metaSent !== 'done' || !proseEmitted) return { skipped: false, emptyOutput: true, classification, screenRelevance: relevance }
   return { skipped: false, searchSources, classification, screenRelevance: relevance }
 }
 
@@ -611,7 +618,9 @@ async function generateHintImpl({ question, profile = {}, conversationHistory = 
     : strategy === 'fast' ? escalateFast
       : (pb.tier === 'strong' ? escalateStrong : escalateFast)
   const chosen = userPicked ? provider : (automatic || provider)
-  const { directive, maxTokens } = hintAnswerStyle(style, pb.tier, mode)
+  const { directive, maxTokens: rawMaxTokens } = hintAnswerStyle(style, pb.tier, mode)
+  const maxTokens = rawMaxTokens
+  const thinkingTokenFloor = THINKING_FLOOR[style] || THINKING_FLOOR.balanced
   const skipDirective = autoSkip
     ? ''
     : '\n\nALWAYS ANSWER: respond to every input — do NOT skip, even for small talk or a partial question.'
@@ -630,7 +639,7 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
 }`
 
   const hint = await completeJSON({
-    maxTokens, provider: chosen,
+    maxTokens, thinkingTokenFloor, provider: chosen,
     messages: [
       { role: 'system', content: baseSystem + directive + skipDirective + classificationBlock(classification) + answerRequirementBlock(question, profile, classification) + schemaNote },
       { role: 'user', content: buildHintUserContext({ question, packed, conversationHistory, searchBlock, followParent, screenNote }) },
@@ -640,7 +649,7 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
   if (hint?.skip) return null
   if (searchSources.length) hint.searchSources = searchSources
   const prose = hint.fullAnswer || hint.sampleAnswer || hint.answer || ''
-  if (!String(prose).trim()) return null
+  if (!String(prose).trim()) throw Object.assign(new Error('The model returned no visible answer. Please retry.'), { code: 'empty_output', status: 502 })
   const normalized = normalizeHint(hint, prose)
   const ragSources = parseRetrievedSources(extraContext)
   normalized._routing = {
