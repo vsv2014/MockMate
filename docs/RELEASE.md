@@ -1,6 +1,6 @@
 # Signed public Windows release
 
-Current source version: **1.6.3** (desktop package and lock). v1.6.3 is published only as an unsigned personal preview (see below); no signed v1.6.x build exists, and the latest signed stable installer is v1.5.3. A source version is not proof of a signed or published installer. In the steps below, `X.Y.Z` is the version being released.
+Current source version: **1.6.4** (desktop package and lock). v1.6.3 is published only as an unsigned personal preview (see below); no signed v1.6.x build exists, and the latest signed stable installer is v1.5.3. A source version is not proof of a signed or published installer. In the steps below, `X.Y.Z` is the version being released.
 
 The stable `release.yml` workflow is signed-only. Missing or incomplete signing settings fail before packaging; no unsigned fallback is permitted. v1.6.1, v1.6.2 and v1.6.3 are unsigned personal previews. Do not move or replace those tags.
 
