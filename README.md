@@ -2,15 +2,24 @@
 
 MockMate is a desktop-first interview preparation and live-performance companion. It combines Solo practice, Resume Studio, Job Matching, Documents, session history, and a content-protected Live overlay that can transcribe interview audio and generate resume-grounded guidance.
 
-## Release status — v1.6.3 unsigned personal preview
+## Release status — v1.6.4 unsigned personal preview
 
-The desktop manifests target **1.6.3**. **v1.6.3** is published from `main` as an **unsigned personal preview** (GitHub pre-release, Windows x64 installer only), built and smoke-tested by `unsigned-public.yml`. It is not code-signed and has no auto-update feed. The latest **signed** stable installer is still **v1.5.3**.
+The desktop manifests target **1.6.4**. **v1.6.4** is published from `main` as an **unsigned personal preview** (GitHub pre-release, Windows x64 installer only), built and smoke-tested by `unsigned-public.yml`. It is not code-signed and has no auto-update feed. The latest **signed** stable installer is still **v1.5.3**.
 
 - The stable Windows workflow (`release.yml`) is **signed-only**. It requires the signing certificate, password and publisher identity, verifies trusted Authenticode signatures for both the app and the installer, and runs a packaged smoke test before publication. Missing signing settings stop the stable release; it never falls back to an unsigned build or unsigned updater payload.
-- v1.6.1 and v1.6.2 remain historical [unsigned personal previews](https://github.com/vsv2014/MockMate/releases). Existing tags are never moved.
+- v1.6.1, v1.6.2, and v1.6.3 remain historical [unsigned personal previews](https://github.com/vsv2014/MockMate/releases). Existing tags are never moved.
 - Release details: [process](docs/RELEASE.md), [checklist](docs/RELEASE_CHECKLIST.md), [changelog](CHANGELOG.md), [validation status](docs/evidence/VALIDATION_STATUS.md), [signing setup](SIGNING.md).
 
 The automated release workflows produce Windows x64 NSIS only. macOS/Linux builds and mobile store releases are separate tracks; no current public artifacts are implied for them.
+
+## What v1.6.4 adds
+
+- **OpenRouter provider support:** Use any model available through OpenRouter with a single API key. Full integration with model selection, usage tracking, and provider testing.
+- **Modern UI foundation:** Tailwind CSS and shadcn/ui component library integrated for consistent, maintainable design. Settings screen constrained to readable width with improved save button behavior.
+- **Linear Ready Room workflow:** Pre-flight checks now present in a clean single-column layout instead of a two-column grid, making the setup sequence clearer and more focused.
+- **Deepgram UI improvements:** Eye toggle to show/hide API key and dedicated test button for verifying Deepgram configuration.
+- **Answer budget fixes:** Thinking token budgets now correctly applied per model, with proper floor values and empty-output detection.
+- **Desktop stability fixes:** Black overlay window replaced with informative fallback panel for unrecognized views. Collapsed pill icon no longer shows black background rectangle.
 
 ## What v1.6.3 adds
 
