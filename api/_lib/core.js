@@ -1,4 +1,4 @@
-import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget, claudeLowLatencyThinking, modelDisplayName } from '../../shared/modelRegistry.js'
+import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget, claudeLowLatencyThinking, isThinkingModel, modelDisplayName } from '../../shared/modelRegistry.js'
 // Shared logic for the serverless functions (api/*.js) and the local dev server
 // (server.js). Files prefixed with _ are not treated as routes by Vercel.
 import OpenAI from 'openai'
@@ -354,7 +354,8 @@ function clientFor(prov) {
 
 // GPT-6 Chat Completions rejects the old max_tokens field; other providers
 // have different OpenAI-compatible contracts. Scope this change to OpenAI GPT-6.
-export function completionBudget(prov, maxTokens) {
+export function completionBudget(prov, maxTokens, thinkingTokenFloor = 0) {
+  if (isThinkingModel('', prov.model)) maxTokens = Math.max(maxTokens, thinkingTokenFloor)
   return usesCompletionTokenBudget(prov.baseURL, prov.model)
     ? { max_completion_tokens: maxTokens }
     : { max_tokens: maxTokens }
@@ -724,7 +725,7 @@ function enqueueActiveModelRecovery(queue, currentIndex, provId, previousModel, 
   providerDiagnostic('model_replacement_selected', { provider: family, previousModel, replacementModel: nextModel })
 }
 
-export async function completeJSON({ messages, maxTokens = 1600, provider }) {
+export async function completeJSON({ messages, maxTokens = 1600, provider, thinkingTokenFloor = 0 }) {
   assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
   if (!providerQueue.length) throw textProviderCoolingError()
@@ -738,7 +739,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
     const llm = clientFor(prov), model = prov.model
     const providerStartedAt = Date.now()
     const attemptId = newProviderAttemptId()
-    providerDiagnostic('attempt_started', { attemptId, operation: 'json', provider: provId, model, maxTokens, attemptIndex: queueIndex, contextChars: JSON.stringify(messages).length })
+    providerDiagnostic('attempt_started', { attemptId, operation: 'json', provider: provId, model, maxTokens: Object.values(completionBudget(prov, maxTokens, thinkingTokenFloor))[0], attemptIndex: queueIndex, contextChars: JSON.stringify(messages).length })
 
     // Gemini 2.5 models THINK by default — reasoning silently eats the token
     // budget, so the actual answer gets truncated into invalid JSON. Disable it
@@ -756,7 +757,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
       let useExtras = true   // JSON-mode / reasoning / thinking params; dropped if this provider 400s on them
       for (let attempt = 0; ; attempt++) {
         try {
-          const params = { model, ...completionBudget(prov, maxTokens), messages: msgs }
+          const params = { model, ...completionBudget(prov, maxTokens, thinkingTokenFloor), messages: msgs }
           if (useExtras && isGemini) params.reasoning_effort = 'none'
           if (useExtras && jsonMode) params.response_format = { type: 'json_object' }
           if (useExtras && claudeThinking) params.thinking = claudeThinking
@@ -783,7 +784,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider }) {
           // Drop the extras and retry once before treating it as a real failure.
           if (e?.status === 400 && useExtras && (jsonMode || isGemini || claudeThinking)) {
             console.warn(`[llm] ${provId} rejected optional JSON-mode/reasoning/thinking params (400) → retrying without them`)
-            if (claudeThinking) providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'json', provider: provId, model, errorMessage: e?.error?.message || e?.message || '', errorCode: e?.error?.code || e?.error?.type || '', status: e?.status || 0 }, 'warn')
+            if (claudeThinking) providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'json', provider: provId, model, ...thinkingRejectionDetails(e) }, 'warn')
             useExtras = false
             attempt--   // param-probe shouldn't consume a real transient/rate retry
             continue
@@ -1146,25 +1147,32 @@ function claudeThinkingFor(prov) {
 // If Anthropic rejects the thinking setting for a model (for example because a
 // future effort default no longer allows it), retry once without the field rather
 // than failing the answer. Only a 400 before any output triggers the retry.
-// The raw error body is logged so we can see WHICH field was rejected — the
-// thinking_setting_rejected event alone is not enough to diagnose the cause.
+// A 400 with a thinking field is not proof that thinking caused the rejection.
+export function thinkingRejectionDetails(error) {
+  const body = error?.error?.error || error?.error || error?.body || {}
+  const text = String(typeof body === 'string' ? body : body.message || error?.message || '')
+  const fields = ['thinking', 'budget_tokens', 'output_config.effort', 'max_tokens', 'temperature', 'display', 'block_binding']
+    .filter(field => text.includes(field))
+  return {
+    status: Number(error?.status) || 400,
+    rejectedFields: fields,
+    rejectionKind: /not supported|unsupported/i.test(text) ? 'unsupported_setting'
+      : /extra|unexpected|not permitted/i.test(text) ? 'unexpected_field'
+        : /effort/i.test(text) ? 'effort_constraint' : 'unclassified_400',
+  }
+}
 async function createWithThinkingFallback(llm, params, requestOpts, onRejected) {
   try {
     return await llm.chat.completions.create(params, requestOpts)
   } catch (e) {
     if (!params.thinking || Number(e?.status) !== 400 || requestOpts?.signal?.aborted) throw e
     const { thinking: _rejected, ...withoutThinking } = params
-    // Capture the raw error for diagnostics — this tells us whether the rejection
-    // was caused by the thinking type, budget_tokens, effort, or an extra field.
-    const errorBody = e?.error || e?.body || {}
-    const errorMessage = typeof errorBody === 'string' ? errorBody : (errorBody.message || e?.message || '')
-    const errorCode = errorBody.code || errorBody.type || ''
-    try { onRejected?.(e, { message: errorMessage, code: errorCode, error: errorBody }) } catch {}
+    try { onRejected?.(e, thinkingRejectionDetails(e)) } catch {}
     return await llm.chat.completions.create(withoutThinking, requestOpts)
   }
 }
 
-export async function streamText({ messages, maxTokens = 700, provider, onToken, onUsage, onProviderEvent, signal }) {
+export async function streamText({ messages, maxTokens = 700, provider, thinkingTokenFloor = 0, onToken, onUsage, onProviderEvent, signal }) {
   assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
   if (!providerQueue.length) throw textProviderCoolingError()
@@ -1183,12 +1191,12 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       stallMs: Number(process.env.LLM_STREAM_STALL_TIMEOUT_MS) || LIVE_STREAM_STALL_TIMEOUT_MS,
     })
     providerDiagnostic('attempt_started', {
-      attemptId, operation: 'stream', provider: provId, model, maxTokens, attemptIndex, contextChars: JSON.stringify(messages).length,
+      attemptId, operation: 'stream', provider: provId, model, maxTokens: Object.values(completionBudget(prov, maxTokens, thinkingTokenFloor))[0], attemptIndex, contextChars: JSON.stringify(messages).length,
       requestedProvider: provider || 'auto', selectionReason: attemptIndex > 0 ? 'fallback' : (provider && provider !== 'auto' ? 'requested' : 'automatic'),
     })
     try { onProviderEvent?.({ type: 'started', attemptId, attemptIndex, provider: provId, model }) } catch {}
     try {
-      const params = { model, ...completionBudget(prov, maxTokens), messages, stream: true }
+      const params = { model, ...completionBudget(prov, maxTokens, thinkingTokenFloor), messages, stream: true }
       if (/gemini/i.test(model)) params.reasoning_effort = 'none'
       const claudeThinking = claudeThinkingFor(prov)
       if (claudeThinking) params.thinking = claudeThinking
@@ -1203,7 +1211,7 @@ export async function streamText({ messages, maxTokens = 700, provider, onToken,
       // LIVE_STREAM_STALL_TIMEOUT_MS), so a long, healthy answer is never cut off.
       const requestOpts = { timeout: 9000, signal: deadline.signal }
       const stream = await createWithThinkingFallback(llm, params, requestOpts, (_e, details = {}) => {
-        providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'stream', provider: provId, model, errorMessage: details.message || '', errorCode: details.code || '', status: 400 }, 'warn')
+        providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'stream', provider: provId, model, ...details }, 'warn')
       })
       for await (const chunk of stream) {
         if (chunk?.usage) usage = chunk.usage

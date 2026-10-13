@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     recordArchMetric('turn_latency_ms:hint', Date.now() - startedAt)
     if (out?.emptyOutput) {
       recordArchMetric('empty_output_count', 1)
-      send('error', { error: 'The model produced no visible output. This may be caused by internal reasoning consuming the token budget. Please retry.', code: 'empty_output' })
+      send('error', { error: 'The model returned no visible answer. Please retry.', code: 'empty_output' })
     } else {
       send(out?.skipped ? 'skip' : 'done', {})
     }

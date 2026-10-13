@@ -63,12 +63,10 @@ export function modelPreferenceScore(model) {
 //  - "between_tools": Sonnet 5.5 rejects "enabled" and "disabled"; this is the
 //    only way to suppress up-front thinking on 5.5. It does NOT accept
 //    budget_tokens — that field is legacy (deprecated on 4.6, rejected on 4.7+).
-//    If the API rejects between_tools, the cause is likely effort set to
-//    xhigh/max or an extra field in the request — log the raw 400 body to
-//    diagnose. createWithThinkingFallback retries without the field.
-//    The thinking-budget floor (applyThinkingBudgetFloor in interview.js)
-//    ensures max_tokens leaves room for visible output on OTHER thinking
-//    models (Groq, Cerebras) that do use token budgets.
+//    A 400 does not establish which field was rejected. The adapter records
+//    bounded diagnostic categories and retries without thinking once.
+//    All these models still have a total completion cap. completionBudget in
+//    core.js can add heuristic headroom, including on the adaptive retry.
 // Fable, Mythos and Opus 5.5 cannot turn thinking off: return null and send nothing.
 export function claudeLowLatencyThinking(model) {
   const id = withoutAnthropicDate(String(model || '').toLowerCase())
@@ -79,20 +77,15 @@ export function claudeLowLatencyThinking(model) {
 
 /**
  * Detect whether a provider/model combination uses internal reasoning that
- * counts against max_tokens. Thinking models need a higher token floor so
- * reasoning cannot exhaust the entire budget and produce zero visible output.
+ * counts against the completion cap. A larger floor adds headroom; it cannot
+ * guarantee visible output or reserve a separate reasoning/text allocation.
  */
-export function isThinkingModel(providerId, model) {
-  const prov = String(providerId || '')
+export function isThinkingModel(_providerId, model) {
   const id = String(model || '').toLowerCase()
-  // All Claude models served via Anthropic's endpoint think by default.
-  if (prov.startsWith('claude')) return true
-  // Groq and Cerebras run OpenAI-model variants that may use internal reasoning.
-  if (prov === 'groq' || prov === 'cerebras') return true
-  // OpenAI's own GPT-6 Astra/Sol may reason; Luna/mini are fast non-thinking.
-  if (prov === 'openai' && /astra|sol/i.test(id)) return true
-  if (prov === 'gpt_6_astra') return true
-  return false
+  // Identify model families rather than assuming every model at a host reasons.
+  return /(?:^|\/)gpt-oss-/.test(id)
+    || /^gpt-6(?:\.\d+)?-(?:astra|sol)(?:$|-)/.test(id)
+    || /^claude-(?:fable|mythos|opus-5|sonnet-5|haiku-5)/.test(id)
 }
 
 // Human-readable model name for settings and diagnostics UI. Catalog defaults reuse

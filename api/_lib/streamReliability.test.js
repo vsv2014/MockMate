@@ -169,3 +169,26 @@ describe('describeAutomaticRouting', () => {
     expect(core.describeAutomaticRouting()).toEqual({ fast: null, strong: null })
   })
 })
+
+describe('resolved model budgets and safe rejection diagnostics', () => {
+  it('applies headroom to the fallback model, not just the requested provider', async () => {
+    process.env.GEMINI_API_KEY = 'test-gemini'
+    process.env.GROQ_API_KEY = 'test-groq'
+    script = (params, opts) => {
+      if (params.model.includes('gemini')) throw Object.assign(new Error('unavailable'), { status: 503 })
+      return tokenStream(['answer'], opts)
+    }
+    const core = await import('./core.js')
+    const result = await runStream(core, { provider: 'gemini', maxTokens: 380, thinkingTokenFloor: 800 })
+    expect(result.error).toBeNull()
+    expect(calls[0].params.max_tokens).toBe(380)
+    expect(calls.find(c => c.params.model.includes('gpt-oss')).params.max_tokens).toBe(800)
+    expect(core.completionBudget({ model: 'plain-model' }, 380, 800)).toEqual({ max_tokens: 380 })
+  })
+  it('keeps actionable field categories without retaining raw upstream content', async () => {
+    const { thinkingRejectionDetails } = await import('./core.js')
+    const details = thinkingRejectionDetails({ status: 400, error: { error: { message: 'thinking budget_tokens not supported; private resume Alice sk-example', type: 'invalid_request_error' } } })
+    expect(details).toEqual({ status: 400, rejectedFields: ['thinking', 'budget_tokens'], rejectionKind: 'unsupported_setting' })
+    expect(JSON.stringify(details)).not.toMatch(/Alice|resume|sk-example/)
+  })
+})
