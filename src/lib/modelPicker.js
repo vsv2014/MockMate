@@ -4,7 +4,7 @@ import { isCurrentChatModel, isCurrentProviderChoice } from '../../shared/curren
 
 const PROVIDER_LABELS = {
   openai: 'OpenAI', claude_sonnet: 'Anthropic', gemini: 'Gemini',
-  groq: 'Groq', cerebras: 'Cerebras', custom: 'Custom',
+  groq: 'Groq', cerebras: 'Cerebras', openrouter: 'OpenRouter', custom: 'Custom',
 }
 
 

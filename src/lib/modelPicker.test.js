@@ -29,6 +29,25 @@ describe('current model picker', () => {
     expect(out.map(x => x.model)).toEqual(['openai/gpt-oss-120b', 'gpt-6-luna', 'gemini-3.8-flash', 'claude-fable-5'])
   })
 
+  it('gives every supported provider a human label instead of its raw id', () => {
+    // One current model per provider family (see shared/currentModels.js).
+    const currentSample = {
+      openai: 'gpt-6.1-sol',
+      claude_sonnet: 'claude-sonnet-5-5',
+      gemini: 'gemini-3.6-flash',
+      groq: 'openai/gpt-oss-120b',
+      cerebras: 'gpt-oss-120b',
+      openrouter: 'anthropic/claude-sonnet-5.5',
+    }
+    for (const [provider, model] of Object.entries(currentSample)) {
+      const names = configuredProviderNames([{ provider, model }])
+      expect(names, `${provider} produced no label`).toHaveLength(1)
+      expect(names[0], `${provider} fell back to its raw id`).not.toBe(provider)
+      expect(names[0]).toMatch(/^[A-Z]/)
+    }
+    expect(configuredProviderNames([{ provider: 'openrouter', model: 'anthropic/claude-sonnet-5.5' }])).toEqual(['OpenRouter'])
+  })
+
   it('groups multiple model aliases backed by one key as one provider', () => {
     expect(configuredProviderNames([], [
       { id: 'gpt_6_astra', label: 'GPT-6 Astra' }, { id: 'openai', label: 'GPT-6 Sol' }, { id: 'openai_mini', label: 'Luna' },

@@ -3,7 +3,7 @@ import { redactInteractionEvent, summarizeProductIntelligence } from '../../shar
 
 const LLM_PROVIDERS = [
   ['openai', 'OPENAI_API_KEY'], ['anthropic', 'ANTHROPIC_API_KEY'], ['gemini', 'GEMINI_API_KEY'],
-  ['groq', 'GROQ_API_KEY'], ['cerebras', 'CEREBRAS_API_KEY'], ['custom', 'LLM_API_KEY'],
+  ['groq', 'GROQ_API_KEY'], ['cerebras', 'CEREBRAS_API_KEY'], ['openrouter', 'OPENROUTER_API_KEY'], ['custom', 'LLM_API_KEY'],
 ]
 const circuits = new Map()
 const DEFAULT_COOLDOWN_MS = 30_000

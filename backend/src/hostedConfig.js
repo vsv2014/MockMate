@@ -44,7 +44,7 @@ export function validateHostedConfig() {
     } catch { errors.push(`CORS_ORIGIN contains an invalid URL: ${origin}`) }
   }
 
-  const hasLlmProvider = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'CEREBRAS_API_KEY', 'LLM_API_KEY']
+  const hasLlmProvider = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'CEREBRAS_API_KEY', 'OPENROUTER_API_KEY', 'LLM_API_KEY']
     .some(name => String(process.env[name] || '').trim())
   if (!hasLlmProvider) errors.push('At least one server-side LLM provider key is required for hosted Managed AI.')
   if (!String(process.env.DEEPGRAM_API_KEY || '').trim()) errors.push('DEEPGRAM_API_KEY is required for hosted mobile transcription.')

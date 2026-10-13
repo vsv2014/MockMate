@@ -215,7 +215,8 @@ function loadEnv() {
 
 function hasApiKeys() {
   return !!(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY
-    || process.env.ANTHROPIC_API_KEY || process.env.CEREBRAS_API_KEY || process.env.LLM_API_KEY)
+    || process.env.ANTHROPIC_API_KEY || process.env.CEREBRAS_API_KEY || process.env.OPENROUTER_API_KEY
+    || process.env.LLM_API_KEY)
 }
 
 function portInUse(port) {
@@ -1280,10 +1281,11 @@ ipcMain.handle('write-env', (_, content) => {
 ipcMain.handle('remove-provider-key', (_, provider) => {
   const keysByProvider = {
     openai: ['OPENAI_API_KEY', 'OPENAI_MODEL', 'OPENAI_GPT5_MODEL', 'OPENAI_MINI_MODEL', 'OPENAI_MAX_MODEL', 'OPENAI_BALANCED_MODEL', 'OPENAI_FAST_MODEL'],
-    anthropic: ['ANTHROPIC_API_KEY', 'ANTHROPIC_FABLE_MODEL', 'ANTHROPIC_OPUS_MODEL', 'ANTHROPIC_SONNET5_MODEL', 'ANTHROPIC_HAIKU_MODEL'],
+    anthropic: ['ANTHROPIC_API_KEY', 'ANTHROPIC_FABLE_MODEL', 'ANTHROPIC_OPUS_MODEL', 'ANTHROPIC_SONNET_MODEL', 'ANTHROPIC_SONNET5_MODEL', 'ANTHROPIC_HAIKU_MODEL'],
     gemini: ['GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_3_MODEL', 'GEMINI_FLASH_LITE_MODEL'],
     groq: ['GROQ_API_KEY', 'GROQ_MODEL', 'GROQ_VISION_MODEL'],
     cerebras: ['CEREBRAS_API_KEY', 'CEREBRAS_MODEL'],
+    openrouter: ['OPENROUTER_API_KEY', 'OPENROUTER_MODEL'],
     deepgram: ['DEEPGRAM_API_KEY'],
     openai_model: ['OPENAI_MODEL', 'OPENAI_GPT5_MODEL', 'OPENAI_MINI_MODEL', 'OPENAI_MAX_MODEL', 'OPENAI_BALANCED_MODEL', 'OPENAI_FAST_MODEL'],
     groq_vision: ['GROQ_VISION_MODEL'],
