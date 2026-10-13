@@ -30,28 +30,6 @@ function greeting() {
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
 }
 
-// ── Small circular score gauge ──
-function ScoreRing({ value, size = 92, label }) {
-  const pct = Math.max(0, Math.min(100, value))
-  const r = (size - 12) / 2, c = 2 * Math.PI * r
-  return (
-    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
-      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="6" />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={scoreColor(pct)} strokeWidth="6"
-          strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} strokeLinecap="round" />
-      </svg>
-      <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
-        <div>
-          <div style={{ fontSize: size * 0.26, fontWeight: 600, color: T.text1, lineHeight: 1 }}>{Math.round(value)}</div>
-          {label && <div style={{ fontSize: 9, color: T.text3, marginTop: 2 }}>{label}</div>}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Score-trend sparkline — recent session scores as a small line chart ──
 function Sparkline({ sessions }) {
   const scored = sessions.filter(s => typeof s.score === 'number').slice().reverse().slice(-12)  // oldest → newest
   const n = scored.length

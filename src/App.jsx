@@ -1322,52 +1322,6 @@ export function IconBtn({ icon, title, onClick, active, danger }) {
   )
 }
 
-// ── Score trend — dependency-free inline SVG line chart of recent session scores ──
-// Renders nothing until there are at least 2 scored sessions (a single point isn't a
-// trend). Uses a uniform-scaled viewBox so dots stay circular at any panel width.
-function ScoreTrend({ sessions }) {
-  const all = (sessions || []).filter(s => typeof s.score === 'number')
-  if (all.length < 2) return null
-  const scored = all.slice().reverse().slice(-20)   // oldest → newest, most recent 20
-  const truncated = all.length > scored.length
-  const n = scored.length
-  const W = 300, H = 96, padX = 12, padTop = 10, padBot = 16
-  const xAt = i => padX + (n === 1 ? (W - 2 * padX) / 2 : i * (W - 2 * padX) / (n - 1))
-  const yAt = v => padTop + (1 - Math.max(0, Math.min(100, v)) / 100) * (H - padTop - padBot)
-  const pts = scored.map((s, i) => ({ x: xAt(i), y: yAt(s.score), s }))
-  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ')
-  const avg = Math.round(scored.reduce((a, s) => a + s.score, 0) / n)
-  const delta = scored[n - 1].score - scored[0].score
-  const fmt = ts => { try { return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) } catch { return '' } }
-  return (
-    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 12px' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: T.text1 }}>Score trend</span>
-        <span style={{ fontSize: 10, color: T.text3 }}>avg {avg}</span>
-        <span style={{ fontSize: 10, color: delta >= 0 ? '#4ade80' : '#f87171' }}>{delta >= 0 ? '▲' : '▼'} {Math.abs(delta)} since {truncated ? 'shown start' : 'first'}</span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
-        {[75, 50].map(g => (
-          <g key={g}>
-            <line x1={padX} x2={W - padX} y1={yAt(g)} y2={yAt(g)} stroke="rgba(255,255,255,0.07)" strokeDasharray="3 3" />
-            <text x={W - padX} y={yAt(g) - 2} fontSize="7" fill={T.text3} textAnchor="end">{g}</text>
-          </g>
-        ))}
-        <path d={line} fill="none" stroke="rgba(45,212,191,0.75)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-        {pts.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r="2.6" fill={scoreColor(p.s.score)} stroke="#0a0a12" strokeWidth="1">
-            <title>{`${(p.s.score / 10).toFixed(1)}/10 · ${fmt(p.s.ts)}${p.s.label ? ' · ' + p.s.label : ''}`}</title>
-          </circle>
-        ))}
-        <text x={padX} y={H - 3} fontSize="7" fill={T.text3} textAnchor="start">{fmt(scored[0].ts)}</text>
-        <text x={W - padX} y={H - 3} fontSize="7" fill={T.text3} textAnchor="end">{fmt(scored[n - 1].ts)}</text>
-      </svg>
-    </div>
-  )
-}
-
-// ── AI answer settings (Response length + Screenshot replies) — persisted globally, read by
-// Live hints and screenshot analysis. Mirrors the competitor's AI-Settings surface. ──
 function Segmented({ label, hint, value, options, onChange }) {
   return (
     <div style={{ marginBottom: 14 }}>
@@ -1706,41 +1660,6 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
   )
 }
 
-
-// ── Home tile — new design-system card (dark surface, gradient accents, Kanit) ──
-// `accent` is the hover/border color for the tile; `glow` optionally tints the surface.
-function HomeTile({ onClick, icon, title, sub, accent = T.borderStrong, glow, badge, right }) {
-  const [h, setH] = React.useState(false)
-  return (
-    <div onClick={onClick}
-      onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        background: glow ? `linear-gradient(135deg, ${glow}, ${T.surface1})` : T.surface1,
-        border: `1px solid ${h ? accent : T.border}`,
-        borderRadius: T.rCard, padding: '12px 14px', cursor: 'pointer',
-        transform: h ? 'translateY(-1px)' : 'none',
-        boxShadow: h ? '0 8px 22px rgba(0,0,0,0.4)' : 'none',
-        transition: 'border-color .14s, transform .14s, box-shadow .14s',
-        fontFamily: T.font,
-      }}>
-      {icon && (typeof icon === 'string'
-        ? <div style={{
-            width: 34, height: 34, flexShrink: 0, borderRadius: 9, display: 'grid', placeItems: 'center',
-            fontSize: 16, background: 'rgba(255,255,255,0.05)', border: `1px solid ${T.border}`,
-          }}>{icon}</div>
-        : <div style={{ flexShrink: 0 }}>{icon}</div>)}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <span style={{ fontWeight: 600, fontSize: 13.5, color: T.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
-          {badge}
-        </div>
-        {sub && <div style={{ fontSize: 11, color: T.text2, marginTop: 2, lineHeight: 1.4 }}>{sub}</div>}
-      </div>
-      {right}
-    </div>
-  )
-}
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {
