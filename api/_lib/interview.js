@@ -1,3 +1,4 @@
+import { REPORT_JSON_FIELDS } from '../../shared/reportSchema.js'
 // Solo (you-vs-AI) interview engine for the web app. Open-ended, speech-first,
 // no difficulty knob — the interviewer calibrates to the target role.
 import { completeJSON, visionComplete, extractJSON, streamText, pickFastProvider, pickStrongProvider, pickBestProvider, completeTextQuick } from './core.js'
@@ -683,10 +684,7 @@ GROUND EVERYTHING IN THE TRANSCRIPT — this is the most important rule:
 - If they barely answered, gave one-word replies, or dodged, score LOW and say so plainly — a kind but useless score helps no one.
 - The point is honest practice feedback they can act on, not encouragement.
 Return ONE JSON object, no prose:
-{ "overallScore": <0-100 integer>, "verdict": "Strong Hire" | "Hire" | "Lean Hire" | "Lean No Hire" | "No Hire",
-  "dimensions": [ { "name": "<dimension>", "score": <0-5>, "comment": "<specific>" } ],
-  "strengths": [ "<bullet>" ], "improvements": [ "<actionable bullet>" ],
-  "delivery": { "tip": "<one delivery change for next time>" },
+${REPORT_JSON_FIELDS}
   "summary": "<3-5 sentences; the single most important thing to improve next>" }`
   const report = await completeJSON({
     maxTokens: 2600, provider,

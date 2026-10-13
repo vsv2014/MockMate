@@ -4,6 +4,9 @@
  */
 import { isRateLimit, isQuotaExhausted, isTransient } from '../../shared/llm-errors.js'
 
+export const MANAGED_VISION_RATE_MESSAGE = 'Screen analysis is temporarily rate-limited upstream. Please try again after the provider reset.'
+export const MANAGED_VISION_UNAVAILABLE_MESSAGE = 'Screen analysis is temporarily unavailable. Please try again, or add your own OpenAI/Gemini key in Settings (⚙).'
+
 export const VISION_COOLDOWN_MS = 90_000
 export const VISION_TRANSIENT_ATTEMPTS = 2 // per provider for 5xx/timeout only — never for 429
 
@@ -97,7 +100,7 @@ export function makeVisionRateLimitedError(managed = false) {
   return visionError(
     'VISION_RATE_LIMITED',
     managed
-      ? 'Screen analysis is temporarily rate-limited upstream. Please try again after the provider reset.'
+      ? MANAGED_VISION_RATE_MESSAGE
       : 'Your vision provider is temporarily rate-limiting requests. Wait for its reset or configure a separately provisioned vision provider in Settings (⚙). Keys in the same provider account may share limits.',
     429,
   )
@@ -107,7 +110,7 @@ export function makeVisionUnavailableError(managed = false) {
   return visionError(
     'VISION_UNAVAILABLE',
     managed
-      ? 'Screen analysis is temporarily unavailable. Please try again, or add your own OpenAI/Gemini key in Settings (⚙).'
+      ? MANAGED_VISION_UNAVAILABLE_MESSAGE
       : 'Screen analysis needs a vision-capable model — add OpenAI/Gemini in ⚙ Settings, or configure GROQ_VISION_MODEL / VISION_API_KEY for a compatible vision model.',
     400,
   )

@@ -1,3 +1,4 @@
+import { REPORT_JSON_FIELDS } from '../../shared/reportSchema.js'
 import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget, claudeLowLatencyThinking, isThinkingModel, modelDisplayName } from '../../shared/modelRegistry.js'
 // Shared logic for the serverless functions (api/*.js) and the local dev server
 // (server.js). Files prefixed with _ are not treated as routes by Vercel.
@@ -8,6 +9,8 @@ import { fetchWithTimeout } from './http.js'
 import { getRetryAfterMs, isRateLimit, isQuotaExhausted, isTransient } from '../../shared/llm-errors.js'
 import { LIVE_PROVIDER_ATTEMPT_TIMEOUT_MS, LIVE_STREAM_STALL_TIMEOUT_MS } from '../../shared/liveTiming.js'
 import {
+  MANAGED_VISION_RATE_MESSAGE,
+  MANAGED_VISION_UNAVAILABLE_MESSAGE,
   filterVisionProviders,
   markVision429Family,
   markVisionSuccess,
@@ -623,7 +626,7 @@ const AI_ERRORS = {
   ],
   vision_none: [
     'Screen analysis needs a vision-capable model — add an OpenAI GPT-6 or Gemini key in Settings (⚙).',
-    'Screen analysis is temporarily unavailable. Please try again, or add your own OpenAI/Gemini key in Settings (⚙).',
+    MANAGED_VISION_UNAVAILABLE_MESSAGE,
   ],
   vision_quota: [
     'Your vision provider reports exhausted usage or credits. Check billing or switch to a separately provisioned vision provider; another key in the same account may share the limit.',
@@ -631,7 +634,7 @@ const AI_ERRORS = {
   ],
   vision_rate: [
     'Your vision provider is temporarily rate-limiting requests. Wait for its reset or configure a separately provisioned vision provider in Settings (⚙).',
-    'Screen analysis is temporarily rate-limited upstream. Please try again after the provider reset.',
+    MANAGED_VISION_RATE_MESSAGE,
   ],
 }
 // Build a user-facing Error with the wording that matches the current deployment mode.
@@ -1474,10 +1477,7 @@ export async function makeReport({ transcript = [], candidateName = 'the candida
 
   const system = `You are a fair, rigorous interview coach. Two real people just did a mock interview. Evaluate the CANDIDATE's performance honestly and specifically, the way a hiring panel would. Both participants will read this, so be constructive.
 Return ONE JSON object, no prose, with this shape:
-{ "overallScore": <0-100 integer>, "verdict": "Strong Hire" | "Hire" | "Lean Hire" | "Lean No Hire" | "No Hire",
-  "dimensions": [ { "name": "<dimension>", "score": <0-5>, "comment": "<specific>" } ],
-  "strengths": [ "<bullet>" ], "improvements": [ "<actionable bullet>" ],
-  "delivery": { "tip": "<one delivery change for next time>" },
+${REPORT_JSON_FIELDS}
   "summary": "<3-5 sentences; the single most important thing to improve>" }`
   const report = await completeJSON({
     maxTokens: 2600, provider,
