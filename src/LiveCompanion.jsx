@@ -1,3 +1,4 @@
+import { showFullCodeDuringStream } from '../shared/answerQuality'
 // Debounce indexing prefetch without changing its independent retrieval deadline.
 const RAG_PREFETCH_DEBOUNCE_MS = 320
 
@@ -822,7 +823,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
       a.detectedText && `Problem: ${a.detectedText}`,
       a.pattern && `Pattern: ${a.pattern}`,
       Array.isArray(a.approach) && a.approach.length ? `Approach: ${a.approach.slice(0, 5).join(' | ')}` : '',
-      a.code ? `Code:\n${String(a.code).slice(0, 900)}` : '',
+      a.code ? `Code:\n${String(a.code)}` : '',
       a.complexity && `Complexity: ${a.complexity}`,
     ].filter(Boolean).join('\n')
     if (!seedText.trim()) return
@@ -841,7 +842,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
       state.commitAnswer({
         questionId: q.id,
         generationId: `f7_${qid}`,
-        text: seedText.slice(0, 1400),
+        text: seedText,
         hint: { ...a, fullAnswer: seedText },
         incomplete: false,
       })
@@ -1451,6 +1452,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
           setUsage(s => ({ tokens: s.tokens + (u.input || 0) + (u.output || 0), cost: s.cost + estimateCost(u.model, u.input || 0, u.output || 0) }))
         } else if (ev === 'provider') {
           metricsRef.current?.markProviderEvent?.(data || {})
+          if (data?.type === 'started') upsert({ providerUsed:{ provider:String(data.provider || '').slice(0,120),model:String(data.model || '').slice(0,160),fallback:Number(data.attemptIndex)>0 } })
         } else if (ev === 'skip') {
           metricsRef.current?.markSkip?.()
           resetSkip()
@@ -2254,6 +2256,8 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
                   {Array.isArray(s.hint._searchSources) && s.hint._searchSources.length > 0 && (
                     <span style={badge('rgba(45,212,191,0.14)', '#5eead4')} title="Grounded in live web search">🌐 WEB</span>
                   )}
+                  {s.providerUsed?.fallback && <span style={badge('rgba(251,191,36,0.15)', '#fbbf24')}
+                    title={`Provider: ${s.providerUsed.provider}; model: ${s.providerUsed.model}`}>Backup AI provider</span>}
                   {s.hint.complexity && (
                     <span style={{ ...badge('rgba(255,255,255,0.06)', T.text2), fontFamily: T.fontMono }}>{s.hint.complexity}</span>
                   )}
@@ -2273,10 +2277,10 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
                   const streamingThis = streaming && s.text === lastHintText.current
                   const layers = glanceLayers(s.answer || '', s.hint || {})
                   // Never auto-expand latest — that duplicated opener/bullets + full prose.
-                  const expanded = expandedAnswers.has(s.text)
+                  const expanded = expandedAnswers.has(s.text) || (streamingThis && showFullCodeDuringStream(layers.fullAnswer))
                   const showBullets = !expanded && layers.keyPoints.length > 0
                   const watch = s.hint.watchOut || layers.watchOut
-                  const hasMore = !streamingThis && ((layers.fullAnswer || '').length > (layers.opener || '').length + 40)
+                  const hasMore = (streamingThis ? showFullCodeDuringStream(layers.fullAnswer) : ((layers.fullAnswer || '').length > (layers.opener || '').length + 40))
                   const isResumeCard = s.hint.confidence === 'resume'
                   return (
                     <div role="log" aria-live="polite" aria-label="Suggested answer" style={{

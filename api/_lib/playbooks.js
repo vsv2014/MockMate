@@ -30,8 +30,8 @@ If the ask is a NARROW follow-up already handled elsewhere, still answer only wh
     coach: '**Clarify:** scope (DAU/QPS, consistency).\n**FR / NFR:** top requirements.\n**Domain:** entities for THIS system.\n**Components:** services + WHY each exists.\n**Data:** stores + why.\n**Flow / failure:** critical path + recovery.\n**Trade-off:** one concrete WHAT/WHY/HOW/TRADEOFF.\nDo NOT pivot to a resume project.',
   },
   dsa: {
-    key: 'dsa', version: 'dsa_v2', tier: 'strong',
-    answer: 'CODING/DSA — NEVER jump straight to code. Open with 1-2 sharp clarifying questions, then state assumptions. Then: restate the problem briefly → brute force + bottleneck → OPTIMAL approach (name the pattern: HashMap/two pointers/sliding window/stack/queue/binary search/BFS/DFS/heap/trie/DP/graph/union-find/backtracking/intervals/prefix sums when it fits) → time/space complexity → FULL runnable fenced code in the REQUESTED language (see Coding language line; if unspecified use the profile default) → dry-run on one example → edge cases. Speak the why, not only steps.',
+    key: 'dsa', version: 'dsa_v3', tier: 'strong',
+    answer: 'CODING/DSA: State essential assumptions briefly; ask a clarification only when the missing requirement prevents a meaningful solution, otherwise proceed under an explicit assumption. Give the optimal approach briefly, then one FULL runnable fenced implementation in the requested/profile language. Include the requested return contract and an executable example. Follow with complexity, one dry-run and important edge cases. Do not spend the answer repeating brute force or waiting for confirmation when the requirements are already clear. For an explanation-only probe, answer only that probe.',
     coach: '**Clarify:** 1-2 sharp questions.\n**Restate / assumptions.**\n**Brute → bottleneck → optimal pattern.**\n**Complexity:** time/space.\n**Code:** requested language.\n**Dry-run + edges.**',
   },
   company: {

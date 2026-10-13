@@ -431,13 +431,33 @@ function baseUrlFor(id) {
 export function extractJSON(text) {
   if (!text) throw new Error('Empty response from model')
   let t = text.trim()
-  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/)
+  // A valid JSON envelope may contain fenced implementation strings. Never unwrap
+  // those inner backticks as if they were the response envelope.
+  try { const parsed = JSON.parse(t); if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed } catch {}
+  const fence = t.match(/^```(?:json)?\s*\n?([\s\S]*?)```\s*$/i)
   if (fence) t = fence[1].trim()
   const a = t.indexOf('{'), b = t.lastIndexOf('}')
   if (a === -1 || b === -1) throw new Error('No JSON object in model response')
   const body = t.slice(a, b + 1)
   try { return JSON.parse(body) }
-  catch { return JSON.parse(body.replace(/,(\s*[}\]])/g, '$1')) }   // Gemini trailing commas
+  catch {
+    // Repair JSON trailing commas outside quoted strings; code inside values is sacred.
+    let fixed = '', quoted = false, escaped = false
+    for (let i = 0; i < body.length; i++) {
+      const ch = body[i]
+      if (quoted) {
+        fixed += ch
+        if (escaped) escaped = false
+        else if (ch === '\\') escaped = true
+        else if (ch === '"') quoted = false
+      } else {
+        if (ch === '"') quoted = true
+        if (ch === ',' && /^\s*[}\]]/.test(body.slice(i + 1))) continue
+        fixed += ch
+      }
+    }
+    return JSON.parse(fixed)
+  }
 }
 
 // Robust JSON completion: ask the model, parse, and if the JSON is malformed
@@ -847,9 +867,10 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
           // TypeError on r.choices[0].
           const choice = r.choices?.[0]
           if (!choice?.message) { const e = new Error('provider returned no choices'); e.status = 503; throw e }
+          if (choice.finish_reason === 'length') throw Object.assign(new Error('The model reached its output limit. Retry for a complete answer.'),{ code:'output_truncated',status:502 })
           return choice.message.content ?? ''
         } catch (e) {
-          if (signal?.aborted || e?.name === 'AbortError' || e?.name === 'APIUserAbortError') throw e
+          if (signal?.aborted || e?.name === 'AbortError' || e?.name === 'APIUserAbortError' || e?.code === 'output_truncated') throw e
           // A 400 while sending the optional JSON-mode/reasoning params usually means THIS
           // provider/model rejects one of them (e.g. some Gemini models 400 on reasoning_effort).
           // Drop the extras and retry once before treating it as a real failure.
@@ -875,7 +896,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
       } catch {
         const fixed = await ask([
           { role: 'system', content: 'You repair malformed JSON. Output ONLY one valid JSON object — no prose, no code fences, no trailing commas.' },
-          { role: 'user', content: 'Fix this into a single valid JSON object:\n\n' + String(raw || '').slice(0, 8000) }
+          { role: 'user', content: 'Fix this into a single valid JSON object:\n\n' + String(raw || '') }
         ])
         parsed = extractJSON(fixed)
       }
@@ -883,7 +904,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
       providerDiagnostic('attempt_succeeded', { attemptId, operation: 'json', provider: provId, model, durationMs: Date.now() - providerStartedAt })
       return parsed
     } catch (e) {
-      if (signal?.aborted || e?.name === 'AbortError' || e?.name === 'APIUserAbortError') throw e
+      if (signal?.aborted || e?.name === 'AbortError' || e?.name === 'APIUserAbortError' || e?.code === 'output_truncated') throw e
       lastError = e
       if (quarantineModel(provId, model, e)) {
         enqueueActiveModelRecovery(providerQueue, queueIndex, provId, model, e, recoveredFamilies)
@@ -1275,7 +1296,7 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
       // Only OpenAI/Groq reliably support stream usage; gate it so others don't 400.
       const supportsUsage = /openai\.com|groq\.com/.test(prov.baseURL || '')
       if (supportsUsage) params.stream_options = { include_usage: true }
-      let usage = null
+      let usage = null, finishReason = null
       // A live interview cannot wait indefinitely for the first answer text. The SDK
       // timeout only covers connecting (it clears once response headers arrive); the
       // first-token deadline below then lets failover run before anything is shown.
@@ -1287,9 +1308,14 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
       })
       for await (const chunk of stream) {
         if (chunk?.usage) usage = chunk.usage
+        if (chunk?.choices?.[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason
         const tok = chunk?.choices?.[0]?.delta?.content || ''
         if (tok) { if (!firstTokenAt) firstTokenAt = Date.now(); emitted = true; onToken?.(tok) }
         if (firstTokenAt) deadline.progress()
+      }
+      if (finishReason === 'length') {
+        if (usage && onUsage) onUsage({ model,input:usage.prompt_tokens || 0,output:usage.completion_tokens || 0 })
+        throw Object.assign(new Error('The model reached its output limit. Partial answer retained; retry for a complete answer.'),{ code:'output_truncated',status:502 })
       }
       lastWorkingTextProvider = baseOf(provId)
       if (usage && onUsage) onUsage({ model, input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0 })
@@ -1313,6 +1339,7 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
       providerDiagnostic(timedOut ? 'attempt_timed_out' : 'attempt_failed', { attemptId, operation: 'stream', provider: provId, model, status: e?.status || 0, emitted, timeoutKind: deadline.timeoutKind(), durationMs: Date.now() - providerStartedAt, class: isQuotaExhausted(e) ? 'quota' : isRateLimit(e) ? 'rate_limit' : isTransient(e) ? 'transient' : 'hard_failure' }, 'warn')
       try { onProviderEvent?.({ type: timedOut ? 'timed_out' : 'failed', attemptId, attemptIndex, provider: provId, status: e?.status || 0, emitted }) } catch {}
       if (emitted) {
+        if (e?.code === 'output_truncated') throw e
         // Keep the partial answer visible and never restart this paid generation. Cool the
         // failed provider for a later question and send a classified, actionable error to UI.
         noteTextProviderFailure(provId, e, model)

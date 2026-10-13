@@ -242,3 +242,17 @@ describe('golden spoken/screen sequence (routing)', () => {
     expect(dsa.attach).toBe(false)
   })
 })
+
+describe('complete screenshot code for follow-ups', () => {
+  it('preserves code longer than the old 900-character excerpt', () => {
+    const code='function solve() {\n'+'// preserved line\n'.repeat(90)+'return 1;\n}'
+    const context=buildScreenContextBlock({contentType:'coding',code})
+    expect(context).toContain(code)
+    expect(context).toContain('return 1;')
+  })
+  it('omits oversize code explicitly instead of sending a broken fragment', () => {
+    const context=buildScreenContextBlock({contentType:'coding',code:'x'.repeat(20000)})
+    expect(context).toContain('Code omitted')
+    expect(context).not.toContain('x'.repeat(900))
+  })
+})

@@ -1,3 +1,5 @@
+import { interviewAnswerPolicy } from '../../backend/src/arch.js'
+import { implementationIssue } from '../../shared/answerQuality.js'
 const HISTORY_CONTEXT_CHAR_BUDGET = 24_000
 const HISTORY_CONTEXT_ENTRY_LIMIT = 13
 
@@ -346,7 +348,7 @@ export function answerRequirementBlock(question = '', profile = {}, classificati
   }
   const explicitLanguage = q.match(/\b(Python|JavaScript|TypeScript|Java|SQL|C\+\+|C#|Go)\b/i)?.[1]
   if (explicitLanguage) rules.push(`LANGUAGE CONTRACT: Use ${explicitLanguage}; do not silently switch languages.`)
-  else if (wantsCode && /\bJavaScript\b/i.test(String(profile.jobDescription || ''))) {
+  else if (wantsCode && !profile.codingLanguage && /\bJavaScript\b/i.test(String(profile.jobDescription || ''))) {
     rules.push('LANGUAGE CONTRACT: No language was explicitly chosen; prefer JavaScript because it is central to the target JD.')
   }
   return `\n\nCURRENT-TURN REQUIREMENTS:\n- ${rules.join('\n- ')}`
@@ -497,15 +499,17 @@ export async function streamHint({ question, profile = {}, conversationHistory =
   // Apply the verbosity control on top of the tier's base budget.
   const { directive, maxTokens: rawMaxTokens } = hintAnswerStyle(style, tier, mode)
   // Request heuristic headroom for known thinking models on each resolved attempt.
-  const maxTokens = rawMaxTokens
+  const quality = interviewAnswerPolicy({ question,classification,style,mode,baseBudget:rawMaxTokens })
+  const maxTokens = quality.maxTokens
   const thinkingTokenFloor = THINKING_FLOOR[style] || THINKING_FLOOR.balanced
   // Auto-skip OFF → force an answer for every input (override the [SKIP] instruction).
   const skipDirective = autoSkip ? '' : '\n\nALWAYS ANSWER: respond to every input — do NOT output [SKIP], even for small talk, filler, or a partial/unclear question. Do your best with what was said.'
   const system = baseSystem + directive + skipDirective + classificationBlock(classification)
-    + answerRequirementBlock(question, profile, classification)
+    + answerRequirementBlock(question, profile, classification) + quality.directive
 
+  let visibleAnswer = ''
   let buf = '', metaSent = false, skipped = false, proseEmitted = false
-  const emitProse = t => { if (t) { if (t.trim()) proseEmitted = true; onToken?.(t) } }
+  const emitProse = t => { if (t) { visibleAnswer += t; if (t.trim()) proseEmitted = true; onToken?.(t) } }
   const ragSources = parseRetrievedSources(extraContext)
   const routingExtra = {
     roleFamily: classification.roleFamily,
@@ -519,6 +523,7 @@ export async function streamHint({ question, profile = {}, conversationHistory =
     screenContextId: relevance.attach ? recentScreen?.screenContextId : null,
     screenContextVersion: SCREEN_CONTEXT_VERSION,
     modelStrategy: strategy,
+    answerPolicy: quality.version, requiresCode: quality.requiresCode,
     ...(ragSources.length ? { ragSources } : {}),
   }
   await streamText({
@@ -561,9 +566,13 @@ export async function streamHint({ question, profile = {}, conversationHistory =
     if (searchSources.length) meta.searchSources = searchSources
     onMeta?.(meta)
     emitProse(stripped.prose)
+    const issue = implementationIssue(visibleAnswer,quality.requiresCode)
+    if (issue) throw Object.assign(new Error('The answer did not include a complete code block. Retry for the full implementation.'),{ code:issue,status:502 })
     return proseEmitted ? { skipped: false, searchSources, classification, screenRelevance: relevance } : { skipped: false, emptyOutput: true, classification, screenRelevance: relevance }
   }
   if (metaSent !== 'done' || !proseEmitted) return { skipped: false, emptyOutput: true, classification, screenRelevance: relevance }
+  const issue = implementationIssue(visibleAnswer,quality.requiresCode)
+  if (issue) throw Object.assign(new Error('The answer did not include a complete code block. Retry for the full implementation.'),{ code:issue,status:502 })
   return { skipped: false, searchSources, classification, screenRelevance: relevance }
 }
 
@@ -622,7 +631,8 @@ async function generateHintImpl({ question, profile = {}, conversationHistory = 
       : (pb.tier === 'strong' ? escalateStrong : escalateFast)
   const chosen = userPicked ? provider : (automatic || provider)
   const { directive, maxTokens: rawMaxTokens } = hintAnswerStyle(style, pb.tier, mode)
-  const maxTokens = rawMaxTokens
+  const quality = interviewAnswerPolicy({ question,classification,style,mode,baseBudget:rawMaxTokens })
+  const maxTokens = quality.maxTokens
   const thinkingTokenFloor = THINKING_FLOOR[style] || THINKING_FLOOR.balanced
   const skipDirective = autoSkip
     ? ''
@@ -644,7 +654,7 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
   const hint = await completeJSON({
     maxTokens, thinkingTokenFloor, provider: chosen,
     messages: [
-      { role: 'system', content: baseSystem + directive + skipDirective + classificationBlock(classification) + answerRequirementBlock(question, profile, classification) + schemaNote },
+      { role: 'system', content: baseSystem + directive + skipDirective + classificationBlock(classification) + answerRequirementBlock(question, profile, classification) + quality.directive + schemaNote },
       { role: 'user', content: buildHintUserContext({ question, packed, conversationHistory, searchBlock, followParent, screenNote }) },
     ],
   })
@@ -653,6 +663,8 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
   if (searchSources.length) hint.searchSources = searchSources
   const prose = hint.fullAnswer || hint.sampleAnswer || hint.answer || ''
   if (!String(prose).trim()) throw Object.assign(new Error('The model returned no visible answer. Please retry.'), { code: 'empty_output', status: 502 })
+  const issue = implementationIssue(prose,quality.requiresCode)
+  if (issue) throw Object.assign(new Error('The answer did not include a complete code block. Retry for the full implementation.'),{ code:issue,status:502 })
   const normalized = normalizeHint(hint, prose)
   const ragSources = parseRetrievedSources(extraContext)
   normalized._routing = {
@@ -667,6 +679,7 @@ ${autoSkip ? '{ "skip": true } if this is NOT an interview question, OR ' : ''}{
     screenContextId: relevance.attach ? recentScreen?.screenContextId : null,
     screenContextVersion: SCREEN_CONTEXT_VERSION,
     modelStrategy: strategy,
+    answerPolicy: quality.version, requiresCode: quality.requiresCode,
     ...(ragSources.length ? { ragSources } : {}),
   }
   return normalized
@@ -818,7 +831,7 @@ Return ONE JSON object, no markdown:
     // "auto" is supported across OpenAI-compatible gateways and lets each
     // provider balance OCR quality, latency, and token cost.
     imageBase64: b64, mime: imageMime, detail: 'auto',
-    prompt: prompt + faster, maxTokens: fast ? 1900 : 2400,
+    prompt: prompt + faster, maxTokens: fast ? 3600 : 6000,
     requestId: rid, fingerprint: fingerprint || undefined,
     imageDimensions, signal,
   })
@@ -827,8 +840,8 @@ Return ONE JSON object, no markdown:
     out = extractJSON(raw)
   } catch {
     const fixed = await _textCall({
-      prompt: 'Convert the following into ONE valid JSON object matching the screen-analysis schema (contentType, screenFamily, detectedText, keyPoints, fullAnswer, code, approach, edgeCases, etc). Output ONLY JSON, no markdown.\n\n' + String(raw || '').slice(0, 8000),
-      maxTokens: 2400,
+      prompt: 'Convert the following into ONE valid JSON object matching the screen-analysis schema (contentType, screenFamily, detectedText, keyPoints, fullAnswer, code, approach, edgeCases, etc). Output ONLY JSON, no markdown.\n\n' + String(raw || ''),
+      maxTokens: 6000,
       signal,
       requestId: rid,
     })
@@ -844,8 +857,8 @@ The user explicitly selected ${codeLang}; ignore any other language in the scree
 Keep "code" as the clean interview-platform function/class solution. Put the language's normal entry point, one minimal executable sample invocation/input, and printed output only in separate "runnableCode". Preserve the detected problem, algorithm, complexity, approach, edge cases, testCases, and watch-out. Mark invented sanity tests as illustrative, never question-provided.
 Set "language" to exactly "${codeLang}". Return ONE valid JSON object only, no markdown fences.
 
-${JSON.stringify(out).slice(0, 10000)}`,
-      maxTokens: 2400,
+${JSON.stringify(out)}`,
+      maxTokens: 6000,
       signal,
       requestId: `${rid}_lang`,
     })
@@ -860,8 +873,8 @@ Keep "code" as the clean interview-platform function/class solution. Create a se
 Add "testCases" with input, expectedOutput, and source. Preserve examples visible in detectedText as source "question"; otherwise use a small source "illustrative" sanity test. Never call an invented output interviewer-provided.
 Return ONE valid JSON object only, with raw code and no markdown fences.
 
-${JSON.stringify(out).slice(0, 10000)}`,
-      maxTokens: 2200,
+${JSON.stringify(out)}`,
+      maxTokens: 6000,
       signal,
       requestId: `${rid}_runnable`,
     })

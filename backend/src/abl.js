@@ -48,6 +48,12 @@ export function validateAblSpec(spec) {
     assert(pi.mode === 'structured_redacted', 'productIntelligence.mode must be structured_redacted')
     assert(Array.isArray(pi.excludedData) && pi.excludedData.includes('resumes'), 'productIntelligence.excludedData must exclude resumes')
   }
+  if (spec.answerQuality?.codingBudgets) {
+    for (const style of ['concise','balanced','detailed']) {
+      const budget = spec.answerQuality.codingBudgets[style]
+      assert(Number.isInteger(budget) && budget >= 2400 && budget <= 8000, `answerQuality.codingBudgets.${style} must be 2400..8000`)
+    }
+  }
   rejectSecrets(spec)
   return spec
 }
@@ -85,6 +91,7 @@ export function compileAblRuntime() {
       turnDetection: { ...spec.capabilities.speech.turnDetection },
       hotPath: spec.capabilities.speech.hotPath,
     },
+    answerQuality: JSON.parse(JSON.stringify(spec.answerQuality || {})),
     runtime: JSON.parse(JSON.stringify(spec.runtime || {})),
     telemetry: [...(spec.capabilities.telemetry?.metrics || [])],
     productIntelligence: JSON.parse(JSON.stringify(spec.capabilities.telemetry?.productIntelligence || {

@@ -202,7 +202,7 @@ export function evaluateScreenRelevance({
 }
 
 /** Compact block for Live LLM user message (no raw image). */
-export function buildScreenContextBlock(screen, { maxChars = 1800 } = {}) {
+export function buildScreenContextBlock(screen, { maxChars = 12000 } = {}) {
   if (!screen || screen.error) return ''
   const a = screen.analysis || screen
   const type = normalizeScreenContentType(a.contentType || screen.contentType)
@@ -210,17 +210,21 @@ export function buildScreenContextBlock(screen, { maxChars = 1800 } = {}) {
     `RELEVANT SCREEN CONTEXT (${SCREEN_CONTEXT_VERSION}) — evidence for the CURRENT question only; do not invent pixels not described here:`,
     `contentType: ${type}`,
   ]
-  if (a.detectedText) parts.push(`visibleText: ${String(a.detectedText).slice(0, 400)}`)
+  if (a.detectedText) parts.push(`visibleText: ${String(a.detectedText)}`)
   if (a.pattern) parts.push(`pattern: ${a.pattern}`)
   if (a.complexity) parts.push(`complexity: ${a.complexity}`)
   if (a.language) parts.push(`codeLanguage: ${a.language}`)
   if (Array.isArray(a.approach) && a.approach.length) parts.push(`approach: ${a.approach.slice(0, 6).join(' | ')}`)
-  if (a.code) parts.push(`codeExcerpt:\n${String(a.code).slice(0, 900)}`)
+  if (a.code) parts.push(`completeCode:\n${String(a.code)}`)
   if (Array.isArray(a.keyPoints) && a.keyPoints.length) parts.push(`keyPoints: ${a.keyPoints.slice(0, 5).join('; ')}`)
   if (a.fullAnswer) parts.push(`screenSummary: ${String(a.fullAnswer).slice(0, 500)}`)
   if (a.watchOut) parts.push(`watchOut: ${a.watchOut}`)
-  const out = parts.join('\n')
-  return out.length > maxChars ? out.slice(0, maxChars) + '…' : out
+  const selected = []
+  for (const part of parts) {
+    if ([...selected,part].join('\n').length <= maxChars) selected.push(part)
+    else if (part.startsWith('completeCode:')) selected.push('Code omitted: complete code exceeds the screen-context budget; do not invent the missing implementation.')
+  }
+  return selected.join('\n')
 }
 
 /** Cheap fingerprint for analysis cache (not cryptographic). */

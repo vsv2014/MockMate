@@ -1,3 +1,4 @@
+import { requiresImplementation } from '../../shared/answerQuality.js'
 import { compileAblRuntime } from './abl.js'
 import { envFlag } from './hostedConfig.js'
 import { redactInteractionEvent, summarizeProductIntelligence } from '../../shared/productIntelligence.js'
@@ -248,7 +249,19 @@ export function archRuntimeSummary(options = {}) {
     persona: plan.persona,
     designGoals: plan.designGoals,
     routing: plan.reasoning.routing,
+    answerQuality: plan.answerQuality,
     ...(includePerformance ? { performance: performanceSnapshot() } : {}),
     ...(includeProductIntelligence ? { productIntelligence: archProductIntelligenceSnapshot() } : {}),
+  }
+}
+
+
+export function interviewAnswerPolicy({ question, classification, style = 'balanced', mode = 'answer', baseBudget }) {
+  const quality = runtimePlan().answerQuality
+  const requiresCode = requiresImplementation(question,classification,mode)
+  const budgets = quality.codingBudgets || { concise:3600,balanced:4800,detailed:6000 }
+  return { version:quality.version || 'answer_quality_v1', requiresCode,
+    maxTokens:requiresCode ? Math.max(baseBudget,budgets[style] || budgets.balanced) : baseBudget,
+    directive:requiresCode ? '\n\nIMPLEMENTATION CONTRACT: Give one complete runnable fenced implementation early, after at most two short assumption/approach sentences. Include the requested signature, imports/setup and a small executable example where appropriate. Do not replace code with explanation or stop at clarifying questions. Put complexity, dry-run and edge cases after the code; concise means shorter explanation, not incomplete code. Follow the latest requested return type and language. Never claim the code was executed.' : /\b(?:no code|without code|explain only|approach only|pseudocode only|only pseudocode)\b/i.test(String(question)) ? '\n\nOUTPUT SCOPE: Follow the requested explanation/pseudocode-only scope; do not force a runnable implementation.' : '',
   }
 }
