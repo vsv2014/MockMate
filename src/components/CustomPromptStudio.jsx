@@ -153,13 +153,23 @@ export function savePlaybookSlot(name, prompt) {
   const next = existingIdx >= 0
     ? list.map((p, i) => (i === existingIdx ? entry : p))
     : [entry, ...list].slice(0, 8)
-  try { setScopedItem(SAVED_PLAYBOOKS_KEY, JSON.stringify(next)) } catch { diagnostic('storage', 'custom_playbook_write_failed', { operation: 'save' }, 'warn') }
+  try {
+    if (!setScopedItem(SAVED_PLAYBOOKS_KEY, JSON.stringify(next))) throw new Error('storage_write_failed')
+  } catch {
+    diagnostic('storage', 'custom_playbook_write_failed', { operation: 'save' }, 'warn')
+    return null
+  }
   return next
 }
 
 export function deletePlaybookSlot(id) {
   const next = loadSavedPlaybooks().filter(p => p.id !== id)
-  try { setScopedItem(SAVED_PLAYBOOKS_KEY, JSON.stringify(next)) } catch { diagnostic('storage', 'custom_playbook_write_failed', { operation: 'delete' }, 'warn') }
+  try {
+    if (!setScopedItem(SAVED_PLAYBOOKS_KEY, JSON.stringify(next))) throw new Error('storage_write_failed')
+  } catch {
+    diagnostic('storage', 'custom_playbook_write_failed', { operation: 'delete' }, 'warn')
+    return null
+  }
   return next
 }
 
@@ -222,6 +232,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
     e?.preventDefault?.()
     if (!savingName.trim() || !value?.trim()) return
     const next = savePlaybookSlot(savingName, value)
+    if (!next) { flash('Could not save preset — local storage is unavailable or full.'); return }
     setSavedList(next)
     setSavingName('')
     setShowSaveBox(false)
@@ -231,6 +242,7 @@ export default function CustomPromptStudio({ value = '', onChange, compact = fal
 
   function handleDeleteSlot(id, name) {
     const next = deletePlaybookSlot(id)
+    if (!next) { flash('Could not remove preset — local storage is unavailable.'); return }
     setSavedList(next)
     flash(`Removed "${name}"`)
   }
