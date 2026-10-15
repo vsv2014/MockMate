@@ -1,3 +1,4 @@
+import { readableTextSize } from './lib/typography.js'
 import React, { useState, useEffect, useRef } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { T } from './auth/tokens'
@@ -16,7 +17,7 @@ const GEMINI_PRIVACY_NOTE = 'Privacy: on Gemini’s free tier, Google may use yo
 const inp = {
   width: '100%', boxSizing: 'border-box', padding: '9px 11px',
   background: T.surface2, border: `1px solid ${T.border}`,
-  borderRadius: T.rCtrl, color: T.text1, fontSize: 12,
+  borderRadius: T.rCtrl, color: T.text1, fontSize: readableTextSize(12),
   fontFamily: T.font,
 }
 
@@ -40,7 +41,7 @@ const PROVIDERS = [
 const EMPTY = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '', GEMINI_API_KEY: '', GROQ_API_KEY: '', CEREBRAS_API_KEY: '', OPENROUTER_API_KEY: '', DEEPGRAM_API_KEY: '', OPENAI_MODEL: '', GROQ_VISION_MODEL: '', VISION_API_KEY: '', VISION_MODEL: '', VISION_BASE_URL: '', ADZUNA_APP_ID: '', ADZUNA_APP_KEY: '' }
 
 function Pill({ color, bg, children }) {
-  return <span style={{ fontSize: 9.5, fontWeight: 600, color, background: bg, padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap' }}>{children}</span>
+  return <span style={{ fontSize: readableTextSize(9.5), fontWeight: 600, color, background: bg, padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap' }}>{children}</span>
 }
 
 // A labeled key field with explicit saved/test state and a single associated input label.
@@ -58,37 +59,37 @@ function KeyField({ name, hint, value, onChange, added, status = 'ready', secret
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <label htmlFor={id} style={{ fontSize: 12.5, fontWeight: 500, color: T.text1 }}>{name}</label>
-        {hint && <span style={{ fontSize: 10.5, color: T.text3 }}>{hint}</span>}
+        <label htmlFor={id} style={{ fontSize: readableTextSize(12.5), fontWeight: 500, color: T.text1 }}>{name}</label>
+        {hint && <span style={{ fontSize: readableTextSize(10.5), color: T.text3 }}>{hint}</span>}
         <span style={{ marginLeft: 'auto' }}>
           <Pill color={statusColor} bg={statusColor === T.success ? 'rgba(34,197,94,0.14)' : 'rgba(251,191,36,0.12)'}>{badge}</Pill>
         </span>
         {added && onTest && <button type="button" onClick={onTest} disabled={testing || edited || status !== 'ready'}
           title={edited ? 'Save the replacement key before testing it.' : 'Verifies the key with a small probe request; the provider may charge a small amount.'}
           aria-label={`Test ${name} connection`} aria-describedby={testState?.message ? testId : undefined}
-          style={{ background: 'none', border: '1px solid rgba(94,234,212,0.3)', color: '#5eead4', fontSize: 10, cursor: testing || edited ? 'not-allowed' : 'pointer', opacity: testing || edited ? 0.55 : 1, padding: '3px 7px', borderRadius: 6 }}>
+          style={{ background: 'none', border: '1px solid rgba(94,234,212,0.3)', color: '#5eead4', fontSize: readableTextSize(10), cursor: testing || edited ? 'not-allowed' : 'pointer', opacity: testing || edited ? 0.55 : 1, padding: '3px 7px', borderRadius: 6 }}>
           {testing ? 'Testing…' : testState?.status === 'ok' || testState?.status === 'error' ? 'Test again' : 'Test connection'}
         </button>}
         {added && onRemove && <button type="button" onClick={onRemove} aria-label={`Remove saved ${name} key`}
-          style={{ background: 'none', border: 'none', color: '#fca5a5', fontSize: 10, cursor: 'pointer', padding: '2px 0 2px 5px' }}>Remove</button>}
+          style={{ background: 'none', border: 'none', color: '#fca5a5', fontSize: readableTextSize(10), cursor: 'pointer', padding: '2px 0 2px 5px' }}>Remove</button>}
       </div>
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         <input id={id} type={inputType} placeholder={status !== 'ready' ? 'Key status not confirmed' : added ? 'Key already detected — leave blank to keep it' : `Paste your ${name} key`}
           value={value} autoComplete="off" spellCheck={false} onChange={onChange}
           aria-describedby={note ? noteId : undefined}
-          style={{ ...inp, paddingRight: secret && hasValue ? 32 : undefined, flex: 1 }}
+          style={{ ...inp, paddingRight: secret && hasValue ? 60 : undefined, flex: 1 }}
           onFocus={e => e.target.style.borderColor = T.accentFrom}
           onBlur={e => e.target.style.borderColor = T.border} />
         {secret && hasValue && (
           <button type="button" onClick={() => setRevealed(r => !r)} aria-label={revealed ? `Hide ${name} key` : `Show ${name} key`}
             title={revealed ? 'Hide key' : 'Show key'}
-            style={{ position: 'absolute', right: 6, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: revealed ? T.accentFrom : T.text3, fontSize: 13, lineHeight: 1 }}>
+            style={{ position: 'absolute', right: 6, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: revealed ? T.accentFrom : T.text3, fontSize: readableTextSize(13), lineHeight: 1 }}>
             {revealed ? '🙈' : '👁'}
           </button>
         )}
       </div>
-      {!edited && status === 'ready' && testState?.message && <div id={testId} role={testState.status === 'error' ? 'alert' : 'status'} aria-live={testState.status === 'error' ? 'assertive' : 'polite'} style={{ fontSize: 10.5, color: testState.status === 'error' ? T.danger : T.success }}>{testState.message}</div>}
-      {note && <div id={noteId} style={{ fontSize: 10, color: T.text2, lineHeight: 1.4 }}>{note}{added && onTest && ' Testing sends one short request to the provider and may incur a small usage charge.'}{link && <> <a href={link.href} target="_blank" rel="noopener noreferrer" style={{ color: T.accentFrom }}>{link.label}</a></>}</div>}
+      {!edited && status === 'ready' && testState?.message && <div id={testId} role={testState.status === 'error' ? 'alert' : 'status'} aria-live={testState.status === 'error' ? 'assertive' : 'polite'} style={{ fontSize: readableTextSize(10.5), color: testState.status === 'error' ? T.danger : T.success }}>{testState.message}</div>}
+      {note && <div id={noteId} style={{ fontSize: readableTextSize(10), color: T.text2, lineHeight: 1.4 }}>{note}{added && onTest && ' Testing sends one short request to the provider and may incur a small usage charge.'}{link && <> <a href={link.href} target="_blank" rel="noopener noreferrer" style={{ color: T.accentFrom }}>{link.label}</a></>}</div>}
     </div>
   )
 }
@@ -103,18 +104,18 @@ function ProviderCard({ selected, onSelect, value, icon, accent, title, subtitle
         style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }} />
       <div className="mm-ai-provider-content" style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 12, minHeight: '100%',
         background: T.surface1, border: `1.5px solid ${selected ? accent : T.border}`, borderRadius: T.rCard, padding: '16px' }}>
-        {recommended && <span style={{ position: 'absolute', top: 12, right: 12, fontSize: 10, fontWeight: 600, color: T.success, background: 'rgba(16,185,129,0.14)', padding: '2px 9px', borderRadius: 999 }}>Recommended</span>}
-        <div style={{ width: 40, height: 40, borderRadius: 10, display: 'grid', placeItems: 'center', fontSize: 18, background: `${accent}1f`, border: `1px solid ${accent}44` }} aria-hidden="true">{icon}</div>
+        {recommended && <span style={{ position: 'absolute', top: 12, right: 12, fontSize: readableTextSize(10), fontWeight: 600, color: T.success, background: 'rgba(16,185,129,0.14)', padding: '2px 9px', borderRadius: 999 }}>Recommended</span>}
+        <div style={{ width: 40, height: 40, borderRadius: 10, display: 'grid', placeItems: 'center', fontSize: readableTextSize(18), background: `${accent}1f`, border: `1px solid ${accent}44` }} aria-hidden="true">{icon}</div>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: T.text1 }}>{title}</div>
-          <div style={{ fontSize: 12, color: accent, marginTop: 1 }}>{subtitle}</div>
+          <div style={{ fontSize: readableTextSize(16), fontWeight: 600, color: T.text1 }}>{title}</div>
+          <div style={{ fontSize: readableTextSize(12), color: accent, marginTop: 1 }}>{subtitle}</div>
         </div>
-        <div id={descriptionId} style={{ fontSize: 12.5, color: T.text2, lineHeight: 1.5 }}>{desc}</div>
+        <div id={descriptionId} style={{ fontSize: readableTextSize(12.5), color: T.text2, lineHeight: 1.5 }}>{desc}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          {checks.map(c => <div key={c} style={{ display: 'flex', gap: 8, fontSize: 12, color: T.text2 }}><span aria-hidden="true" style={{ color: T.success, flexShrink: 0 }}>✓</span><span>{c}</span></div>)}
+          {checks.map(c => <div key={c} style={{ display: 'flex', gap: 8, fontSize: readableTextSize(12), color: T.text2 }}><span aria-hidden="true" style={{ color: T.success, flexShrink: 0 }}>✓</span><span>{c}</span></div>)}
         </div>
         <span aria-hidden="true" style={{ marginTop: 'auto', minHeight: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: T.rCtrl,
-          fontFamily: T.font, fontSize: 13, fontWeight: 600, background: selected ? accent : 'transparent', color: selected ? '#fff' : accent, border: `1px solid ${accent}` }}>
+          fontFamily: T.font, fontSize: readableTextSize(13), fontWeight: 600, background: selected ? accent : 'transparent', color: selected ? '#fff' : accent, border: `1px solid ${accent}` }}>
           {selected ? `✓ ${cta}` : cta}
         </span>
       </div>
@@ -282,7 +283,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
     }
   }
 
-  const sectionLabel = { fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', color: T.text3, textTransform: 'uppercase', margin: '2px 0 -2px' }
+  const sectionLabel = { fontSize: readableTextSize(10), fontWeight: 600, letterSpacing: '0.08em', color: T.text3, textTransform: 'uppercase', margin: '2px 0 -2px' }
   const card = { display: 'flex', flexDirection: 'column', gap: 12, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '13px 14px' }
 
   const byokRecommended = !MANAGED_AVAILABLE || mode === 'byok'
@@ -296,8 +297,8 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
     routing?.fast && p.providerIds.includes(routeBase(routing.fast.id)) ? 'Quick answers' : null,
     routing?.strong && p.providerIds.includes(routeBase(routing.strong.id)) ? 'Coding & design' : null,
   ].filter(Boolean)
-  const muted = { fontSize: 10.5, color: T.text3, lineHeight: 1.45 }
-  const smallBtn = (color, border) => ({ background: 'none', border: `1px solid ${border}`, color, fontSize: 10.5, cursor: 'pointer', padding: '3px 8px', borderRadius: 6, fontFamily: T.font })
+  const muted = { fontSize: readableTextSize(10.5), color: T.text3, lineHeight: 1.45 }
+  const smallBtn = (color, border) => ({ background: 'none', border: `1px solid ${border}`, color, fontSize: readableTextSize(10.5), cursor: 'pointer', padding: '3px 8px', borderRadius: 6, fontFamily: T.font })
   const replacingProvider = replacing ? PROVIDERS.find(p => p.k === replacing) : null
   const canSaveAdded = !!detection.value && !!targetProvider && !detection.problem && !addSaving && keyStatus !== 'loading'
 
@@ -316,7 +317,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
           testState={testResults.DEEPGRAM_API_KEY}
           note="Required for Live and Solo voice. Create a project key with speech transcription access; usage consumes project credits. Open" link={PROVIDER_KEY_LINKS.deepgram} />
         {mode === 'managed' && !dg && (
-          <div role="status" style={{ fontSize: 11, color: '#fbbf24', lineHeight: 1.4 }}>Managed voice is included on supported hosted plans. BYOK/private mode requires your own Deepgram key.</div>
+          <div role="status" style={{ fontSize: readableTextSize(11), color: '#fbbf24', lineHeight: 1.4 }}>Managed voice is included on supported hosted plans. BYOK/private mode requires your own Deepgram key.</div>
         )}
       </div>
 
@@ -338,13 +339,13 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
           cta="Use my own API key" />
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, padding: '9px 12px', fontSize: 11.5, color: T.text2 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, padding: '9px 12px', fontSize: readableTextSize(11.5), color: T.text2 }}>
         <span aria-hidden="true">ⓘ</span><span>You can switch anytime. BYOK keys stay local; audio/resume/screenshots still go to the providers you call — not “never leave the device.”</span>
       </div>
 
       {/* BYOK shows saved keys and routing in its own section below. */}
       {showStatus && mode !== 'byok' && (
-        <div role="status" style={{ ...card, fontSize: 12, color: T.text2 }}>
+        <div role="status" style={{ ...card, fontSize: readableTextSize(12), color: T.text2 }}>
           <div style={{ fontWeight: 600, color: T.text1, marginBottom: 4 }}>Keys detected on this device</div>
           <div>AI: {keyStatus !== 'ready' ? (statusLoading ? 'Checking…' : 'Status unavailable — retry below') : configuredNames.length ? configuredNames.join(', ') : (mode === 'managed' ? 'No hosted provider reported' : 'None yet')}</div>
           <div style={{ marginTop: 2 }}>Voice: {keyStatus !== 'ready' ? 'Status not confirmed' : dg ? 'Deepgram key detected · test audio in Ready Room' : 'No Deepgram key detected'}</div>
@@ -352,7 +353,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
         </div>
       )}
       {providerStatusError && (
-        <div role="alert" aria-live="assertive" style={{ display: 'flex', alignItems: 'center', gap: 10, color: T.danger, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: T.rCtrl, padding: '9px 11px', fontSize: 11 }}>
+        <div role="alert" aria-live="assertive" style={{ display: 'flex', alignItems: 'center', gap: 10, color: T.danger, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: T.rCtrl, padding: '9px 11px', fontSize: readableTextSize(11) }}>
           <span style={{ flex: 1 }}>Could not refresh provider status: {providerStatusError}</span>
           <button type="button" onClick={() => refresh().catch(error => setProviderStatusError(error?.message || 'Could not refresh provider status.'))}
             style={{ background: 'transparent', border: `1px solid ${T.borderStrong}`, color: T.text1, borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>Retry</button>
@@ -364,12 +365,12 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       <div style={sectionLabel}>AI providers · one key is enough</div>
       <div style={card}>
         <div role="status" aria-live="polite" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: T.text1 }}>Which model answers</div>
+          <div style={{ fontSize: readableTextSize(12.5), fontWeight: 600, color: T.text1 }}>Which model answers</div>
           {keyStatus !== 'ready'
             ? <div style={muted}>{statusLoading ? 'Checking saved keys…' : 'Status unavailable — retry above.'}</div>
             : routing?.fast || routing?.strong ? (<>
-              <div style={{ fontSize: 12, color: T.text2 }}>Quick answers: <strong style={{ color: T.text1 }}>{routing.fast?.label || routing.strong?.label}</strong></div>
-              <div style={{ fontSize: 12, color: T.text2 }}>Coding &amp; system design: <strong style={{ color: T.text1 }}>{routing.strong?.label || routing.fast?.label}</strong></div>
+              <div style={{ fontSize: readableTextSize(12), color: T.text2 }}>Quick answers: <strong style={{ color: T.text1 }}>{routing.fast?.label || routing.strong?.label}</strong></div>
+              <div style={{ fontSize: readableTextSize(12), color: T.text2 }}>Coding &amp; system design: <strong style={{ color: T.text1 }}>{routing.strong?.label || routing.fast?.label}</strong></div>
               <div style={muted}>Chosen automatically from the keys saved on this device.</div>
             </>)
               : <div style={muted}>Add an AI key below to see which model will answer.</div>}
@@ -377,7 +378,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
 
         <div style={{ height: 1, background: T.border }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: T.text1 }}>Saved AI keys</div>
+          <div style={{ fontSize: readableTextSize(12.5), fontWeight: 600, color: T.text1 }}>Saved AI keys</div>
           {keyStatus === 'ready' && savedProviders.length === 0 && <div style={muted}>No AI key saved on this device yet.</div>}
           {savedProviders.map(p => {
             const test = testResults[p.k]
@@ -389,8 +390,8 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
               <div key={p.k} role="group" aria-label={`${p.name} saved key`}
                 style={{ display: 'flex', flexDirection: 'column', gap: 6, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, padding: '9px 10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 500, color: T.text1 }}>{p.name}</span>
-                  {roles.length > 0 && <span style={{ fontSize: 10.5, color: T.text3 }}>{roles.join(' · ')}</span>}
+                  <span style={{ fontSize: readableTextSize(12.5), fontWeight: 500, color: T.text1 }}>{p.name}</span>
+                  {roles.length > 0 && <span style={{ fontSize: readableTextSize(10.5), color: T.text3 }}>{roles.join(' · ')}</span>}
                   <span style={{ marginLeft: 'auto' }}>
                     <Pill color={ok ? T.success : '#fbbf24'} bg={ok ? 'rgba(34,197,94,0.14)' : 'rgba(251,191,36,0.12)'}>{badge}</Pill>
                   </span>
@@ -410,7 +411,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
                     aria-label={`Remove saved ${p.name} key`} style={smallBtn('#fca5a5', 'rgba(252,165,165,0.35)')}>Remove</button>
                 </div>
                 {test?.message && keyStatus === 'ready' && (
-                  <div role={test.status === 'error' ? 'alert' : 'status'} style={{ fontSize: 10.5, color: test.status === 'error' ? T.danger : T.success }}>{test.message}</div>
+                  <div role={test.status === 'error' ? 'alert' : 'status'} style={{ fontSize: readableTextSize(10.5), color: test.status === 'error' ? T.danger : T.success }}>{test.message}</div>
                 )}
                 {p.k === 'GEMINI_API_KEY' && <div style={muted}>{GEMINI_PRIVACY_NOTE}</div>}
               </div>
@@ -421,7 +422,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
 
         <div style={{ height: 1, background: T.border }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label htmlFor="mm-add-api-key" style={{ fontSize: 12.5, fontWeight: 600, color: T.text1 }}>
+          <label htmlFor="mm-add-api-key" style={{ fontSize: readableTextSize(12.5), fontWeight: 600, color: T.text1 }}>
             {replacingProvider ? `Replace the ${replacingProvider.name} key` : 'Add API key'}
           </label>
           <input id="mm-add-api-key" ref={addInputRef} type="password" value={addKey} autoComplete="off" spellCheck={false}
@@ -432,11 +433,11 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
             onFocus={e => e.target.style.borderColor = T.accentFrom}
             onBlur={e => e.target.style.borderColor = T.border} />
           <div id="mm-add-api-key-detect" role="status" aria-live="polite"
-            style={{ fontSize: 11, lineHeight: 1.4, color: detection.problem ? T.danger : T.text2 }}>
+            style={{ fontSize: readableTextSize(11), lineHeight: 1.4, color: detection.problem ? T.danger : T.text2 }}>
             {addKey ? describeDetection(detection) : 'MockMate suggests the provider from the key format. The key is not sent anywhere to identify it.'}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label htmlFor="mm-add-api-key-provider" style={{ fontSize: 11.5, color: T.text2 }}>Provider</label>
+            <label htmlFor="mm-add-api-key-provider" style={{ fontSize: readableTextSize(11.5), color: T.text2 }}>Provider</label>
             <select id="mm-add-api-key-provider" value={addTarget} disabled={!!replacing}
               onChange={e => setAddChoice(e.target.value)}
               style={{ ...inp, width: 'auto', minWidth: 200, flex: '1 1 200px' }}>
@@ -444,13 +445,13 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
               {KEY_PROVIDERS.map(p => <option key={p.envKey} value={p.envKey}>{p.name}</option>)}
             </select>
             <button type="button" onClick={saveAddedKey} disabled={!canSaveAdded}
-              style={{ height: 36, padding: '0 14px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12, fontWeight: 600, fontFamily: T.font, cursor: canSaveAdded ? 'pointer' : 'not-allowed', opacity: canSaveAdded ? 1 : 0.5 }}>
+              style={{ height: 36, padding: '0 14px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: readableTextSize(12), fontWeight: 600, fontFamily: T.font, cursor: canSaveAdded ? 'pointer' : 'not-allowed', opacity: canSaveAdded ? 1 : 0.5 }}>
               {addSaving ? 'Saving…' : detectionMismatch ? `Save as ${targetProvider.name} anyway` : 'Save key'}
             </button>
             {replacing && <button type="button" onClick={cancelReplace} style={smallBtn(T.text2, T.border)}>Cancel</button>}
           </div>
           {detectionMismatch && (
-            <div role="alert" style={{ fontSize: 11, color: '#fbbf24', lineHeight: 1.4 }}>
+            <div role="alert" style={{ fontSize: readableTextSize(11), color: '#fbbf24', lineHeight: 1.4 }}>
               This key looks like {detection.provider.name}, not {targetProvider.name}. A key only works with the provider that issued it.
             </div>
           )}
@@ -458,7 +459,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
           {providerHelp?.note && (
             <div style={muted}>{providerHelp.note}{providerHelp.link && <> <a href={providerHelp.link.href} target="_blank" rel="noopener noreferrer" style={{ color: T.accentFrom }}>{providerHelp.link.label}</a></>}</div>
           )}
-          {addMsg && <div role={addMsg.startsWith('⚠') ? 'alert' : 'status'} style={{ fontSize: 11, fontWeight: 500, color: addMsg.startsWith('⚠') ? T.danger : T.success }}>{addMsg}</div>}
+          {addMsg && <div role={addMsg.startsWith('⚠') ? 'alert' : 'status'} style={{ fontSize: readableTextSize(11), fontWeight: 500, color: addMsg.startsWith('⚠') ? T.danger : T.success }}>{addMsg}</div>}
           <div style={muted}>One AI key is enough. A key works only with the provider that issued it — a Claude key does not unlock Gemini — so add a second provider only if you want a backup. Deepgram (above) handles voice separately. Model choice is automatic; you do not need a key for each model.</div>
         </div>
       </div>
@@ -467,7 +468,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       {mode === 'byok' && (<>
       {/* ── Advanced (collapsed) ── */}
       <button onClick={() => setShowAdv(a => !a)}
-        style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: T.text2, fontSize: 11, fontWeight: 500, cursor: 'pointer', padding: 0, fontFamily: T.font }}>
+        style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: T.text2, fontSize: readableTextSize(11), fontWeight: 500, cursor: 'pointer', padding: 0, fontFamily: T.font }}>
         {showAdv ? '▾ Hide advanced' : '▸ Advanced · optional integrations'}
       </button>
       {showAdv && (
@@ -475,24 +476,24 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
           <KeyField name="Custom OpenAI model id" hint="optional" secret={false}
             value={keyVals.OPENAI_MODEL} onChange={set('OPENAI_MODEL')}
             note="Optional expert override. Leave blank for automatic model discovery and routing. If an override stops working, MockMate attempts another compatible model." />
-          <button type="button" onClick={() => removeProvider('openai_model', 'OpenAI model overrides')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: 10.5, cursor: 'pointer' }}>Clear OpenAI model overrides</button>
+          <button type="button" onClick={() => removeProvider('openai_model', 'OpenAI model overrides')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: readableTextSize(10.5), cursor: 'pointer' }}>Clear OpenAI model overrides</button>
           <KeyField name="Groq vision model id" hint="optional · screenshots" secret={false}
             value={keyVals.GROQ_VISION_MODEL} onChange={set('GROQ_VISION_MODEL')}
             note="Uses the Groq key above only for screenshot analysis. Leave blank unless your Groq account exposes a vision-capable model." />
-          <button type="button" onClick={() => removeProvider('groq_vision', 'Groq vision override')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: 10.5, cursor: 'pointer' }}>Clear Groq vision override</button>
+          <button type="button" onClick={() => removeProvider('groq_vision', 'Groq vision override')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: readableTextSize(10.5), cursor: 'pointer' }}>Clear Groq vision override</button>
           <div style={{ height: 1, background: T.border }} />
-          <div style={{ fontSize: 11, color: T.text2, lineHeight: 1.45 }}><strong style={{ color: T.text1 }}>Custom vision gateway</strong> — OpenAI-compatible endpoints only.</div>
+          <div style={{ fontSize: readableTextSize(11), color: T.text2, lineHeight: 1.45 }}><strong style={{ color: T.text1 }}>Custom vision gateway</strong> — OpenAI-compatible endpoints only.</div>
           <KeyField name="Vision base URL" secret={false} value={keyVals.VISION_BASE_URL} onChange={set('VISION_BASE_URL')} />
           <KeyField name="Vision model id" secret={false} value={keyVals.VISION_MODEL} onChange={set('VISION_MODEL')} />
           <KeyField name="Vision API key" value={keyVals.VISION_API_KEY} onChange={set('VISION_API_KEY')} />
-          <button type="button" onClick={() => removeProvider('custom_vision', 'custom vision gateway')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: 10.5, cursor: 'pointer' }}>Clear custom vision gateway</button>
+          <button type="button" onClick={() => removeProvider('custom_vision', 'custom vision gateway')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: readableTextSize(10.5), cursor: 'pointer' }}>Clear custom vision gateway</button>
           <div style={{ height: 1, background: T.border }} />
-          <div style={{ fontSize: 11, color: T.text2, lineHeight: 1.45 }}>
+          <div style={{ fontSize: readableTextSize(11), color: T.text2, lineHeight: 1.45 }}>
             <strong style={{ color: T.text1 }}>Job search (Adzuna)</strong> — free keys from <a href="https://developer.adzuna.com" style={{ color: T.accentFrom }}>developer.adzuna.com</a> add real local/on-site postings to Matching Jobs. Without them, only remote roles show.
           </div>
           <KeyField name="Adzuna App ID" secret={false} value={keyVals.ADZUNA_APP_ID} onChange={set('ADZUNA_APP_ID')} />
           <KeyField name="Adzuna App Key" value={keyVals.ADZUNA_APP_KEY} onChange={set('ADZUNA_APP_KEY')} />
-          <button type="button" onClick={() => removeProvider('adzuna', 'Adzuna job-search')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: 10.5, cursor: 'pointer' }}>Clear Adzuna configuration</button>
+          <button type="button" onClick={() => removeProvider('adzuna', 'Adzuna job-search')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#fca5a5', padding: 0, fontSize: readableTextSize(10.5), cursor: 'pointer' }}>Clear Adzuna configuration</button>
         </div>
       )}
       </>)}
@@ -500,12 +501,12 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       {/* Save stays reachable while scrolling the key form. */}
       <div role="toolbar" aria-label="API key actions" style={{ position: 'sticky', bottom: 0, zIndex: 5, padding: '10px 0', background: T.surface1, borderTop: `1px solid ${T.border}`, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
         <button onClick={save} disabled={saving || !hasEdits}
-          style={{ minWidth: 160, maxWidth: 280, height: 40, background: hasEdits ? T.accent : T.surface2, color: hasEdits ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: 13, fontWeight: 600, cursor: saving || !hasEdits ? 'default' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: T.font }}>
+          style={{ minWidth: 160, maxWidth: '100%', minHeight: 56, height: 'auto', padding: '10px 18px', lineHeight: 1.3, background: hasEdits ? T.accent : T.surface2, color: hasEdits ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: readableTextSize(13), fontWeight: 600, cursor: saving || !hasEdits ? 'default' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: T.font }}>
           {saving ? 'Saving…' : hasEdits ? 'Save key changes' : 'No unsaved key changes'}
         </button>
-        {msg && <span role={msg.startsWith('⚠') ? 'alert' : 'status'} aria-live={msg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: 11, fontWeight: 500, color: msg.startsWith('⚠') ? T.danger : T.success }}>{msg}</span>}
+        {msg && <span role={msg.startsWith('⚠') ? 'alert' : 'status'} aria-live={msg.startsWith('⚠') ? 'assertive' : 'polite'} style={{ fontSize: readableTextSize(11), fontWeight: 500, color: msg.startsWith('⚠') ? T.danger : T.success }}>{msg}</span>}
       </div>
-      <div style={{ fontSize: 10, color: T.text3, textAlign: 'center' }}>Keys are encrypted at rest on this machine (OS keychain when available).</div>
+      <div style={{ fontSize: readableTextSize(10), color: T.text3, textAlign: 'center' }}>Keys are encrypted at rest on this machine (OS keychain when available).</div>
       </div>
     </div>
   )

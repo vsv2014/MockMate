@@ -1,3 +1,4 @@
+import { readableTextSize } from './lib/typography.js'
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react'
 import { apiFetch } from './lib/apiClient'
 import LiveCompanion from './LiveCompanion'
@@ -71,14 +72,14 @@ function StealthSafetyPrompt({ confirmOff, notice, onCancel, onConfirmOff }) {
       <div role={confirmOff ? 'alertdialog' : 'status'} aria-live="assertive" style={{ position: 'relative', width: 'min(430px, 94vw)', background: confirmOff ? '#201116' : '#10211f', border: `1px solid ${confirmOff ? 'rgba(248,113,113,0.6)' : 'rgba(45,212,191,0.55)'}`, borderRadius: 12, boxShadow: '0 14px 44px rgba(0,0,0,0.6)', padding: '13px 15px', color: '#f8fafc', pointerEvents: 'all' }}>
         {confirmOff ? (
           <>
-            <div style={{ fontSize: 14, fontWeight: 750, color: '#fca5a5', marginBottom: 6 }}>Turn Stealth OFF?</div>
-            <div style={{ fontSize: 12.5, lineHeight: 1.5, color: '#e5e7eb' }}>MockMate may become visible in screen sharing and recordings. Turn it off only for a controlled visibility test.</div>
+            <div style={{ fontSize: readableTextSize(14), fontWeight: 750, color: '#fca5a5', marginBottom: 6 }}>Turn Stealth OFF?</div>
+            <div style={{ fontSize: readableTextSize(12.5), lineHeight: 1.5, color: '#e5e7eb' }}>MockMate may become visible in screen sharing and recordings. Turn it off only for a controlled visibility test.</div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
               <button type="button" onClick={onCancel} style={{ height: 34, padding: '0 13px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.16)', background: 'transparent', color: '#e5e7eb', cursor: 'pointer' }}>Keep Stealth ON</button>
               <button type="button" onClick={onConfirmOff} style={{ height: 34, padding: '0 13px', borderRadius: 7, border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Turn OFF</button>
             </div>
           </>
-        ) : <div style={{ fontSize: 12.5, lineHeight: 1.45 }}>{notice}</div>}
+        ) : <div style={{ fontSize: readableTextSize(12.5), lineHeight: 1.45 }}>{notice}</div>}
       </div>
     </div>
   )
@@ -843,23 +844,23 @@ function ElectronShell({ auth }) {
       onClose={dismissWelcome} title="Connect your AI" autoHeight>
       {stealthSafety}
       <div style={{ padding: '14px 16px 16px', fontFamily: T.font }}>
-        <div style={{ fontSize: 17, fontWeight: 600, color: T.text1, marginBottom: 4 }}>Connect your AI</div>
-        <div style={{ fontSize: 12.5, color: T.text2, lineHeight: 1.55, marginBottom: 12 }}>
+        <div style={{ fontSize: readableTextSize(17), fontWeight: 600, color: T.text1, marginBottom: 4 }}>Connect your AI</div>
+        <div style={{ fontSize: readableTextSize(12.5), color: T.text2, lineHeight: 1.55, marginBottom: 12 }}>
           One last step — add at least one AI key to power your interviews. Keys stay <strong style={{ color: T.text1 }}>on this machine</strong> and unlock every mode.
         </div>
         <ApiKeysPanel onSaved={() => { recheckProviders(); dismissWelcome() }} />
         <button onClick={dismissWelcome}
-          style={{ width: '100%', marginTop: 12, height: 40, background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: T.font }}>
+          style={{ width: '100%', marginTop: 12, height: 40, background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: readableTextSize(12), fontWeight: 500, cursor: 'pointer', fontFamily: T.font }}>
           Skip for now — I'll add keys later
         </button>
-        <div style={{ fontSize: 10, color: T.text3, textAlign: 'center', marginTop: 8 }}>You can always manage keys from the ⚙ Settings tab.</div>
+        <div style={{ fontSize: readableTextSize(10), color: T.text3, textAlign: 'center', marginTop: 8 }}>You can always manage keys from the ⚙ Settings tab.</div>
       </div>
     </OverlayPanel>
   )
 
   // ── Full windowed app shell (dashboard + sidebar) for the management views ──
   if (SHELL_VIEWS.includes(view)) {
-    const shellHeader = { fontSize: 20, fontWeight: 600, color: T.text1, marginBottom: 4 }
+    const shellHeader = { fontSize: readableTextSize(20), fontWeight: 600, color: T.text1, marginBottom: 4 }
     let content = null
     if (view === 'home') content = (
       <JourneyHome auth={auth} sessions={sessions} kits={kits} activeKit={activeKit}
@@ -924,40 +925,40 @@ function ElectronShell({ auth }) {
       </div>
     )
     else if (view === 'settings') content = (
-      <div style={{ maxWidth: 640, margin: '0 auto' }}>
+      <div className="mm-settings" style={{ maxWidth: 980, width: '100%', margin: '0 auto' }}>
         <div style={shellHeader}>Settings</div>
-        <div style={{ fontSize: 13, color: T.text2, lineHeight: 1.5, marginBottom: 16 }}>Choose how MockMate gets its AI. <strong>Bring your own key</strong> keeps provider keys on this device. <strong>Managed AI</strong> uses MockMate’s hosted proxy when configured — otherwise add your own keys.</div>
+        <div style={{ fontSize: readableTextSize(13), color: T.text2, lineHeight: 1.5, marginBottom: 16 }}>Choose how MockMate gets its AI. <strong>Bring your own key</strong> keeps provider keys on this device. <strong>Managed AI</strong> uses MockMate’s hosted proxy when configured — otherwise add your own keys.</div>
         {auth?.guest && (
-          <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCard, fontSize: 12.5, color: '#5eead4', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCard, fontSize: readableTextSize(12.5), color: '#5eead4', display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ flex: 1 }}>You're a guest — use <strong>your own API keys</strong> below. Sign in for an account; keyless Managed AI needs the hosted backend.</span>
-            <button onClick={() => auth.signIn?.()} style={{ height: 32, padding: '0 14px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Sign in</button>
+            <button onClick={() => auth.signIn?.()} style={{ height: 32, padding: '0 14px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: readableTextSize(12), fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Sign in</button>
           </div>
         )}
         <ApiKeysPanel showStatus onSaved={recheckProviders} onModeChange={recheckProviders} />
         <AiAnswerSettings />
-        <div style={{ marginTop: 18, padding: '14px 16px', background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: T.text1 }}>App updates</div>
-            <div style={{ fontSize: 11.5, color: T.text2, marginTop: 2 }}>MockMate updates automatically in the background. <button onClick={() => setWhatsNewSignal(n => n + 1)} style={{ background: 'none', border: 'none', color: T.accentFrom, cursor: 'pointer', padding: 0, fontSize: 11.5, fontFamily: T.font, textDecoration: 'underline' }}>See what's new</button>.</div>
+        <div style={{ marginTop: 18, padding: '14px 16px', background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+          <div className="mm-settings-action-copy" style={{ flex: '1 1 280px', minWidth: 0 }}>
+            <div style={{ fontSize: readableTextSize(13), fontWeight: 600, color: T.text1 }}>App updates</div>
+            <div style={{ fontSize: readableTextSize(11.5), color: T.text2, marginTop: 2 }}>MockMate updates automatically in the background. <button onClick={() => setWhatsNewSignal(n => n + 1)} style={{ background: 'none', border: 'none', color: T.accentFrom, cursor: 'pointer', padding: 0, fontSize: readableTextSize(11.5), fontFamily: T.font, textDecoration: 'underline' }}>See what's new</button>.</div>
           </div>
           <button onClick={() => window.electronAPI?.checkForUpdates?.()}
-            style={{ height: 36, padding: '0 16px', background: 'transparent', color: T.text1, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Check for updates</button>
+            style={{ height: 36, padding: '0 16px', background: 'transparent', color: T.text1, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: readableTextSize(12.5), fontWeight: 500, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Check for updates</button>
         </div>
         <ProductIntelligencePanel />
         <div style={{ marginTop: 12, padding: '14px 16px', background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: T.text1 }}>Diagnostics</div>
-              <div style={{ fontSize: 11.5, color: T.text2, marginTop: 2, lineHeight: 1.45 }}>Privacy-safe local events for API, transcription, screenshots, sessions, auth and updates. Keys, tokens, passwords, résumé, transcripts, prompts and screenshots are redacted.</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+            <div className="mm-settings-action-copy" style={{ flex: '1 1 280px', minWidth: 0 }}>
+              <div style={{ fontSize: readableTextSize(13), fontWeight: 600, color: T.text1 }}>Diagnostics</div>
+              <div style={{ fontSize: readableTextSize(11.5), color: T.text2, marginTop: 2, lineHeight: 1.45 }}>Privacy-safe local events for API, transcription, screenshots, sessions, auth and updates. Keys, tokens, passwords, résumé, transcripts, prompts and screenshots are redacted.</div>
             </div>
-            <button onClick={exportDiagnostics} style={{ height: 36, padding: '0 14px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Export logs</button>
-            <button onClick={clearDiagnostics} style={{ height: 36, padding: '0 14px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 12, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Clear</button>
+            <button onClick={exportDiagnostics} style={{ height: 36, padding: '0 14px', background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: readableTextSize(12), fontWeight: 600, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Export logs</button>
+            <button onClick={clearDiagnostics} style={{ height: 36, padding: '0 14px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: readableTextSize(12), cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>Clear</button>
           </div>
-          {diagnosticStatus && <div role="status" style={{ marginTop: 8, fontSize: 11.5, color: diagnosticStatus === 'Exported' || diagnosticStatus === 'Cleared' ? '#5eead4' : T.text2 }}>{diagnosticStatus}</div>}
+          {diagnosticStatus && <div role="status" style={{ marginTop: 8, fontSize: readableTextSize(11.5), color: diagnosticStatus === 'Exported' || diagnosticStatus === 'Cleared' ? '#5eead4' : T.text2 }}>{diagnosticStatus}</div>}
         </div>
       </div>
     )
-    else if (view === 'account') content = <div style={{ maxWidth: 640, margin: '0 auto' }}><div style={shellHeader}>Account</div><Account auth={auth} noProviders={noProviders} onManageKeys={() => setView('settings')} /></div>
+    else if (view === 'account') content = <div className="mm-settings" style={{ maxWidth: 980, width: '100%', margin: '0 auto' }}><div style={shellHeader}>Account</div><Account auth={auth} noProviders={noProviders} onManageKeys={() => setView('settings')} /></div>
     else if (view === 'history') content = (
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
         {openSession ? (
@@ -990,7 +991,7 @@ function ElectronShell({ auth }) {
             stealth={stealth} onStealth={requestStealthToggle}
             onMinimize={collapseToPill} onClose={() => window.close?.()}>
             <WhatsNew openSignal={whatsNewSignal} />
-            <Suspense fallback={<div style={{ color: T.text3, fontSize: 12.5, padding: '24px 4px', fontFamily: T.font }}>Loading workspace…</div>}>
+            <Suspense fallback={<div style={{ color: T.text3, fontSize: readableTextSize(12.5), padding: '24px 4px', fontFamily: T.font }}>Loading workspace…</div>}>
               {content}
             </Suspense>
           </AppShell>
@@ -1036,12 +1037,12 @@ function ElectronShell({ auth }) {
       onStealth={requestStealthToggle} onMinimize={() => setMinimized(m => !m)} clickThrough={clickThrough} onClickThrough={onClickThrough}
       onClose={goHome} title="MockMate" autoHeight>
       <div style={{ padding: '14px 16px 16px', fontFamily: T.font, textAlign: 'center' }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: T.text1, marginBottom: 8 }}>MockMate</div>
-        <div style={{ fontSize: 12, color: T.text2, lineHeight: 1.5, marginBottom: 12 }}>
+        <div style={{ fontSize: readableTextSize(15), fontWeight: 600, color: T.text1, marginBottom: 8 }}>MockMate</div>
+        <div style={{ fontSize: readableTextSize(12), color: T.text2, lineHeight: 1.5, marginBottom: 12 }}>
           Something went wrong. Click below to return to the dashboard.
         </div>
         <button onClick={goHome}
-          style={{ width: '100%', height: 36, background: T.accentFrom, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>
+          style={{ width: '100%', height: 36, background: T.accentFrom, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: readableTextSize(12), fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>
           Go to Dashboard
         </button>
       </div>
@@ -1077,7 +1078,7 @@ function highlightCode(code) {
 }
 
 // ── Code block with one-tap copy + syntax highlighting — the core of Coding mode ──
-export function CodeBlock({ code, runnableCode, language, fontScale = 1 }) {
+export function CodeBlock({ code, runnableCode, language, fontScale = 2 }) {
   const [copied, setCopied] = useState(false)
   const [copiedRunnable, setCopiedRunnable] = useState(false)
   const [runState, setRunState] = useState(null)
@@ -1105,7 +1106,7 @@ export function CodeBlock({ code, runnableCode, language, fontScale = 1 }) {
           {runState?.running ? 'Running…' : '▶ Run JS'}
         </button>}
         {!runnable && <span title="Execution is currently available for JavaScript only; this solution can still be copied"
-          style={{ marginLeft: 'auto', color: '#7d8590', fontSize: 9 * fontScale }}>
+          style={{ marginLeft: 'auto', color: '#7d8590', fontSize: Math.max(20, 9 * fontScale) }}>
           Preview · Run supports JS only
         </span>}
         <button onClick={copy} title="Copy the clean interview-platform solution" style={{ marginLeft: runnable ? 0 : 6, background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)', color: copied ? '#4ade80' : T.text2, border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10 * fontScale, fontWeight: 600, cursor: 'pointer' }}>
@@ -1161,12 +1162,12 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
   return (
     <div style={{ background: accentBg, border: `1px solid ${accent}`, borderRadius: 10, padding: '12px', marginBottom: 10, boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.08)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: isCoding ? '#4ade80' : '#fbbf24' }}>{isCoding ? 'Coding Solution' : 'Screen Analysis'}</span>
-        <span style={{ fontSize: 9, color: T.text3, background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 8, fontFamily: T.fontMono }}>F7 / Ctrl+Shift+U</span>
-        <span style={{ fontSize: 9, color: err ? '#f87171' : T.text3, marginLeft: 4 }}>{statusLabel}</span>
+        <span style={{ fontSize: readableTextSize(12), fontWeight: 700, color: isCoding ? '#4ade80' : '#fbbf24' }}>{isCoding ? 'Coding Solution' : 'Screen Analysis'}</span>
+        <span style={{ fontSize: readableTextSize(9), color: T.text3, background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 8, fontFamily: T.fontMono }}>F7 / Ctrl+Shift+U</span>
+        <span style={{ fontSize: readableTextSize(9), color: err ? '#f87171' : T.text3, marginLeft: 4 }}>{statusLabel}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          {onRecapture && <button onClick={onRecapture} title="Re-capture the screen" style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 13 }}>↻</button>}
-          <button onClick={onDismiss} title="Dismiss" style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 13 }}>✕</button>
+          {onRecapture && <button onClick={onRecapture} title="Re-capture the screen" style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: readableTextSize(13) }}>↻</button>}
+          <button onClick={onDismiss} title="Dismiss" style={{ background: 'none', border: 'none', color: T.text3, cursor: 'pointer', fontSize: readableTextSize(13) }}>✕</button>
         </div>
       </div>
       {captureDisplays?.length > 1 && onCaptureDisplayId && (
@@ -1178,7 +1179,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
               onCaptureDisplayId(v)
               try { localStorage.setItem('mm-capture-display-id', v) } catch {}
             }}
-            style={{ fontSize: 11, background: 'rgba(0,0,0,0.25)', color: T.text2, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '3px 6px', maxWidth: '100%' }}
+            style={{ fontSize: readableTextSize(11), background: 'rgba(0,0,0,0.25)', color: T.text2, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '3px 6px', maxWidth: '100%' }}
             aria-label="Capture display"
           >
             <option value="">Primary display</option>
@@ -1189,40 +1190,40 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
         </div>
       )}
       {flowStatus && (
-        <div role="status" aria-live="polite" style={{ marginBottom: 8, padding: '6px 8px', borderRadius: 6, background: 'rgba(45,212,191,0.1)', border: '1px solid rgba(45,212,191,0.24)', color: '#99f6e4', fontSize: 10.5, lineHeight: 1.4 }}>
+        <div role="status" aria-live="polite" style={{ marginBottom: 8, padding: '6px 8px', borderRadius: 6, background: 'rgba(45,212,191,0.1)', border: '1px solid rgba(45,212,191,0.24)', color: '#99f6e4', fontSize: readableTextSize(10.5), lineHeight: 1.4 }}>
           {flowStatus}
         </div>
       )}
       {analyzing
-        ? <div style={{ fontSize: 12, color: '#fbbf24' }}>{requestedLanguage ? `Rewriting complete solution in ${requestedLanguage}…` : 'Analyzing screen…'}</div>
+        ? <div style={{ fontSize: readableTextSize(12), color: '#fbbf24' }}>{requestedLanguage ? `Rewriting complete solution in ${requestedLanguage}…` : 'Analyzing screen…'}</div>
         : err
-          ? <div style={{ fontSize: 12, color: '#f87171' }}>⚠ {err}</div>
+          ? <div style={{ fontSize: readableTextSize(12), color: '#f87171' }}>⚠ {err}</div>
             : isCoding
             ? (
               <>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
-                  {record.pattern && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(20,184,166,0.3)', color: '#99f6e4', borderRadius: 10, fontWeight: 700 }}>{record.pattern}</span>}
-                  {record.complexity && <span style={{ fontSize: 9, padding: '2px 8px', background: '#0d1117', color: '#7ee787', borderRadius: 10, fontFamily: T.fontMono }}>{record.complexity}</span>}
-                  {record.language && <span style={{ fontSize: 9, padding: '2px 8px', background: 'rgba(255,255,255,0.06)', color: T.text2, borderRadius: 10 }}>{record.language}</span>}
+                  {record.pattern && <span style={{ fontSize: readableTextSize(9), padding: '2px 8px', background: 'rgba(20,184,166,0.3)', color: '#99f6e4', borderRadius: 10, fontWeight: 700 }}>{record.pattern}</span>}
+                  {record.complexity && <span style={{ fontSize: readableTextSize(9), padding: '2px 8px', background: '#0d1117', color: '#7ee787', borderRadius: 10, fontFamily: T.fontMono }}>{record.complexity}</span>}
+                  {record.language && <span style={{ fontSize: readableTextSize(9), padding: '2px 8px', background: 'rgba(255,255,255,0.06)', color: T.text2, borderRadius: 10 }}>{record.language}</span>}
                   {record.code && Array.isArray(record.approach) && record.approach.length > 0 && (
                     <div style={{ marginLeft: 'auto', display: 'inline-flex', background: 'rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 7, padding: 2, gap: 2 }}>
                       {[['all', 'All'], ['code', 'Code'], ['approach', 'Steps']].map(([id, lbl]) => (
                         <button key={id} type="button" onClick={() => { setCodingTab(id); if (id !== 'all') trackProductEvent('coding_tab_used', { tab: id }) }}
-                          style={{ fontSize: 9.5, fontWeight: 600, padding: '2px 7px', borderRadius: 5, border: 'none', cursor: 'pointer',
+                          style={{ fontSize: readableTextSize(9.5), fontWeight: 600, padding: '2px 7px', borderRadius: 5, border: 'none', cursor: 'pointer',
                             background: codingTab === id ? 'rgba(20,184,166,0.28)' : 'transparent',
                             color: codingTab === id ? '#5eead4' : T.text3 }}>{lbl}</button>
                       ))}
                     </div>
                   )}
                 </div>
-                {record.detectedText && <div style={{ fontSize: 11, color: T.text2, marginBottom: 8, borderLeft: '2px solid rgba(34,197,94,0.35)', paddingLeft: 7 }}>{record.detectedText}</div>}
+                {record.detectedText && <div style={{ fontSize: readableTextSize(11), color: T.text2, marginBottom: 8, borderLeft: '2px solid rgba(34,197,94,0.35)', paddingLeft: 7 }}>{record.detectedText}</div>}
                 {onReanalyze && (
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
                     {CODING_LANGUAGES.map(lang => {
                       const on = (record.language || '').toLowerCase() === lang.toLowerCase()
                       return (
                         <button key={lang} disabled={analyzing} onClick={() => { setRequestedLanguage(lang); onReanalyze(lang) }} title={`Solve in ${lang}`}
-                          style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, cursor: 'pointer', border: 'none', fontWeight: 600,
+                          style={{ fontSize: readableTextSize(10), padding: '2px 8px', borderRadius: 6, cursor: 'pointer', border: 'none', fontWeight: 600,
                             background: on ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.05)', color: on ? '#4ade80' : T.text3 }}>{lang}</button>
                       )
                     })}
@@ -1230,9 +1231,9 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
                 )}
                 {activeCodingTab !== 'code' && Array.isArray(record.approach) && record.approach.length > 0 && (
                   <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>APPROACH</div>
+                    <div style={{ fontSize: readableTextSize(9), color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>APPROACH</div>
                     {record.approach.map((step, i) => (
-                      <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 3, fontSize: 12, color: T.text1 }}>
+                      <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 3, fontSize: readableTextSize(12), color: T.text1 }}>
                         <span style={{ color: '#4ade80', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{i + 1}.</span><span>{step}</span>
                       </div>
                     ))}
@@ -1241,9 +1242,9 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
                 {activeCodingTab !== 'approach' && record.code && <CodeBlock fontScale={2} code={record.code} runnableCode={record.runnableCode} language={record.language} />}
                 {activeCodingTab !== 'code' && Array.isArray(record.testCases) && record.testCases.length > 0 && (
                   <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>SAMPLE TESTS</div>
+                    <div style={{ fontSize: readableTextSize(9), color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>SAMPLE TESTS</div>
                     {record.testCases.slice(0, 4).map((test, i) => (
-                      <div key={i} style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '5px 7px', marginBottom: 4, fontFamily: T.fontMono, fontSize: 10, color: T.text2 }}>
+                      <div key={i} style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '5px 7px', marginBottom: 4, fontFamily: T.fontMono, fontSize: readableTextSize(10), color: T.text2 }}>
                         <div><span style={{ color: T.text3 }}>input:</span> {String(test?.input ?? '')}</div>
                         <div><span style={{ color: T.text3 }}>expected:</span> {String(test?.expectedOutput ?? '')}</div>
                         <div style={{ color: test?.source === 'question' ? '#86efac' : '#fbbf24', marginTop: 2, fontFamily: T.font }}>
@@ -1255,39 +1256,39 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
                 )}
                 {activeCodingTab !== 'code' && Array.isArray(record.edgeCases) && record.edgeCases.length > 0 && (
                   <div style={{ marginBottom: 6 }}>
-                    <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>EDGE CASES</div>
+                    <div style={{ fontSize: readableTextSize(9), color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>EDGE CASES</div>
                     {record.edgeCases.map((ec, i) => (
-                      <div key={i} style={{ fontSize: 11, color: T.text2, marginBottom: 2 }}>• {ec}</div>
+                      <div key={i} style={{ fontSize: readableTextSize(11), color: T.text2, marginBottom: 2 }}>• {ec}</div>
                     ))}
                   </div>
                 )}
-                {record.watchOut && <div style={{ fontSize: 11, color: '#f59e0b' }}>⚠ {record.watchOut}</div>}
+                {record.watchOut && <div style={{ fontSize: readableTextSize(11), color: '#f59e0b' }}>⚠ {record.watchOut}</div>}
               </>
             )
             : record && (
               <>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
-                  <span style={{ fontSize: 9, padding: '1px 7px', background: 'rgba(234,179,8,0.15)', color: '#fbbf24', borderRadius: 10, fontWeight: 700 }}>{TYPE_LABEL[record.contentType] || record.contentType}</span>
+                  <span style={{ fontSize: readableTextSize(9), padding: '1px 7px', background: 'rgba(234,179,8,0.15)', color: '#fbbf24', borderRadius: 10, fontWeight: 700 }}>{TYPE_LABEL[record.contentType] || record.contentType}</span>
                 </div>
-                {record.detectedText && <div style={{ fontSize: 11, color: '#fcd34d', fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(234,179,8,0.3)', paddingLeft: 7 }}>{record.detectedText}</div>}
-                {record.resumeStory && <div style={{ fontSize: 11, color: '#86efac', borderLeft: '2px solid #4ade80', paddingLeft: 7, marginBottom: 8 }}>{record.resumeStory}</div>}
-                <div style={{ fontSize: 14, color: '#fef3c7', lineHeight: 1.7, marginBottom: 8 }}>{record.fullAnswer}</div>
-                {record.watchOut && <div style={{ fontSize: 11, color: '#f59e0b' }}>⚠ {record.watchOut}</div>}
+                {record.detectedText && <div style={{ fontSize: readableTextSize(11), color: '#fcd34d', fontStyle: 'italic', marginBottom: 8, borderLeft: '2px solid rgba(234,179,8,0.3)', paddingLeft: 7 }}>{record.detectedText}</div>}
+                {record.resumeStory && <div style={{ fontSize: readableTextSize(11), color: '#86efac', borderLeft: '2px solid #4ade80', paddingLeft: 7, marginBottom: 8 }}>{record.resumeStory}</div>}
+                <div style={{ fontSize: readableTextSize(14), color: '#fef3c7', lineHeight: 1.7, marginBottom: 8 }}>{record.fullAnswer}</div>
+                {record.watchOut && <div style={{ fontSize: readableTextSize(11), color: '#f59e0b' }}>⚠ {record.watchOut}</div>}
               </>
             )
       }
       {!analyzing && !err && record && (onContinueCapture || onNewCapture) && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 9, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           {onContinueCapture && <button type="button" onClick={onContinueCapture}
-            style={{ flex: 1, minHeight: 32, borderRadius: 7, border: '1px solid rgba(45,212,191,0.4)', background: 'rgba(13,148,136,0.18)', color: '#99f6e4', cursor: 'pointer', fontSize: 10.5, fontWeight: 700 }}>
+            style={{ flex: 1, minHeight: 32, borderRadius: 7, border: '1px solid rgba(45,212,191,0.4)', background: 'rgba(13,148,136,0.18)', color: '#99f6e4', cursor: 'pointer', fontSize: readableTextSize(10.5), fontWeight: 700 }}>
             + Add next screenshot
           </button>}
           {onNewCapture && <button type="button" onClick={onNewCapture}
-            style={{ flex: 1, minHeight: 32, borderRadius: 7, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.05)', color: T.text2, cursor: 'pointer', fontSize: 10.5, fontWeight: 650 }}>
+            style={{ flex: 1, minHeight: 32, borderRadius: 7, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.05)', color: T.text2, cursor: 'pointer', fontSize: readableTextSize(10.5), fontWeight: 650 }}>
             Start separate question
           </button>}
           {onUndoMerge && <button type="button" onClick={onUndoMerge}
-            style={{ flexBasis: '100%', minHeight: 30, borderRadius: 7, border: '1px solid rgba(251,191,36,0.32)', background: 'rgba(251,191,36,0.08)', color: '#fcd34d', cursor: 'pointer', fontSize: 10.5, fontWeight: 650 }}>
+            style={{ flexBasis: '100%', minHeight: 30, borderRadius: 7, border: '1px solid rgba(251,191,36,0.32)', background: 'rgba(251,191,36,0.08)', color: '#fcd34d', cursor: 'pointer', fontSize: readableTextSize(10.5), fontWeight: 650 }}>
             ↶ Undo merge
           </button>}
         </div>
@@ -1311,7 +1312,7 @@ function Glyph({ name }) {
     case 'shield':   return <svg {...p}><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" /></svg>
     case 'pin':      return <svg {...p}><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z" /></svg>
     case 'cursor':   return <svg {...p}><path d="M4 4l7.07 17 2.51-7.39L21 11.07z" /><path d="M13.5 13.5L19 19" /></svg>
-    default:         return <span style={{ fontSize: 14 }}>{name}</span>
+    default:         return <span style={{ fontSize: readableTextSize(14) }}>{name}</span>
   }
 }
 
@@ -1327,7 +1328,7 @@ export function IconBtn({ icon, title, onClick, active, danger }) {
       style={{
         width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: bg, color: base, border: 'none', borderRadius: 7, cursor: 'pointer',
-        fontSize: 14, lineHeight: 1, transition: 'background 0.12s', flexShrink: 0
+        fontSize: readableTextSize(14), lineHeight: 1, transition: 'background 0.12s', flexShrink: 0
       }}><Glyph name={icon} /></button>
   )
 }
@@ -1335,14 +1336,14 @@ export function IconBtn({ icon, title, onClick, active, danger }) {
 function Segmented({ label, hint, value, options, onChange }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: T.text1, marginBottom: hint ? 2 : 8 }}>{label}</div>
-      {hint && <div style={{ fontSize: 11.5, color: T.text2, marginBottom: 8, lineHeight: 1.4 }}>{hint}</div>}
+      <div style={{ fontSize: readableTextSize(13), fontWeight: 600, color: T.text1, marginBottom: hint ? 2 : 8 }}>{label}</div>
+      {hint && <div style={{ fontSize: readableTextSize(11.5), color: T.text2, marginBottom: 8, lineHeight: 1.4 }}>{hint}</div>}
       <div style={{ display: 'flex', gap: 6 }}>
         {options.map(o => {
           const on = value === o.value
           return (
             <button key={o.value} onClick={() => onChange(o.value)}
-              style={{ flex: 1, height: 36, borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font, fontSize: 12.5, fontWeight: on ? 600 : 400,
+              style={{ flex: 1, height: 36, borderRadius: T.rCtrl, cursor: 'pointer', fontFamily: T.font, fontSize: readableTextSize(12.5), fontWeight: on ? 600 : 400,
                 background: on ? 'rgba(20,184,166,0.16)' : T.surface2, border: `1px solid ${on ? 'rgba(20,184,166,0.45)' : T.border}`, color: on ? T.text1 : T.text2 }}>
               {o.label}
             </button>
@@ -1359,7 +1360,7 @@ function AiAnswerSettings() {
   const [skip, setSkip] = useState(getAutoSkip() ? 'on' : 'off')
   return (
     <details style={{ marginTop: 18, padding: 16, background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard }}>
-      <summary style={{ fontSize: 14, fontWeight: 600, color: T.text1, cursor: 'pointer', fontFamily: T.font }}>
+      <summary style={{ fontSize: readableTextSize(14), fontWeight: 600, color: T.text1, cursor: 'pointer', fontFamily: T.font }}>
         AI answers · advanced
       </summary>
       <div style={{ marginTop: 12 }}>
@@ -1387,10 +1388,10 @@ function DocThreshold() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: T.text1 }}>Filter documents</div>
-        <div style={{ marginLeft: 'auto', fontSize: 12, color: T.text2, fontVariantNumeric: 'tabular-nums' }}>{v.toFixed(2)}</div>
+        <div style={{ fontSize: readableTextSize(13), fontWeight: 600, color: T.text1 }}>Filter documents</div>
+        <div style={{ marginLeft: 'auto', fontSize: readableTextSize(12), color: T.text2, fontVariantNumeric: 'tabular-nums' }}>{v.toFixed(2)}</div>
       </div>
-      <div style={{ fontSize: 11.5, color: T.text2, marginBottom: 8, lineHeight: 1.4 }}>How strictly to match uploaded docs when grounding Live answers. Higher = fewer, more-relevant snippets. Default 0.20.</div>
+      <div style={{ fontSize: readableTextSize(11.5), color: T.text2, marginBottom: 8, lineHeight: 1.4 }}>How strictly to match uploaded docs when grounding Live answers. Higher = fewer, more-relevant snippets. Default 0.20.</div>
       <input type="range" min="0" max="0.6" step="0.05" value={v} aria-label="Document retrieval match threshold"
         onChange={e => { const n = parseFloat(e.target.value); setV(n); setDocThreshold(n) }}
         style={{ width: '100%', accentColor: T.accentFrom, cursor: 'pointer' }} />
@@ -1540,7 +1541,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
           <img src="/icon.png" alt="" width={30} height={30}
             style={{ borderRadius: 8, display: 'block', pointerEvents: 'none' }}
             onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling && (e.currentTarget.nextSibling.style.display = 'grid') }} />
-        <span style={{ display: 'none', placeItems: 'center', width: 30, height: 30, borderRadius: 8, background: 'rgba(0,0,0,0.35)', color: '#5eead4', fontWeight: 800, fontSize: 16, fontFamily: T.font, pointerEvents: 'none' }}>M</span>
+        <span style={{ display: 'none', placeItems: 'center', width: 30, height: 30, borderRadius: 8, background: 'rgba(0,0,0,0.35)', color: '#5eead4', fontWeight: 800, fontSize: readableTextSize(16), fontFamily: T.font, pointerEvents: 'none' }}>M</span>
       </button>
     </div>
   )
@@ -1552,7 +1553,8 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         // Electron: fill the OS window so edge-resize matches the real window chrome.
         // Browser: keep the floating CSS panel size.
         width: inElectron ? '100%' : panelSize.w,
-        height: (minimized || autoHeight) ? 'auto' : (inElectron ? '100%' : panelSize.h),
+        height: inElectron ? '100%' : (autoHeight ? 'auto' : panelSize.h),
+        maxHeight: '100dvh',
         background: 'rgba(9, 12, 17, 0.91)',
         border: '1px solid rgba(255,255,255,0.11)',
         borderRadius: 12,
@@ -1560,7 +1562,7 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         backdropFilter: 'blur(24px) saturate(140%)',
         WebkitBackdropFilter: 'blur(24px) saturate(140%)',
         display: 'flex', flexDirection: 'column',
-        overflow: 'hidden',
+        overflow: autoHeight ? 'auto' : 'hidden',
         opacity,
         transition: 'opacity 0.1s',
         // Always 'all' — click-through is handled by Electron setIgnoreMouseEvents + region hover.
@@ -1579,20 +1581,20 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
         }}>
           {extra
             ? <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>{extra}</div>
-            : <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.88)', fontWeight: 600, fontFamily: T.fontDisplay }}>{title || 'MockMate'}</span>}
+            : <span style={{ fontSize: readableTextSize(12), color: 'rgba(255,255,255,0.88)', fontWeight: 600, fontFamily: T.fontDisplay }}>{title || 'MockMate'}</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }} onMouseDown={e => e.stopPropagation()} data-mm-hit="1">
             {actions}
             {inElectron && typeof onStealth === 'function' && (
               <button onClick={onStealth} onMouseDown={e => e.stopPropagation()}
                 title={stealth ? 'Stealth ON — capture protection enabled. Verify the meeting share preview.' : 'Stealth OFF — overlay may appear in capture. Click to enable protection.'}
                 aria-label={stealth ? 'Disable stealth capture protection' : 'Enable stealth capture protection'} aria-pressed={!!stealth}
-                style={{ height: 28, minWidth: 28, padding: '0 7px', display: 'grid', placeItems: 'center', background: stealth ? 'rgba(13,148,136,0.36)' : 'transparent', color: stealth ? '#5eead4' : 'rgba(255,255,255,0.55)', border: stealth ? '1px solid rgba(94,234,212,0.35)' : '1px solid transparent', borderRadius: 7, cursor: 'pointer', fontSize: 13 }}><Glyph name="shield" /></button>
+                style={{ height: 28, minWidth: 28, padding: '0 7px', display: 'grid', placeItems: 'center', background: stealth ? 'rgba(13,148,136,0.36)' : 'transparent', color: stealth ? '#5eead4' : 'rgba(255,255,255,0.55)', border: stealth ? '1px solid rgba(94,234,212,0.35)' : '1px solid transparent', borderRadius: 7, cursor: 'pointer', fontSize: readableTextSize(13) }}><Glyph name="shield" /></button>
             )}
             {typeof onOpacity === 'function' && (
               <label title="Transparency (like LockedIn) — lower = more see-through"
                 style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 4px', cursor: 'pointer' }}
                 onMouseDown={e => e.stopPropagation()}>
-                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>◐</span>
+                <span style={{ fontSize: readableTextSize(10), color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>◐</span>
                 <input type="range" min="0.35" max="1" step="0.05" value={opacity}
                   onChange={e => onOpacity(e.target.value)}
                   style={{ width: 56, accentColor: '#2dd4bf', cursor: 'pointer' }}
@@ -1603,32 +1605,32 @@ export function OverlayPanel({ children, panelSize, stealth, minimized, onDrag, 
               <button onClick={togglePin} onMouseDown={e => e.stopPropagation()}
                 title={pinned ? 'Pinned — stays open when you switch to Zoom/Meet. Click to unpin.' : 'Unpinned — collapses to the pill icon when you switch apps (never vanishes). Click to pin.'}
                 aria-label={pinned ? 'Unpin — collapse to pill when switching windows' : 'Pin — keep overlay when switching windows'} aria-pressed={pinned}
-                style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: pinned ? 'rgba(13,148,136,0.30)' : 'transparent', color: pinned ? '#5eead4' : 'rgba(255,255,255,0.55)', border: pinned ? '1px solid rgba(94,234,212,0.30)' : '1px solid transparent', borderRadius: 7, cursor: 'pointer', fontSize: 13 }}><Glyph name="pin" /></button>
+                style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: pinned ? 'rgba(13,148,136,0.30)' : 'transparent', color: pinned ? '#5eead4' : 'rgba(255,255,255,0.55)', border: pinned ? '1px solid rgba(94,234,212,0.30)' : '1px solid transparent', borderRadius: 7, cursor: 'pointer', fontSize: readableTextSize(13) }}><Glyph name="pin" /></button>
             )}
             {inElectron && onClickThrough && (
               <button onClick={toggleClickThrough} onMouseDown={e => e.stopPropagation()}
                 title={clickThrough ? 'Click-through ON — mouse clicks go through to Zoom/Meet. Hover the toolbar to use MockMate (Alt+C off).' : 'Click-through — let clicks pass through the overlay into the meeting (different from collapse)'}
                 aria-label={clickThrough ? 'Disable click-through' : 'Enable click-through'} aria-pressed={!!clickThrough}
-                style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: clickThrough ? 'rgba(13,148,136,0.30)' : 'transparent', color: clickThrough ? '#5eead4' : 'rgba(255,255,255,0.55)', border: clickThrough ? '1px solid rgba(94,234,212,0.30)' : '1px solid transparent', borderRadius: 7, cursor: 'pointer', fontSize: 12 }}><Glyph name="cursor" /></button>
+                style={{ height: 28, width: 28, display: 'grid', placeItems: 'center', background: clickThrough ? 'rgba(13,148,136,0.30)' : 'transparent', color: clickThrough ? '#5eead4' : 'rgba(255,255,255,0.55)', border: clickThrough ? '1px solid rgba(94,234,212,0.30)' : '1px solid transparent', borderRadius: 7, cursor: 'pointer', fontSize: readableTextSize(12) }}><Glyph name="cursor" /></button>
             )}
             {/* Single collapse control — eye + minimize were duplicates of the same pill action */}
             <IconBtn icon={minimized ? 'expand' : 'minimize'} onClick={onMinimize || onStealth}
               title={minimized ? 'Expand overlay' : 'Collapse to pill (stays on screen) · Alt+H'} />
             {confirming
               ? <button onClick={handleClose} onMouseDown={e => e.stopPropagation()} title="Confirm end"
-                  style={{ height: 28, padding: '0 10px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>End?</button>
+                  style={{ height: 28, padding: '0 10px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: readableTextSize(11), fontWeight: 700, whiteSpace: 'nowrap' }}>End?</button>
               : <IconBtn icon={confirmClose ? 'stop' : 'close'} onClick={handleClose} danger title={confirmClose ? 'End interview' : 'Close'} />}
           </div>
         </div>
 
         {clickThroughError && !minimized && (
-          <div role="alert" aria-live="assertive" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'rgba(127,29,29,0.92)', borderBottom: '1px solid rgba(248,113,113,0.4)', color: '#fee2e2', fontSize: 11, lineHeight: 1.45 }}>
+          <div role="alert" aria-live="assertive" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'rgba(127,29,29,0.92)', borderBottom: '1px solid rgba(248,113,113,0.4)', color: '#fee2e2', fontSize: readableTextSize(11), lineHeight: 1.45 }}>
             <span style={{ flex: 1 }}>
               {clickThroughError}
               {!clickThroughError.includes('Alt+C recovery shortcut is unavailable') && ' Use Alt+C to restore mouse input if the overlay stops responding.'}
             </span>
             <button type="button" onClick={() => setClickThroughError('')} aria-label="Dismiss click-through warning"
-              style={{ background: 'transparent', color: 'inherit', border: 'none', cursor: 'pointer', padding: 2, fontSize: 15 }}>×</button>
+              style={{ background: 'transparent', color: 'inherit', border: 'none', cursor: 'pointer', padding: 2, fontSize: readableTextSize(15) }}>×</button>
           </div>
         )}
 

@@ -1,3 +1,4 @@
+import { readableTextSize } from './lib/typography.js'
 import React, { useState, useRef, useEffect, useMemo, useId } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { useDeepgram } from './useDeepgram'
@@ -35,29 +36,29 @@ function Section({ title, hint, children }) {
   return (
     <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: T.text1 }}>{title}</div>
-        {hint && <div style={{ fontSize: 11.5, color: T.text3, marginTop: 2 }}>{hint}</div>}
+        <div style={{ fontSize: readableTextSize(14), fontWeight: 600, color: T.text1 }}>{title}</div>
+        {hint && <div style={{ fontSize: readableTextSize(11.5), color: T.text3, marginTop: 2 }}>{hint}</div>}
       </div>
       {children}
     </div>
   )
 }
 function Label({ children, htmlFor }) {
-  const style = { display: 'block', fontSize: 12, color: T.text2, marginBottom: 7 }
+  const style = { display: 'block', fontSize: readableTextSize(12), color: T.text2, marginBottom: 7 }
   return htmlFor ? <label htmlFor={htmlFor} style={style}>{children}</label> : <div style={style}>{children}</div>
 }
 function Chips({ label, options, value, onChange }) {
   const labelId = useId()
   return (
     <div>
-      <div id={labelId} style={{ fontSize: 12, color: T.text2, marginBottom: 7 }}>{label}</div>
+      <div id={labelId} style={{ fontSize: readableTextSize(12), color: T.text2, marginBottom: 7 }}>{label}</div>
       <div role="group" aria-labelledby={labelId} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {options.map(o => {
           const [val, text] = Array.isArray(o) ? o : [o, o]
           const on = value === val
           return (
             <button key={val} type="button" aria-pressed={on} onClick={() => onChange(val)}
-              style={{ padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font, fontSize: 12.5, fontWeight: on ? 600 : 400,
+              style={{ padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: T.font, fontSize: readableTextSize(12.5), fontWeight: on ? 600 : 400,
                 background: on ? 'rgba(20,184,166,0.18)' : T.surface2, color: on ? T.text1 : T.text2,
                 border: `1px solid ${on ? 'rgba(20,184,166,0.5)' : T.border}` }}>{text}</button>
           )
@@ -66,7 +67,7 @@ function Chips({ label, options, value, onChange }) {
     </div>
   )
 }
-const textInput = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: 13, fontFamily: T.font }
+const textInput = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: T.surface2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text1, fontSize: readableTextSize(13), fontFamily: T.font }
 
 // Honest listening indicator — soft pulse when active, static dim when not. No fake dancing bars.
 function Waveform({ active }) {
@@ -78,7 +79,7 @@ function Waveform({ active }) {
         boxShadow: active ? `0 0 0 0 ${T.accentFrom}` : 'none',
         animation: active ? 'mmpulse 1.6s ease-out infinite' : 'none',
       }} />
-      <span style={{ fontSize: 12, color: active ? T.text2 : T.text3, fontWeight: active ? 600 : 400 }}>
+      <span style={{ fontSize: readableTextSize(12), color: active ? T.text2 : T.text3, fontWeight: active ? 600 : 400 }}>
         {active ? '● Listening' : 'Mic idle'}
       </span>
       <style>{`@keyframes mmpulse{0%{box-shadow:0 0 0 0 rgba(20,184,166,0.45)}70%{box-shadow:0 0 0 10px rgba(20,184,166,0)}100%{box-shadow:0 0 0 0 rgba(20,184,166,0)}}`}</style>
@@ -676,18 +677,18 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
   if (phase === 'setup') return (
     <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16, fontFamily: T.font, paddingBottom: 20 }}>
       <div>
-        <div style={{ fontSize: 22, fontWeight: 600, color: T.text1 }}>Solo Practice</div>
-        <div style={{ fontSize: 13, color: T.text2, marginTop: 3 }}>Practice with an interviewer who has read your resume &amp; JD — a real conversation, not a question bank.</div>
+        <div style={{ fontSize: readableTextSize(22), fontWeight: 600, color: T.text1 }}>Solo Practice</div>
+        <div style={{ fontSize: readableTextSize(13), color: T.text2, marginTop: 3 }}>Practice with an interviewer who has read your resume &amp; JD — a real conversation, not a question bank.</div>
       </div>
 
       {noProviders && (
-        <div style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: '#fca5a5' }}>
+        <div style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: readableTextSize(12), color: '#fca5a5' }}>
           ⚠ No AI configured — the interviewer needs a model to run. Add an AI key in <strong>Settings</strong> (or switch to MockMate AI) before starting.
         </div>
       )}
-      {setupError && <div role="alert" style={{ fontSize: 12, color: '#fca5a5' }}>⚠ {setupError}</div>}
+      {setupError && <div role="alert" style={{ fontSize: readableTextSize(12), color: '#fca5a5' }}>⚠ {setupError}</div>}
       {resumeDraft?.transcript?.length > 0 && (
-        <div style={{ background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: 12, color: T.text2 }}>
+        <div style={{ background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCtrl, padding: '10px 12px', fontSize: readableTextSize(12), color: T.text2 }}>
           <strong style={{ color: '#5eead4' }}>Interrupted practice found.</strong> {resumeDraft.transcript.length} saved turn{resumeDraft.transcript.length === 1 ? '' : 's'} can be recovered.
           <span style={{ float: 'right', display: 'inline-flex', gap: 6 }}>
             <button onClick={resumeInterrupted} style={{ ...textInput, width: 'auto', padding: '5px 10px', cursor: 'pointer' }}>Resume</button>
@@ -695,13 +696,13 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
           </span>
         </div>
       )}
-      {error && phase === 'setup' && <div role="alert" style={{ fontSize: 12, color: '#fca5a5' }}>⚠ {error}</div>}
+      {error && phase === 'setup' && <div role="alert" style={{ fontSize: readableTextSize(12), color: '#fca5a5' }}>⚠ {error}</div>}
 
       <div role="status" style={{
         display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
         background: canSpeak ? 'rgba(20,184,166,0.1)' : T.surface1,
         border: `1px solid ${canSpeak ? 'rgba(20,184,166,0.35)' : T.border}`,
-        borderRadius: T.rCtrl, fontSize: 13, color: T.text2,
+        borderRadius: T.rCtrl, fontSize: readableTextSize(13), color: T.text2,
       }}>
         <span style={{ fontWeight: 600, color: canSpeak ? '#5eead4' : T.text3 }}>
           {canSpeak ? 'Voice On' : 'Voice Off'}
@@ -714,7 +715,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
       </div>
 
       <Section title="Your materials" hint="Resume + JD for the interviewer · optional knowledge bank for grounding.">
-        <div style={{ fontSize: 11.5, color: T.text3, lineHeight: 1.45, marginBottom: 4 }}>
+        <div style={{ fontSize: readableTextSize(11.5), color: T.text3, lineHeight: 1.45, marginBottom: 4 }}>
           {kitScoped ? 'Use this Kit’s role, resume, JD, focus notes, and checked Kit-only materials for practice.' : 'Paste resume & JD here (required for good questions). Extra knowledge banks go below — checked items are retrieved during the session.'}
         </div>
         <div>
@@ -722,7 +723,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
           <textarea id={`${soloFormId}-resume`} rows={5} style={{ ...textInput, resize: 'vertical' }} value={profile.resume || ''} placeholder="Paste your resume text…" onChange={e => patchProfile({ resume: e.target.value })} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
             <button type="button" onClick={() => resumeFileRef.current?.click()} aria-label="Upload resume PDF"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px', fontFamily: T.font }}>
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: readableTextSize(11), color: '#5eead4', cursor: 'pointer', background: 'rgba(13,148,136,0.12)', border: '1px solid rgba(13,148,136,0.3)', borderRadius: 6, padding: '4px 9px', fontFamily: T.font }}>
               Upload PDF
             </button>
             <input ref={resumeFileRef} type="file" accept="application/pdf,.pdf" aria-label="Choose a resume PDF" style={{ display: 'none' }}
@@ -736,7 +737,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
                   else setPdfMsg('No text found (scanned image?) — paste instead')
                 } catch { setPdfMsg('Could not read that PDF — paste the text instead') }
               }} />
-            {pdfMsg && <span role={/No text|Could not|scanned/i.test(pdfMsg) ? 'alert' : 'status'} aria-live={/No text|Could not|scanned/i.test(pdfMsg) ? 'assertive' : 'polite'} style={{ fontSize: 11, color: /No text|Could not|scanned/i.test(pdfMsg) ? '#fca5a5' : '#86efac' }}>{pdfMsg}</span>}
+            {pdfMsg && <span role={/No text|Could not|scanned/i.test(pdfMsg) ? 'alert' : 'status'} aria-live={/No text|Could not|scanned/i.test(pdfMsg) ? 'assertive' : 'polite'} style={{ fontSize: readableTextSize(11), color: /No text|Could not|scanned/i.test(pdfMsg) ? '#fca5a5' : '#86efac' }}>{pdfMsg}</span>}
           </div>
         </div>
         <div>
@@ -744,7 +745,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
           <textarea id={`${soloFormId}-job-description`} rows={4} style={{ ...textInput, resize: 'vertical' }} value={profile.jobDescription || ''} placeholder="Paste the JD you’re practicing for…" onChange={e => patchProfile({ jobDescription: e.target.value })} />
         </div>
         {!hasContext && (
-          <div role="status" style={{ fontSize: 12, color: '#fbbf24' }}>Add a resume or JD so questions stay practical and conversational.</div>
+          <div role="status" style={{ fontSize: readableTextSize(12), color: '#fbbf24' }}>Add a resume or JD so questions stay practical and conversational.</div>
         )}
         <div>
           <Label>Knowledge & notes (optional)</Label>
@@ -758,7 +759,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
       </Section>
 
       <Section title="Interview Playbook" hint="Recommended — 1-click role templates, saved presets & auto-routed rules for Solo and Live.">
-        <div style={{ fontSize: 11.5, color: T.text2, lineHeight: 1.5 }}>
+        <div style={{ fontSize: readableTextSize(11.5), color: T.text2, lineHeight: 1.5 }}>
           Pick a role playbook or insert modular rule blocks (`VOICE:`, `TRUTH:`, `CODING/DSA:`, `SYSTEM DESIGN:`, `SQL/DATABASE:`). The same playbook carries into Live Interview.
         </div>
         <CustomPromptStudio
@@ -790,18 +791,18 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
       <Section title="Target company" hint="Optional — every company and every attempt can use a different setup.">
         <Label htmlFor={`${soloFormId}-company`}>Company</Label>
         <input id={`${soloFormId}-company`} style={textInput} value={profile.targetCompany || ''} placeholder="Type any company, e.g. RealPage, Teradata, Amazon…" onChange={e => patchProfile({ targetCompany: e.target.value })} />
-        <div style={{ fontSize: 11, color: T.text3, lineHeight: 1.45 }}>
+        <div style={{ fontSize: readableTextSize(11), color: T.text3, lineHeight: 1.45 }}>
           This does not restrict your account to one company. MockMate snapshots the active company, role, playbook and selected documents when the session begins.
         </div>
       </Section>
 
       <details style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '12px 16px' }}>
-        <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: T.text2 }}>Session options</summary>
+        <summary style={{ cursor: 'pointer', fontSize: readableTextSize(13), fontWeight: 600, color: T.text2 }}>Session options</summary>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 14 }}>
           <div>
             <Chips label="Voice style" options={['Professional', 'Friendly', 'Concise', 'Detailed']} value={voiceStyle} onChange={v => { setVoiceStyle(v); patchProfile({ voiceStyle: v }) }} />
           </div>
-          <div role="status" style={{ fontSize: 11, color: T.text2, lineHeight: 1.5 }}>
+          <div role="status" style={{ fontSize: readableTextSize(11), color: T.text2, lineHeight: 1.5 }}>
             AI runs automatically from your connected provider keys. MockMate selects an available model for each question and switches when necessary; no model setup is needed here.
           </div>
           <div>
@@ -810,10 +811,10 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
               {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontSize: 13, color: T.text2 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontSize: readableTextSize(13), color: T.text2 }}>
             <input type="checkbox" checked={tts} onChange={() => setTts(v => !v)} /> Interviewer speaks the questions aloud
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontSize: 13, color: T.text2 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontSize: readableTextSize(13), color: T.text2 }}>
             <input type="checkbox" checked={relentless} onChange={() => setRelentless(v => !v)} /> Challenge mode — pushes back on canned answers
           </label>
         </div>
@@ -821,10 +822,10 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
         <button onClick={start} disabled={!canStartSolo}
-          style={{ flex: 1, height: 48, background: canStartSolo ? T.accent : T.surface2, color: canStartSolo ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: 15, fontWeight: 600, cursor: canStartSolo ? 'pointer' : 'default', fontFamily: T.font }}>
+          style={{ flex: 1, height: 48, background: canStartSolo ? T.accent : T.surface2, color: canStartSolo ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: readableTextSize(15), fontWeight: 600, cursor: canStartSolo ? 'pointer' : 'default', fontFamily: T.font }}>
           Begin interview →
         </button>
-        <button onClick={onHome} style={{ height: 48, padding: '0 20px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: 13, cursor: 'pointer', fontFamily: T.font }}>Back</button>
+        <button onClick={onHome} style={{ height: 48, padding: '0 20px', background: 'transparent', color: T.text2, border: `1px solid ${T.borderStrong}`, borderRadius: T.rCtrl, fontSize: readableTextSize(13), cursor: 'pointer', fontFamily: T.font }}>Back</button>
       </div>
     </div>
   )
@@ -833,8 +834,8 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
   if (phase === 'evaluating' || evaluating) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 320, fontFamily: T.font, gap: 12 }}>
-        <div style={{ fontSize: 16, fontWeight: 600, color: T.text1 }}>Scoring your interview…</div>
-        <div style={{ fontSize: 13, color: T.text3 }}>Hang tight — building your report.</div>
+        <div style={{ fontSize: readableTextSize(16), fontWeight: 600, color: T.text1 }}>Scoring your interview…</div>
+        <div style={{ fontSize: readableTextSize(13), color: T.text3 }}>Hang tight — building your report.</div>
       </div>
     )
   }
@@ -856,27 +857,27 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 150px)', minHeight: 460, fontFamily: T.font, gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>{profile.targetRole || 'Interview'}</div>
-        <span style={{ fontSize: 12, color: T.text3 }}>{interviewType}{profile.targetCompany ? ` · ${profile.targetCompany}` : ''}</span>
-        <span style={{ fontSize: 12, fontWeight: 600, color: T.accentFrom, background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: 999, padding: '2px 10px' }}
+        <div style={{ fontSize: readableTextSize(15), fontWeight: 600, color: T.text1 }}>{profile.targetRole || 'Interview'}</div>
+        <span style={{ fontSize: readableTextSize(12), color: T.text3 }}>{interviewType}{profile.targetCompany ? ` · ${profile.targetCompany}` : ''}</span>
+        <span style={{ fontSize: readableTextSize(12), fontWeight: 600, color: T.accentFrom, background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: 999, padding: '2px 10px' }}
           aria-label={`Question ${currentQuestion || Math.max(1, transcript.filter(t => t.role === 'interviewer').length)}`}>
           Q{currentQuestion || Math.max(1, transcript.filter(t => t.role === 'interviewer').length || 1)}
         </span>
         {speech.reconnecting && (
-          <span role="status" style={{ fontSize: 11.5, color: '#fbbf24' }}>Reconnecting voice…</span>
+          <span role="status" style={{ fontSize: readableTextSize(11.5), color: '#fbbf24' }}>Reconnecting voice…</span>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: 13, color: T.text2, fontVariantNumeric: 'tabular-nums' }}>⏱ {fmtClock(clock)}</span>
+        <span style={{ marginLeft: 'auto', fontSize: readableTextSize(13), color: T.text2, fontVariantNumeric: 'tabular-nums' }}>⏱ {fmtClock(clock)}</span>
         <button onClick={end} disabled={evaluating}
-          style={{ height: 34, padding: '0 14px', background: endingEmpty ? 'rgba(239,68,68,0.28)' : 'rgba(239,68,68,0.14)', color: '#f87171', border: '1px solid rgba(239,68,68,0.35)', borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>
+          style={{ height: 34, padding: '0 14px', background: endingEmpty ? 'rgba(239,68,68,0.28)' : 'rgba(239,68,68,0.14)', color: '#f87171', border: '1px solid rgba(239,68,68,0.35)', borderRadius: T.rCtrl, fontSize: readableTextSize(12.5), fontWeight: 600, cursor: 'pointer', fontFamily: T.font }}>
           {evaluating ? 'Scoring…' : endingEmpty ? 'End again to leave' : 'End interview'}
         </button>
       </div>
 
       {autoSubmitIn > 0 && (
-        <div role="status" aria-live="assertive" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCtrl, fontSize: 13, color: T.text1, flexShrink: 0 }}>
+        <div role="status" aria-live="assertive" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.35)', borderRadius: T.rCtrl, fontSize: readableTextSize(13), color: T.text1, flexShrink: 0 }}>
           <span>Sending in {autoSubmitIn}s</span>
           <button type="button" onClick={cancelAutoSubmit}
-            style={{ marginLeft: 'auto', height: 28, padding: '0 12px', background: T.surface2, color: T.text1, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, cursor: 'pointer', fontSize: 12, fontFamily: T.font }}>
+            style={{ marginLeft: 'auto', height: 28, padding: '0 12px', background: T.surface2, color: T.text1, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, cursor: 'pointer', fontSize: readableTextSize(12), fontFamily: T.font }}>
             Cancel
           </button>
         </div>
@@ -885,21 +886,21 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(0, 1.4fr)', gap: 12, minHeight: 0 }}>
         {/* Quiet history */}
         <div style={panel}>
-          <div style={{ padding: '11px 14px', borderBottom: `1px solid ${T.border}`, fontSize: 12, fontWeight: 600, color: T.text2 }}>Conversation</div>
+          <div style={{ padding: '11px 14px', borderBottom: `1px solid ${T.border}`, fontSize: readableTextSize(12), fontWeight: 600, color: T.text2 }}>Conversation</div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             {transcript.length > 48 && (
-              <div style={{ fontSize: 11, color: T.text3 }}>Showing latest 48 turns · full transcript kept for scoring</div>
+              <div style={{ fontSize: readableTextSize(11), color: T.text3 }}>Showing latest 48 turns · full transcript kept for scoring</div>
             )}
             {transcript.slice(-48).map((t, i) => (
               <div key={`${transcript.length}-${i}`} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em', color: t.role === 'interviewer' ? T.accentFrom : T.text3 }}>
+                <span style={{ fontSize: readableTextSize(10.5), fontWeight: 600, letterSpacing: '0.04em', color: t.role === 'interviewer' ? T.accentFrom : T.text3 }}>
                   {t.role === 'interviewer' ? (t.kind === 'followup' ? 'FOLLOW-UP' : 'INTERVIEWER') : 'YOU'}
                 </span>
-                <div style={{ fontSize: 13, lineHeight: 1.55, color: t.role === 'interviewer' ? T.text1 : T.text2 }}>{t.text}</div>
-                {t.grounding && <div style={{ fontSize: 10.5, color: T.text3 }}>About: {t.grounding}</div>}
+                <div style={{ fontSize: readableTextSize(13), lineHeight: 1.55, color: t.role === 'interviewer' ? T.text1 : T.text2 }}>{t.text}</div>
+                {t.grounding && <div style={{ fontSize: readableTextSize(10.5), color: T.text3 }}>About: {t.grounding}</div>}
               </div>
             ))}
-            {thinking && <div style={{ fontSize: 12, color: T.text3, fontStyle: 'italic' }}>{thinkingCopy}</div>}
+            {thinking && <div style={{ fontSize: readableTextSize(12), color: T.text3, fontStyle: 'italic' }}>{thinkingCopy}</div>}
             <div ref={bottomRef} />
           </div>
         </div>
@@ -908,21 +909,21 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
         <div style={{ ...panel, background: 'transparent', border: 'none', gap: 12 }}>
           <div style={{ ...panel, flex: 1, padding: '18px 20px', justifyContent: 'space-between' }}>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', color: T.text3 }}>
+              <div style={{ fontSize: readableTextSize(11), fontWeight: 600, letterSpacing: '0.06em', color: T.text3 }}>
                 Q{currentQuestion || Math.max(1, transcript.filter(t => t.role === 'interviewer').length || 1)} · {beatLabel.toUpperCase()}
               </div>
-              <div style={{ fontSize: 20, fontWeight: 500, color: T.text1, lineHeight: 1.4, marginTop: 12 }}>
+              <div style={{ fontSize: readableTextSize(20), fontWeight: 500, color: T.text1, lineHeight: 1.4, marginTop: 12 }}>
                 {thinking && !lastQuestion ? 'Waiting for the first question…' : (lastQuestion || '…')}
               </div>
               {lastTurn?.grounding && (
-                <div style={{ marginTop: 10, display: 'inline-block', fontSize: 11, color: '#5eead4', background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: 999, padding: '3px 10px' }}>
+                <div style={{ marginTop: 10, display: 'inline-block', fontSize: readableTextSize(11), color: '#5eead4', background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: 999, padding: '3px 10px' }}>
                   About: {lastTurn.grounding}
                 </div>
               )}
             </div>
             <div style={{ marginTop: 16 }}>
               <Waveform active={speech.active && !ttsPlaying} />
-              <div role="status" aria-live="polite" style={{ textAlign: 'center', fontSize: 11.5, color: T.text3, marginTop: 6 }}>
+              <div role="status" aria-live="polite" style={{ textAlign: 'center', fontSize: readableTextSize(11.5), color: T.text3, marginTop: 6 }}>
                 {ttsPlaying ? 'Interviewer speaking…'
                   : micStarting ? 'Starting mic…'
                   : speech.reconnecting ? 'Reconnecting…'
@@ -957,7 +958,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
               style={{ ...textInput, flex: 1, height: 40 }}
             />
             <button type="submit" disabled={!practiceQ.trim() || busyUi}
-              style={{ height: 40, padding: '0 14px', flexShrink: 0, background: practiceQ.trim() && !busyUi ? T.accent : T.surface2, color: practiceQ.trim() && !busyUi ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: 12.5, fontWeight: 600, cursor: practiceQ.trim() && !busyUi ? 'pointer' : 'default', fontFamily: T.font }}>
+              style={{ height: 40, padding: '0 14px', flexShrink: 0, background: practiceQ.trim() && !busyUi ? T.accent : T.surface2, color: practiceQ.trim() && !busyUi ? '#fff' : T.text3, border: 'none', borderRadius: T.rCtrl, fontSize: readableTextSize(12.5), fontWeight: 600, cursor: practiceQ.trim() && !busyUi ? 'pointer' : 'default', fontFamily: T.font }}>
               Ask
             </button>
           </form>
@@ -971,45 +972,45 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
               if (e.nativeEvent.isComposing || e.keyCode === 229) return
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() }
             }} />
-          {speech.interim && <div style={{ fontSize: 12, color: T.text3, fontStyle: 'italic', flexShrink: 0, marginTop: -4 }}>{speech.interim}…</div>}
+          {speech.interim && <div style={{ fontSize: readableTextSize(12), color: T.text3, fontStyle: 'italic', flexShrink: 0, marginTop: -4 }}>{speech.interim}…</div>}
 
           <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
             {canSpeak && (
               <button type="button" onClick={() => speech.active ? stopMic() : startMic()} disabled={micStarting || ttsPlaying}
-                style={{ height: 42, width: 46, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: T.rCtrl, cursor: 'pointer', fontSize: 16,
+                style={{ height: 42, width: 46, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: T.rCtrl, cursor: 'pointer', fontSize: readableTextSize(16),
                   background: speech.active ? 'rgba(239,68,68,0.16)' : T.surface2, color: speech.active ? '#f87171' : T.text1, border: `1px solid ${speech.active ? 'rgba(239,68,68,0.4)' : T.border}` }}
                 aria-label={speech.active ? 'Stop listening' : (voiceRef.current === false && error ? 'Retry voice' : 'Start speaking')}
                 title={speech.active ? 'Stop listening' : (voiceRef.current === false && error ? 'Retry voice' : 'Speak')}>{speech.active ? '⏹' : '🎤'}</button>
             )}
             <button type="button" onClick={repeatQuestion} disabled={!lastQuestion || ttsPlaying || thinking}
-              style={{ height: 42, padding: '0 14px', flexShrink: 0, background: T.surface2, color: T.text2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, cursor: 'pointer', fontSize: 12.5, fontFamily: T.font }}
+              style={{ height: 42, padding: '0 14px', flexShrink: 0, background: T.surface2, color: T.text2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, cursor: 'pointer', fontSize: readableTextSize(12.5), fontFamily: T.font }}
               aria-label="Repeat question" title="Hear again">🔁 Repeat</button>
             {lastIsCandidate && !busyUi && (
               <button type="button" onClick={undoLastAnswer}
-                style={{ height: 42, padding: '0 14px', flexShrink: 0, background: T.surface2, color: T.text2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, cursor: 'pointer', fontSize: 12.5, fontFamily: T.font }}
+                style={{ height: 42, padding: '0 14px', flexShrink: 0, background: T.surface2, color: T.text2, border: `1px solid ${T.border}`, borderRadius: T.rCtrl, cursor: 'pointer', fontSize: readableTextSize(12.5), fontFamily: T.font }}
                 aria-label="Undo last answer" title="Undo last answer">↩ Undo</button>
             )}
             <button type="button" onClick={submit} disabled={!answer.trim() || busyUi}
-              style={{ flex: 1, height: 42, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: 14, fontWeight: 600, cursor: (!answer.trim() || busyUi) ? 'default' : 'pointer', opacity: (!answer.trim() || busyUi) ? 0.5 : 1, fontFamily: T.font }}
+              style={{ flex: 1, height: 42, background: T.accent, color: '#fff', border: 'none', borderRadius: T.rCtrl, fontSize: readableTextSize(14), fontWeight: 600, cursor: (!answer.trim() || busyUi) ? 'default' : 'pointer', opacity: (!answer.trim() || busyUi) ? 0.5 : 1, fontFamily: T.font }}
               aria-label="Continue to next turn">Continue</button>
           </div>
           {busyUi && (
-            <div role="status" style={{ fontSize: 11.5, color: T.text3, flexShrink: 0 }}>
+            <div role="status" style={{ fontSize: readableTextSize(11.5), color: T.text3, flexShrink: 0 }}>
               {ttsPlaying ? 'Wait for the interviewer to finish speaking — then Continue unlocks.' : 'Interviewer is thinking…'}
             </div>
           )}
           {error && (
-            <div role="alert" style={{ fontSize: 12, color: '#fca5a5', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div role="alert" style={{ fontSize: readableTextSize(12), color: '#fca5a5', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span>⚠ {error}</span>
               {!thinking && !ttsPlaying && /Retry turn|Service error|tap Retry/i.test(error) && (
-                <button onClick={retryTurn} style={{ background: 'rgba(94,234,212,0.15)', border: '1px solid rgba(94,234,212,0.4)', color: '#5eead4', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Retry turn</button>
+                <button onClick={retryTurn} style={{ background: 'rgba(94,234,212,0.15)', border: '1px solid rgba(94,234,212,0.4)', color: '#5eead4', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: readableTextSize(11), fontWeight: 700 }}>Retry turn</button>
               )}
               {/Voice input stopped|Could not start voice/i.test(error) && canSpeak && (
-                <button onClick={startMic} style={{ background: 'rgba(94,234,212,0.15)', border: '1px solid rgba(94,234,212,0.4)', color: '#5eead4', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Retry voice</button>
+                <button onClick={startMic} style={{ background: 'rgba(94,234,212,0.15)', border: '1px solid rgba(94,234,212,0.4)', color: '#5eead4', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: readableTextSize(11), fontWeight: 700 }}>Retry voice</button>
               )}
             </div>
           )}
-          <details style={{ fontSize: 12, color: T.text3 }}>
+          <details style={{ fontSize: readableTextSize(12), color: T.text3 }}>
             <summary style={{ cursor: 'pointer' }}>Coach whispers (optional)</summary>
             <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {tips.map((t, i) => <div key={i}>✓ {t}</div>)}

@@ -60,18 +60,20 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  font-size: 26px;
+  line-height: 1.5;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
 /* Global ultra-slim dark scrollbars — preserves horizontal width in compact overlays */
 * {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  scrollbar-width: auto;
+  scrollbar-color: rgba(255, 255, 255, 0.4) transparent;
 }
 
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {
@@ -79,7 +81,7 @@ html, body, #root {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.35);
   border-radius: 999px;
 }
 
@@ -167,7 +169,7 @@ body.mm-collapsed [data-mm-surface="opaque"] {
 /* Typography */
 .mm-eyebrow {
   font-family: 'Kanit', sans-serif;
-  font-size: 10px;
+  font-size: 20px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-text-subtle);
@@ -180,19 +182,19 @@ body.mm-collapsed [data-mm-surface="opaque"] {
 
 .mm-body {
   color: var(--color-text);
-  font-size: 13px;
+  font-size: 26.0px;
   line-height: 1.6;
 }
 
 .mm-body-muted {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: 24.0px;
   line-height: 1.5;
 }
 
 .mm-hint {
   color: var(--color-text-subtle);
-  font-size: 10.5px;
+  font-size: 21.0px;
   line-height: 1.5;
 }
 
@@ -202,7 +204,7 @@ body.mm-collapsed [data-mm-surface="opaque"] {
   align-items: center;
   padding: 3px 8px;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: 0.02em;
   background: rgba(255, 255, 255, 0.06);
@@ -242,4 +244,22 @@ body.mm-collapsed [data-mm-surface="opaque"] {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Large text must not be clipped by the old 28–36px control heights. */
+button, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select {
+  min-height: max(44px, calc(1em + 16px));
+  font-family: inherit;
+}
+button { min-width: 44px; }
+input, select, textarea { max-width: 100%; }
+textarea { font-family: inherit; line-height: 1.5; }
+.mm-shell-content > * { min-width: 0; }
+.mm-shell-content { -webkit-app-region: no-drag; }
+@media (max-width: 680px) {
+  .mm-shell-content { padding: 14px !important; }
+}
+
+@media (max-width: 900px) {
+  .mm-settings-action-copy { flex-basis: 100% !important; }
 }

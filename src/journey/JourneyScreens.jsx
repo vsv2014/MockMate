@@ -1,3 +1,4 @@
+import { readableTextSize } from '../lib/typography.js'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { T } from '../auth/tokens'
 import { apiFetch } from '../lib/apiClient'
@@ -18,7 +19,7 @@ const panelStyle = {
 const controlStyle = {
   width: '100%', boxSizing: 'border-box', background: T.surface2,
   border: `1px solid ${T.borderStrong}`, color: T.text1, borderRadius: T.rCtrl,
-  padding: '10px 12px', font: `13px ${T.font}`, outlineColor: T.accentFrom,
+  padding: '10px 12px', font: `${readableTextSize(13)}px ${T.font}`, outlineColor: T.accentFrom,
 }
 
 function Button({ children, onClick, variant = 'secondary', disabled = false, title, type = 'button', style = {}, ...props }) {
@@ -31,7 +32,7 @@ function Button({ children, onClick, variant = 'secondary', disabled = false, ti
   return (
     <button type={type} title={title} disabled={disabled} onClick={onClick} {...props}
       style={{
-        minHeight: 38, padding: '0 14px', borderRadius: T.rCtrl, font: `600 12.5px ${T.font}`,
+        minHeight: 38, padding: '0 14px', borderRadius: T.rCtrl, font: `600 ${readableTextSize(12.5)}px ${T.font}`,
         cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.58 : 1,
         transition: 'transform .12s ease, border-color .12s ease, opacity .12s ease',
         whiteSpace: 'nowrap', ...variants[variant], ...style,
@@ -42,7 +43,7 @@ function Button({ children, onClick, variant = 'secondary', disabled = false, ti
 }
 
 function Eyebrow({ children, color = T.accentFrom }) {
-  return <div style={{ color, fontSize: 10, fontWeight: 750, letterSpacing: '0.12em', textTransform: 'uppercase' }}>{children}</div>
+  return <div style={{ color, fontSize: readableTextSize(10), fontWeight: 750, letterSpacing: '0.12em', textTransform: 'uppercase' }}>{children}</div>
 }
 
 function PageHeading({ eyebrow, title, detail, action }) {
@@ -50,8 +51,8 @@ function PageHeading({ eyebrow, title, detail, action }) {
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
       <div style={{ flex: 1, minWidth: 240 }}>
         {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
-        <h1 style={{ margin: '6px 0 0', color: T.text1, font: `600 27px ${T.fontDisplay}`, letterSpacing: '-0.025em' }}>{title}</h1>
-        {detail && <div style={{ maxWidth: 720, color: T.text2, fontSize: 13, lineHeight: 1.55, marginTop: 5 }}>{detail}</div>}
+        <h1 style={{ margin: '6px 0 0', color: T.text1, font: `600 ${readableTextSize(27)}px ${T.fontDisplay}`, letterSpacing: '-0.025em' }}>{title}</h1>
+        {detail && <div style={{ maxWidth: 720, color: T.text2, fontSize: readableTextSize(13), lineHeight: 1.55, marginTop: 5 }}>{detail}</div>}
       </div>
       {action}
     </div>
@@ -66,7 +67,7 @@ function Pill({ children, tone = 'neutral' }) {
     red: { color: '#fda4af', bg: 'rgba(244,63,94,0.1)', border: 'rgba(244,63,94,0.24)' },
   }
   const c = colors[tone] || colors.neutral
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 8px', borderRadius: 999, color: c.color, background: c.bg, border: `1px solid ${c.border}`, fontSize: 10.5, fontWeight: 650, lineHeight: 1.1 }}>{children}</span>
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 8px', borderRadius: 999, color: c.color, background: c.bg, border: `1px solid ${c.border}`, fontSize: readableTextSize(10.5), fontWeight: 650, lineHeight: 1.1 }}>{children}</span>
 }
 
 function statusTone(status) {
@@ -102,18 +103,18 @@ function KitMiniCard({ kit, active = false, onSelect, onEdit, previewMode = fals
   return (
     <div style={{ ...panelStyle, padding: 15, borderColor: active ? 'rgba(20,184,166,0.44)' : T.border, background: active ? 'linear-gradient(150deg, rgba(20,184,166,0.11), rgba(18,21,27,0.98) 62%)' : T.surface1 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <div style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', flexShrink: 0, background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.24)', fontSize: 18 }}>▤</div>
+        <div style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', flexShrink: 0, background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.24)', fontSize: readableTextSize(18) }}>▤</div>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-            <div style={{ color: T.text1, fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kit?.title || 'Untitled interview kit'}</div>
+            <div style={{ color: T.text1, fontSize: readableTextSize(14), fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kit?.title || 'Untitled interview kit'}</div>
             {active && <Pill tone="teal">ACTIVE</Pill>}
           </div>
-          <div style={{ color: T.text2, fontSize: 11.5, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ color: T.text2, fontSize: readableTextSize(11.5), marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {[kit?.targetRole, kit?.targetCompany].filter(Boolean).join(' · ') || 'Add a target role or company'}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 10, flexWrap: 'wrap' }}>
             <Pill>{kit?.interviewType || 'Technical'}</Pill>
-            <span style={{ color: contextCount ? '#5eead4' : T.text3, fontSize: 10.5 }}>{contextCount} context item{contextCount === 1 ? '' : 's'}</span>
+            <span style={{ color: contextCount ? '#5eead4' : T.text3, fontSize: readableTextSize(10.5) }}>{contextCount} context item{contextCount === 1 ? '' : 's'}</span>
           </div>
         </div>
       </div>
@@ -138,8 +139,8 @@ export function JourneyHome({
     <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
       {auth?.guest && (
         <div style={{ ...panelStyle, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, borderColor: 'rgba(20,184,166,0.25)', background: 'rgba(20,184,166,0.07)' }}>
-          <span style={{ color: '#5eead4', fontSize: 15 }}>◈</span>
-          <div style={{ flex: 1, color: T.text2, fontSize: 11.5, lineHeight: 1.5 }}>Guest mode is active. Kits, session history, and BYOK settings stay in this account’s local device scope.</div>
+          <span style={{ color: '#5eead4', fontSize: readableTextSize(15) }}>◈</span>
+          <div style={{ flex: 1, color: T.text2, fontSize: readableTextSize(11.5), lineHeight: 1.5 }}>Guest mode is active. Kits, session history, and BYOK settings stay in this account’s local device scope.</div>
           <Button variant="quiet" onClick={() => auth.signIn?.()}>Sign in</Button>
         </div>
       )}
@@ -149,9 +150,9 @@ export function JourneyHome({
         <div style={{ position: 'relative', maxWidth: 720 }}>
           <Eyebrow>MOCKMATE · YOUR INTERVIEW WORKSPACE</Eyebrow>
           <h1 style={{ margin: '12px 0 8px', maxWidth: 690, color: T.text1, font: `600 clamp(28px, 4vw, 40px)/1.12 ${T.fontDisplay}`, letterSpacing: '-0.035em' }}>Make your next interview feel familiar{displayName}.</h1>
-          <p style={{ margin: 0, maxWidth: 610, color: T.text2, fontSize: 13.5, lineHeight: 1.65 }}>Keep each opportunity’s context in its own Interview Kit. Rehearse with it, then check your setup in the Ready Room before a live call.</p>
+          <p style={{ margin: 0, maxWidth: 610, color: T.text2, fontSize: readableTextSize(13.5), lineHeight: 1.65 }}>Keep each opportunity’s context in its own Interview Kit. Rehearse with it, then check your setup in the Ready Room before a live call.</p>
           <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginTop: 20 }}>
-            <Button variant="primary" onClick={onOpenReadyRoom} style={{ height: 43, padding: '0 17px', fontSize: 13.5 }}>Open Ready Room <span aria-hidden="true">→</span></Button>
+            <Button variant="primary" onClick={onOpenReadyRoom} style={{ height: 43, padding: '0 17px', fontSize: readableTextSize(13.5) }}>Open Ready Room <span aria-hidden="true">→</span></Button>
             <Button variant="secondary" onClick={onOpenKits} style={{ height: 43, padding: '0 16px' }}>Manage Interview Kits</Button>
           </div>
         </div>
@@ -167,12 +168,12 @@ export function JourneyHome({
             <>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 190 }}>
-                  <div style={{ color: T.text1, font: `600 20px ${T.fontDisplay}`, letterSpacing: '-0.015em' }}>{activeKit.title}</div>
-                  <div style={{ color: T.text2, fontSize: 12.5, marginTop: 5 }}>{[activeKit.targetRole, activeKit.targetCompany].filter(Boolean).join(' · ') || 'Add a role or company to make this Kit yours'}</div>
+                  <div style={{ color: T.text1, font: `600 ${readableTextSize(20)}px ${T.fontDisplay}`, letterSpacing: '-0.015em' }}>{activeKit.title}</div>
+                  <div style={{ color: T.text2, fontSize: readableTextSize(12.5), marginTop: 5 }}>{[activeKit.targetRole, activeKit.targetCompany].filter(Boolean).join(' · ') || 'Add a role or company to make this Kit yours'}</div>
                 </div>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 180, color: T.text3, fontSize: 10.5, fontWeight: 650 }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 180, color: T.text3, fontSize: readableTextSize(10.5), fontWeight: 650 }}>
                   SWITCH ACTIVE KIT
-                  <select aria-label="Active Interview Kit" value={activeKit.id} onChange={event => onSelectKit?.(event.target.value)} style={{ ...controlStyle, minWidth: 180, padding: '8px 10px', fontSize: 12 }}>
+                  <select aria-label="Active Interview Kit" value={activeKit.id} onChange={event => onSelectKit?.(event.target.value)} style={{ ...controlStyle, minWidth: 180, padding: '8px 10px', fontSize: readableTextSize(12) }}>
                     {kits.map(kit => <option key={kit.id} value={kit.id}>{kit.title}</option>)}
                   </select>
                 </label>
@@ -180,7 +181,7 @@ export function JourneyHome({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 15 }}>
                 <Pill>{activeKit.interviewType || 'Technical'}</Pill>
                 {activeKit.yearsExp && <Pill>{activeKit.yearsExp}</Pill>}
-                <span style={{ color: T.text3, fontSize: 11 }}>{kitContextCount(activeKit, !previewMode)} context item{kitContextCount(activeKit, !previewMode) === 1 ? '' : 's'} saved</span>
+                <span style={{ color: T.text3, fontSize: readableTextSize(11) }}>{kitContextCount(activeKit, !previewMode)} context item{kitContextCount(activeKit, !previewMode) === 1 ? '' : 's'} saved</span>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                   <Button variant="quiet" onClick={onOpenKits}>Edit Kit</Button>
                   <Button variant="secondary" onClick={onStartPractice}>Practice</Button>
@@ -190,8 +191,8 @@ export function JourneyHome({
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 220 }}>
-                <div style={{ color: T.text1, fontSize: 15, fontWeight: 650 }}>Create your first Interview Kit</div>
-                <div style={{ color: T.text2, fontSize: 12, lineHeight: 1.55, marginTop: 4 }}>Add a role, company, or interview materials. Kits stay separate from your shared profile.</div>
+                <div style={{ color: T.text1, fontSize: readableTextSize(15), fontWeight: 650 }}>Create your first Interview Kit</div>
+                <div style={{ color: T.text2, fontSize: readableTextSize(12), lineHeight: 1.55, marginTop: 4 }}>Add a role, company, or interview materials. Kits stay separate from your shared profile.</div>
               </div>
               <Button variant="primary" onClick={onOpenKits}>Create a Kit →</Button>
             </div>
@@ -202,10 +203,10 @@ export function JourneyHome({
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
               <Eyebrow color="#5eead4">BEFORE THE CALL</Eyebrow>
-              <span aria-hidden="true" style={{ color: '#5eead4', fontSize: 18 }}>↗</span>
+              <span aria-hidden="true" style={{ color: '#5eead4', fontSize: readableTextSize(18) }}>↗</span>
             </div>
-            <div style={{ color: T.text1, font: `600 18px ${T.fontDisplay}`, marginTop: 11 }}>One calm preflight.</div>
-            <div style={{ color: T.text2, fontSize: 12, lineHeight: 1.55, marginTop: 5 }}>Check the real AI round trip, microphone transcription, and screen-share privacy—without guessing from a configured key.</div>
+            <div style={{ color: T.text1, font: `600 ${readableTextSize(18)}px ${T.fontDisplay}`, marginTop: 11 }}>One calm preflight.</div>
+            <div style={{ color: T.text2, fontSize: readableTextSize(12), lineHeight: 1.55, marginTop: 5 }}>Check the real AI round trip, microphone transcription, and screen-share privacy—without guessing from a configured key.</div>
           </div>
           <Button variant="primary" onClick={onOpenReadyRoom} style={{ alignSelf: 'flex-start', marginTop: 17 }}>Review readiness →</Button>
         </div>
@@ -213,18 +214,18 @@ export function JourneyHome({
 
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 11 }}>
         <button type="button" onClick={onOpenKits} style={{ ...panelStyle, display: 'flex', alignItems: 'center', gap: 12, padding: 14, cursor: 'pointer', textAlign: 'left', color: 'inherit' }}>
-          <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', color: '#5eead4', background: 'rgba(20,184,166,0.12)', fontSize: 17 }}>▤</span>
-          <span style={{ flex: 1 }}><strong style={{ display: 'block', color: T.text1, fontSize: 12.5 }}>Interview Kits</strong><span style={{ color: T.text3, fontSize: 10.5 }}>{kits.length} saved</span></span>
+          <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', color: '#5eead4', background: 'rgba(20,184,166,0.12)', fontSize: readableTextSize(17) }}>▤</span>
+          <span style={{ flex: 1 }}><strong style={{ display: 'block', color: T.text1, fontSize: readableTextSize(12.5) }}>Interview Kits</strong><span style={{ color: T.text3, fontSize: readableTextSize(10.5) }}>{kits.length} saved</span></span>
           <span style={{ color: T.text3 }}>→</span>
         </button>
         <button type="button" onClick={onStartPractice} style={{ ...panelStyle, display: 'flex', alignItems: 'center', gap: 12, padding: 14, cursor: 'pointer', textAlign: 'left', color: 'inherit' }}>
-          <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', color: '#c4b5fd', background: 'rgba(139,92,246,0.12)', fontSize: 17 }}>◉</span>
-          <span style={{ flex: 1 }}><strong style={{ display: 'block', color: T.text1, fontSize: 12.5 }}>Solo Practice</strong><span style={{ color: T.text3, fontSize: 10.5 }}>Use the active Kit’s snapshot</span></span>
+          <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', color: '#c4b5fd', background: 'rgba(139,92,246,0.12)', fontSize: readableTextSize(17) }}>◉</span>
+          <span style={{ flex: 1 }}><strong style={{ display: 'block', color: T.text1, fontSize: readableTextSize(12.5) }}>Solo Practice</strong><span style={{ color: T.text3, fontSize: readableTextSize(10.5) }}>Use the active Kit’s snapshot</span></span>
           <span style={{ color: T.text3 }}>→</span>
         </button>
         <button type="button" onClick={onSettings} style={{ ...panelStyle, display: 'flex', alignItems: 'center', gap: 12, padding: 14, cursor: 'pointer', textAlign: 'left', color: 'inherit' }}>
-          <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', color: '#fbbf24', background: 'rgba(245,158,11,0.1)', fontSize: 17 }}>⚙</span>
-          <span style={{ flex: 1 }}><strong style={{ display: 'block', color: T.text1, fontSize: 12.5 }}>AI & Voice settings</strong><span style={{ color: T.text3, fontSize: 10.5 }}>Manage local keys and providers</span></span>
+          <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', color: '#fbbf24', background: 'rgba(245,158,11,0.1)', fontSize: readableTextSize(17) }}>⚙</span>
+          <span style={{ flex: 1 }}><strong style={{ display: 'block', color: T.text1, fontSize: readableTextSize(12.5) }}>AI & Voice settings</strong><span style={{ color: T.text3, fontSize: readableTextSize(10.5) }}>Manage local keys and providers</span></span>
           <span style={{ color: T.text3 }}>→</span>
         </button>
       </section>
@@ -233,16 +234,16 @@ export function JourneyHome({
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: recent.length ? 8 : 0 }}>
           <div style={{ flex: 1 }}>
             <Eyebrow>RECENT SESSIONS</Eyebrow>
-            <div style={{ color: T.text2, fontSize: 11, marginTop: 4 }}>Your past practice stays below the next-step actions.</div>
+            <div style={{ color: T.text2, fontSize: readableTextSize(11), marginTop: 4 }}>Your past practice stays below the next-step actions.</div>
           </div>
           {sessions.length > 0 && <Button variant="quiet" onClick={onOpenHistory}>View history →</Button>}
         </div>
         {recent.length === 0 ? (
-          <div style={{ color: T.text3, fontSize: 12, padding: '11px 0 2px' }}>No completed sessions yet. Start with a Kit or run a Solo practice.</div>
+          <div style={{ color: T.text3, fontSize: readableTextSize(12), padding: '11px 0 2px' }}>No completed sessions yet. Start with a Kit or run a Solo practice.</div>
         ) : recent.map(session => (
           <button key={session.id} type="button" onClick={onOpenHistory} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '10px 2px', border: 0, borderTop: `1px solid ${T.border}`, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
-            <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(255,255,255,0.05)', display: 'grid', placeItems: 'center', fontSize: 13 }}>◷</span>
-            <span style={{ flex: 1, minWidth: 0 }}><strong style={{ display: 'block', color: T.text1, fontSize: 12, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{session.kitSnapshot?.name || session.label || 'Interview session'}</strong><span style={{ display: 'block', color: T.text3, fontSize: 10.5, marginTop: 2 }}>{formatDate(session.ts)}{session.mode ? ` · ${session.mode === 'live' ? 'Live' : 'Solo'}` : ''}</span></span>
+            <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(255,255,255,0.05)', display: 'grid', placeItems: 'center', fontSize: readableTextSize(13) }}>◷</span>
+            <span style={{ flex: 1, minWidth: 0 }}><strong style={{ display: 'block', color: T.text1, fontSize: readableTextSize(12), overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{session.kitSnapshot?.name || session.label || 'Interview session'}</strong><span style={{ display: 'block', color: T.text3, fontSize: readableTextSize(10.5), marginTop: 2 }}>{formatDate(session.ts)}{session.mode ? ` · ${session.mode === 'live' ? 'Live' : 'Solo'}` : ''}</span></span>
             {typeof session.score === 'number' && <Pill tone={session.score >= 75 ? 'teal' : 'amber'}>{(session.score / 10).toFixed(1)}/10</Pill>}
             <span style={{ color: T.text3 }}>›</span>
           </button>
@@ -256,20 +257,20 @@ export function JourneyHome({
 
 function TextField({ label, value, onChange, placeholder = '', maxLength, help, type = 'text' }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, color: T.text2, fontSize: 11.5, fontWeight: 600 }}>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, color: T.text2, fontSize: readableTextSize(11.5), fontWeight: 600 }}>
       {label}
       <input type={type} value={value || ''} maxLength={maxLength} placeholder={placeholder} onChange={event => onChange(event.target.value)} style={controlStyle} />
-      {help && <span style={{ color: T.text3, fontSize: 10.5, fontWeight: 400, lineHeight: 1.45 }}>{help}</span>}
+      {help && <span style={{ color: T.text3, fontSize: readableTextSize(10.5), fontWeight: 400, lineHeight: 1.45 }}>{help}</span>}
     </label>
   )
 }
 
 function TextAreaField({ label, value, onChange, placeholder = '', maxLength, rows = 6, help }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, color: T.text2, fontSize: 11.5, fontWeight: 600 }}>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, color: T.text2, fontSize: readableTextSize(11.5), fontWeight: 600 }}>
       {label}
       <textarea value={value || ''} maxLength={maxLength} rows={rows} placeholder={placeholder} onChange={event => onChange(event.target.value)} style={{ ...controlStyle, resize: 'vertical', lineHeight: 1.55 }} />
-      <span style={{ display: 'flex', justifyContent: 'space-between', gap: 10, color: T.text3, fontSize: 10.5, fontWeight: 400, lineHeight: 1.45 }}>
+      <span style={{ display: 'flex', justifyContent: 'space-between', gap: 10, color: T.text3, fontSize: readableTextSize(10.5), fontWeight: 400, lineHeight: 1.45 }}>
         <span>{help || 'Stored locally with this Kit.'}</span><span>{String(value || '').length.toLocaleString()} / {maxLength.toLocaleString()}</span>
       </span>
     </label>
@@ -337,21 +338,21 @@ export function InterviewKitsScreen({
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, .72fr) minmax(420px, 1.28fr)', gap: 15, alignItems: 'start' }} className="mm-kit-layout">
         <section style={{ ...panelStyle, padding: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '2px 2px 12px' }}>
-            <div><Eyebrow>YOUR KIT LIBRARY</Eyebrow><div style={{ color: T.text3, fontSize: 10.5, marginTop: 4 }}>{kits.length} of 30 saved</div></div>
+            <div><Eyebrow>YOUR KIT LIBRARY</Eyebrow><div style={{ color: T.text3, fontSize: readableTextSize(10.5), marginTop: 4 }}>{kits.length} of 30 saved</div></div>
             {kits.length > 0 && <Pill tone="teal">{kits.length} ACTIVE OPTION{kits.length === 1 ? '' : 'S'}</Pill>}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
             {kits.map(kit => <KitMiniCard key={kit.id} kit={kit} active={kit.id === activeKitId} previewMode={previewMode} onSelect={() => { onActivate?.(kit.id); selectKit(kit.id) }} onEdit={() => selectKit(kit.id)} />)}
-            {kits.length === 0 && <div style={{ padding: '22px 13px', textAlign: 'center', color: T.text3, fontSize: 12, lineHeight: 1.55 }}>No Kits yet. Create one for an upcoming role; your shared profile stays untouched.</div>}
+            {kits.length === 0 && <div style={{ padding: '22px 13px', textAlign: 'center', color: T.text3, fontSize: readableTextSize(12), lineHeight: 1.55 }}>No Kits yet. Create one for an upcoming role; your shared profile stays untouched.</div>}
           </div>
-          <div style={{ color: T.text3, fontSize: 10.5, lineHeight: 1.5, borderTop: `1px solid ${T.border}`, padding: '12px 2px 2px', marginTop: 12 }}>Completed sessions store a local snapshot of this Kit’s role, resume, job description, notes, and selected document IDs alongside the transcript. Deleting the Kit won’t rewrite past sessions.</div>
+          <div style={{ color: T.text3, fontSize: readableTextSize(10.5), lineHeight: 1.5, borderTop: `1px solid ${T.border}`, padding: '12px 2px 2px', marginTop: 12 }}>Completed sessions store a local snapshot of this Kit’s role, resume, job description, notes, and selected document IDs alongside the transcript. Deleting the Kit won’t rewrite past sessions.</div>
         </section>
 
         <section style={{ ...panelStyle, padding: '18px clamp(14px, 3vw, 22px)' }}>
           {draft ? (
             <>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 17 }}>
-                <div style={{ flex: 1, minWidth: 200 }}><Eyebrow>EDITING KIT</Eyebrow><div style={{ color: T.text1, font: `600 18px ${T.fontDisplay}`, marginTop: 5 }}>{draft.title || 'Untitled interview kit'}</div><div style={{ color: T.text3, fontSize: 10.5, marginTop: 3 }}>Updated {formatDate(draft.updatedAt || draft.createdAt)}</div></div>
+                <div style={{ flex: 1, minWidth: 200 }}><Eyebrow>EDITING KIT</Eyebrow><div style={{ color: T.text1, font: `600 ${readableTextSize(18)}px ${T.fontDisplay}`, marginTop: 5 }}>{draft.title || 'Untitled interview kit'}</div><div style={{ color: T.text3, fontSize: readableTextSize(10.5), marginTop: 3 }}>Updated {formatDate(draft.updatedAt || draft.createdAt)}</div></div>
                 <Button variant="quiet" onClick={openInReadyRoom}>Open in Ready Room →</Button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 11 }}>
@@ -360,9 +361,9 @@ export function InterviewKitsScreen({
                 <TextField label="Target role" value={draft.targetRole} maxLength={120} placeholder="e.g. Senior Backend Engineer" onChange={value => patch('targetRole', value)} />
                 <TextField label="Company" value={draft.targetCompany} maxLength={120} placeholder="e.g. Acme" onChange={value => patch('targetCompany', value)} />
                 <TextField label="Experience / level" value={draft.yearsExp} maxLength={80} placeholder="e.g. 6 years · Senior" onChange={value => patch('yearsExp', value)} />
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 6, color: T.text2, fontSize: 11.5, fontWeight: 600 }}>Interview type<select value={draft.interviewType} onChange={event => patch('interviewType', event.target.value)} style={controlStyle}>{['Technical', 'Behavioral', 'System Design', 'Mixed'].map(value => <option key={value}>{value}</option>)}</select></label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 6, color: T.text2, fontSize: 11.5, fontWeight: 600 }}>Interview language<select value={draft.language} onChange={event => patch('language', event.target.value)} style={controlStyle}>{LANGUAGES.map(value => <option key={value}>{value}</option>)}</select></label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 6, color: T.text2, fontSize: 11.5, fontWeight: 600 }}>Interviewer tone<select value={draft.voiceStyle} onChange={event => patch('voiceStyle', event.target.value)} style={controlStyle}>{['Professional', 'Friendly', 'Concise', 'Detailed'].map(value => <option key={value}>{value}</option>)}</select></label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 6, color: T.text2, fontSize: readableTextSize(11.5), fontWeight: 600 }}>Interview type<select value={draft.interviewType} onChange={event => patch('interviewType', event.target.value)} style={controlStyle}>{['Technical', 'Behavioral', 'System Design', 'Mixed'].map(value => <option key={value}>{value}</option>)}</select></label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 6, color: T.text2, fontSize: readableTextSize(11.5), fontWeight: 600 }}>Interview language<select value={draft.language} onChange={event => patch('language', event.target.value)} style={controlStyle}>{LANGUAGES.map(value => <option key={value}>{value}</option>)}</select></label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 6, color: T.text2, fontSize: readableTextSize(11.5), fontWeight: 600 }}>Interviewer tone<select value={draft.voiceStyle} onChange={event => patch('voiceStyle', event.target.value)} style={controlStyle}>{['Professional', 'Friendly', 'Concise', 'Detailed'].map(value => <option key={value}>{value}</option>)}</select></label>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
                 <TextAreaField label="Resume / candidate background" value={draft.resume} maxLength={40_000} rows={7} placeholder="Paste the version of your resume you want this Kit to use…" onChange={value => patch('resume', value)} help="Used as Kit context for this interview. Stored locally on this device." />
@@ -370,25 +371,25 @@ export function InterviewKitsScreen({
                 <TextAreaField label="Interview focus / notes" value={draft.customPrompt} maxLength={3_000} rows={3} placeholder="Optional: areas to probe, important constraints, or coaching focus…" onChange={value => patch('customPrompt', value)} help="Optional instructions for this Kit’s practice/live session." />
               </div>
               <div style={{ marginTop: 15 }}>
-                <div style={{ color: T.text1, fontSize: 12.5, fontWeight: 700, marginBottom: 5 }}>Supporting materials for this Kit</div>
-                <div style={{ color: T.text3, fontSize: 11, lineHeight: 1.5, marginBottom: 8 }}>Attach project notes, case studies, or role-specific knowledge. Checked files are available only to this Kit in practice and Live.</div>
+                <div style={{ color: T.text1, fontSize: readableTextSize(12.5), fontWeight: 700, marginBottom: 5 }}>Supporting materials for this Kit</div>
+                <div style={{ color: T.text3, fontSize: readableTextSize(11), lineHeight: 1.5, marginBottom: 8 }}>Attach project notes, case studies, or role-specific knowledge. Checked files are available only to this Kit in practice and Live.</div>
                 {previewMode
-                  ? <div role="note" style={{ padding: '10px 12px', border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text3, fontSize: 11, lineHeight: 1.5 }}>File upload and selection are available in the desktop app. This design preview does not read or save attachments.</div>
+                  ? <div role="note" style={{ padding: '10px 12px', border: `1px solid ${T.border}`, borderRadius: T.rCtrl, color: T.text3, fontSize: readableTextSize(11), lineHeight: 1.5 }}>File upload and selection are available in the desktop app. This design preview does not read or save attachments.</div>
                   : <Documents key={draft.id} kitId={draft.id} hideBioTypes onLibraryChange={() => setDocumentsRevision(revision => revision + 1)} />}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', borderTop: `1px solid ${T.border}`, paddingTop: 14, marginTop: 17 }}>
                 <Button variant="primary" disabled={!dirty} onClick={save}>Save Kit</Button>
                 <Button variant="secondary" onClick={openInReadyRoom}>Ready Room →</Button>
                 <Button variant="quiet" onClick={remove} style={{ marginLeft: 'auto' }}>Delete</Button>
-                {saveMessage && <span role="status" style={{ width: '100%', color: saveMessage.startsWith('Could not') ? '#fda4af' : '#5eead4', fontSize: 11.5 }}>{saveMessage}</span>}
+                {saveMessage && <span role="status" style={{ width: '100%', color: saveMessage.startsWith('Could not') ? '#fda4af' : '#5eead4', fontSize: readableTextSize(11.5) }}>{saveMessage}</span>}
               </div>
             </>
           ) : (
             <div style={{ minHeight: 390, display: 'grid', placeItems: 'center', textAlign: 'center', padding: 24 }}>
               <div style={{ maxWidth: 400 }}>
-                <div style={{ width: 58, height: 58, borderRadius: 17, margin: '0 auto 13px', display: 'grid', placeItems: 'center', background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.25)', color: '#5eead4', fontSize: 25 }}>▤</div>
-                <div style={{ color: T.text1, font: `600 20px ${T.fontDisplay}` }}>A context that travels with the role.</div>
-                <div style={{ color: T.text2, fontSize: 12.5, lineHeight: 1.6, marginTop: 7 }}>Create an Interview Kit to keep your resume, job description, and focus together without overwriting the shared profile.</div>
+                <div style={{ width: 58, height: 58, borderRadius: 17, margin: '0 auto 13px', display: 'grid', placeItems: 'center', background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.25)', color: '#5eead4', fontSize: readableTextSize(25) }}>▤</div>
+                <div style={{ color: T.text1, font: `600 ${readableTextSize(20)}px ${T.fontDisplay}` }}>A context that travels with the role.</div>
+                <div style={{ color: T.text2, fontSize: readableTextSize(12.5), lineHeight: 1.6, marginTop: 7 }}>Create an Interview Kit to keep your resume, job description, and focus together without overwriting the shared profile.</div>
                 <Button variant="primary" onClick={create} style={{ marginTop: 17 }}>＋ Create your first Kit</Button>
               </div>
             </div>
@@ -407,13 +408,13 @@ function CheckCard({ number, title, status, statusText, children, action, tone }
         : { color: T.text3, bg: 'rgba(255,255,255,0.06)', icon: number }
   return (
     <section style={{ ...panelStyle, display: 'flex', gap: 13, padding: 15, borderColor: circle.color === '#5eead4' ? 'rgba(20,184,166,0.24)' : T.border }}>
-      <div aria-hidden="true" style={{ width: 31, height: 31, borderRadius: 10, flexShrink: 0, display: 'grid', placeItems: 'center', color: circle.color, background: circle.bg, fontSize: 12, fontWeight: 800 }}>{circle.icon}</div>
+      <div aria-hidden="true" style={{ width: 31, height: 31, borderRadius: 10, flexShrink: 0, display: 'grid', placeItems: 'center', color: circle.color, background: circle.bg, fontSize: readableTextSize(12), fontWeight: 800 }}>{circle.icon}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <h2 style={{ margin: 0, color: T.text1, fontSize: 13.5, fontWeight: 700 }}>{title}</h2>
+          <h2 style={{ margin: 0, color: T.text1, fontSize: readableTextSize(13.5), fontWeight: 700 }}>{title}</h2>
           <Pill tone={tone || statusTone(status)}>{statusText}</Pill>
         </div>
-        <div style={{ color: T.text2, fontSize: 11.5, lineHeight: 1.55, marginTop: 6 }}>{children}</div>
+        <div style={{ color: T.text2, fontSize: readableTextSize(11.5), lineHeight: 1.55, marginTop: 6 }}>{children}</div>
         {action && <div style={{ marginTop: 11 }}>{action}</div>}
       </div>
     </section>
@@ -766,8 +767,8 @@ export function ReadyRoom({
 
       {!kit ? (
         <section className="mm-panel" style={{ padding: 24, textAlign: 'center', maxWidth: 680, margin: '0 auto' }}>
-          <div style={{ color: 'var(--color-accent)', fontSize: 26, marginBottom: 9 }}>▤</div>
-          <h2 className="mm-title" style={{ fontSize: 21, fontWeight: 600, margin: '0 0 7px' }}>Choose the context you'll bring.</h2>
+          <div style={{ color: 'var(--color-accent)', fontSize: readableTextSize(26), marginBottom: 9 }}>▤</div>
+          <h2 className="mm-title" style={{ fontSize: readableTextSize(21), fontWeight: 600, margin: '0 0 7px' }}>Choose the context you'll bring.</h2>
           <p className="mm-body-muted" style={{ margin: '0 auto 15px', maxWidth: 470 }}>A Kit keeps this role's resume and job description separate from your shared profile. Create or select one before running the Live preflight.</p>
           <Button variant="primary" onClick={onOpenKits}>Open Interview Kits →</Button>
         </section>
@@ -778,8 +779,8 @@ export function ReadyRoom({
                   hidden — the Live readiness panel below it owns the only primary action. */}
               <section style={{ ...panelStyle, padding: 16, background: 'linear-gradient(145deg, rgba(20,184,166,0.11), rgba(18,21,27,0.98) 62%)' }}>
                 <Eyebrow>THIS SESSION</Eyebrow>
-                <div style={{ color: T.text1, font: `600 17px ${T.fontDisplay}`, marginTop: 9 }}>{kit.title}</div>
-                <div style={{ color: T.text2, fontSize: 11.5, lineHeight: 1.55, marginTop: 5 }}>{[kit.targetRole, kit.targetCompany].filter(Boolean).join(' · ') || 'Add a target role or company in the Kit.'}</div>
+                <div style={{ color: T.text1, font: `600 ${readableTextSize(17)}px ${T.fontDisplay}`, marginTop: 9 }}>{kit.title}</div>
+                <div style={{ color: T.text2, fontSize: readableTextSize(11.5), lineHeight: 1.55, marginTop: 5 }}>{[kit.targetRole, kit.targetCompany].filter(Boolean).join(' · ') || 'Add a target role or company in the Kit.'}</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 11 }}><Pill>{kit.interviewType || 'Technical'}</Pill>{kit.yearsExp && <Pill>{kit.yearsExp}</Pill>}<Pill>{kit.language || 'English'}</Pill></div>
                 <Button variant="quiet" onClick={() => onEditKit?.(kit)} style={{ marginTop: 13, width: '100%' }}>Edit Kit context</Button>
               </section>
@@ -804,7 +805,7 @@ export function ReadyRoom({
                   : !providerReady && service.status === 'ready'
                     ? 'No configured AI provider was reported by the current service. Add or select one in Settings.'
                     : aiTest.message || 'A provider is configured, but has not completed a real test request in this Ready Room.'}
-                <div style={{ color: T.text3, fontSize: 10.5, lineHeight: 1.5, marginTop: 7 }}>The test sends one short generic question to the configured AI provider and may use API credits. It does not send this Kit, resume, or job description.</div>
+                <div style={{ color: T.text3, fontSize: readableTextSize(10.5), lineHeight: 1.5, marginTop: 7 }}>The test sends one short generic question to the configured AI provider and may use API credits. It does not send this Kit, resume, or job description.</div>
               </CheckCard>
 
               <CheckCard number="03" title={audioSource === 'microphone' ? 'Microphone → Deepgram' : 'System Audio → Deepgram'} status={voiceStatus} statusText={voiceStatusText} action={
@@ -827,10 +828,10 @@ export function ReadyRoom({
                     {audioSources.map(source => <option key={source.id} value={source.id}>System Audio — {source.name}</option>)}
                   </select>
                 </label>
-                <div style={{ color: T.text3, fontSize: 10.5, lineHeight: 1.5, marginTop: 7 }}>The test captures the selected source for up to 10 seconds and sends audio to Deepgram; provider usage may apply. The transcript is not saved to the Kit or session history.</div>
-                <div style={{ color: T.text2, fontSize: 11, lineHeight: 1.5, marginTop: 7 }}>Use System Audio for meeting playback. Test with your headphones connected, and speak while playback is paused to check for echo or monitoring. If your own voice appears in system capture, check the meeting and OS audio settings. Changing the output device requires another test.</div>
-                {voice.active && <div aria-live="polite" style={{ color: '#5eead4', fontSize: 11, marginTop: 6 }}>{voice.interim ? `Hearing: ${voice.interim}` : 'Listening—play or speak a short sentence, then pause.'}</div>}
-                {voiceTranscript && <div role="status" style={{ padding: '7px 9px', marginTop: 8, borderRadius: 8, background: 'rgba(20,184,166,0.08)', color: T.text1, fontSize: 11.5 }}><strong>Transcript:</strong> {voiceTranscript}</div>}
+                <div style={{ color: T.text3, fontSize: readableTextSize(10.5), lineHeight: 1.5, marginTop: 7 }}>The test captures the selected source for up to 10 seconds and sends audio to Deepgram; provider usage may apply. The transcript is not saved to the Kit or session history.</div>
+                <div style={{ color: T.text2, fontSize: readableTextSize(11), lineHeight: 1.5, marginTop: 7 }}>Use System Audio for meeting playback. Test with your headphones connected, and speak while playback is paused to check for echo or monitoring. If your own voice appears in system capture, check the meeting and OS audio settings. Changing the output device requires another test.</div>
+                {voice.active && <div aria-live="polite" style={{ color: '#5eead4', fontSize: readableTextSize(11), marginTop: 6 }}>{voice.interim ? `Hearing: ${voice.interim}` : 'Listening—play or speak a short sentence, then pause.'}</div>}
+                {voiceTranscript && <div role="status" style={{ padding: '7px 9px', marginTop: 8, borderRadius: 8, background: 'rgba(20,184,166,0.08)', color: T.text1, fontSize: readableTextSize(11.5) }}><strong>Transcript:</strong> {voiceTranscript}</div>}
               </CheckCard>
 
               <div ref={checkRef}>
@@ -838,7 +839,7 @@ export function ReadyRoom({
                   {isLinux ? (
                     <>
                       <div style={{ color: '#fcd34d', marginBottom: 8 }}>Linux does not support this overlay’s stealth capture protection. MockMate may be visible to other people in a screen share or recording.</div>
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: T.text1, fontSize: 11.5, cursor: 'pointer' }}><input type="checkbox" checked={linuxAcknowledged} disabled={previewMode} onChange={event => setLinuxAcknowledged(event.target.checked)} style={{ marginTop: 2 }} /><span>I understand the overlay remains visible on Linux and accept that risk before opening Live.</span></label>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: T.text1, fontSize: readableTextSize(11.5), cursor: 'pointer' }}><input type="checkbox" checked={linuxAcknowledged} disabled={previewMode} onChange={event => setLinuxAcknowledged(event.target.checked)} style={{ marginTop: 2 }} /><span>I understand the overlay remains visible on Linux and accept that risk before opening Live.</span></label>
                     </>
                   ) : (
                     <>
@@ -847,9 +848,9 @@ export function ReadyRoom({
                         <Button variant="secondary" disabled={privacyBusy || previewMode} onClick={applyProtection}>{previewMode ? 'OS test disabled in preview' : privacyBusy ? 'Applying…' : protectionStatus === 'passed' ? 'Re-apply protection' : 'Apply OS protection'}</Button>
                       </div>
                       <div style={{ marginTop: 10, padding: 10, borderRadius: 9, background: 'rgba(255,255,255,0.035)', border: `1px solid ${T.border}` }}>
-                        <div style={{ color: T.text1, fontWeight: 650, fontSize: 11.5, marginBottom: 6 }}>Manual preview check</div>
-                        <div style={{ color: T.text3, fontSize: 10.5, lineHeight: 1.5, marginBottom: 8 }}>Open the meeting’s share preview or test share. Confirm MockMate is not visible there. Protection being applied is not proof of this.</div>
-                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: T.text2, fontSize: 11, lineHeight: 1.45, cursor: protectionStatus === 'passed' ? 'pointer' : 'not-allowed', opacity: protectionStatus === 'passed' ? 1 : 0.55 }}><input type="checkbox" checked={sharePreviewConfirmed} disabled={previewMode || protectionStatus !== 'passed'} onChange={event => setSharePreviewConfirmed(event.target.checked)} style={{ marginTop: 2 }} /><span>I checked the meeting share preview and MockMate is not visible.</span></label>
+                        <div style={{ color: T.text1, fontWeight: 650, fontSize: readableTextSize(11.5), marginBottom: 6 }}>Manual preview check</div>
+                        <div style={{ color: T.text3, fontSize: readableTextSize(10.5), lineHeight: 1.5, marginBottom: 8 }}>Open the meeting’s share preview or test share. Confirm MockMate is not visible there. Protection being applied is not proof of this.</div>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: T.text2, fontSize: readableTextSize(11), lineHeight: 1.45, cursor: protectionStatus === 'passed' ? 'pointer' : 'not-allowed', opacity: protectionStatus === 'passed' ? 1 : 0.55 }}><input type="checkbox" checked={sharePreviewConfirmed} disabled={previewMode || protectionStatus !== 'passed'} onChange={event => setSharePreviewConfirmed(event.target.checked)} style={{ marginTop: 2 }} /><span>I checked the meeting share preview and MockMate is not visible.</span></label>
                       </div>
                     </>
                   )}
@@ -858,22 +859,22 @@ export function ReadyRoom({
 
             <section style={{ ...panelStyle, padding: 16 }} aria-label="Live readiness">
               <Eyebrow>LIVE READINESS</Eyebrow>
-              <div style={{ color: T.text1, fontSize: 13, fontWeight: 700, marginTop: 9 }}>{allReady ? 'Checks complete' : 'A few checks remain'}</div>
-              <div style={{ color: T.text2, fontSize: 11, lineHeight: 1.55, marginTop: 5 }}>{allReady ? 'Continue to the existing Live setup. Its final start gate remains in place.' : 'Each status is based on a real test or an explicit manual confirmation—not just a saved setting.'}</div>
+              <div style={{ color: T.text1, fontSize: readableTextSize(13), fontWeight: 700, marginTop: 9 }}>{allReady ? 'Checks complete' : 'A few checks remain'}</div>
+              <div style={{ color: T.text2, fontSize: readableTextSize(11), lineHeight: 1.55, marginTop: 5 }}>{allReady ? 'Continue to the existing Live setup. Its final start gate remains in place.' : 'Each status is based on a real test or an explicit manual confirmation—not just a saved setting.'}</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px 10px', alignItems: 'center', borderTop: `1px solid ${T.border}`, paddingTop: 12, marginTop: 13 }}>
-                <span style={{ color: T.text3, fontSize: 10.5 }}>Kit context</span><Pill tone={contextReady ? 'teal' : 'red'}>{contextReady ? 'OK' : 'Pending'}</Pill>
-                <span style={{ color: T.text3, fontSize: 10.5 }}>AI round trip</span><Pill tone={aiTest.status === 'passed' ? 'teal' : 'neutral'}>{aiTest.status === 'passed' ? 'OK' : 'Pending'}</Pill>
-                <span style={{ color: T.text3, fontSize: 10.5 }}>{audioSource === 'microphone' ? 'Microphone transcript' : 'System transcript'}</span><Pill tone={voiceTest.status === 'passed' ? 'teal' : 'neutral'}>{voiceTest.status === 'passed' ? 'OK' : 'Pending'}</Pill>
-                <span style={{ color: T.text3, fontSize: 10.5 }}>Privacy check</span><Pill tone={privacyReady ? 'teal' : 'neutral'}>{privacyReady ? 'OK' : 'Pending'}</Pill>
+                <span style={{ color: T.text3, fontSize: readableTextSize(10.5) }}>Kit context</span><Pill tone={contextReady ? 'teal' : 'red'}>{contextReady ? 'OK' : 'Pending'}</Pill>
+                <span style={{ color: T.text3, fontSize: readableTextSize(10.5) }}>AI round trip</span><Pill tone={aiTest.status === 'passed' ? 'teal' : 'neutral'}>{aiTest.status === 'passed' ? 'OK' : 'Pending'}</Pill>
+                <span style={{ color: T.text3, fontSize: readableTextSize(10.5) }}>{audioSource === 'microphone' ? 'Microphone transcript' : 'System transcript'}</span><Pill tone={voiceTest.status === 'passed' ? 'teal' : 'neutral'}>{voiceTest.status === 'passed' ? 'OK' : 'Pending'}</Pill>
+                <span style={{ color: T.text3, fontSize: readableTextSize(10.5) }}>Privacy check</span><Pill tone={privacyReady ? 'teal' : 'neutral'}>{privacyReady ? 'OK' : 'Pending'}</Pill>
               </div>
             </section>
 
             <section style={{ ...panelStyle, padding: 15, borderColor: allReady ? 'rgba(20,184,166,0.4)' : T.border }}>
-              <Button variant="primary" data-mm-ready-room-primary="1" disabled={previewMode || aiBusy || service.status === 'checking' || (voiceTest.status === 'listening' && voice.active)} onClick={primaryAction} style={{ width: '100%', minHeight: 45, fontSize: 13 }}>
+              <Button variant="primary" data-mm-ready-room-primary="1" disabled={previewMode || aiBusy || service.status === 'checking' || (voiceTest.status === 'listening' && voice.active)} onClick={primaryAction} style={{ width: '100%', minHeight: 45, fontSize: readableTextSize(13) }}>
                 {allReady ? 'Continue to Live setup →' : primaryLabel || 'Complete readiness checks'}
               </Button>
-              {!allReady && <div role="status" style={{ color: primaryMessage ? '#fcd34d' : T.text3, fontSize: 10.5, lineHeight: 1.5, marginTop: 8 }}>{primaryMessage || 'Choose the next action above. You can return here at any time.'}</div>}
-              <div style={{ color: T.text3, fontSize: 10, lineHeight: 1.5, marginTop: 10 }}>Passing this room does not start a call or audio capture. Live’s existing start gate still checks its required platform protections and inputs.</div>
+              {!allReady && <div role="status" style={{ color: primaryMessage ? '#fcd34d' : T.text3, fontSize: readableTextSize(10.5), lineHeight: 1.5, marginTop: 8 }}>{primaryMessage || 'Choose the next action above. You can return here at any time.'}</div>}
+              <div style={{ color: T.text3, fontSize: readableTextSize(10), lineHeight: 1.5, marginTop: 10 }}>Passing this room does not start a call or audio capture. Live’s existing start gate still checks its required platform protections and inputs.</div>
             </section>
           </div>
         </>

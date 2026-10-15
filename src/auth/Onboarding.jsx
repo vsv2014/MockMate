@@ -1,3 +1,4 @@
+import { readableTextSize } from '../lib/typography.js'
 import React, { useRef, useState } from 'react'
 import { T } from './tokens'
 import { AuthShell, brandMark } from './AuthShell'
@@ -79,8 +80,8 @@ export default function Onboarding({ onComplete }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 20 }}>
         {brandMark(34)}
         <div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: T.text1 }}>Set up MockMate</div>
-          <div style={{ fontSize: 12, fontWeight: 400, color: T.text2 }}>Personalise your practice</div>
+          <div style={{ fontSize: readableTextSize(15), fontWeight: 600, color: T.text1 }}>Set up MockMate</div>
+          <div style={{ fontSize: readableTextSize(12), fontWeight: 400, color: T.text2 }}>Personalise your practice</div>
         </div>
       </div>
 
@@ -103,7 +104,7 @@ export default function Onboarding({ onComplete }) {
         </>
       ) : (
         <>
-          <div style={{ fontSize: 12, fontWeight: 400, color: T.text2, marginBottom: 12, lineHeight: 1.5 }}>
+          <div style={{ fontSize: readableTextSize(12), fontWeight: 400, color: T.text2, marginBottom: 12, lineHeight: 1.5 }}>
             Add your resume to tailor questions and unlock ATS scoring. It stays on this device.
           </div>
 
@@ -127,10 +128,10 @@ export default function Onboarding({ onComplete }) {
               }}
             >
               <UploadIcon aria-hidden="true" />
-              <span style={{ display: 'block', marginTop: 10, fontSize: 13, fontWeight: 500, color: T.text1 }}>
+              <span style={{ display: 'block', marginTop: 10, fontSize: readableTextSize(13), fontWeight: 500, color: T.text1 }}>
                 Drag &amp; drop your resume
               </span>
-              <span style={{ display: 'block', marginTop: 3, fontSize: 11, fontWeight: 400, color: T.text3 }}>
+              <span style={{ display: 'block', marginTop: 3, fontSize: readableTextSize(11), fontWeight: 400, color: T.text3 }}>
                 or <span style={{ color: T.accentFrom }}>browse</span> · PDF · max 5MB
               </span>
             </button>
@@ -141,10 +142,10 @@ export default function Onboarding({ onComplete }) {
             }}>
               <FileIcon />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: T.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: readableTextSize(13), fontWeight: 500, color: T.text1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {resume.name}
                 </div>
-                <div role="status" aria-live="polite" style={{ fontSize: 11, fontWeight: 400, color: resume.status === 'ready' ? T.success : (resume.status === 'parsing' ? T.text3 : '#fbbf24'), display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div role="status" aria-live="polite" style={{ fontSize: readableTextSize(11), fontWeight: 400, color: resume.status === 'ready' ? T.success : (resume.status === 'parsing' ? T.text3 : '#fbbf24'), display: 'flex', alignItems: 'center', gap: 5 }}>
                   {resume.status === 'parsing' && <><Spinner /> Reading…</>}
                   {resume.status === 'ready' && <><CheckIcon /> Ready · text extracted</>}
                   {resume.status === 'empty' && <>⚠ No text found — paste your resume in Solo or Career</>}
@@ -153,12 +154,12 @@ export default function Onboarding({ onComplete }) {
               <button
                 type="button" onClick={() => { uploadSeq.current += 1; setResume(null); setFileError(null); if (inputRef.current) inputRef.current.value = '' }}
                 aria-label="Remove resume"
-                style={{ background: 'transparent', border: 'none', color: T.text3, cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 4 }}
+                style={{ background: 'transparent', border: 'none', color: T.text3, cursor: 'pointer', fontSize: readableTextSize(18), lineHeight: 1, padding: 4 }}
               >×</button>
             </div>
           )}
 
-          {fileError && <div role="alert" aria-live="assertive" style={{ marginTop: 10, fontSize: 11, color: T.danger }}>{fileError}</div>}
+          {fileError && <div role="alert" aria-live="assertive" style={{ marginTop: 10, fontSize: readableTextSize(11), color: T.danger }}>{fileError}</div>}
           <FormError>{saveError}</FormError>
 
           <div style={{ marginTop: 20 }}>
@@ -180,7 +181,7 @@ export default function Onboarding({ onComplete }) {
 function ChipGroup({ label, options, value, onChange }) {
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 11, fontWeight: 500, color: T.text2, marginBottom: 8, letterSpacing: '0.2px' }}>{label}</div>
+      <div style={{ fontSize: readableTextSize(11), fontWeight: 500, color: T.text2, marginBottom: 8, letterSpacing: '0.2px' }}>{label}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {options.map(opt => {
           const on = value === opt
@@ -188,7 +189,7 @@ function ChipGroup({ label, options, value, onChange }) {
             <button
               key={opt} type="button" onClick={() => onChange(on ? '' : opt)} aria-pressed={on}
               style={{
-                fontFamily: T.font, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                fontFamily: T.font, fontSize: readableTextSize(13), fontWeight: 500, cursor: 'pointer',
                 padding: '8px 14px', borderRadius: 999,
                 color: on ? '#fff' : T.text2,
                 background: on ? T.accent : T.surface2,

@@ -1,3 +1,4 @@
+import { readableTextSize } from '../lib/typography.js'
 import React, { useState, useEffect } from 'react'
 import { T } from '../auth/tokens'
 import { apiFetch } from '../lib/apiClient'
@@ -64,11 +65,11 @@ export default function ProductIntelligencePanel() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: T.text1 }}>
+            <span style={{ fontSize: readableTextSize(13), fontWeight: 600, color: T.text1 }}>
               Product insights
             </span>
             <span style={{
-              fontSize: 9.5,
+              fontSize: readableTextSize(9.5),
               fontWeight: 700,
               fontFamily: T.fontMono,
               padding: '2px 7px',
@@ -81,10 +82,10 @@ export default function ProductIntelligencePanel() {
               ON THIS DEVICE · METADATA ONLY
             </span>
           </div>
-          <div style={{ fontSize: 11.5, color: T.text2, marginTop: 2, lineHeight: 1.45 }}>
+          <div style={{ fontSize: readableTextSize(11.5), color: T.text2, marginTop: 2, lineHeight: 1.45 }}>
             Shows where flows stall, which features get used and where repeated clicks happen. Stored only on this device as event names, counts, timings and fixed control identifiers — <strong>never</strong> résumé or document text, interview questions, transcripts, answers, prompts, API keys, screenshots, audio, or text shown on buttons.
           </div>
-          <div style={{ fontSize: 10.5, color: T.text3, marginTop: 3, lineHeight: 1.45 }}>
+          <div style={{ fontSize: readableTextSize(10.5), color: T.text3, marginTop: 3, lineHeight: 1.45 }}>
             This covers usage insights only. Your résumé, documents, saved jobs and interview history are kept by those features on this device, and the parts a feature needs are sent to the AI and transcription providers you configure when you use it.
           </div>
         </div>
@@ -98,7 +99,7 @@ export default function ProductIntelligencePanel() {
             color: expanded ? '#5eead4' : T.text1,
             border: `1px solid ${expanded ? 'rgba(45,212,191,0.4)' : T.borderStrong}`,
             borderRadius: T.rCtrl,
-            fontSize: 11.5,
+            fontSize: readableTextSize(11.5),
             fontWeight: 600,
             cursor: 'pointer',
             fontFamily: T.font,
@@ -117,7 +118,7 @@ export default function ProductIntelligencePanel() {
               color: T.text3,
               border: `1px solid ${T.border}`,
               borderRadius: T.rCtrl,
-              fontSize: 11.5,
+              fontSize: readableTextSize(11.5),
               cursor: 'pointer',
               fontFamily: T.font,
             }}
@@ -150,13 +151,13 @@ export default function ProductIntelligencePanel() {
                   borderRadius: 8,
                   background: bg,
                   border: `1px solid ${accent}33`,
-                  fontSize: 11.5,
+                  fontSize: readableTextSize(11.5),
                   color: T.text1,
                 }}
               >
                 <span style={{
                   fontFamily: T.fontMono,
-                  fontSize: 11,
+                  fontSize: readableTextSize(11),
                   fontWeight: 700,
                   color: accent,
                   minWidth: 38,
@@ -184,13 +185,13 @@ export default function ProductIntelligencePanel() {
                 borderRadius: 8,
                 background: 'rgba(139,92,246,0.08)',
                 border: '1px solid rgba(167,139,250,0.28)',
-                fontSize: 11.5,
+                fontSize: readableTextSize(11.5),
                 color: T.text1,
               }}
             >
               <span style={{
                 fontFamily: T.fontMono,
-                fontSize: 10,
+                fontSize: readableTextSize(10),
                 fontWeight: 700,
                 color: '#c4b5fd',
                 padding: '2px 6px',
@@ -216,7 +217,7 @@ export default function ProductIntelligencePanel() {
                     border: '1px solid rgba(167,139,250,0.45)',
                     background: 'rgba(139,92,246,0.22)',
                     color: '#ddd6fe',
-                    fontSize: 10.5,
+                    fontSize: readableTextSize(10.5),
                     fontWeight: 600,
                     cursor: 'pointer',
                     fontFamily: T.font,
@@ -229,7 +230,7 @@ export default function ProductIntelligencePanel() {
             </div>
           ))}
           {appliedActionMsg && (
-            <div role="status" style={{ fontSize: 11, color: '#5eead4', fontWeight: 600 }}>
+            <div role="status" style={{ fontSize: readableTextSize(11), color: '#5eead4', fontWeight: 600 }}>
               {appliedActionMsg}
             </div>
           )}
@@ -240,7 +241,7 @@ export default function ProductIntelligencePanel() {
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {/* Feature Adoption Strip */}
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.text3, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>
+            <div style={{ fontSize: readableTextSize(10), fontWeight: 700, color: T.text3, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>
               Feature Usage & Workflow Signals
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 6 }}>
@@ -258,8 +259,8 @@ export default function ProductIntelligencePanel() {
                   border: `1px solid ${T.border}`,
                   borderRadius: 7,
                 }}>
-                  <div style={{ fontFamily: T.fontMono, fontSize: 14, fontWeight: 700, color: T.text1 }}>{m.val}</div>
-                  <div style={{ fontSize: 10.5, color: T.text3, marginTop: 1 }}>{m.label}</div>
+                  <div style={{ fontFamily: T.fontMono, fontSize: readableTextSize(14), fontWeight: 700, color: T.text1 }}>{m.val}</div>
+                  <div style={{ fontSize: readableTextSize(10.5), color: T.text3, marginTop: 1 }}>{m.label}</div>
                 </div>
               ))}
             </div>
@@ -268,12 +269,12 @@ export default function ProductIntelligencePanel() {
           {/* Funnel Step Conversion */}
           {[liveFunnel, soloFunnel].filter(Boolean).map(funnel => (
             <div key={funnel.id}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.text3, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>
+              <div style={{ fontSize: readableTextSize(10), fontWeight: 700, color: T.text3, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>
                 {funnel.label} ({funnel.entryCount} session{funnel.entryCount === 1 ? '' : 's'})
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {funnel.steps.map(step => (
-                  <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
+                  <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: readableTextSize(11) }}>
                     <span style={{ width: 140, color: T.text2, flexShrink: 0 }}>{step.label}</span>
                     <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 999, overflow: 'hidden' }}>
                       <div style={{
@@ -283,10 +284,10 @@ export default function ProductIntelligencePanel() {
                         borderRadius: 999,
                       }} />
                     </div>
-                    <span style={{ fontFamily: T.fontMono, fontSize: 10.5, color: T.text1, minWidth: 32, textAlign: 'right' }}>
+                    <span style={{ fontFamily: T.fontMono, fontSize: readableTextSize(10.5), color: T.text1, minWidth: 32, textAlign: 'right' }}>
                       {step.count}
                     </span>
-                    <span style={{ fontFamily: T.fontMono, fontSize: 10, color: step.dropOffPct >= 35 ? '#fbbf24' : T.text3, minWidth: 64, textAlign: 'right' }}>
+                    <span style={{ fontFamily: T.fontMono, fontSize: readableTextSize(10), color: step.dropOffPct >= 35 ? '#fbbf24' : T.text3, minWidth: 64, textAlign: 'right' }}>
                       {step.dropOffPct > 0 ? `-${step.dropOffPct}% drop` : `${step.conversionPct}%`}
                     </span>
                   </div>
@@ -306,10 +307,10 @@ export default function ProductIntelligencePanel() {
             border: `1px solid ${T.border}`,
           }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: T.text1 }}>
+              <div style={{ fontSize: readableTextSize(11.5), fontWeight: 600, color: T.text1 }}>
                 Include usage breadcrumbs in diagnostic logs (default OFF)
               </div>
-              <div style={{ fontSize: 10.5, color: T.text3, marginTop: 1 }}>
+              <div style={{ fontSize: readableTextSize(10.5), color: T.text3, marginTop: 1 }}>
                 When on, the same metadata-only events are also written to the local diagnostics log, so an exported log bundle includes them. When off, they stay only in this panel. Nothing is uploaded; you decide whether to share an exported bundle.
               </div>
             </div>
@@ -325,7 +326,7 @@ export default function ProductIntelligencePanel() {
                 border: `1px solid ${optInReplay ? 'rgba(45,212,191,0.5)' : T.borderStrong}`,
                 background: optInReplay ? 'rgba(20,184,166,0.2)' : T.surface2,
                 color: optInReplay ? '#5eead4' : T.text3,
-                fontSize: 11,
+                fontSize: readableTextSize(11),
                 fontWeight: 700,
                 cursor: 'pointer',
                 fontFamily: T.fontMono,

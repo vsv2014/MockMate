@@ -1,3 +1,4 @@
+import { readableTextSize } from '../lib/typography.js'
 import React, { useState } from 'react'
 import { T } from './tokens'
 import { AuthShell, brandMark } from './AuthShell'
@@ -55,12 +56,12 @@ export default function Signup({ onSubmit, onSwitchToLogin }) {
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 22 }}>
         {brandMark(40)}
         <h1 style={{
-          marginTop: 14, fontSize: 22, fontWeight: 600, letterSpacing: '0.2px',
+          marginTop: 14, fontSize: readableTextSize(22), fontWeight: 600, letterSpacing: '0.2px',
           background: T.chrome, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent',
         }}>Create your account</h1>
-        <p style={{ marginTop: 4, fontSize: 13, fontWeight: 400, color: T.text2 }}>Practice. Go live. Get hired.</p>
+        <p style={{ marginTop: 4, fontSize: readableTextSize(13), fontWeight: 400, color: T.text2 }}>Practice. Go live. Get hired.</p>
         {usesDeviceLocalAccounts && (
-          <p style={{ margin: '8px 0 0', maxWidth: 330, textAlign: 'center', fontSize: 10.5, lineHeight: 1.45, color: T.text3 }}>
+          <p style={{ margin: '8px 0 0', maxWidth: 330, textAlign: 'center', fontSize: readableTextSize(10.5), lineHeight: 1.45, color: T.text3 }}>
             This build creates a device-local account. It will not automatically work on another computer.
           </p>
         )}
@@ -96,7 +97,7 @@ export default function Signup({ onSubmit, onSwitchToLogin }) {
 
       <div style={{
         marginTop: 22, paddingTop: 18, borderTop: `1px solid ${T.border}`,
-        textAlign: 'center', fontSize: 13, fontWeight: 400, color: T.text2,
+        textAlign: 'center', fontSize: readableTextSize(13), fontWeight: 400, color: T.text2,
       }}>
         Already have an account?{' '}
         <TextLink strong onClick={onSwitchToLogin}>Sign in instead</TextLink>

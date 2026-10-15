@@ -1,3 +1,4 @@
+import { readableTextSize } from '../lib/typography.js'
 import React, { useState } from 'react'
 import { T } from './tokens'
 import { AuthShell, brandMark } from './AuthShell'
@@ -47,12 +48,12 @@ export default function Login({ onSubmit, onSwitchToSignup, onForgot, onGuest, o
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24 }}>
         {brandMark(40)}
         <h1 style={{
-          marginTop: 14, fontSize: 22, fontWeight: 600, letterSpacing: '0.2px',
+          marginTop: 14, fontSize: readableTextSize(22), fontWeight: 600, letterSpacing: '0.2px',
           background: T.chrome, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent',
         }}>Welcome back</h1>
-        <p style={{ marginTop: 4, fontSize: 13, fontWeight: 400, color: T.text2 }}>Sign in to continue to MockMate</p>
+        <p style={{ marginTop: 4, fontSize: readableTextSize(13), fontWeight: 400, color: T.text2 }}>Sign in to continue to MockMate</p>
         {usesDeviceLocalAccounts && (
-          <p style={{ margin: '8px 0 0', maxWidth: 330, textAlign: 'center', fontSize: 10.5, lineHeight: 1.45, color: T.text3 }}>
+          <p style={{ margin: '8px 0 0', maxWidth: 330, textAlign: 'center', fontSize: readableTextSize(10.5), lineHeight: 1.45, color: T.text3 }}>
             This build stores accounts on this device. An account created on another computer will not appear here.
           </p>
         )}
@@ -75,7 +76,7 @@ export default function Login({ onSubmit, onSwitchToSignup, onForgot, onGuest, o
         {unverified && onResendVerification && (
           <div style={{ textAlign: 'center', marginBottom: 6 }}>
             {verifyResent
-              ? <span style={{ fontSize: 12, color: T.text2 }}>Verification email sent again — check your inbox.</span>
+              ? <span style={{ fontSize: readableTextSize(12), color: T.text2 }}>Verification email sent again — check your inbox.</span>
               : <TextLink onClick={async () => {
                   try { await onResendVerification(email.trim()); setVerifyResent(true) } catch {}
                 }}>Resend verification email</TextLink>}
@@ -88,7 +89,7 @@ export default function Login({ onSubmit, onSwitchToSignup, onForgot, onGuest, o
 
         {onForgot && <div style={{ textAlign: 'center', marginTop: 14 }}>
           {forgotSent
-            ? <span style={{ fontSize: 12, color: T.text2, lineHeight: 1.5 }}>If an account exists for that email, a reset link is on its way.</span>
+            ? <span style={{ fontSize: readableTextSize(12), color: T.text2, lineHeight: 1.5 }}>If an account exists for that email, a reset link is on its way.</span>
             : <TextLink onClick={async () => {
                 if (!email.trim()) { setError('Enter your email above to reset it.'); return }
                 if (forgotBusy) return
@@ -107,7 +108,7 @@ export default function Login({ onSubmit, onSwitchToSignup, onForgot, onGuest, o
 
       <div style={{
         marginTop: 22, paddingTop: 18, borderTop: `1px solid ${T.border}`,
-        textAlign: 'center', fontSize: 13, fontWeight: 400, color: T.text2,
+        textAlign: 'center', fontSize: readableTextSize(13), fontWeight: 400, color: T.text2,
       }}>
         New to MockMate?{' '}
         <TextLink strong onClick={onSwitchToSignup}>Create an account</TextLink>
