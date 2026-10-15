@@ -129,5 +129,11 @@
     "userSetup": "minimal",
     "reasoningExecution": "existing-resilient-core-adapter",
     "noDoubleRetry": true
+  },
+  "answerQuality": {
+    "version": "answer_quality_v1",
+    "codingBudgets": { "concise": 3600, "balanced": 4800, "detailed": 6000 },
+    "validation": "structural_only",
+    "automaticRepairAfterVisibleOutput": false
   }
 }

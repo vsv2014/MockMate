@@ -56,6 +56,10 @@ describe('API route contract', () => {
     expect(src).toMatch(/from ['"]\.\/api\/_lib\/apiRoutes\.js['"]/)
   })
 
+  it.each(['output_truncated','code_missing','code_unfinished'])('does not classify quality issue %s as provider availability failure', code => {
+    expect(isProviderFailureError(Object.assign(new Error(code),{code,status:502}))).toBe(false)
+  })
+
   it('isProviderFailureError ignores client disconnects/aborts and 400 validation errors while counting real provider errors', () => {
     const ac = new AbortController()
     ac.abort()

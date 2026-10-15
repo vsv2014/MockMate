@@ -11,6 +11,7 @@ import { isQuotaExhausted, isRateLimit, isTransient } from '../../shared/llm-err
 
 export function isProviderFailureError(e, { closed = false, signal = null } = {}) {
   if (closed || signal?.aborted || e?.name === 'AbortError' || e?.message === 'client_disconnected') return false
+  if (['output_truncated','code_missing','code_unfinished'].includes(e?.code)) return false
   if (e?.code === 'SCREEN_EMPTY' || e?.status === 400 || e?.statusCode === 400) return false
   const status = Number(e?.status ?? e?.statusCode ?? 0)
   if (status === 401 || status === 402 || status === 403 || status === 408 || status === 429 || status >= 500) return true

@@ -223,3 +223,68 @@ describe('JSON evaluator cancellation', () => {
     expect(calls).toHaveLength(1)
   })
 })
+
+describe('token-limit completion is incomplete, not provider success', () => {
+  it('retains partial stream text and surfaces output_truncated without failover', async () => {
+    process.env.GROQ_API_KEY='test-groq';process.env.OPENAI_API_KEY='test-openai'
+    script=() => ({ async *[Symbol.asyncIterator]() {
+      yield { choices:[{ delta:{ content:'```ts\nfunction partial() {' } }] }
+      yield { choices:[{ delta:{},finish_reason:'length' }] }
+    } })
+    const core=await import('./core.js')
+    const {tokens,error}=await runStream(core,{provider:'groq'})
+    expect(tokens.join('')).toContain('function partial')
+    expect(error.code).toBe('output_truncated');expect(calls).toHaveLength(1)
+  })
+})
+
+describe('JSON output truncation', () => {
+  it('does not classify a cut-off JSON answer as success or retry the same output cap', async () => {
+    process.env.GROQ_API_KEY='test-groq'
+    script=() => ({ choices:[{ message:{ content:'{"fullAnswer":"partial' },finish_reason:'length' }] })
+    const core=await import('./core.js')
+    await expect(core.completeJSON({messages:[],provider:'groq'})).rejects.toMatchObject({code:'output_truncated'})
+    expect(calls).toHaveLength(1)
+  })
+})
+
+describe('ARCH completeness policy reaches both hint transports', () => {
+  const classification={questionType:'dsa',classifierVersion:'quality-test',playbookKey:'dsa',roleFamily:'engineering',contextNeeds:{}}
+  const fullCode='```javascript\nfunction solution(nums) { return nums.length; }\nconsole.log(solution([1,2]));\n```'
+  it('sends the larger coding budget and implementation rule on streaming', async () => {
+    process.env.GROQ_API_KEY='test-groq'
+    script=(_params,opts) => tokenStream(['META: {"type":"dsa","confidence":"general"}\n',fullCode],opts)
+    const {streamHint}=await import('./interview.js')
+    const tokens=[]
+    await streamHint({question:'Implement a solution for this array problem',classification,style:'concise',provider:'groq',autoSkip:false},{onToken:t=>tokens.push(t)})
+    expect(calls[0].params.max_completion_tokens || calls[0].params.max_tokens).toBeGreaterThanOrEqual(3600)
+    expect(calls[0].params.messages[0].content).toContain('IMPLEMENTATION CONTRACT')
+    expect(tokens.join('')).toContain(fullCode)
+  })
+  it('sends the same policy and preserves complete fenced code on the JSON fallback', async () => {
+    process.env.GROQ_API_KEY='test-groq'
+    script=()=>({choices:[{message:{content:JSON.stringify({type:'dsa',confidence:'general',fullAnswer:fullCode})}}]})
+    const {generateHint}=await import('./interview.js')
+    const answer=await generateHint({question:'Implement a solution for this array problem',classification,style:'concise',provider:'groq',autoSkip:false})
+    expect(calls[0].params.max_completion_tokens || calls[0].params.max_tokens).toBeGreaterThanOrEqual(3600)
+    expect(answer.fullAnswer).toContain(fullCode)
+    expect(answer._routing.answerPolicy).toBe('answer_quality_v1')
+  })
+  it('does not label a prose-only DSA response as a complete implementation', async () => {
+    process.env.GROQ_API_KEY='test-groq'
+    script=(_params,opts)=>tokenStream(['META: {"type":"dsa","confidence":"general"}\nUse a hashmap.'],opts)
+    const {streamHint}=await import('./interview.js')
+    await expect(streamHint({question:'Implement a solution for this array problem',classification,provider:'groq',autoSkip:false},{})).rejects.toMatchObject({code:'code_missing'})
+    expect(calls).toHaveLength(1)
+  })
+})
+
+describe('JSON envelopes containing code', () => {
+  it('preserves inner fences and array syntax while fixing an outer trailing comma', async () => {
+    process.env.GROQ_API_KEY='test-groq'
+    const core=await import('./core.js')
+    const code='```javascript\nconst sparse=[1,,];\nconsole.log(sparse[1]);\n```'
+    const raw=JSON.stringify({fullAnswer:code}).replace(/}$/,',}')
+    expect(core.extractJSON(raw).fullAnswer).toBe(code)
+  })
+})
