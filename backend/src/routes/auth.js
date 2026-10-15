@@ -1,3 +1,4 @@
+import { envFlag } from '../hostedConfig.js'
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
@@ -195,7 +196,7 @@ function sameValue(a, b) {
 router.get('/google', (req, res) => {
   if (!googleConfigReady()) return res.status(503).json({ error: 'Google sign-in is not configured' })
   const state = crypto.randomBytes(24).toString('base64url')
-  res.cookie('mm_google_oauth_state', state, { httpOnly: true, sameSite: 'lax', secure: req.secure || ['1', 'true'].includes(String(process.env.MOCKMATE_HOSTED || '').toLowerCase()), maxAge: GOOGLE_STATE_TTL_MS, path: '/auth/google/callback' })
+  res.cookie('mm_google_oauth_state', state, { httpOnly: true, sameSite: 'lax', secure: req.secure || envFlag('MOCKMATE_HOSTED'), maxAge: GOOGLE_STATE_TTL_MS, path: '/auth/google/callback' })
   const params = new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: process.env.GOOGLE_REDIRECT_URI, response_type: 'code', scope: 'openid email profile', access_type: 'offline', prompt: 'select_account', state })
   res.redirect('https://accounts.google.com/o/oauth2/v2/auth?' + params)
 })

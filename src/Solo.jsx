@@ -125,7 +125,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
     }).catch(() => {
       setSetupError('Could not load AI providers — check your connection, then refresh.')
     })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
   useEffect(() => { trackProductEvent('solo_setup') }, [])
 
   const [transcript, setTranscript] = useState([])
@@ -261,7 +261,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
     if (speech.interim && speech.interim.trim()) {
       cancelAutoSubmit()
     } else if (answerRef.current.trim()) scheduleAutoSubmit()
-  }, [speech.interim]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [speech.interim])
 
   function resumeMicFor(ttsG) {
     if (!ttsGen.current.isCurrent(ttsG)) return

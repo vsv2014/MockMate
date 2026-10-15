@@ -122,7 +122,7 @@ function makeFileBackend() {
       const r = db.usage.find(x => String(x.userId) === String(userId) && x.period === period)
       if (!r) return true
       r.llmCalls = Math.max(0, r.llmCalls - delta)
-      try { await persist() } catch {}
+      await persist()
       return true
     },
     // STT mirrors the LLM reserve/release pattern (round-6 review): streaming grants
@@ -142,7 +142,7 @@ function makeFileBackend() {
       const r = db.usage.find(x => String(x.userId) === String(userId) && x.period === period)
       if (!r) return true
       r.sttSeconds = Math.max(0, r.sttSeconds - delta)
-      try { await persist() } catch {}
+      await persist()
       return true
     },
   }
@@ -174,7 +174,7 @@ async function makeMongoBackend() {
     isReady() { return mongoose.connection.readyState === 1 },
     async close() { if (mongoose.connection.readyState !== 0) await mongoose.disconnect() },
     async findUserByEmail(email) { return lean(await User.findOne({ email: (email || '').toLowerCase() })) },
-    async findUserById(id) { try { return lean(await User.findById(id)) } catch { return null } },
+    async findUserById(id) { try { return lean(await User.findById(id)) } catch (error) { console.error('[store] findUserById query failed:', error?.name || 'database_error'); return null } },
     async findUserByGoogleId(googleId) { return lean(await User.findOne({ googleId })) },
     async findUserByResetToken(hash) { return lean(await User.findOne({ resetTokenHash: hash })) },
     async findUserByVerifyToken(hash) { return lean(await User.findOne({ verifyTokenHash: hash })) },

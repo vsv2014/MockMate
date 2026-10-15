@@ -409,7 +409,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       }
       scheduleReconnect('connection dropped')
     }
-  }, [abandonSocket, fail]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [abandonSocket, fail])
 
   function failOrDegrade(reason) {
     if (!degradedAudio.current) {

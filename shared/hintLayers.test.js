@@ -104,3 +104,28 @@ describe('sanitizeSpokenProse (Artemis-style streaming output guardrail)', () =>
     expect(out).toContain('const a: string[] = [x];')
   })
 })
+
+
+describe('Live fenced code preservation through metadata stripping and glance layers', () => {
+  it('preserves arrays, indexing and SAY strings byte-for-byte while cleaning prose', () => {
+    const code = '```javascript\nconst a = [1, 2];\nconsole.log(a[0]);\nconsole.log("SAY: [X]");\n```'
+    const input = 'META: {"type":"coding","confidence":"grounded"}\nSAY: Use [X] buckets.\n\n' + code
+    const output = glanceLayers(input).fullAnswer
+    expect(output).toContain(code)
+    expect(output.slice(0, output.indexOf('```'))).not.toContain('[X]')
+    expect(output.slice(0, output.indexOf('```'))).not.toContain('SAY:')
+    expect(glanceLayers(code).fullAnswer).toBe(code)
+  })
+
+  it('preserves ordinary JSON code and unfinished code during streaming', () => {
+    const json = '```json\n{"type":"widget","items":[1,2]}\n```'
+    expect(stripHintMeta(json).prose).toBe(json)
+    const partial = '```js\nconst a = [1, 2];\nconsole.log("SAY:", a[0]);'
+    expect(glanceLayers(partial).fullAnswer).toBe(partial)
+  })
+
+  it('still extracts a leading fenced interview META header', () => {
+    const input = '```json\n{"type":"technical","confidence":"general"}\n```\nUse a queue.'
+    expect(stripHintMeta(input)).toMatchObject({ meta: { type: 'technical' }, prose: 'Use a queue.' })
+  })
+})

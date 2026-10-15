@@ -167,7 +167,6 @@ function openUrl(url) {
 }
 export async function startCheckout() { const { url } = await request('/billing/checkout', { method: 'POST', auth: true }); if (url) openUrl(url); return url }
 export async function openBillingPortal() { const { url } = await request('/billing/portal', { method: 'POST', auth: true }); if (url) openUrl(url); return url }
-export async function reconcileBilling() { return request('/billing/reconcile', { method: 'POST', auth: true }) }
 export function startGoogleAuth() { openUrl(`${API_BASE}/auth/google`) }
 export async function consumeOAuthRedirectToken() {
   if (typeof window === 'undefined' || !window.location?.search) return null

@@ -1,3 +1,4 @@
+import { publicProxyDisabled } from './_lib/publicProxyGuard.js'
 import { applyArchReasoningPolicy, streamHintOverSse } from './_lib/apiRoutes.js'
 
 // Thin serverless wrapper: the SSE implementation lives in streamHintOverSse
@@ -6,9 +7,7 @@ import { applyArchReasoningPolicy, streamHintOverSse } from './_lib/apiRoutes.js
 // deploys have no managed metering.
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
-  if (process.env.VERCEL && process.env.MOCKMATE_ALLOW_PUBLIC_API !== '1') {
-    return res.status(403).json({ error: 'Public API deploy disabled. Use the managed auth backend.' })
-  }
+  if (publicProxyDisabled(res)) return
   const rawBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
   await streamHintOverSse(req, res, applyArchReasoningPolicy('/api/hint-stream', rawBody))
 }

@@ -1,5 +1,7 @@
 # MockMate Debris Audit — v1.4.x → v1.6.4
 
+> Historical report. Superseded by the v1.6.6 audit; fixed/retracted items are not current defects.
+
 Archaeological survey of the repository at commit `24fa4de` (branch `arena/9745b96d-mockmate`).
 Scope: everything except `node_modules`, `.git`. Method per category is stated inline.
 Findings marked **(inferred)** could not be proven by static analysis alone.
@@ -725,7 +727,6 @@ The repo is better than average here (`shared/liveTiming.js` names the four core
 12. **G.1-9** 9 removable npm packages (4 with zero imports, 5 anchored only by dead files). (Medium→High in aggregate)
 13. **H.3** `.env.example:44-49` — documented Anthropic overrides pin users to a superseded model generation. (Medium)
 14. **P.1** `api/_lib/playbooks.js:85` — `customer_scenario` playbook unreachable via routing. (Medium)
-15. **C.3 / H.2** `api/_lib/core.js:1062` — `/* continue failover */` above a `break`; vision quota never fails over. (Medium)
 16. **I.4** `api/_lib/apiRoutes.js:144-253` — metering callbacks swallowed; managed quota enforcement can silently degrade. (Medium)
 17. **M.5 / F.4** `MOCKMATE_HOSTED` parsed with different truth tables (`'1'` vs `'1'|'true'`) across core.js/arch.js/apiRoutes.js. (Medium)
 18. **J.8** `src/ApiKeys.jsx:181` client 12 s timeout vs server 8 s abort for the same provider test. (Medium)
@@ -756,7 +757,6 @@ The repo is better than average here (`shared/liveTiming.js` names the four core
 - `DashboardHome` (B.3) — large, verify no dynamic reference
 - `reconcileBilling`/`startGoogleAuth` + server halves (B.5, B.6, O.3) — delete or finish
 - Classifier dead branches & role-family mismatch (C.1, C.2, P.1, P.2) — behavior-affecting
-- Vision quota failover no-op (C.3/H.2) — possible live bug
 - Server-side product-event buffer (C.4/O.2) and ABL surface pruning
 - All swallowed-error entries I.1-I.6, I.8, I.10
 - Timeout/magic-number alignments (J.1, J.3, J.5, J.8)

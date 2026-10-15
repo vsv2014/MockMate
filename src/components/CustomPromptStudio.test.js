@@ -52,6 +52,17 @@ describe('CustomPromptStudio helpers & compiler integration', () => {
     expect(second).toBe(first)
   })
 
+  it('does not report saved or deleted presets when scoped storage rejects the write', () => {
+    const original = savePlaybookSlot('Existing', 'VOICE: Direct.')
+    vi.stubGlobal('localStorage', {
+      getItem: k => store.get(k) ?? null,
+      setItem: () => { throw new Error('quota') },
+    })
+    expect(savePlaybookSlot('Another', 'VOICE: Clear.')).toBeNull()
+    expect(deletePlaybookSlot(original[0].id)).toBeNull()
+    expect(loadSavedPlaybooks()).toHaveLength(1)
+  })
+
   it('saves, updates, and deletes named playbook presets in scoped storage', () => {
     expect(loadSavedPlaybooks()).toEqual([])
     const afterOne = savePlaybookSlot('Stripe Backend', 'VOICE: Direct.\nAPI/BACKEND: Idempotent.')

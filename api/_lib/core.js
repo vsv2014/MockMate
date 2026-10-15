@@ -1,3 +1,4 @@
+import { REPORT_JSON_FIELDS } from '../../shared/reportSchema.js'
 import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget, claudeLowLatencyThinking, isThinkingModel, modelDisplayName } from '../../shared/modelRegistry.js'
 // Shared logic for the serverless functions (api/*.js) and the local dev server
 // (server.js). Files prefixed with _ are not treated as routes by Vercel.
@@ -6,8 +7,10 @@ import { isCurrentChatModel, isDiscoveredChatModel, isCurrentProviderChoice, isA
 import { analyze } from '../../shared/delivery.js'
 import { fetchWithTimeout } from './http.js'
 import { getRetryAfterMs, isRateLimit, isQuotaExhausted, isTransient } from '../../shared/llm-errors.js'
-import { LIVE_PROVIDER_ATTEMPT_TIMEOUT_MS, LIVE_STREAM_STALL_TIMEOUT_MS } from '../../shared/liveTiming.js'
+import { LIVE_PROVIDER_ATTEMPT_TIMEOUT_MS, LIVE_STREAM_STALL_TIMEOUT_MS, LIVE_SDK_CONNECT_TIMEOUT_MS } from '../../shared/liveTiming.js'
 import {
+  MANAGED_VISION_RATE_MESSAGE,
+  MANAGED_VISION_UNAVAILABLE_MESSAGE,
   filterVisionProviders,
   markVision429Family,
   markVisionSuccess,
@@ -623,7 +626,7 @@ const AI_ERRORS = {
   ],
   vision_none: [
     'Screen analysis needs a vision-capable model — add an OpenAI GPT-6 or Gemini key in Settings (⚙).',
-    'Screen analysis is temporarily unavailable. Please try again, or add your own OpenAI/Gemini key in Settings (⚙).',
+    MANAGED_VISION_UNAVAILABLE_MESSAGE,
   ],
   vision_quota: [
     'Your vision provider reports exhausted usage or credits. Check billing or switch to a separately provisioned vision provider; another key in the same account may share the limit.',
@@ -631,7 +634,7 @@ const AI_ERRORS = {
   ],
   vision_rate: [
     'Your vision provider is temporarily rate-limiting requests. Wait for its reset or configure a separately provisioned vision provider in Settings (⚙).',
-    'Screen analysis is temporarily rate-limited upstream. Please try again after the provider reset.',
+    MANAGED_VISION_RATE_MESSAGE,
   ],
 }
 // Build a user-facing Error with the wording that matches the current deployment mode.
@@ -794,12 +797,12 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
     const attemptId = newProviderAttemptId()
     providerDiagnostic('attempt_started', { attemptId, operation: 'json', provider: provId, model, maxTokens: Object.values(completionBudget(prov, maxTokens, thinkingTokenFloor))[0], attemptIndex: queueIndex, contextChars: JSON.stringify(messages).length })
 
-    // Gemini 2.5 models THINK by default — reasoning silently eats the token
+    // Thinking-by-default Gemini models can consume hidden reasoning tokens — reasoning silently eats the token
     // budget, so the actual answer gets truncated into invalid JSON. Disable it
     // and force a clean JSON object (no ```json fences). Scoped to Gemini so
     // Groq/OpenAI requests are unchanged.
     const isGemini = /gemini/i.test(model)
-    // JSON mode is for OpenAI/Groq only. Gemini 2.5 (OpenAI-compat) 400s on
+    // JSON mode is for OpenAI/Groq only. Gemini OpenAI-compatible requests have rejected
     // response_format:json_object — it just needs reasoning_effort:'none' (set below) to stop
     // its default "thinking" from eating the token budget. This matches streamText, which works.
     const jsonMode = /openai\.com|groq\.com/i.test(prov.baseURL || '')
@@ -1262,7 +1265,7 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
       // first-token deadline below then lets failover run before anything is shown.
       // After the first token only a stall ends the stream (no new text for
       // LIVE_STREAM_STALL_TIMEOUT_MS), so a long, healthy answer is never cut off.
-      const requestOpts = { timeout: 9000, signal: deadline.signal }
+      const requestOpts = { timeout: LIVE_SDK_CONNECT_TIMEOUT_MS, signal: deadline.signal }
       const stream = await createWithThinkingFallback(llm, params, requestOpts, (_e, details = {}) => {
         providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'stream', provider: provId, model, ...details }, 'warn')
       })
@@ -1363,6 +1366,8 @@ export async function deepgramToken(opts = {}) {
   if (fallbackAllowed && (r.status === 403 || r.status === 401)) {
     return {
       access_token: key,
+      // Cache refresh interval only: a long-lived API key is not a five-minute grant.
+      // This does not assert that the key itself expires in one hour.
       expires_in: 3600,
       fallback: 'api_key',
       warning: 'byok_api_key_fallback',
@@ -1474,10 +1479,7 @@ export async function makeReport({ transcript = [], candidateName = 'the candida
 
   const system = `You are a fair, rigorous interview coach. Two real people just did a mock interview. Evaluate the CANDIDATE's performance honestly and specifically, the way a hiring panel would. Both participants will read this, so be constructive.
 Return ONE JSON object, no prose, with this shape:
-{ "overallScore": <0-100 integer>, "verdict": "Strong Hire" | "Hire" | "Lean Hire" | "Lean No Hire" | "No Hire",
-  "dimensions": [ { "name": "<dimension>", "score": <0-5>, "comment": "<specific>" } ],
-  "strengths": [ "<bullet>" ], "improvements": [ "<actionable bullet>" ],
-  "delivery": { "tip": "<one delivery change for next time>" },
+${REPORT_JSON_FIELDS}
   "summary": "<3-5 sentences; the single most important thing to improve>" }`
   const report = await completeJSON({
     maxTokens: 2600, provider,

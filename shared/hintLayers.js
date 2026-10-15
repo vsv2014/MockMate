@@ -67,8 +67,22 @@ export function stripHintMeta(raw = '') {
   let meta = {}
   let pending = false
 
-  // ```json ... ``` wrappers (whole or leading)
-  t = t.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '')
+  // Protect code before META removal; JSON-looking lines inside code are data.
+  // Only a leading JSON fence with an explicit interview metadata shape is unwrapped.
+  const blocks = []
+  let marker = '\uE000MM_CODE_'
+  while (t.includes(marker)) marker += '_'
+  t = t.replace(/```([^\n`]*)\n([\s\S]*?)(?:```|$)/g, (block, language, body, offset) => {
+    if (offset === 0 && language.trim().toLowerCase() === 'json') {
+      try {
+        const obj = JSON.parse(body)
+        if (obj.META || (obj.type && obj.confidence)) return body
+      } catch { /* A partial JSON code fence stays protected until it closes. */ }
+    }
+    const token = `${marker}${blocks.length}\uE001`
+    blocks.push([token, block])
+    return token
+  })
 
   // Leading "META:" line(s)
   while (true) {
@@ -136,6 +150,7 @@ export function stripHintMeta(raw = '') {
   // Drop orphaned "META:" labels with no payload
   t = t.replace(/^\s*META:\s*$/gim, '').trim()
 
+  for (const [token, block] of blocks) t = t.replace(token, () => block)
   return { meta, prose: t, pending }
 }
 
@@ -166,7 +181,7 @@ export function sanitizeSpokenProse(text = '') {
   const raw = String(text || '')
   if (!raw.trim()) return ''
   // Split by fenced code blocks so code is never modified
-  const parts = raw.split(/(```[\s\S]*?```)/g)
+  const parts = raw.split(/(```[\s\S]*?(?:```|$))/g)
   return parts
     .map((part, idx) => {
       if (part.startsWith('```')) return part

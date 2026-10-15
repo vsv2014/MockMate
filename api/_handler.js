@@ -1,3 +1,4 @@
+import { publicProxyDisabled } from './_lib/publicProxyGuard.js'
 // Shared Vercel serverless POST handler — the api/*.js routes were 9× identical
 // boilerplate (method check, body parse, call lib, shape JSON, error status).
 // Leading underscore keeps Vercel from treating this as its own route.
@@ -10,11 +11,7 @@ import { recordArchMetric } from '../backend/src/arch.js'
 export function postHandler(fn, key) {
   return async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
-    if (process.env.VERCEL && process.env.MOCKMATE_ALLOW_PUBLIC_API !== '1') {
-      return res.status(403).json({
-        error: 'Public API deploy disabled. Use the managed auth backend, or set MOCKMATE_ALLOW_PUBLIC_API=1 (not recommended).',
-      })
-    }
+    if (publicProxyDisabled(res)) return
     const startedAt = Date.now()
     const routePath = String(req.url || '').split('?')[0] || '/api/default'
     try {

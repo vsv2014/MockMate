@@ -150,3 +150,16 @@ describe('long Live technical interview benchmark — short turns', () => {
     expect(c.isFollowUp).toBe(false)
   })
 })
+
+
+describe('customer-success/support playbook routing', () => {
+  it('selects the customer scenario for a CSM renewal question', () => {
+    const result = classifyTurn({ question: 'How would you handle a renewal when the customer is considering churn?', profile: { targetRole: 'Customer Success Manager' } })
+    expect(result.questionType).toBe('customer_scenario')
+    expect(result.playbookKey).toBe('customer_scenario')
+  })
+  it('keeps software questions out of the customer playbook', () => {
+    const result = classifyTurn({ question: 'Implement binary search.', profile: { targetRole: 'Customer Support Engineer' } })
+    expect(result.playbookKey).not.toBe('customer_scenario')
+  })
+})

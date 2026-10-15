@@ -214,6 +214,8 @@ export function contextNeedsFor(questionType, { isFollowUp = false, parentType =
   }
 }
 
+// Legacy category aliases are accepted from caller-supplied parent classifications.
+// Current classification emits canonical names; persisted/older callers are not rewritten here.
 function pickPlaybookKey(questionType, roleFamily) {
   switch (questionType) {
     case 'intro': return 'intro'
@@ -333,6 +335,10 @@ export function classifyTurn({
     questionType = 'behavioral'
     confidence = 'high'
   // Sales / product role intents before company — "our product is too expensive" is an objection, not company-fit.
+  } else if (['customer_success', 'customer_support'].includes(roleFamily)
+    && /\b(churn|renewal|onboard(?:ing)?|escalat(?:e|ion)|support ticket|customer complaint|unhappy customer|angry customer|dissatisfied customer)\b/i.test(q)) {
+    questionType = 'customer_scenario'
+    confidence = 'high'
   } else if ((roleFamily === 'sales' || roleFamily === 'business_development') && SALES_RE.test(q)) {
     questionType = 'sales_roleplay'
     confidence = 'high'

@@ -163,7 +163,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       throw error
     } finally { setStatusLoading(false) }
   }
-  useEffect(() => { refresh().catch(error => setProviderStatusError(error?.message || 'Could not refresh provider status.')) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { refresh().catch(error => setProviderStatusError(error?.message || 'Could not refresh provider status.')) }, [])
 
   const set = k => e => {
     const value = e.target.value

@@ -1,3 +1,6 @@
+// Debounce indexing prefetch without changing its independent retrieval deadline.
+const RAG_PREFETCH_DEBOUNCE_MS = 320
+
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { useSystemAudio } from './useSystemAudio'
@@ -148,9 +151,9 @@ function stopSpeaking() { window.speechSynthesis?.cancel() }
 // ── Setup screen ──────────────────────────────────────────────────────────────
 function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardLive, panelSize, stealth, minimized, onStealth, onMinimize, onResize, onDrag, opacity, onOpacity, initialProfile, initialKit, onProfileChange, initialAudioSource }) {
   const kitScoped = Boolean(initialKit?.id && initialProfile)
-  // Automatic chooses the speed/quality lane from the question itself; legacy
-  // Fast/Maximum Quality preferences must not pin sessions to one model tier.
-  const [profile, setProfile] = useState(() => ({ ...loadProfile(), ...(initialProfile || {}), modelStrategy: 'balanced' }))
+  // Preserve the stored strategy rather than silently overriding it.
+  // The server validates supported strategies and defaults to balanced when absent.
+  const [profile, setProfile] = useState(() => ({ ...loadProfile(), ...(initialProfile || {}) }))
   const [audioSources, setAudioSources] = useState([])
   const [sourceId, setSourceId] = useState(initialAudioSource || 'microphone')
   const [providers, setProviders] = useState([])
@@ -238,7 +241,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
       if (!isDevLocal) setShareVerified(false) // a meeting/config change invalidates the prior preview assertion
     })
     return () => { try { off?.() } catch {} }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   async function testCaptureProtection() {
     setProtectionTest({ status: 'testing', message: 'Applying OS capture protection…' })
@@ -719,7 +722,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     if (immediate) {
       launch()
     } else {
-      ragSpec.current.timer = setTimeout(launch, 320)
+      ragSpec.current.timer = setTimeout(launch, RAG_PREFETCH_DEBOUNCE_MS)
     }
   }, [])
 
@@ -773,7 +776,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       },
       onDebug: (evt) => {
         if (typeof localStorage !== 'undefined' && localStorage.getItem('mm-debug-live') === '1') {
-          // eslint-disable-next-line no-console
+
           console.info(formatCaptureDebugLine(evt))
         }
       },
@@ -876,7 +879,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       clearTimeout(postMetaTimerRef.current)
       stopSpeaking()
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   async function openProtectedPip() {
     if (!window.documentPictureInPicture) return
@@ -1235,7 +1238,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     const logTrace = (status) => {
       if (typeof localStorage === 'undefined' || localStorage.getItem('mm-debug-live') !== '1') return
       const trace = state.getDevTrace(questionId, { generationId: gen.generationId, status })
-      // eslint-disable-next-line no-console
+
       console.info(formatInterviewDevTrace({
         ...trace,
         contextSources: ctx.allowed,
@@ -1309,7 +1312,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     }
 
     if (typeof localStorage !== 'undefined' && localStorage.getItem('mm-debug-screen') === '1') {
-      // eslint-disable-next-line no-console
+
       console.info('[MockMate screen]', formatScreenDebugTrace({
         capture: recentScreenRef.current,
         classification,
@@ -1653,7 +1656,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
     if (!hintInFlight.current && trimmed.split(/\s+/).length >= 4) {
       setBuyTimePhrase(thinkingLabel(profileRef.current?.language))
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const onFinal = useCallback((text, meta) => {
     if (!sessionActiveRef.current) return
@@ -1699,7 +1702,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
         degraded: degradedRef.current,
       },
     })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const [liveSourceId, setLiveSourceId] = useState(sourceId)
   const audio = useSystemAudio(onFinal, reason => { metricsRef.current?.markError?.(reason); setError(`Transcription stopped: ${reason}`) }, onEarlyQuestion, () => metricsRef.current?.markSttReconnect?.())
@@ -1773,7 +1776,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       active: audio.active,
       streaming,
     })
-  }, [transcript, hint, hintLoading, buyTimePhrase, pipWindow, audio.active, streaming]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [transcript, hint, hintLoading, buyTimePhrase, pipWindow, audio.active, streaming])
 
   useEffect(() => {
     finalizeOffOnceRef.current = false
@@ -1825,7 +1828,7 @@ function LiveOverlay({ profile, sourceId, provider: initialProvider, onEnd, pane
       }
     })
     return () => { try { offCmd?.() } catch {} }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const [ending, setEnding] = useState(false)
   const evaluationRef = useRef(null)

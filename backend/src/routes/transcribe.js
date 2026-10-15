@@ -128,7 +128,11 @@ async function reserveUploadLease(req) {
 async function releaseLease(req, lease, seconds = lease?.seconds || 0) {
   const delta = Math.max(0, Math.floor(Number(seconds) || 0))
   if (!lease?.period || !delta) return
-  await store().releaseSttUsage(req.userId, lease.period, delta)
+  try { await store().releaseSttUsage(req.userId, lease.period, delta) }
+  catch (error) {
+    console.error('[transcribe] usage release failed:', error?.message)
+    throw error
+  }
 }
 
 async function transcribeWithDeepgram(file, language, signal) {
