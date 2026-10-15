@@ -192,3 +192,34 @@ describe('resolved model budgets and safe rejection diagnostics', () => {
     expect(JSON.stringify(details)).not.toMatch(/Alice|resume|sk-example/)
   })
 })
+
+
+describe('JSON evaluator cancellation', () => {
+  it('does not call a provider for an already aborted request', async () => {
+    process.env.GROQ_API_KEY = 'test-groq'
+    const core = await import('./core.js')
+    const ac = new AbortController(); ac.abort()
+    await expect(core.completeJSON({ messages: [], signal: ac.signal })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(calls).toHaveLength(0)
+  })
+  it('passes cancellation to SDK and never fails over or retries cancelled evaluation', async () => {
+    process.env.GROQ_API_KEY = 'test-groq'; process.env.OPENAI_API_KEY = 'test-openai'
+    const ac = new AbortController()
+    script = (_params, opts) => new Promise((_resolve, reject) => {
+      expect(opts.signal).toBe(ac.signal)
+      opts.signal.addEventListener('abort', () => reject(aborted()), { once: true })
+      ac.abort()
+    })
+    const { evaluateSolo } = await import('./interview.js')
+    await expect(evaluateSolo({ transcript: [{ role: 'candidate', text: 'Answer' }], provider: 'groq', signal: ac.signal })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(calls).toHaveLength(1)
+  })
+  it('cancels retry backoff without issuing a second request', async () => {
+    process.env.GROQ_API_KEY = 'test-groq'
+    const ac = new AbortController()
+    script = () => { setTimeout(() => ac.abort(), 10); throw Object.assign(new Error('busy'), { status: 503 }) }
+    const core = await import('./core.js')
+    await expect(core.completeJSON({ messages: [], provider: 'groq', signal: ac.signal })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(calls).toHaveLength(1)
+  })
+})

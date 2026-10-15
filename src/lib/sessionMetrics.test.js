@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { sanitizeMetric, createSessionMetrics } from './sessionMetrics.js'
 
 describe('sessionMetrics (Phase 6)', () => {
+  it('uses the Live run identity rather than allocating another metrics identity', () => {
+    const m = createSessionMetrics('live', { runId: 'same-run' })
+    expect(m.end().sessionId).toBe('same-run')
+  })
   it('strips transcript/resume-like fields', () => {
     const out = sanitizeMetric({
       ms: 120,
