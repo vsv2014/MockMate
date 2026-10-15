@@ -1,3 +1,4 @@
+import DiagramBlock from './components/DiagramBlock'
 import { showFullCodeDuringStream } from '../shared/answerQuality'
 // Debounce indexing prefetch without changing its independent retrieval deadline.
 const RAG_PREFETCH_DEBOUNCE_MS = 320
@@ -113,7 +114,7 @@ function renderMd(text) {
     const line = lines[i]
     if (line.trim().startsWith('```')) {            // fence open/close
       if (code === null) code = { language: line.trim().slice(3).trim(), lines: [] }
-      else { out.push(<CodeBlock fontScale={2} key={'c' + i} code={code.lines.join('\n')} language={code.language} />); code = null }
+      else { out.push(code.language.toLowerCase() === 'mermaid' ? <DiagramBlock key={'c' + i} source={code.lines.join('\n')} /> : <CodeBlock fontScale={2} key={'c' + i} code={code.lines.join('\n')} language={code.language} />); code = null }
       continue
     }
     if (code !== null) { code.lines.push(line); continue } // inside code — keep raw
@@ -122,14 +123,14 @@ function renderMd(text) {
     if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
       out.push(
         <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 3, alignItems: 'flex-start' }}>
-          <span style={{ color: T.accentFrom, flexShrink: 0, marginTop: 2, fontSize: 10 }}>▸</span>
+          <span style={{ color: T.accentFrom, flexShrink: 0, marginTop: 2, fontSize: 22 }}>▸</span>
           <span>{inlineMd(trimmed.slice(2))}</span>
         </div>
       )
       continue
     }
     if (/^\*\*[^*]+:\*\*/.test(trimmed)) {
-      out.push(<div key={i} style={{ fontWeight: 700, color: '#2dd4bf', fontSize: 11, letterSpacing: '0.04em', marginTop: 8, marginBottom: 3 }}>{inlineMd(trimmed)}</div>)
+      out.push(<div key={i} style={{ fontWeight: 700, color: T.accentFrom, fontSize: 26, letterSpacing: '0.04em', marginTop: 8, marginBottom: 3 }}>{inlineMd(trimmed)}</div>)
       continue
     }
     out.push(<div key={i} style={{ marginBottom: 4 }}>{inlineMd(trimmed)}</div>)
@@ -501,7 +502,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           </select>
         </Field>
 
-        <Field label="Coding language (for screen-capture solutions)" htmlFor="live-coding-language">
+        <Field label="Coding language (spoken and screenshot questions)" htmlFor="live-coding-language">
           <select id="live-coding-language" style={inp} value={profile.codingLanguage || 'Python'} onChange={e => patch({ codingLanguage: e.target.value })}>
             {CODING_LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
           </select>

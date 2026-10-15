@@ -1238,7 +1238,7 @@ export function ScreenAnalysisPanel({ analysis, analyzing, flowStatus, onDismiss
                     ))}
                   </div>
                 )}
-                {activeCodingTab !== 'approach' && record.code && <CodeBlock code={record.code} runnableCode={record.runnableCode} language={record.language} />}
+                {activeCodingTab !== 'approach' && record.code && <CodeBlock fontScale={2} code={record.code} runnableCode={record.runnableCode} language={record.language} />}
                 {activeCodingTab !== 'code' && Array.isArray(record.testCases) && record.testCases.length > 0 && (
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ fontSize: 9, color: T.text3, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>SAMPLE TESTS</div>

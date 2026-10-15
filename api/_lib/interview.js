@@ -346,8 +346,9 @@ export function answerRequirementBlock(question = '', profile = {}, classificati
   if (/\b(brief|briefly|short|concise|one line|quickly)\b/i.test(q)) {
     rules.push('OUTPUT CONTRACT: Keep the answer brief and direct.')
   }
-  const explicitLanguage = q.match(/\b(Python|JavaScript|TypeScript|Java|SQL|C\+\+|C#|Go)\b/i)?.[1]
+  const explicitLanguage = q.match(/(?<![A-Za-z])(Python|JavaScript|TypeScript|Java|SQL|C\+\+|C#|Go|Ruby|Rust|Kotlin|Swift|C)(?![A-Za-z])/i)?.[1]
   if (explicitLanguage) rules.push(`LANGUAGE CONTRACT: Use ${explicitLanguage}; do not silently switch languages.`)
+  else if (codingThread && profile.codingLanguage) rules.push(`LANGUAGE CONTRACT: Use ${profile.codingLanguage} with idiomatic syntax, the requested signature and required imports; do not silently switch languages.`)
   else if (wantsCode && !profile.codingLanguage && /\bJavaScript\b/i.test(String(profile.jobDescription || ''))) {
     rules.push('LANGUAGE CONTRACT: No language was explicitly chosen; prefer JavaScript because it is central to the target JD.')
   }
