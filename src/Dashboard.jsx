@@ -357,7 +357,7 @@ export function SessionsTable({ sessions = [], onOpen, onDelete }) {
   if (!sessions.length) {
     return (
       <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '40px 24px', textAlign: 'center', color: T.text3, fontSize: 13, lineHeight: 1.6 }}>
-        No sessions yet. Finish a <span style={{ color: T.text2 }}>Solo Practice</span> and it'll be saved here — transcript + feedback, kept ~3 months on this machine.
+        No saved sessions yet. Your saved practice and Live sessions appear here on this machine.
       </div>
     )
   }
@@ -382,12 +382,13 @@ export function SessionsTable({ sessions = [], onOpen, onDelete }) {
               <button type="button" onClick={() => onOpen?.(s)} data-pi-target="history_session_open" aria-label={`Open session ${label}`}
                 style={{ ...cell, width: '100%', height: '100%', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 2, background: 'transparent', border: 0, textAlign: 'left', cursor: 'pointer', font: 'inherit' }}>
                 <span style={{ color: T.text1, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{label}</span>
+                {s.captureStatus === 'interrupted' && <span style={{ fontSize: 11, color: T.text3 }}>Interrupted — captured speech recovered</span>}
                 {s.verdict && <span style={{ fontSize: 11, color: T.text3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{s.verdict}</span>}
               </button>
             </div>
             <div role="cell" style={cell}>{dateLabel}</div>
             <div role="cell" style={cell}>{typeof s.score === 'number' ? <span style={{ color: scoreColor(s.score), fontWeight: 600 }}>{(s.score / 10).toFixed(1)}</span> : <span style={{ color: s.report?.error || s.note === 'evaluate_error' ? '#fca5a5' : T.text3 }}>{s.report?.error || s.note === 'evaluate_error' ? 'Err' : '—'}</span>}</div>
-            <div role="cell" style={cell}>{s.transcript?.length || 0}</div>
+            <div role="cell" style={cell}>{s.transcriptCount ?? s.transcript?.length ?? 0}</div>
             <div role="cell" style={{ ...cell, gap: 4 }}>
               <button type="button" onClick={() => onOpen?.(s)} data-pi-target="history_session_view" title="View" aria-label={`View session ${label}`} style={iconBtn}>👁</button>
               <button type="button" onClick={() => onDelete?.(s.id)} data-pi-target="history_session_delete" title="Delete" aria-label={`Delete session ${label}`} style={iconBtn}>🗑</button>

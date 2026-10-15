@@ -25,7 +25,7 @@ import WhatsNew from './WhatsNew'
 import ApiKeysPanel from './ApiKeys'
 import { getAiMode } from './lib/aiMode'
 import { getAnswerStyle, setAnswerStyle, getScreenshotSpeed, setScreenshotSpeed, screenshotStyle, getAutoSkip, setAutoSkip, getDocThreshold, setDocThreshold } from './lib/aiSettings'
-import { loadSessions, deleteSession } from './history'
+import { loadSessionsAsync, getSessionAsync, deleteSessionAsync } from './history'
 import { removeKitDocs } from './lib/docs'
 import { scoreColor, TYPE_LABEL } from './lib/ui'
 import { CODING_LANGUAGES } from './lib/languages'
@@ -35,7 +35,8 @@ import {
   applyInterviewJobSeed,
   interviewSeedConfirmMessage,
 } from './lib/interviewJobSeed'
-import { copyText } from './lib/clipboard'
+import { activeAccountScope, getScopedItem } from './lib/accountScope'
+import { copyText, downloadTextFile } from './lib/clipboard'
 import { startWindowDrag } from './lib/windowDrag'
 import { canRunLanguage, runJavaScriptIsolated } from './lib/codeRunner'
 import { diagnostic } from './lib/diagnostics'
@@ -312,9 +313,16 @@ function ElectronShell({ auth }) {
   const showWelcome = getAiMode() === 'byok' && !welcomed && noProviders
 
   // Past Solo sessions (stored locally, ~3 months) — for review/copy.
-  const [sessions, setSessions] = useState(() => loadSessions())
+  const [sessions, setSessions] = useState([])
+  const [historyTotal, setHistoryTotal] = useState(0)
+  const [historyError, setHistoryError] = useState('')
   const [openSession, setOpenSession] = useState(null)
-  const refreshSessions = useCallback(() => setSessions(loadSessions()), [])
+  const refreshSessions = useCallback(async (offset = 0) => {
+    const scope = activeAccountScope()
+    try { const result = await loadSessionsAsync(offset); if (scope !== activeAccountScope()) return; setSessions(rows => offset ? [...rows,...result.sessions] : result.sessions); setHistoryTotal(result.total); setHistoryError(result.warning || '') }
+    catch { if (scope !== activeAccountScope()) return; setHistoryError('History could not be loaded. Legacy data is retained; retry or export before changing versions.') }
+  }, [])
+  useEffect(() => { refreshSessions() }, [refreshSessions])
 
   const [companionPhase, setCompanionPhase] = useState('setup')
   const viewRef = useRef(view)
@@ -336,7 +344,7 @@ function ElectronShell({ auth }) {
         const next = !m
         if (!next && viewRef.current === 'companion' && companionPhaseRef.current === 'live') {
           const { w, h } = panelSizeRef.current || { w: 600, h: 720 }
-          queueMicrotask(() => window.electronAPI?.windowResize?.(w, h))
+          queueMicrotask(() => window.electronAPI?.setWindowMode?.('overlay', { w, h }))
         }
         return next
       })
@@ -744,7 +752,7 @@ function ElectronShell({ auth }) {
     setMinimized(false)
     if (inElectron && viewRef.current === 'companion' && companionPhaseRef.current === 'live') {
       const { w, h } = panelSizeRef.current || { w: 600, h: 720 }
-      queueMicrotask(() => window.electronAPI?.windowResize?.(w, h))
+      queueMicrotask(() => window.electronAPI?.setWindowMode?.('overlay', { w, h }))
     }
   }
 
@@ -958,8 +966,10 @@ function ElectronShell({ auth }) {
         ) : (
           <>
             <div style={shellHeader}>Sessions</div>
-            <SessionsTable sessions={sessions} onOpen={s => setOpenSession(s)}
-              onDelete={id => { if (window.confirm('Delete this session permanently? Its transcript and feedback can\'t be recovered.')) { deleteSession(id); refreshSessions() } }} />
+            {historyError && <div role="alert">{historyError}<button onClick={() => refreshSessions()}>Retry History</button><button onClick={() => downloadTextFile('mockmate-legacy-history.json', getScopedItem('mm-sessions','[]'),'application/json')}>Export legacy data</button></div>}
+            <SessionsTable sessions={sessions} onOpen={async s => { try { setOpenSession(await getSessionAsync(s.id)) } catch { setHistoryError('This session could not be opened. Please retry.') } }}
+              onDelete={async id => { if (window.confirm('Delete this session from History? Original legacy migration copies may still be retained.')) { if (sessions.find(row => row.id === id)?.legacyReadOnly) { setHistoryError('Read-only legacy sessions cannot be deleted until import is resolved.'); return } try { await deleteSessionAsync(id); await refreshSessions() } catch { setHistoryError('Delete failed. The session has been retained.') } } }} />
+            {sessions.length < historyTotal && <button onClick={() => refreshSessions(sessions.length)}>Load more sessions</button>}
           </>
         )}
       </div>

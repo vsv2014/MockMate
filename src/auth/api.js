@@ -1,5 +1,6 @@
 // Single API wrapper for the auth/SaaS backend. Every authenticated call goes
 // through here — token attachment, JSON handling, and 401 handling live in ONE place.
+import { sqliteEnabled, sqliteRequest } from '../lib/desktopSessionStore'
 import { diagnostic, createDiagnosticRequestId } from '../lib/diagnostics'
 import { setActiveAccountScope, clearActiveAccountScope, purgeScopedStorage } from '../lib/accountScope'
 
@@ -145,6 +146,8 @@ export async function logout() {
   clearActiveAccountScope()
 }
 export async function deleteAccount() {
+  // Local deletion is acknowledged before credentials are removed. A local failure is explicit.
+  if (await sqliteEnabled()) await sqliteRequest('purge')
   await request('/me', { method: 'DELETE', auth: true, timeoutMs: 30000 })
   // Blast-radius review fix: purge ALL account-scoped local data (documents,
   // persisted vector cache with original text, PI events, playbooks, …) BEFORE

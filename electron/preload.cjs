@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
+  sessionStore: { request: payload => ipcRenderer.invoke('session-store', payload) },
   platform: process.platform,
   getAudioSources: () => ipcRenderer.invoke('get-audio-sources'),
   getWindowSize: () => ipcRenderer.sendSync('get-window-size'),

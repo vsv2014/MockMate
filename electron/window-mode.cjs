@@ -13,12 +13,18 @@ const PILL_SIZE = 72
 // below never reads the observed size into the next bounds.
 function prepareWindowMode(win, mode, platform = process.platform) {
   const pill = mode === 'pill'
-  win.setMinimumSize(pill ? PILL_SIZE : 240, pill ? PILL_SIZE : 180)
+  // Windows may reapply cached constraints when toggling resizability. Expand first,
+  // then release the pill maximum before raising the expanded minimum.
+  if (!pill) {
+    win.setResizable(true)
+    win.setMaximumSize(0, 0)
+    win.setMinimumSize(240, 180)
+  } else win.setMinimumSize(PILL_SIZE, PILL_SIZE)
   // (0, 0) is Electron's "no maximum" default (max_width/max_height unset — see
   // electron#33025), so leaving pill mode restores the normal, screen-bounded window.
-  win.setMaximumSize(pill ? PILL_SIZE : 0, pill ? PILL_SIZE : 0)
+  if (pill) win.setMaximumSize(PILL_SIZE, PILL_SIZE)
   // Expanded windows must permit native resizing; only the badge is fixed.
-  win.setResizable(!pill)
+  if (pill) win.setResizable(false)
   win.setHasShadow(!pill)
   win.setBackgroundColor(platform === 'linux' ? '#08090e' : '#00000000')
 }
@@ -48,4 +54,11 @@ function pillDragBounds(current = {}, dx = 0, dy = 0, size = PILL_SIZE) {
   }
 }
 
-module.exports = { prepareWindowMode, pillDragBounds, PILL_SIZE }
+// Restoration is deliberately readable even if stale renderer/native state contains pill dimensions.
+function expandedOverlaySize(size = {}, area = {}) {
+  const valid = value => Number.isFinite(Number(value)) && Number(value) > PILL_SIZE + 1
+  const width = valid(size.w) ? Math.max(600, Math.round(Number(size.w))) : 600
+  const height = valid(size.h) ? Math.max(600, Math.round(Number(size.h))) : 720
+  return { w: Math.min(width, Math.max(240,(area.width || 1280)-40)), h: Math.min(height,Math.max(180,(area.height || 800)-40)) }
+}
+module.exports = { prepareWindowMode, pillDragBounds, expandedOverlaySize, PILL_SIZE }

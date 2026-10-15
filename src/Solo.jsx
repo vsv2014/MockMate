@@ -3,7 +3,7 @@ import { apiFetch } from './lib/apiClient'
 import { useDeepgram } from './useDeepgram'
 import { analyze, liveNudge } from '../shared/delivery.js'
 import SoloFeedback from './SoloFeedback'
-import { saveSession, saveSoloDraft, loadSoloDraft, clearSoloDraft } from './history'
+import { saveSessionAsync as saveSession, saveSoloDraft, loadSoloDraft, clearSoloDraft } from './history'
 import { loadProfile, saveProfile as persistProfile } from './lib/profile'
 import { fmtClock } from './lib/ui'
 import { LANGUAGES, STT_LANG } from './lib/languages'
@@ -615,7 +615,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
         body: JSON.stringify({ config, transcript: transcriptRef.current, profile, provider: effProvider })
       }).then(r => r.json())
       let rep = res.report || { error: res.error || 'Evaluation failed' }
-      const stored = saveSession({ report: rep, transcript: transcriptRef.current, config: { ...config, interviewSetup: interviewConfigRef.current }, profile })
+      const stored = await saveSession({ report: rep, transcript: transcriptRef.current, config: { ...config, interviewSetup: interviewConfigRef.current }, profile })
       if (!stored) rep = { ...rep, _storageWarning: 'This session could not be saved. Copy the transcript before leaving this screen.' }
       else if (stored.storagePruned) rep = { ...rep, _storageWarning: `Saved this session after removing ${stored.storagePruned} oldest local session${stored.storagePruned === 1 ? '' : 's'} to free space.` }
       setReport(rep)
@@ -623,7 +623,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
       phaseRef.current = 'report'
     } catch (e) {
       let rep = { error: e.message || 'Evaluation failed' }
-      const stored = saveSession({ report: rep, transcript: transcriptRef.current, config: { ...config, interviewSetup: interviewConfigRef.current }, profile, note: 'evaluate_error' })
+      const stored = await saveSession({ report: rep, transcript: transcriptRef.current, config: { ...config, interviewSetup: interviewConfigRef.current }, profile, note: 'evaluate_error' })
       if (!stored) rep = { ...rep, _storageWarning: 'This session could not be saved. Copy the transcript before leaving this screen.' }
       else if (stored.storagePruned) rep = { ...rep, _storageWarning: `Saved this session after removing ${stored.storagePruned} oldest local session${stored.storagePruned === 1 ? '' : 's'} to free space.` }
       setReport(rep)

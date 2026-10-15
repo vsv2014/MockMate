@@ -26,6 +26,12 @@ describe('account-scoped schema v4 saved jobs and Resume Studio migration', () =
     session.values.clear()
   })
 
+  it('keeps corrupt session bytes instead of replacing them before SQLite import', () => {
+    localStorage.setItem('mm-sessions', '{corrupt history')
+    setActiveAccountScope('account-A')
+    expect(getScopedItem('mm-sessions')).toBe('{corrupt history')
+  })
+
   it('copies global legacy data to first authenticated account once, then removes global keys', () => {
     expect(STORAGE_SCHEMA_VERSION).toBe(4)
     localStorage.setItem('mm-saved-jobs', '[{"id":"private-A","notes":"Interview followup"}]')

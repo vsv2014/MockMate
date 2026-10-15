@@ -3,7 +3,7 @@ import { T } from './auth/tokens'
 import Room from './Room'
 import SoloFeedback from './SoloFeedback'
 import { loadProfile, saveProfile } from './lib/profile'
-import { saveSession } from './history'
+import { saveSessionAsync as saveSession } from './history'
 import { downloadTextFile } from './lib/clipboard'
 
 // MockMate Duo — shared room (LiveKit) + private candidate co-pilot.
@@ -131,11 +131,11 @@ export default function Duo({ onHome }) {
 
   if (phase === 'room' && session) {
     return <Room session={session}
-      onEnd={(rep, tr) => {
+      onEnd={async (rep, tr) => {
         setReport(rep)
         setConvo(tr || [])
         try {
-          saveSession({
+          await saveSession({
             report: rep || { overallScore: 0, summary: 'Duo session completed.' },
             transcript: (tr || []).map(row => ({
               role: row.role === 'candidate' ? 'candidate' : 'interviewer',
