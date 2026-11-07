@@ -41,7 +41,9 @@ jobs:
           npm run verify:express5
 
       - name: Install locked dependencies
+        shell: bash
         run: |
+          set -euo pipefail
           npm ci
           npm --prefix backend ci
 
