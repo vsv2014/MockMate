@@ -6,7 +6,7 @@ Current result: a normalizer and metadata preview for selected Calendar events, 
 
 ## Run locally
 
-`node --test spikes/composio-compat/preview.test.mjs`
+`npx vitest run spikes/composio-compat/preview.test.mjs`
 
 Zero dependencies; no keys, network calls or model charges. Existing ARCH, ABL, Live, document persistence, installer and auth modules remain untouched.
 
