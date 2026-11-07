@@ -1,0 +1,9 @@
+# Explicit paid opt-in only, never part of default CI.
+# MOCKMATE_RUN_LLM_EVALS=1 npx promptfoo eval -c evals/promptfoo/promptfooconfig.yaml
+description: MockMate real Node hint engine (post-ASR; no Live streaming or audio)
+prompts:
+  - '{{question}}'
+providers:
+  - id: file://./evals/promptfoo/provider.mjs
+    label: MockMate real generateHint
+tests: file://./evals/promptfoo/tests.yaml
