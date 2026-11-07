@@ -1,0 +1,98 @@
+# Synthetic post-ASR smoke cases. These are NOT a complete human-labelled benchmark.
+- description: DSA with explicit JavaScript code
+  vars:
+    question: "Write JavaScript code for cycle detection in a singly linked list."
+    codingLanguage: JavaScript
+  assert:
+    - type: not-contains
+      value: "[SKIP]"
+- description: Latest user correction must govern
+  vars:
+    question: "Actually return the minimum number of jumps instead of reachability. Show JavaScript code."
+    codingLanguage: JavaScript
+    conversationHistory:
+      - role: interviewer
+        text: "Can we reach the last array index?"
+  assert:
+    - type: not-contains
+      value: "[SKIP]"
+- description: Explicit Python output
+  vars:
+    question: "Implement a balanced parentheses checker in Python."
+    codingLanguage: Python
+  assert:
+    - type: not-contains
+      value: "[SKIP]"
+- description: Technical concept
+  vars:
+    question: "Explain optimistic versus pessimistic locking and when to use each."
+  assert:
+    - type: not-contains
+      value: "[SKIP]"
+- description: Short follow-up
+  vars:
+    question: "Why is that better?"
+    conversationHistory:
+      - role: interviewer
+        text: "What are the benefits of MongoDB indexes?"
+      - role: assistant
+        text: "Index lookups can be faster, at the cost of index-maintenance overhead."
+  assert:
+    - type: not-contains
+      value: "[SKIP]"
+- description: Coding follow-up
+  vars:
+    question: "Now show TypeScript code for it."
+    codingLanguage: TypeScript
+    conversationHistory:
+      - role: interviewer
+        text: "How would you design an LRU cache?"
+  assert:
+    - type: not-contains
+      value: "[SKIP]"
+- description: Reliable queue architecture
+  vars:
+    question: "Design a job queue with at-least-once processing, deduplication and worker-crash recovery."
+    targetRole: Senior Backend Engineer
+  assert:
+    - type: not-contains
+      value: "[SKIP]"
+- description: URL shortener system design
+  vars:
+    question: "Design a URL shortener with 10k writes per second and 100k reads per second. Discuss ID generation, caching and storage."
+    targetRole: Staff Engineer
+  assert:
+    - type: not-contains
+      value: "[SKIP]"
+- description: No fabricated personal cloud services
+  vars:
+    question: "Which AWS services did I personally deploy?"
+    resume: "Synthetic candidate: developed a JavaScript queue worker. No cloud deployment experience listed."
+  assert:
+    - type: not-contains
+      value: "[SKIP]"
+- description: Behavioral source grounding
+  vars:
+    question: "Describe a technical disagreement I resolved, but use only my resume."
+    resume: "Synthetic candidate: participated in reviewing a retry policy with teammates. No outcome, metrics or company details provided."
+  assert:
+    - type: not-contains
+      value: "[SKIP]"
+- description: Independent topic switch
+  vars:
+    question: "Explain JavaScript event-loop microtasks and macrotasks."
+    conversationHistory:
+      - role: interviewer
+        text: "Explain how Kubernetes schedules pods."
+  assert:
+    - type: not-contains
+      value: "[SKIP]"
+- description: Correction to payment question
+  vars:
+    question: "No, I meant how webhook idempotency works, not retrying the original request."
+    conversationHistory:
+      - role: interviewer
+        text: "How would you retry a payment request?"
+  assert:
+    - type: not-contains
+      value: "[SKIP]"
