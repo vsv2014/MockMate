@@ -1,0 +1,79 @@
+# Opt-in paid run. Never add this command to standard CI.
+description: MockMate synthetic post-ASR streaming hint benchmark
+prompts:
+  - '{{fixtureId}}'
+providers:
+  - id: file://./provider.mjs
+tests:
+  - description: dsa-array
+    vars:
+      fixtureId: dsa-array
+    assert:
+      - type: javascript
+        value: file://./assertions.mjs
+  - description: dsa-queue
+    vars:
+      fixtureId: dsa-queue
+    assert:
+      - type: javascript
+        value: file://./assertions.mjs
+  - description: dsa-bfs
+    vars:
+      fixtureId: dsa-bfs
+    assert:
+      - type: javascript
+        value: file://./assertions.mjs
+  - description: dsa-complexity
+    vars:
+      fixtureId: dsa-complexity
+    assert:
+      - type: javascript
+        value: file://./assertions.mjs
+  - description: followup-code
+    vars:
+      fixtureId: followup-code
+    assert:
+      - type: javascript
+        value: file://./assertions.mjs
+  - description: followup-why
+    vars:
+      fixtureId: followup-why
+    assert:
+      - type: javascript
+        value: file://./assertions.mjs
+  - description: followup-correction
+    vars:
+      fixtureId: followup-correction
+    assert:
+      - type: javascript
+        value: file://./assertions.mjs
+  - description: behavioral-outage
+    vars:
+      fixtureId: behavioral-outage
+    assert:
+      - type: javascript
+        value: file://./assertions.mjs
+  - description: behavioral-ownership
+    vars:
+      fixtureId: behavioral-ownership
+    assert:
+      - type: javascript
+        value: file://./assertions.mjs
+  - description: system-design-cache
+    vars:
+      fixtureId: system-design-cache
+    assert:
+      - type: javascript
+        value: file://./assertions.mjs
+  - description: system-design-limiter
+    vars:
+      fixtureId: system-design-limiter
+    assert:
+      - type: javascript
+        value: file://./assertions.mjs
+  - description: technical-mongo
+    vars:
+      fixtureId: technical-mongo
+    assert:
+      - type: javascript
+        value: file://./assertions.mjs
