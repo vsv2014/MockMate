@@ -5,7 +5,7 @@ Status: implementation scaffold and **12 labelled synthetic fixtures** only. Thi
 The optional Promptfoo custom provider imports the **real** MockMate `streamHint` from `api/_lib/interview.js`. It does not duplicate prompts, but it intentionally bypasses ASR, renderer-side document retrieval, speculative starts, and the actual Windows overlay. Do not describe it as full-pipeline parity.
 
 ## Deterministic smoke (free)
-Run `node --test evals/promptfoo/contracts.test.mjs` from repo root. No additional dependency, key or remote service.
+Run `npx vitest run evals/promptfoo/contracts.test.mjs` from repo root. No additional dependency, key or remote service.
 
 ## Real-provider smoke (paid; manual only)
 Install a reviewed/pinned Promptfoo CLI version on a dev machine. Set `MOCKMATE_RUN_LLM_EVALS=1`, `MOCKMATE_EVAL_PROVIDER` to a configured explicit provider/model ID, and its API credentials. Then run `promptfoo eval -c evals/promptfoo/promptfooconfig.yaml` from repo root. This run is explicitly paid, contains 12 labelled prompts, and may make additional attempts under existing fallback rules. Never add it to routine CI. Check provider prices and limits first.
