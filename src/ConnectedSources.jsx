@@ -326,7 +326,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))', gap: 10 }}>
           {providerEntries.map(([id, meta]) => {
             const choices = connections.accounts.filter(row => row.provider === id)
-            return <div key={id} style={{ padding: 12, border: \`1px solid \${T.border}\`, borderRadius: 10, background: T.surface2, minWidth: 0 }}>
+            return <div key={id} style={{ padding: 12, border: `1px solid ${T.border}`, borderRadius: 10, background: T.surface2, minWidth: 0 }}>
               <strong style={{ fontSize: 13 }}>{meta.label}</strong>
               <div style={{ ...small, marginTop: 5 }}>{choices.length} authorized account(s)</div>
               {choices.length > 0 && <select aria-label={'Active ' + meta.label + ' account'} style={{ ...input, marginTop: 8 }}
@@ -367,7 +367,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
         <button style={action} disabled={connectorBusy || !oauthClient.trim() || !!oauthFlow} onClick={startOAuth}>
           {connectorBusy ? 'Connecting…' : 'Authorize external account'}
         </button>
-        {oauthFlow && <div role="status" style={{ ...small, marginTop: 10, padding: 10, border: \`1px solid \${T.accentBorder}\`, borderRadius: 9 }}>
+        {oauthFlow && <div role="status" style={{ ...small, marginTop: 10, padding: 10, border: `1px solid ${T.accentBorder}`, borderRadius: 9 }}>
           {oauthFlow.provider === 'github'
             ? <>Open <strong>github.com/login/device</strong> and enter code <strong style={{ color: T.text1, fontSize: 17 }}>{oauthFlow.userCode}</strong>.</>
             : <>Complete Google authorization in your system browser.</>}
@@ -395,7 +395,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
             </button>
           </div>
           {remoteSources.map(row => <div key={row.sourceId} style={{ display: 'flex', gap: 9, padding: '7px 0',
-              borderBottom: \`1px solid \${T.border}\`, alignItems: 'center', flexWrap: 'wrap' }}>
+              borderBottom: `1px solid ${T.border}`, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ flex: '1 1 220px', minWidth: 0, overflowWrap: 'anywhere', fontSize: 13 }}>{row.title}</span>
             <button type="button" style={quiet} onClick={() => selectRemote(row)} disabled={connectorBusy}>Select &amp; review</button>
           </div>)}
@@ -534,7 +534,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           Add professional claim
         </button>
         {professional.claims.map(row => <div key={row.id} style={{ display: 'flex', gap: 9, alignItems: 'center',
-          borderTop: \`1px solid \${T.border}\`, padding: '8px 0', flexWrap: 'wrap' }}>
+          borderTop: `1px solid ${T.border}`, padding: '8px 0', flexWrap: 'wrap' }}>
           <span style={{ flex: '1 1 200px', fontSize: 13 }}>{row.key}: {row.value} <span style={small}>({row.status})</span></span>
           <button style={quiet} onClick={() => { if (removeProfessionalClaim(row.id)) refresh() }}>Remove</button>
         </div>)}
@@ -546,7 +546,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
             <textarea style={{ ...input, minHeight: 64 }} value={outcomeDraft} onChange={e => setOutcomeDraft(e.target.value)} />
           </Field>
           <button style={{ ...action, marginTop: 10 }} disabled={outcomeDraft.trim().length < 10} onClick={createOutcome}>Record outcome</button>
-          {professional.outcomes.map(row => <div key={row.id} style={{ borderTop: \`1px solid \${T.border}\`,
+          {professional.outcomes.map(row => <div key={row.id} style={{ borderTop: `1px solid ${T.border}`,
             padding: '8px 0', fontSize: 13, display: 'flex', gap: 10 }}>
             <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{row.description}</span>
             <button style={quiet} onClick={() => { if (removeProfessionalOutcome(row.id)) refresh() }}>Remove</button>
