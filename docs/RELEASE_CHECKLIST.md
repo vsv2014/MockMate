@@ -1,6 +1,6 @@
 # MockMate release checklist
 
-**Current source version: 1.6.8, published as an unsigned Personal Preview on November 9, 2026.** Linux and Windows automated audits, tests, build and packaged preview checks passed. The physical device checklist below remains OPEN. Unsigned v1.6.7 contains the prior Windows startup fix, and v1.6.8 includes the dashboard/Ready Room layout and AI/System Audio preflight improvements (#124). No signed v1.6.x stable release exists. The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
+**Current source version: 1.6.9 unsigned Personal Preview candidate.** The previously published v1.6.8 includes the Ready Room fixes; 1.6.9 adds Live interviewer-turn separation, candidate-capture status and contextual Deepgram keyterm hints (#129). It must pass its own Linux and Windows CI, unsigned publication gates, and physical Windows validation. No signed v1.6.x stable release exists. The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
 
 **Rule: do not describe any build as physically certified until every applicable box below is checked on a REAL packaged build.** The separate explicit manual unsigned-preview path may publish only as an isolated, manual-update pre-release after automated CI; it is not a substitute for these physical checks.
 Every 1.4.2 defect (CSP broke Solo+Live, STT coupled to the LLM cap, dangling `mintToken` import,
@@ -158,3 +158,13 @@ protects the moat — do not skip it.*
 - [ ] Wait through the ten-second system capture and up to five-second finalization window; if system playback fails, preserve redacted diagnostics and note chosen Windows output device/source and whether any audio track was acquired.
 - [ ] Confirm Live answer text is still legible and unaffected by management-workspace font sizing. Check Zoom/Teams meeting share-preview privacy manually.
 - [ ] Do not uninstall the existing app, delete local AppData, or reset stored BYOK keys/sessions to run these checks.
+
+## v1.6.9 Live transcript and candidate scoring acceptance (physical Windows laptop)
+
+- [ ] On the real Personal Preview, run a benign mock interview with at least three *different* interviewer questions through System Audio. The saved notes must retain three distinct labeled question turns, not concatenate them into one massive paragraph.
+- [ ] Verify Live displays an unscored/candidate-audio warning while using interviewer-only System Audio; no synthetic AI hints count as candidate answers.
+- [ ] Separately test Microphone with two naturally alternating speakers. Verify a candidate response really appears as candidate speech before any evaluation score is displayed. Unknown or uncertain microphone speaker roles must not silently become a candidate.
+- [ ] For a GenAI Kit/JD containing RAG, LangChain, LangGraph, reranker and fine-tuning, verify the STT socket uses context-based keyterms. These are *hints*, never text rewriting; compare transcript against true spoken audio and track actual WER/error.
+- [ ] Check session notes, History copy/export, and Live recall after close/restart. Preserve all existing BYOK keys and session files; no uninstall/AppData wipe.
+- [ ] Verify the separate known blockers: Ready Room `/api/hint` HTTP 502 (#132) and screen `VISION_UNAVAILABLE` (#130), which remain unfixed by this release.
+- [ ] Record Windows version, selected output/headset/source, redacted diagnostics, and package SHA256; CI smoke is not a physical test.
