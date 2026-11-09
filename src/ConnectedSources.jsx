@@ -240,6 +240,14 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
     if (!preview || !confirmed) return
     setBusy(true)
     try {
+      if (draft.connectedAccountId) {
+        const remote = await connectorRequest({ op: 'read-source', provider: draft.provider,
+          accountId: draft.connectedAccountId, sourceId: draft.sourceId })
+        if (remote.sha256 !== preview.sha256 || remote.revision !== preview.revision
+          || remote.title !== preview.title) {
+          throw new Error('Remote source changed after preview; select and review it again before importing')
+        }
+      }
       const { record, existing } = await approveSelectedSource(preview, draft, { approved: confirmed })
       if (record.connectedAccountId) {
         try {
