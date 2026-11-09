@@ -497,7 +497,17 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           <span style={{ fontSize: readableTextSize(10.5), color: T.text3 }}>Choose your tested primary (e.g. Groq). Automatic fallback remains available if it fails. The choice is saved for this account.</span>
         </Field>}
 
-        <Field label="Turn detection (interviewer pauses)" htmlFor="live-turn-detection">\n          <select id="live-turn-detection" style={inp} value={profile.turnDetection || 'balanced'}\n            onChange={e => patch({ turnDetection: e.target.value })}>\n            <option value="responsive">Responsive · 200 ms pause, more false starts</option>\n            <option value="balanced">Balanced · 300 ms pause (recommended)</option>\n            <option value="thoughtful">Thoughtful · 500 ms pause, fewer interrupted questions</option>\n          </select>\n          <span style={{ fontSize: readableTextSize(10.5), color: T.text3 }}>Uses Deepgram endpointing on reconnect. This is not Pipecat Smart Turn model inference. Switch to Thoughtful if questions are prematurely split.</span>\n        </Field>\n\n        <Field label="Interview language" htmlFor="live-interview-language">
+        <Field label="Turn detection (interviewer pauses)" htmlFor="live-turn-detection">
+          <select id="live-turn-detection" style={inp} value={profile.turnDetection || 'balanced'}
+            onChange={e => patch({ turnDetection: e.target.value })}>
+            <option value="responsive">Responsive · 200 ms pause, more false starts</option>
+            <option value="balanced">Balanced · 300 ms pause (recommended)</option>
+            <option value="thoughtful">Thoughtful · 500 ms pause, fewer interrupted questions</option>
+          </select>
+          <span style={{ fontSize: readableTextSize(10.5), color: T.text3 }}>Uses Deepgram endpointing on reconnect. This is not Pipecat Smart Turn model inference. Switch to Thoughtful if questions are prematurely split.</span>
+        </Field>
+
+        <Field label="Interview language" htmlFor="live-interview-language">
           <select id="live-interview-language" style={inp} value={profile.language || 'English'} onChange={e => patch({ language: e.target.value })}>
             {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
