@@ -96,6 +96,10 @@ function BrowserGate() {
 // ── Electron shell — wraps every screen in the floating overlay ───────────────
 function ElectronShell({ auth }) {
   const [view, setView] = useState('home')
+  useEffect(() => {
+    window.electronAPI?.connectors?.setLive?.(view === 'companion').catch?.(() => {})
+    return () => { window.electronAPI?.connectors?.setLive?.(false).catch?.(() => {}) }
+  }, [view])
   const [kitState, setKitState] = useState(() => loadInterviewKitState(loadProfile()))
   const [launchKitId, setLaunchKitId] = useState(null)
   const [readyAudioSource, setReadyAudioSource] = useState(null)
