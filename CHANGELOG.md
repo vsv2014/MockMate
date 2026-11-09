@@ -5,7 +5,7 @@
 - Restores explicit BYOK primary-provider selection for Live (Groq GPT-OSS 120B can be pinned) and displays real automatic routing in Settings. A saved key is not proof of provider readiness.
 - Provider connection probe verifies the complete streaming response instead of declaring success after the first token.
 - Adds an **opt-in**, independent Deepgram candidate-microphone transcription path while System Audio captures the interviewer; candidate text is recorded for evaluation separately and is not routed as interviewer questions. Duplicate finals are suppressed and additional STT usage is disclosed.
-- Improves Sources & ARCH: account-scoped professional evidence, revision-aware stale quotations, deterministic review queue, attach approved evidence to an existing claim, and explicit local evidence-graph JSON export.
+- Improves Sources & ARCH: account-scoped professional evidence, revision-aware stale quotations, deterministic review queue, attach approved evidence to an existing claim, and explicit local evidence-graph JSON export. Adds user-approved import of saved MockMate interview outcomes into the graph with honest score/unscored status and a local-history provenance edge; it does not copy transcripts automatically.
 - Adds automated Windows packaged runtime liveness/memory checks and a short elapsed-time soak to pre-release packaging. The manual isolated preview workflow supports an optional 90-minute dry-run soak.
 - OAuth flows included from v1.6.12 are unchanged; OAuth app registration and authorization remain user-controlled.
 
