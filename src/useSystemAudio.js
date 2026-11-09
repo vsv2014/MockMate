@@ -181,6 +181,19 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     connecting.current = false
   }, [abandonSocket])
 
+  // Used only by the short Ready Room system-playback test: flush an interim
+  // transcript to Deepgram BEFORE tearing down the socket. Live's ordinary
+  // stop/reconnect/first-turn behavior stays unchanged.
+  const finalizeForReadinessTest = useCallback(() => {
+    const sock = activeSocketRef.current || ws.current
+    if (userStop.current || !sock || sock.readyState !== 1) return false
+    try {
+      sock.send(JSON.stringify({ type: 'Finalize' }))
+      diagnostic('stt', 'ready_room_finalize_requested', { source: 'system' })
+      return true
+    } catch { return false }
+  }, [])
+
   const stop = useCallback(() => {
     restartGen.current += 1
     userStop.current = true
@@ -466,7 +479,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
         const linux = (typeof navigator !== 'undefined' && /Linux/.test(navigator.userAgent))
         throw new Error(linux
           ? 'No audio from System Audio (not supported on Linux). Switch to Microphone.'
-          : 'No audio track from the selected source. Try Microphone.')
+          : 'System Audio source provided no audio track. Choose an entire screen, play speech through the selected Windows playback device, then try again. A working microphone does not verify system playback.')
       }
       stream.current = audioStream
       trackWatchOff.current?.()
@@ -583,5 +596,5 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   }, [abandonSocket, connectSocket, restart])
 
   useEffect(() => () => { userStop.current = true; connectGen.current += 1; teardown() }, [teardown])
-  return { supported: true, active, reconnecting, interim, diarizationLocked, degraded, start, stop, restart, setFinalizeOnPause }
+  return { supported: true, active, reconnecting, interim, diarizationLocked, degraded, start, stop, restart, setFinalizeOnPause, finalizeForReadinessTest }
 }
