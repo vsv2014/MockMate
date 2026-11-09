@@ -9,6 +9,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { useSystemAudio } from './useSystemAudio'
 import { useDeepgram } from './useDeepgram'
+import { createCandidateMicGate } from './lib/dualChannelCapture.js'
 import SoloFeedback from './SoloFeedback'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
@@ -1746,10 +1747,12 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
   // In System Audio mode the interviewer's audio is never a reliable record
   // of the candidate's response. Capture the microphone as a second channel
   // only after an explicit user action; voice data goes to Deepgram.
+  const candidateMicGateRef = useRef(null)
+  if (!candidateMicGateRef.current) candidateMicGateRef.current = createCandidateMicGate()
   const onCandidateMicFinal = useCallback((spoken) => {
-    const text = String(spoken || '').trim()
-    if (!sessionActiveRef.current || !text || text.split(/\s+/).length < 2) return
-    if (liveSourceIdRef.current === 'microphone') return
+    const text = candidateMicGateRef.current({ spoken, text: spoken,
+      sourceId: liveSourceIdRef.current, sessionActive: sessionActiveRef.current })
+    if (!text) return
     const captured = interviewStateRef.current?.recordCandidate?.(text)
     if (captured) {
       setCandidateSpeechTurns(n => n + 1)
