@@ -8,7 +8,11 @@ export function requiresImplementation(question = '', classification = {}, mode 
   const explicit = /\b(?:write|show|give|provide|paste|implement|run|execute|test)\b.{0,100}\b(?:code|function|snippet|implementation|solution|console|print)\b/i.test(q)
     || /^(?:code(?: it)?|implement(?: it)?|solve it|show the snippet|write console(?:\.log)?)[.!?\s]*$/i.test(q)
   if (explicit) return true
-  return coding && !classification.isFollowUp && !/^(?:what|why|explain|define|compare)\b/i.test(q)
+  // The coding/DSA classifier detects TOPICS, not a demand to write code.
+  // Prefaced explanatory questions like "In one short sentence, what does a
+  // hash map do?" must not fail the readiness smoke with code_missing.
+  const conceptual = /^(?:(?:in\s+(?:one|two|a)\s+(?:short\s+)?sentences?|briefly|quickly|in\s+simple\s+terms)\s*[,.:;–-]?\s*)*(?:what|why|how|explain|define|compare)\b/i.test(q)
+  return coding && !classification.isFollowUp && !conceptual
 }
 export function implementationIssue(text = '', required = false) {
   if (!required) return null
