@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.6.13 — 2026-11-09 (unsigned Personal Preview · integration test build)
+
+- Restores explicit BYOK primary-provider selection for Live (Groq GPT-OSS 120B can be pinned) and displays real automatic routing in Settings. A saved key is not proof of provider readiness.
+- Provider connection probe verifies the complete streaming response instead of declaring success after the first token.
+- Adds an **opt-in**, independent Deepgram candidate-microphone transcription path while System Audio captures the interviewer; candidate text is recorded for evaluation separately and is not routed as interviewer questions. Duplicate finals are suppressed and additional STT usage is disclosed.
+- Improves Sources & ARCH: account-scoped professional evidence, revision-aware stale quotations, deterministic review queue, attach approved evidence to an existing claim, and explicit local evidence-graph JSON export.
+- Adds automated Windows packaged runtime liveness/memory checks and a short elapsed-time soak to pre-release packaging. The manual isolated preview workflow supports an optional 90-minute dry-run soak.
+- OAuth flows included from v1.6.12 are unchanged; OAuth app registration and authorization remain user-controlled.
+
+**Limitations:** This is a local BYOK unsigned testing build, NOT a signed production release. No 90-minute real audio/LLM interview, physical Windows two-channel capture, meeting share-preview or production connector authorization has been certified. Future Smart Turn/VAD inference, full autonomous professional career graph and other roadmap integrations remain separate work; do not call them complete. Users should verify consent, microphone isolation, key billing and session storage on their own Windows machines.
+
+
 ## v1.6.6 — 2026-10-13 (release candidate)
 
 - Apply readable typography throughout desktop screens: body text 24–28px, supporting text at least 20px; enlarge controls, wrap Settings actions, correct sidebar/content CSS ownership, and expose viewport scrolling and wider resize handles. Make setup resizable and disable click-through upon returning to dashboard.
