@@ -9,6 +9,7 @@ const Duo = lazy(() => import('./Duo'))
 const Jobs = lazy(() => import('./Jobs'))
 const Career = lazy(() => import('./Career'))
 const Account = lazy(() => import('./Account'))
+const ConnectedSources = lazy(() => import('./ConnectedSources'))
 import { T } from './auth/tokens'
 import { AppShell, SessionsTable } from './Dashboard'
 import { JourneyHome, InterviewKitsScreen, ReadyRoom } from './journey/JourneyScreens'
@@ -62,7 +63,7 @@ const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform ==
 // Views that render in the full windowed app shell (large window + sidebar). Solo runs
 // here too — there's no interviewer watching, so it gets the roomy dashboard, not the
 // overlay. ONLY the Live companion drops to the compact always-on-top overlay.
-const SHELL_VIEWS = ['home', 'kits', 'ready-room', 'solo', 'duo', 'jobs', 'career', 'settings', 'account', 'history']
+const SHELL_VIEWS = ['home', 'kits', 'ready-room', 'solo', 'duo', 'jobs', 'career', 'sources', 'settings', 'account', 'history']
 
 function StealthSafetyPrompt({ confirmOff, notice, onCancel, onConfirmOff }) {
   if (!confirmOff && !notice) return null
@@ -924,6 +925,7 @@ function ElectronShell({ auth }) {
         />
       </div>
     )
+    else if (view === 'sources') content = <ConnectedSources auth={auth} activeKit={activeKit} />
     else if (view === 'settings') content = (
       <div className="mm-settings" style={{ maxWidth: 980, width: '100%', margin: '0 auto' }}>
         <div style={shellHeader}>Settings</div>
