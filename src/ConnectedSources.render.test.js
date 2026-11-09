@@ -16,7 +16,9 @@ describe('Track B Sources & ARCH navigation', () => {
   it('shows manual review, explicit consent and honest OAuth status', () => {
     const html = renderToString(React.createElement(ConnectedSources, { auth: { guest: true } }))
     expect(html).toContain('Connected accounts')
-    expect(html).toContain('OAuth not configured')
+    expect(html).toContain('Authorize external account')
+    expect(html).toContain('Connected accounts')
+    expect(html).toContain('ARCH professional evidence graph')
     expect(html).toContain('Import one selected source')
     expect(html).toContain('Preview selected source')
     expect(html).toContain('ARCH professional profile')
