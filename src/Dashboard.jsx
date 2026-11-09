@@ -22,6 +22,7 @@ const NAV = [
   { id: 'duo', icon: '👥', label: 'Duo (Beta)' },
   { id: 'jobs', icon: '💼', label: 'Jobs' },
   { id: 'career', icon: '📄', label: 'Resume Studio' },
+  { id: 'sources', icon: '🔗', label: 'Sources & ARCH' },
   { id: 'settings', icon: '⚙️', label: 'Settings' },
   { id: 'history', icon: '🕘', label: 'Sessions' },
 ]
