@@ -87,6 +87,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   applyKeys: () => ipcRenderer.invoke('apply-keys'),
   openKeySetup: () => ipcRenderer.invoke('open-key-setup'),
   openExternal: url => ipcRenderer.invoke('open-external', url),
+  connectors: {
+    request: payload => ipcRenderer.invoke('connector-request', payload),
+    setLive: active => ipcRenderer.invoke('connector-set-live', active === true),
+    onSync: callback => {
+      const handler = (_, result) => callback(result)
+      ipcRenderer.on('connector-sync', handler)
+      return () => ipcRenderer.removeListener('connector-sync', handler)
+    },
+  },
   // OS power / display — Live resumes AudioContext + STT after sleep/wake or monitor changes.
   onPowerEvent: cb => {
     const h = (_, ev) => cb(ev)
