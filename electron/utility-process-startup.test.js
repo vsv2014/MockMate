@@ -36,7 +36,9 @@ describe('packaged desktop service startup', () => {
   })
 
   it('never leaves a blank single instance waiting forever for the UI service', () => {
-    expect(main).toContain('did not become ready within 15 seconds')
+    expect(main).toContain('did not become ready within 45 seconds')
+    expect(main).toContain("makeOwnedLoopbackProbe(service, { port: 3002, service: 'mockmate-local-ui' })")
+    expect(main).toContain("makeOwnedLoopbackProbe(service, { port, service: 'mockmate-backend' })")
     expect(main).toContain('attachRequiredServiceLifecycle(service')
     expect(main).toContain("dialog.showErrorBox('MockMate could not start'")
     expect(main).toContain("dialog.showErrorBox('MockMate could not load'")
