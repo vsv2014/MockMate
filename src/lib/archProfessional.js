@@ -105,8 +105,11 @@ export function removeEvidenceForImport(importId) {
   const removed = new Set(current.evidence.filter(item => item.importId === importId).map(item => item.id))
   return persist({
     ...current, evidence: current.evidence.filter(item => !removed.has(item.id)),
-    claims: current.claims.map(claim => ({ ...claim,
-      evidenceIds: claim.evidenceIds.filter(id => !removed.has(id)) })),
+    claims: current.claims.map(claim => {
+      const kept = claim.evidenceIds.filter(id => !removed.has(id))
+      return { ...claim, evidenceIds: kept,
+        status: claim.evidenceIds.length && !kept.length ? 'needs_review' : claim.status }
+    }),
     history: [...current.history, { type: 'source_removed', id: importId, at: new Date().toISOString() }],
   })
 }
