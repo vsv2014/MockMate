@@ -12,6 +12,7 @@ import SoloFeedback from './SoloFeedback'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
 import { getAutoSkip, getAnswerStyle, setAnswerStyle as persistAnswerStyle } from './lib/aiSettings'
+import { loadModelSelection, persistModelSelection, resolveLiveProviderSelection } from './lib/modelPicker'
 import { retrieveContext, warmDocs, addDoc, getSelectedDocIds, getKitSelectedDocIds, listDocs, listKitDocs, canReuseSpeculativeRag } from './lib/docs'
 import Documents from './Documents'
 import CustomPromptStudio from './components/CustomPromptStudio'
@@ -146,6 +147,8 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   const [audioSources, setAudioSources] = useState([])
   const [sourceId, setSourceId] = useState(initialAudioSource || 'microphone')
   const [providers, setProviders] = useState([])
+  const [routingAvailable, setRoutingAvailable] = useState(null)
+  const [preferredProvider, setPreferredProvider] = useState(() => loadModelSelection())
   const [dgAvailable, setDgAvailable] = useState(false)
   // Inline API-key entry — same keys are also editable globally (Home → Settings).
   const [showKeys, setShowKeys] = useState(false)
@@ -155,6 +158,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
     return apiFetch('/api/providers').then(r => r.json()).then(d => {
       const list = d.providers || []
       setProviders(list)
+      setRoutingAvailable(d.routing ? Boolean(d.routing.fast || d.routing.strong) : null)
       setDgAvailable(!!d.deepgram)
     }).catch(() => {})
   }
@@ -203,7 +207,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   // BYOK with no LLM configured → hints would error on every question mid-call. Block Start and say why.
   // Public builds enforce the full Electron + OS protection + share-preview safety gate;
   // frictionless bypass is strictly restricted to local dev mode.
-  const noLLM = !managed && providers.length === 0
+  const noLLM = !managed && (providers.length === 0 || routingAvailable === false)
   const canStart = computeLiveCanStart({
     dgAvailable,
     noLLM,
@@ -478,8 +482,18 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
 
         <Section n={4} title="More options" subtitle="Language and coding" defaultOpen={false}>
         <div role="status" style={{ fontSize: readableTextSize(11.5), color: T.text2, lineHeight: 1.5 }}>
-          <strong style={{ color: T.text1 }}>AI routing: Automatic.</strong> MockMate uses your connected AI providers, favors quick responses for straightforward questions, and allocates more reasoning to coding or system design. If a model is unavailable, it tries a compatible fallback before showing an answer.
+          <strong style={{ color: T.text1 }}>AI routing: {resolveLiveProviderSelection(preferredProvider, providers) ? (providers.find(p => p.id === preferredProvider)?.label || preferredProvider) + ' (primary)' : 'Automatic'}.</strong> An unavailable primary may fall back before producing an answer. Only verified provider tests can establish whether an API key works.
         </div>
+
+        {!managed && <Field label="Primary AI provider for this interview" htmlFor="live-ai-provider">
+          <select id="live-ai-provider" style={inp}
+            value={resolveLiveProviderSelection(preferredProvider, providers)}
+            onChange={e => { setPreferredProvider(e.target.value); persistModelSelection(e.target.value) }}>
+            <option value="">Automatic (choose a healthy provider)</option>
+            {providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+          <span style={{ fontSize: readableTextSize(10.5), color: T.text3 }}>Choose your tested primary (e.g. Groq). Automatic fallback remains available if it fails. The choice is saved for this account.</span>
+        </Field>}
 
         <Field label="Interview language" htmlFor="live-interview-language">
           <select id="live-interview-language" style={inp} value={profile.language || 'English'} onChange={e => patch({ language: e.target.value })}>
@@ -506,7 +520,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
             interviewConfig.kitId = initialKit.id
             interviewConfig.kitName = initialKit.name || 'Interview Kit'
           }
-          onStart({ profile, sourceId, provider: '', interviewConfig, kitId: initialKit?.id, kitName: initialKit?.name })
+          onStart({ profile, sourceId, provider: managed ? '' : resolveLiveProviderSelection(preferredProvider, providers), interviewConfig, kitId: initialKit?.id, kitName: initialKit?.name })
         }}
           style={{ position: 'sticky', bottom: 0, zIndex: 3, height: 52, background: canStart ? T.accent : T.surface2, color: canStart ? '#fff' : T.text3, border: `1px solid ${canStart ? 'rgba(103,232,249,0.45)' : T.border}`, borderRadius: T.rCtrl, boxShadow: '0 -10px 24px rgba(6,12,22,0.78)', fontSize: readableTextSize(15), fontWeight: 700, cursor: canStart ? 'pointer' : 'default', fontFamily: T.font }}>
           Start Live →
@@ -515,7 +529,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           <div style={{ fontSize: readableTextSize(11.5), color: T.text3, marginTop: -4 }}>
             {!inElectron ? 'Open the desktop app to start.'
               : !dgAvailable ? 'Add Voice (Deepgram) in Settings first.'
-              : noLLM ? 'Add an AI provider key in Settings first.'
+              : noLLM ? (providers.length ? 'All AI providers are temporarily unavailable. Test your keys in Settings.' : 'Add an AI provider key in Settings first.')
               : isLinux ? 'Acknowledge the Linux screen-share risk above.'
               : 'Check the share-preview box above to enable Start.'}
           </div>

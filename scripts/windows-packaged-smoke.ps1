@@ -1,3 +1,7 @@
+param(
+  [ValidateRange(0, 180)] [double]$SoakMinutes = 0
+)
+
 $ErrorActionPreference = 'Stop'
 
 $pkg = Get-Content 'package.json' -Raw | ConvertFrom-Json
@@ -49,6 +53,51 @@ try {
   # HTTP 200 on :3002, this proves compiled React actually mounted in Electron.
   node scripts/windows-packaged-renderer-smoke.mjs
   if ($LASTEXITCODE -ne 0) { throw "Packaged React renderer failed smoke verification (exit $LASTEXITCODE)" }
+
+
+  # Optional real elapsed-time desktop/service endurance test. No provider credentials,
+  # audio playback or paid LLM requests; the renderer and both local services remain live.
+  # This verifies more than startup, but is NOT a physical 90-minute interview/audio test.
+  if ($SoakMinutes -gt 0) {
+    $duration = [TimeSpan]::FromMinutes($SoakMinutes)
+    $end = (Get-Date).Add($duration)
+    $sample = 0
+    $startWorkingSet = [double]$proc.WorkingSet64
+    $peakDeltaMB = 0
+    $successes = 0
+    $consecutiveFailures = 0
+    Write-Host ("Endurance test started: {0:N2} minutes; no paid AI calls" -f $SoakMinutes)
+    while ((Get-Date) -lt $end) {
+      Start-Sleep -Seconds 10
+      $sample += 1
+      $proc.Refresh()
+      if ($proc.HasExited) { throw "Packaged Electron process exited during endurance test (exit $($proc.ExitCode))." }
+      try {
+        $ui = Invoke-WebRequest 'http://127.0.0.1:3002/' -UseBasicParsing -TimeoutSec 4
+        if ($ui.StatusCode -ne 200) { throw 'UI/API status was not 200' }
+        if ($expectLocalBackend) {
+          $health = Invoke-RestMethod 'http://127.0.0.1:4000/health' -TimeoutSec 4
+          if ($health.ok -ne $true) { throw 'Account backend health was not OK' }
+        }
+        $successes += 1
+        $consecutiveFailures = 0
+      } catch {
+        $consecutiveFailures += 1
+        Write-Warning ("Endurance health probe failed (consecutive {0}): {1}" -f $consecutiveFailures, $_.Exception.Message)
+        if ($consecutiveFailures -ge 2) { throw 'Two consecutive endurance health probes failed.' }
+      }
+      $deltaMB = [math]::Max(0, ($proc.WorkingSet64 - $startWorkingSet) / 1MB)
+      $peakDeltaMB = [math]::Max($peakDeltaMB, $deltaMB)
+      if ($deltaMB -gt 1024) { throw ("Electron working set increased by {0:N0} MiB (limit 1024 MiB)." -f $deltaMB) }
+      # Every ten minutes: confirm Chromium can still mount and answer an IPC/DOM probe.
+      if ($sample % 60 -eq 0) {
+        node scripts/windows-packaged-renderer-smoke.mjs
+        if ($LASTEXITCODE -ne 0) { throw "Renderer endurance verification failed ($LASTEXITCODE)." }
+        Write-Host ("Endurance {0:N0} minutes healthy; peak process memory growth {1:N1} MiB" -f ($sample / 6), $peakDeltaMB)
+      }
+    }
+    Write-Host ("Endurance passed: {0:N2} elapsed minutes, {1} successful probes, peak growth {2:N1} MiB" -f $SoakMinutes, $successes, $peakDeltaMB)
+  }
 
   Write-Host 'Packaged Windows smoke passed: services ready, React mounted, Electron IPC preload present.'
 } finally {

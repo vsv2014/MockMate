@@ -70,3 +70,10 @@ export function persistModelSelection(value) {
   if (value && isCurrentProviderChoice(value)) setScopedItem('llmProvider', value)
   else removeScopedItem('llmProvider')
 }
+
+// A saved primary model must still belong to a currently configured provider.
+// If its key was removed or the model retired, Live must use healthy auto routing.
+export function resolveLiveProviderSelection(preferred, providers = []) {
+  if (!preferred || !isCurrentProviderChoice(preferred)) return ''
+  return providers.some(p => p?.id === preferred) ? preferred : ''
+}

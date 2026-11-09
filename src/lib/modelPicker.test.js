@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { curateModelOptions, configuredProviderNames, curateProviderFallbacks, persistModelSelection, loadModelSelection } from './modelPicker.js'
+import { curateModelOptions, configuredProviderNames, curateProviderFallbacks, persistModelSelection, loadModelSelection, resolveLiveProviderSelection } from './modelPicker.js'
 
 describe('current model picker', () => {
+  it('pins only a currently configured Live primary provider, never a removed key', () => {
+    const configured = [{ id: 'groq', label: 'Groq · GPT-OSS 120B' }]
+    expect(resolveLiveProviderSelection('groq', configured)).toBe('groq')
+    expect(resolveLiveProviderSelection('openai', configured)).toBe('')
+    expect(resolveLiveProviderSelection('groq::llama-3.3-70b-versatile', configured)).toBe('')
+    expect(resolveLiveProviderSelection('', configured)).toBe('')
+  })
   it('limits each configured provider to three supported choices', () => {
     const ids = ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']
     const out = curateModelOptions(ids.map(model => ({ id: `openai::${model}`, provider: 'openai', model, label: model })))

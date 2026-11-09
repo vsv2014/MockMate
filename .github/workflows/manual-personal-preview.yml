@@ -10,6 +10,11 @@ on:
         required: true
         default: false
         description: "TEST ONLY: allow artifact when production dependency audit reports known advisories (never publish)"
+      endurance_minutes:
+        type: number
+        required: true
+        default: 0
+        description: "Optional actual-time Windows desktop/API endurance run (90 for 1.5 hours; no paid AI/audio calls)"
 
 permissions:
   contents: read
@@ -21,7 +26,7 @@ concurrency:
 jobs:
   isolated-personal-preview:
     runs-on: windows-latest
-    timeout-minutes: 75
+    timeout-minutes: 165
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
@@ -105,6 +110,13 @@ jobs:
       - name: Packaged runtime smoke
         shell: pwsh
         run: ./scripts/windows-packaged-smoke.ps1
+
+      - name: Optional 90-minute packaged desktop endurance check
+        if: inputs.endurance_minutes > 0
+        shell: pwsh
+        env:
+          ENDURANCE_MINUTES: ${{ inputs.endurance_minutes }}
+        run: ./scripts/windows-packaged-smoke.ps1 -SoakMinutes ([double]$env:ENDURANCE_MINUTES)
 
       - name: Verify test isolation and stage install artifact
         shell: pwsh

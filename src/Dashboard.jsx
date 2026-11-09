@@ -423,22 +423,28 @@ function SystemStatus() {
   const managed = isManaged()
   const providers = d?.providers || []
   const providerNames = configuredProviderNames([], providers)
-  const aiReady = providers.length > 0
+  // A stored key is not a successful provider probe. Automatic routing
+  // excludes providers benched by recent connection or streaming failures.
+  const hasRoute = Boolean(d?.routing?.fast || d?.routing?.strong)
+  const aiReady = isManaged() ? providers.length > 0 : hasRoute
   const dg = !!d?.deepgram
   const liveReady = aiReady && dg
   const linux = typeof navigator !== 'undefined' && /linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent)
-  const failover = providerNames.length >= 2
+  const failover = providerNames.length >= 2 && hasRoute
+  const routeLabel = [d?.routing?.fast?.label, d?.routing?.strong?.label].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' / ')
   const footer = !aiReady
     ? 'Add an AI key or switch to MockMate AI in Settings.'
     : !dg
       ? 'AI ready · Voice off — Solo works with typing; Live needs Deepgram in Settings → Voice.'
-      : 'AI + Voice ready — you can start Solo or Live.'
+      : 'AI route + Voice key available — verify both in Ready Room before Live.'
   return (
     <Panel title="System Status">
-      <StatusRow label="AI service" ok={aiReady} warn={!aiReady} value={aiReady ? `${providerNames.join(', ')} ready` : (managed ? 'Managed unavailable / no provider' : 'No key')} />
-      <StatusRow label="Voice" ok={dg} warn={!dg} value={dg ? 'Deepgram connected' : 'Off — add Deepgram in Settings → Voice'} />
+      <StatusRow label="AI service" ok={aiReady} warn={!aiReady} value={aiReady
+        ? `${routeLabel || providerNames.join(', ')} route available · test required`
+        : (providers.length ? 'Configured AI providers unavailable — retest in Settings' : (managed ? 'Managed unavailable / no provider' : 'No AI key'))} />
+      <StatusRow label="Voice" ok={dg} warn={!dg} value={dg ? 'Deepgram key saved · test microphone/audio' : 'Off — add Deepgram in Settings → Voice'} />
       <StatusRow label="Stealth" ok={false} warn={true} value={linux ? 'NOT supported (Linux)' : 'Verify in share preview (browser matrix UNKNOWN)'} />
-      <StatusRow label="Failover" ok={failover} warn={!failover} value={failover ? 'Ready' : 'Single provider'} />
+      <StatusRow label="Failover" ok={false} warn={true} value={failover ? 'Other keys saved · not verified' : 'No verified backup'} />
       {!!quality?.sessions && <>
         <StatusRow label="Answer speed" ok={quality.avgTtftMs != null && quality.avgTtftMs <= 5000} warn={quality.avgTtftMs > 5000} value={quality.avgTtftMs == null ? 'No data' : `${quality.avgTtftMs} ms avg`} />
         <StatusRow label="Question capture" ok={quality.avgCommitMs != null && quality.avgCommitMs <= 2500} warn={quality.avgCommitMs > 2500} value={quality.avgCommitMs == null ? 'No data' : `${quality.avgCommitMs} ms avg`} />
