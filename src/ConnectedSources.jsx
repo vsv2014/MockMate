@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { T } from './auth/tokens'
 import { activeAccountScope } from './lib/accountScope'
+import { setDocSelected, setKitDocSelected } from './lib/docs'
 import { loadInterviewKitState } from './lib/interviewKits'
 import {
   SOURCE_TYPES, listApprovedImports, previewSelectedSource,
@@ -94,6 +95,16 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
       refresh()
       setMessage('Approved import and linked quotes removed.')
     } catch (error) { setMessage('⚠ ' + readableError(error)) }
+  }
+  function toggleRetrieval(row, selected) {
+    if (!row.documentPresent) { setMessage('⚠ The imported document is missing. Import it again to enable retrieval.'); return }
+    if (selected && !window.confirm('Include this imported source in selected-document AI retrieval? Relevant excerpts may be sent to your configured AI provider during practice or Live.')) return
+    const result = row.kitId
+      ? setKitDocSelected(row.kitId, row.documentId, selected)
+      : setDocSelected(row.documentId, selected)
+    if (!result) { setMessage('⚠ Could not update retrieval selection.'); return }
+    refresh()
+    setMessage(selected ? 'Source enabled for selected-document AI retrieval.' : 'Source excluded from AI retrieval.')
   }
   function saveProfile() {
     const saved = updateProfessionalProfile(profileDraft)
@@ -190,6 +201,10 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
               <strong style={{ fontSize: 13, overflowWrap: 'anywhere' }}>{row.title}</strong>
               <div style={small}>{SOURCE_TYPES[row.provider]?.label || row.provider} · {row.kitId ? 'Interview Kit' : 'Shared library'} · {row.revision || 'no revision specified'}</div>
             </div>
+            <label style={{ ...small, display: 'flex', gap: 7, alignItems: 'center', cursor: row.documentPresent ? 'pointer' : 'not-allowed' }}>
+              <input type="checkbox" disabled={!row.documentPresent} checked={row.selectedForLive} onChange={e => toggleRetrieval(row, e.target.checked)} />
+              Allow AI retrieval
+            </label>
             <button style={quiet} type="button" onClick={() => deleteImport(row.id)}>Remove import</button>
           </div>
         ))}
