@@ -264,6 +264,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       language: langRef.current,
       diarize: true,
       keyterms: keytermsRef.current,
+      turnDetection: startOptsRef.current?.turnDetection || 'balanced',
     })
     let sock
     try {
