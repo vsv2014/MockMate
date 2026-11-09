@@ -4,7 +4,17 @@ MockMate is a desktop-first interview preparation and live-performance companion
 
 ## Release status — v1.6.6 candidate
 
-The desktop package and lock files target **1.6.6**. This is a release candidate for the Live usability regressions reported in v1.6.5; it is not yet a published installer. Build and automated tests pass; packaged Windows checks remain open. The previously published v1.6.5 is an unsigned personal preview with no auto-update feed. A version bump does not establish signing or publication status.
+The desktop source/package version is **1.6.6**. Automated Linux and Windows CI, including an isolated portable Windows packaged-runtime smoke test, passed on the integrated source; **physical Windows microphone, content-protection, upgrade and signed release checks remain open**. Version 1.6.6 is **not** published as a tagged GitHub Release or stable installer. The latest published GitHub pre-release installer is v1.6.5 (unsigned BYOK personal preview).
+
+### Download and test the newest Windows code
+
+- **v1.6.6 local testing (all integrated PRs):** [Download the verified unsigned Windows portable build from GitHub Actions](https://github.com/vsv2014/MockMate/actions/runs/42591076289/artifacts/13661263558) (GitHub sign-in may be required; Actions artifacts expire). Extract the downloaded artifact ZIP, verify the provided SHA-256 checksum, then extract its *inner* portable ZIP and run `MockMatePersonalPreview.exe`. This runs beside a stable installation with a distinct app identity, and has **no automatic updater**.
+- **v1.6.5 downloadable installer:** [Latest published unsigned personal preview](https://github.com/vsv2014/MockMate/releases/tag/v1.6.5). This is older code and does **not** include the latest merged experiments.
+- **Test the current `main` commit:** [Build Portable Windows Local Preview](https://github.com/vsv2014/MockMate/actions/workflows/test-all-open-prs.yml) → **Run workflow** and select `main`, or see [source/testing instructions](docs/LOCAL_ALL_PRS_TESTING.md). This builds a new portable artifact for the selected commit after tests pass.
+- [The v1.6.0 release page](https://github.com/vsv2014/MockMate/releases/tag/v1.6.0) is historical and has **no binary assets**. It may appear as GitHub's latest *non-prerelease* release because subsequent Windows previews are explicitly marked as prereleases. Do **not** move older tags or relabel a preview as a signed stable release to change that display.
+
+Portable CI success does not certify a physical Windows Live session, hosted Managed AI, Composio OAuth, Smart Turn, cross-device sync or a signed updater. The remaining packaging/security/device checks are tracked in [#115](https://github.com/vsv2014/MockMate/issues/115), [#116](https://github.com/vsv2014/MockMate/issues/116) and [#120](https://github.com/vsv2014/MockMate/issues/120).
+
 
 - The stable Windows workflow (`release.yml`) is **signed-only**. It requires the signing certificate, password and publisher identity, verifies trusted Authenticode signatures for both the app and the installer, and runs a packaged smoke test before publication. Missing signing settings stop the stable release; it never falls back to an unsigned build or unsigned updater payload.
 - v1.6.4 shipped with a broken Ready Room (no visible Live action), dropped OpenRouter keys and a global
