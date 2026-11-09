@@ -67,7 +67,7 @@ function accountPublic(record) {
     scopes: record.scopes || '', connectedAt: record.connectedAt, lastVerifiedAt: record.lastVerifiedAt }
 }
 
-function createConnectorGateway({ userData, safeStorage, openExternal, fetchImpl = fetch, now = time } = {}) {
+function createConnectorGateway({ userData, safeStorage, openExternal, currentOwner, fetchImpl = fetch, now = time } = {}) {
   if (!userData || !safeStorage) fail('Connector gateway requires secure desktop storage')
   const file = path.join(userData, 'connected-accounts.v1.bin')
   const flows = new Map()
@@ -171,8 +171,23 @@ function createConnectorGateway({ userData, safeStorage, openExternal, fetchImpl
   }
   function newFlow(owner, provider, extras = {}) {
     assertOwner(owner); providerCheck(provider)
+    for (const [key, flow] of flows) {
+      if (now() - flow.created > WAIT_MS || flow.status === 'expired') {
+        try { flow.server?.close() } catch {}
+        flows.delete(key)
+      }
+    }
+    if ([...flows.values()].filter(flow => flow.owner === owner).length >= 3)
+      fail('Too many pending authorization attempts. Complete or expire an earlier request.')
     const id = random()
-    flows.set(id, { id, owner, provider, status: 'pending', created: now(), ...extras })
+    const flow = { id, owner, provider, status: 'pending', created: now(), ...extras }
+    flows.set(id, flow)
+    const timer = setTimeout(() => {
+      if (flows.get(id) !== flow) return
+      flow.status = 'expired'
+      try { flow.server?.close() } catch {}
+    }, WAIT_MS)
+    timer.unref?.()
     return id
   }
   function activeFlow(owner, id) {
@@ -273,6 +288,8 @@ function createConnectorGateway({ userData, safeStorage, openExternal, fetchImpl
           headers: { Authorization: 'Bearer ' + token.access_token }, fetchImpl,
         })
         if (!user.sub || !user.email) fail('Google did not return a verified identity')
+        if (typeof currentOwner === 'function' && await currentOwner() !== owner)
+          fail('MockMate account changed during external authorization; no credential was stored')
         flow.account = saveConnected(owner, provider, { subject: user.sub, label: user.email },
           token, { clientId: client, clientSecret: secret, scopes: GOOGLE_SCOPES[provider] })
         flow.status = 'success'
