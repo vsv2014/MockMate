@@ -77,7 +77,8 @@ describe('deepgramTransport shared helpers', () => {
     expect(result).toMatchObject({ ok: false, tokenStatus: 429, retryAfterMs: 12_000 })
   })
 
-  it('bounds selected turn detection profiles and preserves default behavior', () => {\n    const balanced = buildDeepgramListenUrl()\n    const responsive = buildDeepgramListenUrl({ turnDetection: 'responsive' })\n    const thoughtful = buildDeepgramListenUrl({ turnDetection: 'thoughtful' })\n    const invalid = buildDeepgramListenUrl({ turnDetection: 'endpointing=0&foo=bar' })\n    expect(balanced).toContain('endpointing=300')\n    expect(balanced).toContain('utterance_end_ms=1200')\n    expect(responsive).toContain('endpointing=200')\n    expect(responsive).toContain('utterance_end_ms=1000')\n    expect(thoughtful).toContain('endpointing=500')\n    expect(thoughtful).toContain('utterance_end_ms=1600')\n    expect(invalid).toBe(balanced)\n  })\n
+  it('bounds selected turn detection profiles and preserves default behavior', () => {\n    const balanced = buildDeepgramListenUrl()\n    const responsive = buildDeepgramListenUrl({ turnDetection: 'responsive' })\n    const thoughtful = buildDeepgramListenUrl({ turnDetection: 'thoughtful' })\n    const invalid = buildDeepgramListenUrl({ turnDetection: 'endpointing=0&foo=bar' })\n    expect(balanced).toContain('endpointing=300')\n    expect(balanced).toContain('utterance_end_ms=1200')\n    expect(responsive).toContain('endpointing=200')\n    expect(responsive).toContain('utterance_end_ms=1000')\n    expect(thoughtful).toContain('endpointing=500')\n    expect(thoughtful).toContain('utterance_end_ms=1600')\n    expect(invalid).toBe(balanced)
+    expect(buildDeepgramListenUrl({ turnDetection: '__proto__' })).toBe(balanced)\n  })\n
   it('builds Deepgram listen URLs for microphone and diarized system audio', () => {
     const micUrl = buildDeepgramListenUrl({ degraded: false, language: 'en-US', diarize: false })
     expect(micUrl).toContain('model=nova-3')
