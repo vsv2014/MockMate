@@ -161,6 +161,15 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
       setMessage('Active ' + (SOURCE_TYPES[provider]?.label || provider) + ' account changed.')
     } catch (error) { setMessage('⚠ ' + readableError(error)) }
   }
+  async function verifyConnectedAccount(provider, accountId) {
+    setConnectorBusy(true); setMessage('')
+    try {
+      const result = await connectorRequest({ op: 'verify-account', provider, accountId })
+      await fetchConnections()
+      setMessage('✓ Verified connected ' + (result.account?.label || provider) + ' account. Access is current.')
+    } catch (error) { setMessage('⚠ Account verification failed: ' + readableError(error)) }
+    finally { setConnectorBusy(false) }
+  }
   async function disconnect(provider, accountId) {
     if (!window.confirm('Disconnect this external account from MockMate? Its automatic sync subscriptions will stop; imported local documents remain.')) return
     try {
@@ -387,7 +396,11 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
                 {choices.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
               </select>}
               {choices.map(row => <div key={row.id} style={{ ...small, marginTop: 7 }}>
-                {row.label} <button type="button" style={{ ...quiet, padding: '3px 7px', marginLeft: 6 }} onClick={() => disconnect(id, row.id)}>Disconnect</button>
+                {row.label}
+                <span style={{ display: 'block' }}>Last checked: {row.lastVerifiedAt ? new Date(row.lastVerifiedAt).toLocaleString() : 'Not verified in this session'}</span>
+                <button type="button" disabled={connectorBusy} style={{ ...quiet, padding: '3px 7px', marginLeft: 6 }}
+                  onClick={() => verifyConnectedAccount(id, row.id)}>Check access</button>
+                <button type="button" style={{ ...quiet, padding: '3px 7px', marginLeft: 6 }} onClick={() => disconnect(id, row.id)}>Disconnect</button>
               </div>)}
             </div>
           })}
