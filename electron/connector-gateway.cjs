@@ -443,10 +443,23 @@ function createConnectorGateway({ userData, safeStorage, openExternal, fetchImpl
     writeVault(vault)
     return { ok: true }
   }
+  function purgeOwner(owner) {
+    assertOwner(owner)
+    const vault = readVault()
+    delete vault.owners[owner]
+    for (const [flowId, flow] of flows) {
+      if (flow.owner === owner) {
+        try { flow.server?.close() } catch {}
+        flows.delete(flowId)
+      }
+    }
+    writeVault(vault)
+    return { ok: true }
+  }
   function setLivePaused(value) { livePaused = value === true }
   function close() { for (const flow of flows.values()) { try { flow.server?.close() } catch {} }; flows.clear() }
   return { state, setActive, removeAccount, startGithub, startGoogle, pollFlow, listSources, readSource,
-    subscribe, setSync, unsubscribe, syncNow, acknowledgeSync, setLivePaused, close,
+    subscribe, setSync, unsubscribe, syncNow, acknowledgeSync, purgeOwner, setLivePaused, close,
     _forTests: { saveConnected, readVault, sourceCheck } }
 }
 module.exports = { createConnectorGateway, normalizedText, sourceCheck, MAX_BYTES }
