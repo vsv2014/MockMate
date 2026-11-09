@@ -908,6 +908,7 @@ function ElectronShell({ auth }) {
         onOpenReadyRoom={() => openReadyRoom(activeKit)}
         onStartPractice={startPractice}
         onOpenHistory={openHistory}
+        onOpenSources={() => setView('sources')}
         onSettings={() => setView('settings')} />
     )
     else if (view === 'kits') content = (
