@@ -1,5 +1,17 @@
 # Validation status
 
+## v1.6.8 unsigned Personal Preview (2026-11-09; Ready Room fixes)
+
+**Evidence is commit- and version-specific. This is NOT a physically certified release.**
+
+- **Source:** feature fix #124 (merged `dbb8919330379e0501b6648ae9048cbbbc43fac0`) followed by release-version #126 (merged `da2aff5f552a790672e29e0c30fa551b44654a15`).
+- **Issues addressed:** management sidebar icon/label collisions and oversized Ready Room copy; explanatory AI smoke erroneously failing with `code_missing`; readiness failures displayed as Pending; microphone versus System Audio verification ambiguity; system-playback Deepgram finalization before test teardown.
+- **Implementation CI:** [PR #124 Desktop CI run 42600260034](https://github.com/vsv2014/MockMate/actions/runs/42600260034) passed Linux security/tests/build and Windows packaged smoke. [PR #126 run 42601081173](https://github.com/vsv2014/MockMate/actions/runs/42601081173) passed same checks for version 1.6.8.
+- **Unsigned publication:** [release workflow run 42601710957](https://github.com/vsv2014/MockMate/actions/runs/42601710957) completed. [GitHub release v1.6.8](https://github.com/vsv2014/MockMate/releases/tag/v1.6.8) contains the isolated Personal Preview installer, SHA256SUMS and notice; no updater feed or stable release replacement.
+- **Physical Windows verification: NOT DONE.** Check sidebar/Ready Room layout at common display scales, real provider answer for a conceptual hash-map question, separate microphone and actual system-playback final transcript through the chosen Windows output, sign-in/storage, updated preview identity, and Zoom/Meet/Teams share preview. If playback fails, preserve redacted diagnostics and identify the capture source and output device. A real device could still expose an OS/driver/permission issue despite CI.
+- **Follow-up:** [#125 desktop-wide typography audit](https://github.com/vsv2014/MockMate/issues/125) tracks similar potential clipping in Jobs, Resume Studio, Settings, Solo and Duo.
+
+
 ## v1.6.5 unsigned personal preview (2026-10-13, v1.6.4 hotfix)
 
 **Evidence is version- and commit-specific. Do not infer a physical PASS from unit tests, code review or an unsigned CI installer.**
