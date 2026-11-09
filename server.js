@@ -81,6 +81,10 @@ app.use('/api', rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true,
 const report = e => { if (process.env.SENTRY_DSN && (!e?.status || e.status >= 500)) Sentry.captureException(e) }
 registerApiRoutes(app, { report, reasoningPolicy, enableLocalProviderTest: true })
 
+// Local, non-secret readiness identity for Electron's owned-process probe.
+// Matching the OS PID prevents a different process on the port from impersonating our child.
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'mockmate-local-ui', pid: process.pid }))
+
 app.use(express.static(distDir))
 app.use((req, res, next) => {
   if (req.path.startsWith('/api')) return next()

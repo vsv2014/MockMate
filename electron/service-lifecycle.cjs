@@ -16,15 +16,20 @@ function attachRequiredServiceLifecycle(child, {
   onReady = () => {},
   onDiagnostic,
   onFatal = () => {},
+  probeReady = null,
+  probeIntervalMs = 500,
 } = {}) {
   let ready = false
   let failed = false
   let disposed = false
+  let probeTimer = null
+  let probing = false
 
   const fatal = value => {
     if (failed || disposed) return
     failed = true
     clearTimeout(timer)
+    clearInterval(probeTimer)
     const error = normalizeError(value)
     try { child.kill() } catch {}
     try { onFatal(error) } catch {}
@@ -36,6 +41,7 @@ function attachRequiredServiceLifecycle(child, {
       if (ready) return
       ready = true
       clearTimeout(timer)
+      clearInterval(probeTimer)
       try { onReady(message) } catch (error) { fatal(error) }
     } else if (message?.type === 'diagnostic' && message.row) {
       try { onDiagnostic?.(message.row) } catch {}
@@ -63,6 +69,19 @@ function attachRequiredServiceLifecycle(child, {
   child.on('message', onMessage)
   child.on('error', onError)
   child.on('exit', onExit)
+  if (typeof probeReady === 'function') {
+    const probe = () => {
+      if (ready || failed || disposed || probing) return
+      probing = true
+      Promise.resolve().then(probeReady)
+        .then(ok => { if (ok && !failed && !ready && !disposed) onMessage({ type: 'ready', source: 'owned_loopback_probe' }) })
+        .catch(() => {})
+        .finally(() => { probing = false })
+    }
+    probeTimer = setInterval(probe, Math.max(100, probeIntervalMs))
+    probeTimer.unref?.()
+    probe()
+  }
 
   return {
     fail: fatal,
@@ -71,6 +90,7 @@ function attachRequiredServiceLifecycle(child, {
     dispose: () => {
       disposed = true
       clearTimeout(timer)
+      clearInterval(probeTimer)
       child.removeListener?.('message', onMessage)
       child.removeListener?.('error', onError)
       child.removeListener?.('exit', onExit)
@@ -86,13 +106,18 @@ function waitForOptionalServiceReady(child, {
   timeoutMs = 10_000,
   timeoutMessage = 'Optional service did not become ready in time.',
   serverErrorMessage = message => message?.message || message?.code || 'service startup failed',
+  probeReady = null,
+  probeIntervalMs = 500,
 } = {}) {
   return new Promise((resolve, reject) => {
     let settled = false
     let timer
+    let probeTimer = null
+    let probing = false
 
     const cleanup = () => {
       clearTimeout(timer)
+      clearInterval(probeTimer)
       child.removeListener?.('message', onMessage)
       child.removeListener?.('error', onError)
       child.removeListener?.('exit', onExit)
@@ -131,6 +156,19 @@ function waitForOptionalServiceReady(child, {
     child.on('message', onMessage)
     child.on('error', onError)
     child.on('exit', onExit)
+    if (typeof probeReady === 'function') {
+      const probe = () => {
+        if (settled || probing) return
+        probing = true
+        Promise.resolve().then(probeReady)
+          .then(ok => { if (ok && !settled) onMessage({ type: 'ready', source: 'owned_loopback_probe' }) })
+          .catch(() => {})
+          .finally(() => { probing = false })
+      }
+      probeTimer = setInterval(probe, Math.max(100, probeIntervalMs))
+      probeTimer.unref?.()
+      probe()
+    }
   })
 }
 

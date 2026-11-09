@@ -110,7 +110,11 @@ app.use('/documents/upload', uploadLimiter)
 
 let processReady = false
 const healthy = () => processReady && storeReady()
-app.get('/health', (req, res) => res.status(healthy() ? 200 : 503).json({ ok: healthy(), service: 'mockmate-backend' }))
+app.get('/health', (req, res) => res.status(healthy() ? 200 : 503).json({
+  ok: healthy(), service: 'mockmate-backend',
+  // Expose an identity for the Electron-owned loopback probe, not on hosted deployments.
+  ...(!hostedConfig?.hosted && !PUBLIC_BIND ? { pid: process.pid } : {}),
+}))
 app.get('/ready', (req, res) => res.status(healthy() ? 200 : 503).json({ ok: healthy(), store: storeMode() || 'starting', hosted: Boolean(hostedConfig?.hosted) }))
 app.get('/arch/capabilities', requireAuth, (req, res) => res.json(publicCapabilityStatus({ hosted: Boolean(hostedConfig?.hosted) })))
 app.use('/auth', authRoutes)
