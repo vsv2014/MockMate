@@ -136,12 +136,44 @@ describe('Claude thinking settings for Live answers', () => {
 
   it('applies the same setting to blocking JSON answers and connection tests', async () => {
     process.env.ANTHROPIC_API_KEY = 'test-anthropic'
-    script = () => ({ choices: [{ message: { content: '{"ok":true}' } }], usage: { prompt_tokens: 10, completion_tokens: 3 } })
+    script = (params, opts) => params.stream
+      ? tokenStream(['ok'], opts)
+      : ({ choices: [{ message: { content: '{"ok":true}' } }], usage: { prompt_tokens: 10, completion_tokens: 3 } })
     const core = await import('./core.js')
     await expect(core.completeJSON({ messages: [{ role: 'user', content: 'Q' }], provider: 'claude_sonnet' })).resolves.toEqual({ ok: true })
     await expect(core.testProviderConnection('claude_haiku')).resolves.toMatchObject({ ok: true, model: 'claude-haiku-5-5' })
     expect(calls[0].params.thinking).toEqual({ type: 'between_tools' })
     expect(calls[1].params.thinking).toEqual({ type: 'disabled' })
+  })
+})
+
+describe('provider streaming recovery and answer-content integrity', () => {
+  it('retries one Gemini streaming 400 without optional reasoning_effort', async () => {
+    process.env.GEMINI_API_KEY = 'test-gemini'
+    script = (params, opts) => {
+      if (params.reasoning_effort) throw Object.assign(new Error('unsupported reasoning_effort'), { status: 400 })
+      return tokenStream(['answer'], opts)
+    }
+    const core = await import('./core.js')
+    const { tokens, error } = await runStream(core, { provider: 'gemini_flash_lite' })
+    expect(error).toBeNull()
+    expect(tokens).toEqual(['answer'])
+    expect(calls).toHaveLength(2)
+    expect(calls[0].params.reasoning_effort).toBe('none')
+    expect(calls[1].params.reasoning_effort).toBeUndefined()
+  })
+
+  it('never labels an empty stream successful; falls back before any content is shown', async () => {
+    process.env.GEMINI_API_KEY = 'test-gemini'
+    process.env.GROQ_API_KEY = 'test-groq'
+    script = (params, opts) => params.model.startsWith('gemini')
+      ? tokenStream([], opts)
+      : tokenStream(['Groq answered'], opts)
+    const core = await import('./core.js')
+    const { tokens, error } = await runStream(core, { provider: 'gemini_flash_lite' })
+    expect(error).toBeNull()
+    expect(tokens).toEqual(['Groq answered'])
+    expect(calls.some(call => call.params.model === 'openai/gpt-oss-120b')).toBe(true)
   })
 })
 
