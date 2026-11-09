@@ -1,5 +1,5 @@
 import { publicProxyDisabled } from './_lib/publicProxyGuard.js'
-import { availableProviders, allProviders, deepgramConfigured, searchConfigured, listModels, getModelDiscoveryStatus } from './_lib/core.js'
+import { availableProviders, allProviders, deepgramConfigured, searchConfigured, listModels, getModelDiscoveryStatus, describeAutomaticRouting } from './_lib/core.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' })
@@ -8,5 +8,5 @@ export default async function handler(req, res) {
     try { const models = await listModels(); return res.status(200).json({ models, ...getModelDiscoveryStatus() }) }
     catch { return res.status(200).json({ models: [], discoveredProviders: [] }) }
   }
-  res.status(200).json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured() })
+  res.status(200).json({ providers: availableProviders(), allProviders: allProviders(), deepgram: deepgramConfigured(), search: searchConfigured(), routing: describeAutomaticRouting() })
 }
