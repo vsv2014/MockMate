@@ -29,6 +29,7 @@ import { getAiMode } from './lib/aiMode'
 import { getAnswerStyle, setAnswerStyle, getScreenshotSpeed, setScreenshotSpeed, screenshotStyle, getAutoSkip, setAutoSkip, getDocThreshold, setDocThreshold } from './lib/aiSettings'
 import { loadSessionsAsync, getSessionAsync, deleteSessionAsync } from './history'
 import { removeKitDocs } from './lib/docs'
+import { applyApprovedRemoteUpdate } from './lib/connectedSources'
 import { scoreColor, TYPE_LABEL } from './lib/ui'
 import { CODING_LANGUAGES } from './lib/languages'
 import { loadProfile, saveProfile } from './lib/profile'
@@ -96,6 +97,39 @@ function BrowserGate() {
 // ── Electron shell — wraps every screen in the floating overlay ───────────────
 function ElectronShell({ auth }) {
   const [view, setView] = useState('home')
+  // End-to-end sync: main fetches only previously approved source IDs. The
+  // renderer owns its account-scoped document store and acknowledges ONLY after
+  // the new revision and index invalidation have persisted successfully.
+  useEffect(() => {
+    const bridge = window.electronAPI?.connectors
+    if (!bridge?.onSync) return
+    let disposed = false
+    const applyChanges = async result => {
+      if (disposed || result?.owner !== activeAccountScope()) return
+      for (const update of (result.updates || []).slice(0, 30)) {
+        if (disposed || result.owner !== activeAccountScope()) return
+        try {
+          await applyApprovedRemoteUpdate(update)
+          const ack = await bridge.request({ op: 'sync-ack', importId: update.importId, sha256: update.sha256 })
+          if (!ack?.ok) throw new Error('Sync acknowledgement was rejected')
+        } catch (error) {
+          diagnostic('connectors', 'source_sync_failed', { code: 'source_sync_rejected' }, 'warn')
+        }
+      }
+      if (!disposed) window.dispatchEvent(new Event('mm-connected-sync'))
+    }
+    const unsubscribe = bridge.onSync(applyChanges)
+    // Catch up after the app/account becomes ready, not during active Live.
+    const timer = setTimeout(async () => {
+      if (disposed || view === 'companion' || !auth?.user?.id) return
+      try {
+        const result = await bridge.request({ op: 'sync' })
+        if (result?.ok) await applyChanges({ owner: activeAccountScope(), ...result.data })
+      } catch {}
+    }, 7000)
+    return () => { disposed = true; clearTimeout(timer); unsubscribe?.() }
+  }, [auth?.user?.id])
+
   useEffect(() => {
     window.electronAPI?.connectors?.setLive?.(view === 'companion').catch?.(() => {})
     return () => { window.electronAPI?.connectors?.setLive?.(false).catch?.(() => {}) }
