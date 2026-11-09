@@ -567,7 +567,7 @@ export function ReadyRoom({
         method: 'POST', timeoutMs: 30_000, signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          question: 'In one short sentence, what does a hash map do?',
+          question: 'In one short sentence, explain why clear communication matters in teamwork.',
           profile: {}, conversationHistory: [], provider: isManaged() ? '' : 'auto',
           language: 'English', style: 'balanced', autoSkip: false, mode: 'answer',
         }),
