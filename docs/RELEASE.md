@@ -1,8 +1,8 @@
 # Signed public Windows release
 
-Current source version: **1.6.8** (desktop package and lock), prepared as a new **unsigned Personal Preview candidate** for the Ready Room layout, AI round-trip and System Audio test fixes (#124). The previously published [unsigned Personal Preview v1.6.7](https://github.com/vsv2014/MockMate/releases/tag/v1.6.7) contains the Windows service-startup hotfix (#121) but **not** these later Ready Room fixes. Version 1.6.8 is not yet published or physically certified. The last signed stable remains v1.5.3; no signed v1.6.x release exists.
+Current source version: **1.6.8** (desktop package and lock). [Unsigned Personal Preview v1.6.8](https://github.com/vsv2014/MockMate/releases/tag/v1.6.8) **was published on November 9, 2026** with the Ready Room layout, AI round-trip and System Audio test fixes (#124). It passed release CI, Windows packaged startup, unsigned isolation, and checksum publication. **Physical Windows playback, AI provider verification, screen-share protection and installer-upgrade tests are still open.** The previous [v1.6.7 Personal Preview](https://github.com/vsv2014/MockMate/releases/tag/v1.6.7) contains the local-service startup fix (#121). The last signed stable remains v1.5.3; no signed v1.6.x release exists.
 
-The stable `release.yml` workflow is signed-only. Missing or incomplete signing settings fail before packaging; no unsigned fallback is permitted. v1.6.1 through v1.6.6 are historical/published unsigned preview tracks; v1.6.5 is the v1.6.4 hotfix preview. Do not move or replace any existing tags.
+The stable `release.yml` workflow is signed-only. Missing or incomplete signing settings fail before packaging; no unsigned fallback is permitted. v1.6.1 through v1.6.8 are historical/published unsigned preview tracks; v1.6.5 is the v1.6.4 hotfix preview. Do not move or replace any existing tags.
 
 ## Signing configuration
 
