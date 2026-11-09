@@ -432,6 +432,7 @@ export function ReadyRoom({
   const [voiceTranscript, setVoiceTranscript] = useState('')
   const [audioSource, setAudioSource] = useState('microphone')
   const [audioSources, setAudioSources] = useState([])
+  const [systemAudioAvailability, setSystemAudioAvailability] = useState('checking')
   const audioSourceRef = useRef('microphone')
   const voiceTestSource = useRef('microphone')
   const [protectionStatus, setProtectionStatus] = useState('idle')
@@ -494,16 +495,24 @@ export function ReadyRoom({
 
   useEffect(() => {
     let current = true
-    if (previewMode || isLinux) return
-    Promise.resolve(window.electronAPI?.getAudioSources?.()).then(sources => {
+    if (previewMode || isLinux) {
+      setSystemAudioAvailability('unavailable')
+      return
+    }
+    if (!window.electronAPI?.getAudioSources) {
+      setSystemAudioAvailability('unavailable')
+      return
+    }
+    Promise.resolve(window.electronAPI.getAudioSources()).then(sources => {
       if (!current) return
       const screens = (sources || []).filter(source => /screen|entire|display/i.test(source.name))
       setAudioSources(screens)
-      if (screens[0] && !voiceAttempt.current) {
-        audioSourceRef.current = screens[0].id
-        setAudioSource(screens[0].id)
-      }
-    }).catch(() => {})
+      setSystemAudioAvailability(screens.length ? 'available' : 'unavailable')
+      // Do not silently switch an already-working microphone test to a screen.
+      // System Audio must be explicitly chosen and verified on its own.
+    }).catch(() => {
+      if (current) setSystemAudioAvailability('unavailable')
+    })
     return () => { current = false }
   }, [previewMode, isLinux])
 
@@ -649,29 +658,41 @@ export function ReadyRoom({
     }
     if (voiceAttempt.current !== attempt || voiceFailure.current || voiceCancelled.current || voiceHasFinal.current) return
     voiceStopTimer.current = setTimeout(() => {
-      if (voiceAttempt.current !== attempt) return
-      if (voiceHasFinal.current) return
-      setVoiceTest({ status: 'finishing', message: 'Stopping the short capture and waiting for the final transcript…' })
-      voiceRef.current?.stop?.()
-      voiceResultTimer.current = setTimeout(() => {
-        if (voiceAttempt.current === attempt && !voiceHasFinal.current) {
-          setVoiceTest({ status: 'failed', message: 'No final transcript arrived. Check the selected audio source, play or speak a short sentence, and try again.' })
-        }
-      }, 1800)
+      if (voiceAttempt.current !== attempt || voiceHasFinal.current) return
+      finishVoiceTest(attempt)
     }, 10_000)
+  }
+
+  const finishVoiceTest = attempt => {
+    clearTimeout(voiceStopTimer.current)
+    clearTimeout(voiceResultTimer.current)
+    const systemSelected = audioSourceRef.current !== 'microphone'
+    const finalizingSystem = systemSelected && systemVoice.finalizeForReadinessTest?.()
+    setVoiceTest({ status: 'finishing', message: finalizingSystem
+      ? 'Requesting the final System Audio transcript from Deepgram…'
+      : 'Finishing capture and waiting for the final transcript…' })
+    if (!finalizingSystem) voiceRef.current?.stop?.()
+    voiceResultTimer.current = setTimeout(() => {
+      if (voiceAttempt.current !== attempt || voiceHasFinal.current || voiceCancelled.current) return
+      voiceRef.current?.stop?.()
+      setVoiceTest({ status: 'failed', message: systemSelected
+        ? 'System Audio produced no final transcript. Play audible speech through the selected Windows output, select an entire screen, and retry; microphone success is separate.'
+        : 'No final microphone transcript arrived. Check microphone permission and retry.' })
+      trackProductEvent('ready_room_voice_test_failed')
+    }, finalizingSystem ? 5_000 : 2_500)
   }
 
   const stopVoiceTest = () => {
     const attempt = voiceAttempt.current
-    if (!voice.active) voiceCancelled.current = true
-    clearTimeout(voiceStopTimer.current)
-    setVoiceTest(current => current.status === 'passed' ? current : { status: 'finishing', message: 'Stopping capture and waiting briefly for the final transcript…' })
-    voice.stop()
-    voiceResultTimer.current = setTimeout(() => {
-      if (voiceAttempt.current === attempt && !voiceHasFinal.current) {
-        setVoiceTest({ status: 'failed', message: 'No final transcript arrived. Check the selected audio source and try again.' })
-      }
-    }, 1800)
+    if (!voice.active) {
+      voiceCancelled.current = true
+      clearTimeout(voiceStopTimer.current)
+      clearTimeout(voiceResultTimer.current)
+      voice.stop()
+      setVoiceTest({ status: 'idle', message: 'Voice test cancelled. Select a source and try again.' })
+      return
+    }
+    finishVoiceTest(attempt)
   }
 
   const applyProtection = async () => {
@@ -829,6 +850,13 @@ export function ReadyRoom({
                   </select>
                 </label>
                 <div style={{ color: T.text3, fontSize: workspaceTextSize(10.5), lineHeight: 1.5, marginTop: 7 }}>The test captures the selected source for up to 10 seconds and sends audio to Deepgram; provider usage may apply. The transcript is not saved to the Kit or session history.</div>
+                <div role="status" style={{ color: T.text2, fontSize: workspaceTextSize(11), lineHeight: 1.5, marginTop: 7 }}>
+                  {systemAudioAvailability === 'unavailable'
+                    ? 'No supported System Audio display source was detected here. Microphone transcription is separate; Windows desktop capture requires the installed Electron app and a supported playback path.'
+                    : audioSource === 'microphone'
+                      ? 'This verifies only the microphone. To test meeting playback, select a System Audio display source above and play a spoken clip while the test is active.'
+                      : 'System Audio is a separate check from microphone. Speak through the meeting/playback output (not only into your mic) and verify the final transcript before Live.'}
+                </div>
                 <div style={{ color: T.text2, fontSize: workspaceTextSize(11), lineHeight: 1.5, marginTop: 7 }}>Use System Audio for meeting playback. Test with your headphones connected, and speak while playback is paused to check for echo or monitoring. If your own voice appears in system capture, check the meeting and OS audio settings. Changing the output device requires another test.</div>
                 {voice.active && <div aria-live="polite" style={{ color: '#5eead4', fontSize: workspaceTextSize(11), marginTop: 6 }}>{voice.interim ? `Hearing: ${voice.interim}` : 'Listening—play or speak a short sentence, then pause.'}</div>}
                 {voiceTranscript && <div role="status" style={{ padding: '7px 9px', marginTop: 8, borderRadius: 8, background: 'rgba(20,184,166,0.08)', color: T.text1, fontSize: workspaceTextSize(11.5) }}><strong>Transcript:</strong> {voiceTranscript}</div>}
