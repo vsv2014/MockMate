@@ -317,10 +317,27 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
     <div data-mm-connectors style={{ maxWidth: 980, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14, color: T.text1, fontFamily: T.font }}>
       <div>
         <h2 style={{ margin: '0 0 5px', fontSize: 24, lineHeight: 1.25 }}>Sources &amp; ARCH</h2>
-        <p style={{ ...small, margin: 0 }}>Connectors, reviewed imports and your professional evidence — outside the Live response path.</p>
+        <p style={{ ...small, margin: 0 }}>Connect accounts, approve individual source imports, and build professional evidence — outside the Live response path.</p>
+        <div role="status" aria-label="Sources and ARCH overview"
+          style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12, fontSize: 12 }}>
+          <span style={{ ...quiet, cursor: 'default' }}>{connections.accounts.length} connected account(s)</span>
+          <span style={{ ...quiet, cursor: 'default' }}>{imports.length} approved import(s)</span>
+          <span style={{ ...quiet, cursor: 'default' }}>{graph.nodes.length} ARCH node(s)</span>
+        </div>
+        <nav aria-label="Sources and ARCH sections" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+          {[
+            ['mm-sources-connections', 'Accounts & OAuth'],
+            ['mm-sources-review', 'Review & import'],
+            ['mm-sources-approved', 'Approved sources'],
+            ['mm-sources-profile', 'Professional profile'],
+            ['mm-sources-graph', 'ARCH graph'],
+          ].map(([id, title]) => <button key={id} type="button" style={quiet}
+            onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{title}</button>)}
+        </nav>
+        <p style={{ ...small, margin: '10px 0 0' }}>GitHub / Google use native read-only OAuth flows. Composio SDK and Activepieces workflow automation are not connected to this desktop build.</p>
       </div>
       {message && <div role="status" aria-live="polite" style={{ ...panel, padding: '10px 14px', color: message.startsWith('⚠') ? '#fda4af' : '#5eead4' }}>{message}</div>}
-      <section style={panel} aria-label="Connection status">
+      <section id="mm-sources-connections" style={panel} aria-label="Connection status">
         <h3 style={{ fontSize: 17, margin: '0 0 8px' }}>Connected accounts</h3>
         <p style={{ ...small, margin: '0 0 12px' }}>
           Signed-in MockMate account: <strong style={{ color: T.text1 }}>{auth?.user?.email || auth?.user?.name || (auth?.guest ? 'Guest (local)' : 'Current account')}</strong>.
@@ -383,7 +400,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
         </div>
       </section>
 
-      <section style={panel} aria-label="Review and import source">
+      <section id="mm-sources-review" style={panel} aria-label="Review and import source">
         <h3 style={{ fontSize: 17, margin: '0 0 6px' }}>Import one selected source</h3>
         <div style={{ margin: '12px 0', padding: 12, background: T.surface2, borderRadius: 9 }}>
           <strong style={{ fontSize: 13 }}>Browse your active connected account</strong>
@@ -453,7 +470,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
         )}
       </section>
 
-      <section style={panel} aria-label="Approved imports">
+      <section id="mm-sources-approved" style={panel} aria-label="Approved imports">
         <h3 style={{ fontSize: 17, margin: '0 0 8px' }}>Approved imports ({imports.length})</h3>
         <p style={{ ...small, margin: '0 0 10px' }}>{pendingCount} imported source(s) initially excluded from AI retrieval. Turn on selected documents only when you want them used.</p>
         {imports.length === 0 && <p style={small}>No source imports yet.</p>}
@@ -480,7 +497,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
         ))}
       </section>
 
-      <section style={panel} aria-label="Professional profile and evidence">
+      <section id="mm-sources-profile" style={panel} aria-label="Professional profile and evidence">
         <h3 style={{ fontSize: 17, margin: '0 0 6px' }}>ARCH professional profile</h3>
         <p style={{ ...small, margin: '0 0 14px' }}>A versioned, account-scoped evidence workspace. Claims are literal quotations from approved sources, not AI-generated summaries. No automatic editing of your résumé or Live prompts.</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: 12 }}>
@@ -522,7 +539,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           ))}
         </div>
       </section>
-      <section style={panel} aria-label="ARCH professional evidence graph">
+      <section id="mm-sources-graph" style={panel} aria-label="ARCH professional evidence graph">
         <h3 style={{ fontSize: 17, margin: '0 0 8px' }}>ARCH professional evidence graph</h3>
         <p style={small}>{graph.nodes.length} nodes · {graph.edges.length} relationships · {graph.conflicts.length} unresolved conflict(s)
           · {graph.staleEvidence} stale source quotation(s). Claims and outcomes are user-entered, never invented.</p>
