@@ -147,6 +147,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   const [audioSources, setAudioSources] = useState([])
   const [sourceId, setSourceId] = useState(initialAudioSource || 'microphone')
   const [providers, setProviders] = useState([])
+  const [routingAvailable, setRoutingAvailable] = useState(null)
   const [preferredProvider, setPreferredProvider] = useState(() => loadModelSelection())
   const [dgAvailable, setDgAvailable] = useState(false)
   // Inline API-key entry — same keys are also editable globally (Home → Settings).
@@ -157,6 +158,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
     return apiFetch('/api/providers').then(r => r.json()).then(d => {
       const list = d.providers || []
       setProviders(list)
+      setRoutingAvailable(d.routing ? Boolean(d.routing.fast || d.routing.strong) : null)
       setDgAvailable(!!d.deepgram)
     }).catch(() => {})
   }
@@ -205,7 +207,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
   // BYOK with no LLM configured → hints would error on every question mid-call. Block Start and say why.
   // Public builds enforce the full Electron + OS protection + share-preview safety gate;
   // frictionless bypass is strictly restricted to local dev mode.
-  const noLLM = !managed && providers.length === 0
+  const noLLM = !managed && (providers.length === 0 || routingAvailable === false)
   const canStart = computeLiveCanStart({
     dgAvailable,
     noLLM,
@@ -527,7 +529,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
           <div style={{ fontSize: readableTextSize(11.5), color: T.text3, marginTop: -4 }}>
             {!inElectron ? 'Open the desktop app to start.'
               : !dgAvailable ? 'Add Voice (Deepgram) in Settings first.'
-              : noLLM ? 'Add an AI provider key in Settings first.'
+              : noLLM ? (providers.length ? 'All AI providers are temporarily unavailable. Test your keys in Settings.' : 'Add an AI provider key in Settings first.')
               : isLinux ? 'Acknowledge the Linux screen-share risk above.'
               : 'Check the share-preview box above to enable Start.'}
           </div>
