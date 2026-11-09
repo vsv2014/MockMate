@@ -1,8 +1,8 @@
 # Signed public Windows release
 
-Current source version: **1.6.6** (desktop package and lock), prepared as a release candidate for Live usability fixes. It has not been tagged or published; packaged Windows checks remain open. v1.6.4 and v1.6.5 are published only as unsigned personal previews (see below); v1.6.5 is the v1.6.4 hotfix (collapsed badge, Ready Room action, OpenRouter keys, global Tailwind reset). No signed v1.6.x build exists, and the latest signed stable installer is v1.5.3. A source version is not proof of a signed or published installer. In the steps below, `X.Y.Z` is the version being released.
+Current source version: **1.6.6** (desktop package and lock). [Unsigned Personal Preview v1.6.6](https://github.com/vsv2014/MockMate/releases/tag/v1.6.6) **was published** after Windows NSIS packaging, packaged Electron/React smoke, production dependency audits and application tests passed. It is BYOK/local-only, with separate app identity and no updater feed; it is **not** a signed production release. Physical Windows Live/audio/content-protection and installer-upgrade acceptance remain unverified. The last signed stable installer remains v1.5.3; no signed v1.6.x build exists. In the steps below, `X.Y.Z` is the version being released.
 
-The stable `release.yml` workflow is signed-only. Missing or incomplete signing settings fail before packaging; no unsigned fallback is permitted. v1.6.1, v1.6.2, v1.6.3 and v1.6.4 are unsigned personal previews, and v1.6.5 is the v1.6.4 hotfix preview. Do not move or replace those tags.
+The stable `release.yml` workflow is signed-only. Missing or incomplete signing settings fail before packaging; no unsigned fallback is permitted. v1.6.1 through v1.6.6 are historical/published unsigned preview tracks; v1.6.5 is the v1.6.4 hotfix preview. Do not move or replace any existing tags.
 
 ## Signing configuration
 
