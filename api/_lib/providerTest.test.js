@@ -56,6 +56,26 @@ describe('provider connection test', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it('rejects a stream that emits text then fails before completion', async () => {
+    process.env.GROQ_API_KEY = 'unit-test-groq'
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+      const req = JSON.parse(options.body)
+      if (!req.stream) return jsonAnswer()
+      const encoder = new TextEncoder()
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode('data: ' + JSON.stringify({
+            choices: [{ delta: { content: 'partial answer' }, finish_reason: null }],
+          }) + '\\n\\n'))
+          controller.error(new Error('upstream stream interrupted'))
+        },
+      })
+      return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+    }))
+    await expect(testProviderConnection('groq')).rejects.toThrow()
+    expect(_getProviderHealthForTests().lastWorkingTextProvider).toBeNull()
+  })
+
   it('recovers a retired default once, then tests both transports on the replacement', async () => {
     process.env.OPENAI_API_KEY = 'unit-test-key'
     const models = []

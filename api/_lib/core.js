@@ -231,11 +231,12 @@ export async function testProviderConnection(providerId) {
           const { reasoning_effort: _unsupported, ...withoutReasoning } = streamParams
           stream = await createWithThinkingFallback(llm, withoutReasoning, options)
         }
+        // Do not mark a provider ready on its first token: the stream may fail
+        // before completion. Consume through DONE to verify the Live transport.
         let sawText = false
         for await (const chunk of stream) {
           if (String(chunk?.choices?.[0]?.delta?.content || '').trim()) {
             sawText = true
-            break
           }
         }
         if (!sawText) {
