@@ -1775,10 +1775,12 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
       return
     }
     setCandidateMicError('')
+    // Set intent before awaiting permission/token so a synchronous onFail callback
+    // cannot be overwritten by a stale success flag after start() resolves.
+    setCandidateMicEnabled(true)
     try {
       await candidateAudio.start()
-      // The socket can still be connecting. The indicator shows real active state.
-      setCandidateMicEnabled(true)
+      // Real transport readiness comes from candidateAudio.active, not this intent flag.
     } catch (error) {
       candidateAudio.stop()
       setCandidateMicEnabled(false)
