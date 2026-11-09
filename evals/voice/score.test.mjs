@@ -46,6 +46,20 @@ describe('net voice error benchmark', () => {
     const newer=run([turn('q1'),turn('q2')]);
     expect(comparePlaybackRuns(original,newer).decision).toBe('CANDIDATE_IMPROVED');
   });
+  it('rejects artificially improved latency when successful turns omit timing', () => {
+    const original = run([
+      turn('q1', { correctionAttempts: 1, firstUsefulAnswerMs: 800 }),
+      turn('q2', { firstUsefulAnswerMs: 850 }),
+    ]);
+    const candidate = run([
+      turn('q1', { firstUsefulAnswerMs: 790 }),
+      turn('q2', { firstUsefulAnswerMs: null }),
+    ]);
+    const compared = comparePlaybackRuns(original, candidate);
+    expect(compared.candidate.missingLatencyQuestions).toBe(1);
+    expect(compared.latencyComparable).toBe(false);
+    expect(compared.decision).toBe('INCONCLUSIVE_MISSING_LATENCY');
+  });
   it('returns inconclusive without enough timing evidence', () => {
     const original=run([turn('q1',{missed:true,firstUsefulAnswerMs:null}),turn('q2',{missed:true,firstUsefulAnswerMs:null})]);
     const newer=run([turn('q1',{missed:true,firstUsefulAnswerMs:null}),turn('q2')]);
