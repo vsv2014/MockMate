@@ -1,7 +1,7 @@
 // Local-first, reviewed source import for ARCH. No OAuth, background sync or Live calls.
 // A pasted item is NOT a connected external account; no provider credentials are stored here.
 import { activeAccountScope, getScopedItem, setScopedItem } from './accountScope.js'
-import { addDoc, listDocs, listKitDocs, removeDoc, removeKitDoc } from './docs.js'
+import { addDoc, listDocs, listKitDocs, removeDoc, removeKitDoc, replaceReviewedImportedDoc } from './docs.js'
 
 export const APPROVED_IMPORTS_KEY = 'mm-arch-approved-imports-v1'
 export const MAX_SOURCE_BYTES = 250 * 1024
@@ -33,6 +33,7 @@ function sourceFields(input) {
   return {
     provider, mimeType: type.mimeType, title, sourceId,
     accountLabel: clean(input.accountLabel, 140),
+    connectedAccountId: clean(input.connectedAccountId, 200) || null,
     revision: clean(input.revision, 120),
     kitId: clean(input.kitId, 180) || null,
     text: normalizeSourceText(input.text),
@@ -81,12 +82,12 @@ export async function approveSelectedSource(preview, input, { approved = false }
   if (!preview || preview.accountScope !== scope) fail('Account changed since preview')
   const fresh = await previewSelectedSource(input)
   if (activeAccountScope() !== scope) fail('Account changed during import')
-  for (const key of ['provider', 'mimeType', 'title', 'sourceId', 'accountLabel', 'revision', 'kitId', 'sha256']) {
+  for (const key of ['provider', 'mimeType', 'title', 'sourceId', 'accountLabel', 'connectedAccountId', 'revision', 'kitId', 'sha256']) {
     if (fresh[key] !== preview[key]) fail('Source changed since preview: ' + key)
   }
   const records = loadRecords()
   const old = records.find(row => row.provider === fresh.provider && row.sourceId === fresh.sourceId
-    && row.accountLabel === fresh.accountLabel && row.kitId === fresh.kitId && row.sha256 === fresh.sha256)
+    && row.accountLabel === fresh.accountLabel && row.connectedAccountId === fresh.connectedAccountId && row.kitId === fresh.kitId && row.sha256 === fresh.sha256)
   if (old && documentExists(old)) return { record: { ...old }, existing: true }
   const doc = addDoc({
     name: `[${SOURCE_TYPES[fresh.provider].label}] ${fresh.title}`,
@@ -97,7 +98,8 @@ export async function approveSelectedSource(preview, input, { approved = false }
   const record = {
     id: `imp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`,
     provider: fresh.provider, title: fresh.title, sourceId: fresh.sourceId,
-    accountLabel: fresh.accountLabel, revision: fresh.revision,
+    accountLabel: fresh.accountLabel, connectedAccountId: fresh.connectedAccountId,
+    revision: fresh.revision,
     mimeType: fresh.mimeType, sha256: fresh.sha256, sizeBytes: fresh.sizeBytes,
     kitId: fresh.kitId, documentId: doc.id, importedAt: new Date().toISOString(),
     selectedForLive: false,
@@ -119,4 +121,33 @@ export function removeApprovedImport(importId) {
   }
   if (!saveRecords(records.filter(row => row.id !== importId))) fail('Import metadata could not be updated')
   return true
+}
+
+export async function applyApprovedRemoteUpdate(update) {
+  if (!update?.importId || !update?.accountId) throw new Error('Connected source identity is required')
+  const scope = activeAccountScope()
+  const rows = loadRecords()
+  const record = rows.find(x => x.id === update.importId)
+  if (!record || record.connectedAccountId !== update.accountId
+    || record.provider !== update.provider || record.sourceId !== update.sourceId)
+    throw new Error('Remote update does not match the approved account and source')
+  const current = await previewSelectedSource({
+    ...update, accountLabel: record.accountLabel, connectedAccountId: record.connectedAccountId,
+    kitId: record.kitId, selectedByUser: true,
+  })
+  if (current.sha256 !== update.sha256 || scope !== activeAccountScope())
+    throw new Error('Remote content changed or account switched during verification')
+  if (record.sha256 === current.sha256) return { unchanged: true, record }
+  if (!documentExists(record)) throw new Error('Approved import document is missing')
+  const updated = replaceReviewedImportedDoc({
+    documentId: record.documentId, kitId: record.kitId, text: current.text,
+  })
+  if (!updated) throw new Error('Could not persist the updated source document')
+  const previous = { sha256: record.sha256, revision: record.revision, changedAt: new Date().toISOString() }
+  const next = { ...record, sha256: current.sha256, revision: current.revision, sizeBytes: current.sizeBytes,
+    lastSyncedAt: new Date().toISOString(), versions: [...(record.versions || []).slice(-9), previous] }
+  const newRows = rows.map(x => x.id === record.id ? next : x)
+  if (scope !== activeAccountScope() || !saveRecords(newRows))
+    throw new Error('Remote text saved but metadata update failed; retry synchronization')
+  return { unchanged: false, record: next }
 }
