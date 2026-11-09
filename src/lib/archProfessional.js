@@ -2,6 +2,7 @@
 // Never injects evidence automatically into Live; imported text cannot alter interview answers.
 import { activeAccountScope, getScopedItem, setScopedItem } from './accountScope.js'
 import { listApprovedImports } from './connectedSources.js'
+import { getSessionAsync } from '../history.js'
 
 export const ARCH_PROFESSIONAL_KEY = 'mm-arch-professional-v1'
 export const ARCH_PROFESSIONAL_SCHEMA = 2
@@ -49,6 +50,8 @@ export function normalizeProfessionalState(value) {
   out.outcomes = list(value.outcomes, 120).flatMap(row => row?.id && row?.description ? [{
     id: str(row.id, 120), description: str(row.description, 900),
     result: str(row.result, 140), eventAt: str(row.eventAt, 40),
+    sourceSessionId: str(row.sourceSessionId, 120),
+    provenance: str(row.provenance, 50) || 'user_recorded',
     claimIds: Array.isArray(row.claimIds) ? row.claimIds.map(id => str(id, 120)).slice(0, 15) : [],
     createdAt: str(row.createdAt, 40),
   }] : [])
@@ -173,6 +176,36 @@ export function recordProfessionalOutcome({ description, result = '', eventAt = 
   if (!next) throw new Error('Unable to save outcome')
   return row
 }
+// User-approved link to a REAL local history entry. Never ingest all transcripts,
+// silently attach generated hints, or turn a missing score into a fabricated grade.
+export async function recordApprovedInterviewOutcome(sessionId) {
+  const scope = activeAccountScope()
+  const id = str(sessionId, 120)
+  if (!id) throw new Error('Select a saved interview first')
+  const source = await getSessionAsync(id)
+  if (scope !== activeAccountScope()) throw new Error('Account changed during session review')
+  if (!source || source.id !== id) throw new Error('Saved interview is unavailable in this account')
+  const current = loadProfessionalState()
+  const prior = current.outcomes.find(row => row.sourceSessionId === id)
+  if (prior) return { outcome: prior, existing: true }
+  const label = str(source.label || source.role || 'Interview', 140)
+  const summary = str(source.report?.summary, 650)
+  const descriptor = summary ? label + ': ' + summary : label + ' — completed interview session'
+  const score = typeof source.score === 'number' && Number.isFinite(source.score)
+    ? Math.max(0, Math.min(100, source.score)) : null
+  const outcome = {
+    id: makeId('outcome'), description: str(descriptor, 900),
+    result: score !== null ? 'Saved evaluation: ' + score + '/100' : 'Unscored',
+    eventAt: new Date(Number.isFinite(source.ts) ? source.ts : Date.now()).toISOString(),
+    claimIds: [], createdAt: new Date().toISOString(),
+    sourceSessionId: id, provenance: 'approved_saved_session',
+  }
+  const next = persist({ ...current, outcomes: [...current.outcomes, outcome],
+    history: addEvent(current, 'session_outcome_imported', id) })
+  if (!next) throw new Error('Could not save reviewed interview outcome')
+  return { outcome, existing: false }
+}
+
 export function removeProfessionalOutcome(id) {
   const current = loadProfessionalState()
   return persist({ ...current, outcomes: current.outcomes.filter(row => row.id !== id),
@@ -214,8 +247,14 @@ export function buildProfessionalGraph(state = loadProfessionalState(), imports 
   }
   for (const outcome of state.outcomes) {
     nodes.push({ id: outcome.id, kind: 'outcome', label: outcome.description, result: outcome.result,
-      eventAt: outcome.eventAt, provenance: 'user_recorded' })
+      eventAt: outcome.eventAt, provenance: outcome.provenance || 'user_recorded' })
     edges.push({ from: 'professional', to: outcome.id, relation: 'recorded' })
+    if (outcome.sourceSessionId) {
+      const sessionNode = 'interview:' + outcome.sourceSessionId
+      if (!nodes.some(n => n.id === sessionNode)) nodes.push({ id: sessionNode, kind: 'interview_session',
+        label: 'Reviewed interview record', provenance: 'local_saved_history' })
+      edges.push({ from: outcome.id, to: sessionNode, relation: 'recorded_from' })
+    }
     for (const id of outcome.claimIds) if (state.claims.some(claim => claim.id === id))
       edges.push({ from: outcome.id, to: id, relation: 'observes' })
   }
