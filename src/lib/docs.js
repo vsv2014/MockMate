@@ -166,6 +166,19 @@ function removeDocFromScope(kitId, id) {
   return ok
 }
 
+export function replaceReviewedImportedDoc({ documentId, kitId = null, text, title } = {}) {
+  if (!documentId || typeof text !== 'string' || !text.trim()) return null
+  const docs = load()
+  const index = docs.findIndex(doc => doc.id === documentId
+    && (doc.kitId || null) === (kitId || null) && doc.source === 'reviewed-import')
+  if (index < 0) return null
+  const prev = docs[index]
+  docs[index] = { ...prev, name: title || prev.name, text, addedAt: new Date().toISOString() }
+  if (!save(docs)) return null
+  invalidateDocIndex(documentId)
+  return toMeta(docs[index])
+}
+
 export function removeDoc(id) { return removeDocFromScope(null, id) }
 export function removeKitDoc(kitId, id) {
   return kitId ? removeDocFromScope(kitId, id) : false
