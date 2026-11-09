@@ -5,6 +5,8 @@ const { app, BrowserWindow, ipcMain, screen, desktopCapturer, globalShortcut, No
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
+const jwt = require('jsonwebtoken')
+const { createConnectorGateway } = require('./connector-gateway.cjs')
 const net = require('net')
 const { fork } = require('child_process')
 const { createSessionStoreBridge } = require('./session-store-bridge.cjs')
@@ -1094,6 +1096,102 @@ ipcMain.handle('auth-set-token', (_, token) => {
   } catch (e) { return { ok: false, error: e.message } }
 })
 ipcMain.handle('auth-clear-token', () => { try { fs.rmSync(AUTH_TOKEN_FILE(), { force: true }) } catch {} ; return { ok: true } })
+// Secure connected-account gateway. Every connector action is bound to the
+// server-signed MockMate account identity, never a renderer-supplied user ID.
+let connectorGateway
+function getConnectorGateway() {
+  if (!connectorGateway) connectorGateway = createConnectorGateway({
+    userData: app.getPath('userData'), safeStorage,
+    openExternal: url => shell.openExternal(url),
+    currentOwner: () => connectorOwner(),
+  })
+  return connectorGateway
+}
+async function connectorOwner() {
+  const tokenBytes = fs.readFileSync(AUTH_TOKEN_FILE())
+  const token = safeStorage.isEncryptionAvailable()
+    ? safeStorage.decryptString(tokenBytes) : tokenBytes.toString('utf8')
+  // Host-managed JWTs are NOT local-account tokens. Fail closed rather than
+  // accepting the unverified 'sub' claim. A trusted hosted connector service
+  // will require a separate backend-mediated authorization implementation.
+  const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] })
+  if (!/^[a-zA-Z0-9._-]{1,160}$/.test(String(decoded.sub || ''))) throw new Error('Invalid signed account identity')
+  // Re-check current session against account service. Signature-only checks
+  // would permit a token revoked by password reset (tokenVersion mismatch).
+  const status = await fetch((API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE) + '/auth/me', {
+    headers: { Authorization: 'Bearer ' + token },
+    signal: AbortSignal.timeout(5000),
+    redirect: 'error',
+  })
+  if (!status.ok) throw new Error('MockMate account session is not active; sign in again')
+  const identity = await status.json()
+  if (String(identity?.user?.id || identity?.user?._id || '') !== String(decoded.sub))
+    throw new Error('Signed account identity mismatch')
+  return String(decoded.sub)
+}
+function connectorSender(event) {
+  return event.sender === mainWindow?.webContents
+    && event.senderFrame === mainWindow?.webContents.mainFrame
+}
+ipcMain.handle('connector-request', async (event, payload = {}) => {
+  if (!connectorSender(event)) return { ok: false, error: 'Connector request denied to untrusted window' }
+  if (!payload || typeof payload !== 'object' || Buffer.byteLength(JSON.stringify(payload)) > 16000)
+    return { ok: false, error: 'Invalid connector request' }
+  try {
+    const owner = await connectorOwner()
+    const gateway = getConnectorGateway()
+    const { op, provider, accountId, flowId, clientId, clientSecret, privateRepos, sourceId,
+      query, importId, sha256, enabled } = payload
+    let data
+    switch (op) {
+      case 'status': data = gateway.state(owner); break
+      case 'github-start': data = await gateway.startGithub(owner, clientId, { privateRepos }); break
+      case 'google-start': data = await gateway.startGoogle(owner, provider, clientId, clientSecret); break
+      case 'flow-status': data = await gateway.pollFlow(owner, flowId); break
+      case 'switch': data = gateway.setActive(owner, provider, accountId); break
+      case 'disconnect': data = gateway.removeAccount(owner, provider, accountId); break
+      case 'list-sources': data = await gateway.listSources(owner, provider, accountId, query); break
+      case 'read-source': data = await gateway.readSource(owner, provider, accountId, sourceId); break
+      case 'subscribe': data = gateway.subscribe(owner, { importId, provider, accountId, sourceId, sha256, autoSync: enabled === true }); break
+      case 'sync-enable': data = gateway.setSync(owner, importId, enabled); break
+      case 'unsubscribe': data = gateway.unsubscribe(owner, importId); break
+      case 'sync': data = await gateway.syncNow(owner); break
+      case 'sync-ack': data = gateway.acknowledgeSync(owner, importId, sha256); break
+      case 'purge': data = gateway.purgeOwner(owner); break
+      default: throw new Error('Unsupported connector operation')
+    }
+    return { ok: true, data }
+  } catch (error) {
+    // Never include provider tokens, authentication codes or raw response payloads.
+    diag('connectors', 'operation_failed', { operation: String(payload.op || '').slice(0, 32),
+      errorCode: 'connector_operation_failed' }, 'warn')
+    return { ok: false, error: error?.message || 'Connector operation failed' }
+  }
+})
+ipcMain.handle('connector-set-live', (event, enabled) => {
+  if (!connectorSender(event)) return { ok: false }
+  try { getConnectorGateway().setLivePaused(enabled); return { ok: true } }
+  catch { return { ok: false } }
+})
+async function pollApprovedConnectorSources() {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  try {
+    const owner = await connectorOwner()
+    const result = await getConnectorGateway().syncNow(owner)
+    if (result.updates?.length || result.failures?.length) {
+      mainWindow.webContents.send('connector-sync', { owner, ...result })
+    }
+  } catch { /* logged-in account may be absent; no background network request */ }
+}
+app.whenReady().then(() => {
+  const timer = setInterval(pollApprovedConnectorSources, 15 * 60 * 1000)
+  timer.unref?.()
+  app.once('will-quit', () => {
+    clearInterval(timer)
+    try { connectorGateway?.close() } catch {}
+  })
+}).catch(() => {})
+
 // Auth API base URL for the renderer (env-configurable; local fork by default).
 ipcMain.on('get-api-base', e => { e.returnValue = API_BASE })
 ipcMain.on('hide-window', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide() })

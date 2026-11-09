@@ -3,7 +3,7 @@ import { webcrypto } from 'node:crypto'
 import { listDocs, listKitDocs, getKitSelectedDocIds, setDocSelected } from './docs.js'
 import {
   MAX_SOURCE_BYTES, normalizeSourceText, previewSelectedSource,
-  approveSelectedSource, listApprovedImports, removeApprovedImport,
+  approveSelectedSource, listApprovedImports, removeApprovedImport, applyApprovedRemoteUpdate, sha256,
 } from './connectedSources.js'
 
 const local = new Map()
@@ -65,6 +65,27 @@ describe('Track B reviewed import', () => {
     session.set('mm-active-account-scope', 'bob')
     await expect(approveSelectedSource(preview, input, { approved: true })).rejects.toThrow(/Account changed/)
     expect(listDocs()).toEqual([])
+  })
+
+  it('updates only approved account-bound imports and preserves AI retrieval selection', async () => {
+    const input = source({ connectedAccountId: 'github:1234' })
+    const preview = await previewSelectedSource(input)
+    const { record } = await approveSelectedSource(preview, input, { approved: true })
+    const changed = 'This updated selected source replaces the previous version without changing document ID.'
+    const update = {
+      importId: record.id, accountId: 'github:1234', provider: 'github',
+      sourceId: input.sourceId, title: input.title, revision: 'sha-2',
+      text: changed, sha256: await sha256(changed),
+    }
+    await expect(applyApprovedRemoteUpdate({ ...update, accountId: 'github:other' })).rejects.toThrow(/does not match/)
+    const applied = await applyApprovedRemoteUpdate(update)
+    expect(applied.unchanged).toBe(false)
+    expect(applied.record.versions).toHaveLength(1)
+    expect(applied.record.documentId).toBe(record.documentId)
+    expect(listDocs()[0].selected).toBe(false)
+    expect((await applyApprovedRemoteUpdate(update)).unchanged).toBe(true)
+    session.set('mm-active-account-scope', 'bob')
+    await expect(applyApprovedRemoteUpdate(update)).rejects.toThrow(/does not match/)
   })
 
   it('retains source account isolation and prevents automatic Kit retrieval', async () => {
