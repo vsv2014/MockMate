@@ -11,6 +11,7 @@ const { createSessionStoreBridge } = require('./session-store-bridge.cjs')
 const { DiagnosticStore } = require('./diagnostics.cjs')
 const { prepareWindowMode, pillDragBounds, expandedOverlaySize, PILL_SIZE } = require('./window-mode.cjs')
 const { attachRequiredServiceLifecycle, waitForOptionalServiceReady, stopServiceAndWait, classifyRendererLoadFailure } = require('./service-lifecycle.cjs')
+const { makeOwnedLoopbackProbe } = require('./local-service-probe.cjs')
 
 // Crash/error reporting — inert unless SENTRY_DSN is set. beforeSend strips request bodies
 // so a candidate's resume/transcript never leaves the device via Sentry (privacy-first).
@@ -302,15 +303,16 @@ function startApiServer(onReady) {
     service.stderr?.on('data', d => console.error('[API]', d.toString().trim()))
 
     attachRequiredServiceLifecycle(service, {
-      timeoutMs: 15_000,
-      timeoutMessage: 'The local UI service did not become ready within 15 seconds.',
+      timeoutMs: 45_000,
+      timeoutMessage: 'The local UI service did not become ready within 45 seconds. Check the local startup diagnostics and Windows Security protection history.',
+      probeReady: makeOwnedLoopbackProbe(service, { port: 3002, service: 'mockmate-local-ui' }),
       exitBeforeReadyMessage: code => `The local UI service exited before startup completed (${code ?? 'unknown'}).`,
       exitAfterReadyMessage: code => `The local UI service stopped unexpectedly (${code ?? 'unknown'}). MockMate will close so it can restart cleanly.`,
       serverErrorMessage: msg => msg.code === 'EADDRINUSE'
         ? 'Port 3002 is already in use — another MockMate may still be running. Quit it (or reboot) and reopen MockMate.'
         : `The local server failed to start: ${msg.message || msg.code || 'unknown error'}`,
       onReady: message => {
-        diag('api', 'service_ready', { port: message?.port || 3002 })
+        diag('api', 'service_ready', { port: message?.port || 3002, readinessSource: message?.source || 'ipc' })
         onReady?.()
       },
       onDiagnostic: row => diagnostics?.ingest(row),
@@ -379,11 +381,12 @@ function startBackend() {
       if (code) console.error('[backend] exited with code', code)
     })
     return waitForOptionalServiceReady(service, {
-      timeoutMs: 10_000,
-      timeoutMessage: `Local account service did not become ready on port ${port} within 10 seconds.`,
+      timeoutMs: 35_000,
+      timeoutMessage: `Local account service did not become ready on port ${port} within 35 seconds. Check local startup diagnostics and Windows Security protection history.`,
+      probeReady: makeOwnedLoopbackProbe(service, { port, service: 'mockmate-backend' }),
       serverErrorMessage: msg => msg.message || msg.code || 'Local account service startup failed.',
     }).then(result => {
-      if (result?.type === 'ready') diag('backend', 'service_ready', { port: result.port || port })
+      if (result?.type === 'ready') diag('backend', 'service_ready', { port: result.port || port, readinessSource: result?.source || 'ipc' })
       return result
     })
   })
