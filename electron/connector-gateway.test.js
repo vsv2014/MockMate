@@ -77,6 +77,53 @@ describe('native connected account security and sync', () => {
     gateway.purgeOwner('account-a')
     assert.deepEqual(gateway.state('account-a').accounts, [])
   })
+  it('completes Google Desktop PKCE callback with state verification and encrypted identity', async () => {
+    const opened = []
+    const safeStorage = {
+      isEncryptionAvailable: () => true,
+      encryptString: value => Buffer.from('safe:' + value),
+      decryptString: buf => buf.toString().slice(5),
+    }
+    const google = createConnectorGateway({
+      userData: dir, safeStorage,
+      openExternal: async url => { opened.push(url) },
+      fetchImpl: async url => {
+        if (url === 'https://oauth2.googleapis.com/token') return fakeResponse({
+          access_token: 'GOOGLE_PRIVATE_ACCESS_TOKEN', refresh_token: 'GOOGLE_PRIVATE_REFRESH',
+          expires_in: 3600, scope: 'openid email profile',
+        })
+        if (url === 'https://www.googleapis.com/oauth2/v3/userinfo') return fakeResponse({
+          sub: 'google-sub-123', email: 'dev@example.test',
+        })
+        throw Error('Unexpected external URL ' + url)
+      },
+    })
+    try {
+      const flow = await google.startGoogle('account-a', 'googledrive', '123456-mockmate.apps.googleusercontent.com')
+      assert.equal(flow.status, 'pending')
+      assert.equal(opened.length, 1)
+      const auth = new URL(opened[0])
+      assert.equal(auth.searchParams.get('code_challenge_method'), 'S256')
+      assert.match(auth.searchParams.get('scope'), /drive.readonly/)
+      const redirect = auth.searchParams.get('redirect_uri')
+      assert.match(redirect, /^http:\/\/127\.0\.0\.1:[0-9]+\/oauth\/callback$/)
+      const invalid = await fetch(redirect + '?state=wrong&code=invalid')
+      assert.equal(invalid.status, 400)
+      const good = await fetch(redirect + '?state=' + encodeURIComponent(auth.searchParams.get('state')) + '&code=authorized')
+      assert.equal(good.status, 200)
+      let result
+      for (let i = 0; i < 25; i++) {
+        result = await google.pollFlow('account-a', flow.flowId)
+        if (result.status === 'connected') break
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
+      assert.equal(result.status, 'connected')
+      assert.equal(result.account.label, 'dev@example.test')
+      assert.deepEqual(google.state('account-b').accounts, [])
+      assert.equal(JSON.stringify(google.state('account-a')).includes('GOOGLE_PRIVATE'), false)
+    } finally { google.close() }
+  })
+
   it('refuses plaintext token storage when OS encryption is not available', () => {
     const blocked = createConnectorGateway({ userData: dir, safeStorage: {
       isEncryptionAvailable: () => false,
