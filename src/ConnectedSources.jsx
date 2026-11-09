@@ -3,6 +3,7 @@ import { T } from './auth/tokens'
 import { activeAccountScope } from './lib/accountScope'
 import { setDocSelected, setKitDocSelected } from './lib/docs'
 import { loadInterviewKitState } from './lib/interviewKits'
+import { loadSessionsAsync } from './history'
 import {
   SOURCE_TYPES, listApprovedImports, previewSelectedSource,
   approveSelectedSource, removeApprovedImport, applyApprovedRemoteUpdate,
@@ -10,7 +11,7 @@ import {
 import {
   loadProfessionalState, updateProfessionalProfile, addEvidenceQuote,
   removeEvidence, removeEvidenceForImport, addProfessionalClaim,
-  removeProfessionalClaim, linkEvidenceToClaim, recordProfessionalOutcome, removeProfessionalOutcome, buildProfessionalGraph, buildProfessionalReviewQueue,
+  removeProfessionalClaim, linkEvidenceToClaim, recordProfessionalOutcome, recordApprovedInterviewOutcome, removeProfessionalOutcome, buildProfessionalGraph, buildProfessionalReviewQueue,
 } from './lib/archProfessional'
 
 const panel = {
@@ -62,6 +63,8 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
   const [claimEvidence, setClaimEvidence] = useState('')
   const [claimLinkChoice, setClaimLinkChoice] = useState({})
   const [outcomeDraft, setOutcomeDraft] = useState('')
+  const [historySessions, setHistorySessions] = useState([])
+  const [historyOutcomeId, setHistoryOutcomeId] = useState('')
   const [graph, setGraph] = useState(() => buildProfessionalGraph())
   const [connectorBusy, setConnectorBusy] = useState(false)
 
@@ -70,6 +73,15 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
   const providerEntries = Object.entries(SOURCE_TYPES)
   const pendingCount = imports.filter(x => x.selectedForLive === false).length
   const reviewQueue = buildProfessionalReviewQueue(professional, imports)
+
+  useEffect(() => {
+    let current = true
+    const scope = activeAccountScope()
+    loadSessionsAsync().then(result => {
+      if (current && activeAccountScope() === scope) setHistorySessions((result.sessions || []).filter(row => row?.id))
+    }).catch(() => { if (current) setHistorySessions([]) })
+    return () => { current = false }
+  }, [auth?.user?.id, auth?.guest])
 
   function change(key, value) {
     setDraft(old => ({ ...old, [key]: value }))
@@ -615,6 +627,25 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           Conflicting claims detected: {graph.conflicts.map(row => row.key).join(', ')}. Review rather than silently picking one.
         </div>}
         <div style={{ marginTop: 17 }}>
+          <h4 style={{ fontSize: 15, margin: '0 0 7px' }}>Link a saved MockMate interview</h4>
+          <p style={small}>Only after your approval. Stores the existing session's label, summary and recorded score (or “Unscored”) with a link to its local history ID. No transcript or AI hint is copied into the evidence graph.</p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '9px 0' }}>
+            <select aria-label="Saved interview outcome" style={{ ...input, width: 'auto', flex: '1 1 230px' }}
+              value={historyOutcomeId} onChange={e => setHistoryOutcomeId(e.target.value)}>
+              <option value="">Choose saved interview</option>
+              {historySessions.map(session => <option key={session.id} value={session.id}>
+                {session.label || session.role || 'Interview'} · {session.score == null ? 'unscored' : session.score + '/100'}
+              </option>)}
+            </select>
+            <button type="button" style={action} disabled={!historyOutcomeId} onClick={async () => {
+              try {
+                const result = await recordApprovedInterviewOutcome(historyOutcomeId)
+                refresh()
+                setMessage(result.existing ? 'This interview is already linked.' : 'Saved interview outcome linked to ARCH with its local provenance.')
+              } catch (error) { setMessage('⚠ ' + readableError(error)) }
+            }}>Import selected outcome</button>
+          </div>
+          {!historySessions.length && <p style={small}>No locally saved interview history found for this account.</p>}
           <Field name="Record an interview, project or career outcome (self-reported)">
             <textarea style={{ ...input, minHeight: 64 }} value={outcomeDraft} onChange={e => setOutcomeDraft(e.target.value)} />
           </Field>
