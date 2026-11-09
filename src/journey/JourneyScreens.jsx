@@ -128,7 +128,7 @@ function KitMiniCard({ kit, active = false, onSelect, onEdit, previewMode = fals
 
 export function JourneyHome({
   auth, sessions = [], kits = [], activeKit, onSelectKit, onOpenKits,
-  onOpenReadyRoom, onStartPractice, onOpenHistory, onSettings, previewMode = false,
+  onOpenReadyRoom, onStartPractice, onOpenHistory, onSettings, onOpenSources, previewMode = false,
 }) {
   const firstName = String(auth?.user?.name || '').trim().split(/\s+/)[0]
   const displayName = firstName ? `, ${firstName}` : ''
@@ -154,6 +154,7 @@ export function JourneyHome({
           <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginTop: 20 }}>
             <Button variant="primary" onClick={onOpenReadyRoom} style={{ height: 43, padding: '0 17px', fontSize: workspaceTextSize(13.5) }}>Open Ready Room <span aria-hidden="true">→</span></Button>
             <Button variant="secondary" onClick={onOpenKits} style={{ height: 43, padding: '0 16px' }}>Manage Interview Kits</Button>
+            {onOpenSources && <Button variant="quiet" onClick={onOpenSources} style={{ height: 43, padding: '0 16px' }}>Sources & ARCH →</Button>}
           </div>
         </div>
       </section>
@@ -223,6 +224,11 @@ export function JourneyHome({
           <span style={{ flex: 1 }}><strong style={{ display: 'block', color: T.text1, fontSize: workspaceTextSize(12.5) }}>Solo Practice</strong><span style={{ color: T.text3, fontSize: workspaceTextSize(10.5) }}>Use the active Kit’s snapshot</span></span>
           <span style={{ color: T.text3 }}>→</span>
         </button>
+        {onOpenSources && <button type="button" onClick={onOpenSources} aria-label="Open Sources & ARCH" style={{ ...panelStyle, display: 'flex', alignItems: 'center', gap: 12, padding: 14, cursor: 'pointer', textAlign: 'left', color: 'inherit' }}>
+          <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', color: '#5eead4', background: 'rgba(20,184,166,0.12)', fontSize: workspaceTextSize(17) }}>🔗</span>
+          <span style={{ flex: 1 }}><strong style={{ display: 'block', color: T.text1, fontSize: workspaceTextSize(12.5) }}>Sources & ARCH</strong><span style={{ color: T.text3, fontSize: workspaceTextSize(10.5) }}>Connect accounts · review imports · manage evidence</span></span>
+          <span style={{ color: T.text3 }}>→</span>
+        </button>}
         <button type="button" onClick={onSettings} style={{ ...panelStyle, display: 'flex', alignItems: 'center', gap: 12, padding: 14, cursor: 'pointer', textAlign: 'left', color: 'inherit' }}>
           <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', color: '#fbbf24', background: 'rgba(245,158,11,0.1)', fontSize: workspaceTextSize(17) }}>⚙</span>
           <span style={{ flex: 1 }}><strong style={{ display: 'block', color: T.text1, fontSize: workspaceTextSize(12.5) }}>AI & Voice settings</strong><span style={{ color: T.text3, fontSize: workspaceTextSize(10.5) }}>Manage local keys and providers</span></span>
