@@ -193,8 +193,11 @@ export async function testProviderConnection(providerId) {
     throw error
   }
 
+  // A successful blocking request does not prove the streaming Live path works.
+  // Probe BOTH request shapes with the selected key and model (never fallback to another
+  // provider and mislabel its success). Keep one shared bounded deadline.
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 8_000)
+  const timer = setTimeout(() => controller.abort(), 18_000)
   try {
     for (let attempt = 0; attempt < 2; attempt++) {
       const provider = resolveProvider(id)
@@ -202,24 +205,59 @@ export async function testProviderConnection(providerId) {
       try {
         const params = {
           model: provider.model,
-          ...completionBudget(provider, 64),
+          ...completionBudget(provider, 160),
           messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
         }
-        // Without this, Claude 5-generation thinking can consume the 64-token test budget.
         const thinking = claudeThinkingFor(provider)
         if (thinking) params.thinking = thinking
-        const response = await createWithThinkingFallback(llm, params, { signal: controller.signal })
-        if (!response.choices?.[0]?.message) {
-          const error = new Error('The provider returned no answer. Check the key and model access.')
+        const options = { signal: controller.signal }
+        const response = await createWithThinkingFallback(llm, params, options)
+        if (!String(response.choices?.[0]?.message?.content || '').trim()) {
+          const error = new Error('Blocking provider request returned no answer text.')
           error.status = 502
           throw error
         }
-        return { ok: true, provider: id, model: provider.model }
+
+        const streamParams = { ...params, stream: true }
+        if (/gemini/i.test(provider.model)) streamParams.reasoning_effort = 'none'
+        if (/openai\\.com|groq\\.com/i.test(provider.baseURL || '')) {
+          streamParams.stream_options = { include_usage: true }
+        }
+        let stream
+        try {
+          stream = await createWithThinkingFallback(llm, streamParams, options)
+        } catch (error) {
+          if (Number(error?.status) !== 400 || !streamParams.reasoning_effort || controller.signal.aborted) throw error
+          const { reasoning_effort: _unsupported, ...withoutReasoning } = streamParams
+          stream = await createWithThinkingFallback(llm, withoutReasoning, options)
+        }
+        let sawText = false
+        for await (const chunk of stream) {
+          if (String(chunk?.choices?.[0]?.delta?.content || '').trim()) {
+            sawText = true
+            break
+          }
+        }
+        if (!sawText) {
+          const error = new Error('Streaming provider request completed without answer text.')
+          error.status = 502
+          throw error
+        }
+        clearTextProviderBan(id)
+        lastWorkingTextProvider = baseOf(id)
+        return { ok: true, provider: id, model: provider.model, checked: ['blocking', 'streaming'] }
       } catch (error) {
-        // A retired default should not force a user to search for model names.
-        // Try a different active model once; never retry auth or rate-limit errors.
-        if (!quarantineModel(id, provider.model, error) || attempt) throw error
-        if (!selectActiveModel(id)) throw error
+        if (controller.signal.aborted) {
+          const timedOut = new Error('Provider test timed out before both blocking and streaming answers completed.')
+          timedOut.status = 504
+          markProviderTestFailure(id, timedOut, provider.model)
+          throw timedOut
+        }
+        // Only one same-key model replacement if the provider definitively retired
+        // a model. An inaccessible key, quota or malformed streaming request fails.
+        if (quarantineModel(id, provider.model, error) && attempt === 0 && selectActiveModel(id)) continue
+        markProviderTestFailure(id, error, provider.model)
+        throw error
       }
     }
     throw aiError('no_provider', 502)
@@ -230,14 +268,24 @@ export async function testProviderConnection(providerId) {
 
 // Tier-aware selection uses model IDs returned for each key when possible.
 // Cold starts use current stable catalog defaults; a provider 404/403 fails over.
+// Status shown by Settings must follow real test/stream health, not merely a saved key.
+function automaticRouteUsable(id) {
+  if (!id) return false
+  const base = baseOf(id)
+  return availableProviders().some(provider => provider.id === base)
+    && !(textBannedUntil[base] > Date.now())
+}
+
 export function pickFastProvider() {
-  if (process.env.GEMINI_API_KEY) return newestDiscovered('gemini', MODEL_PRIORITIES.fast.gemini) || 'gemini_flash_lite'
-  if (process.env.OPENAI_API_KEY) return newestDiscovered('openai', MODEL_PRIORITIES.fast.openai) || 'openai_mini'
-  if (process.env.CEREBRAS_API_KEY) return 'cerebras'
-  if (process.env.GROQ_API_KEY) return 'groq'
-  if (process.env.ANTHROPIC_API_KEY) return newestDiscovered('claude_sonnet', MODEL_PRIORITIES.fast.claude_sonnet) || 'claude_haiku'
-  if (process.env.OPENROUTER_API_KEY) return newestDiscovered('openrouter', MODEL_PRIORITIES.strong.openrouter) || 'openrouter'
-  return null
+  const candidates = [
+    process.env.GEMINI_API_KEY && (newestDiscovered('gemini', MODEL_PRIORITIES.fast.gemini) || 'gemini_flash_lite'),
+    process.env.OPENAI_API_KEY && (newestDiscovered('openai', MODEL_PRIORITIES.fast.openai) || 'openai_mini'),
+    process.env.CEREBRAS_API_KEY && 'cerebras',
+    process.env.GROQ_API_KEY && 'groq',
+    process.env.ANTHROPIC_API_KEY && (newestDiscovered('claude_sonnet', MODEL_PRIORITIES.fast.claude_sonnet) || 'claude_haiku'),
+    process.env.OPENROUTER_API_KEY && (newestDiscovered('openrouter', MODEL_PRIORITIES.strong.openrouter) || 'openrouter'),
+  ]
+  return candidates.find(automaticRouteUsable) || null
 }
 
 // Which model automatic routing would use right now for quick answers and for
@@ -255,11 +303,13 @@ export function describeAutomaticRouting() {
 }
 
 export function pickStrongProvider() {
-  if (process.env.OPENAI_API_KEY) return newestDiscovered('openai', MODEL_PRIORITIES.strong.openai) || 'openai'
-  if (process.env.ANTHROPIC_API_KEY) return newestDiscovered('claude_sonnet', MODEL_PRIORITIES.strong.claude_sonnet) || 'claude_sonnet'
-  if (process.env.GEMINI_API_KEY) return newestDiscovered('gemini', MODEL_PRIORITIES.strong.gemini) || 'gemini_3_flash'
-  if (process.env.OPENROUTER_API_KEY) return newestDiscovered('openrouter', MODEL_PRIORITIES.strong.openrouter) || 'openrouter'
-  return pickFastProvider()
+  const candidates = [
+    process.env.OPENAI_API_KEY && (newestDiscovered('openai', MODEL_PRIORITIES.strong.openai) || 'openai'),
+    process.env.ANTHROPIC_API_KEY && (newestDiscovered('claude_sonnet', MODEL_PRIORITIES.strong.claude_sonnet) || 'claude_sonnet'),
+    process.env.GEMINI_API_KEY && (newestDiscovered('gemini', MODEL_PRIORITIES.strong.gemini) || 'gemini_3_flash'),
+    process.env.OPENROUTER_API_KEY && (newestDiscovered('openrouter', MODEL_PRIORITIES.strong.openrouter) || 'openrouter'),
+  ]
+  return candidates.find(automaticRouteUsable) || pickFastProvider()
 }
 
 export function pickBestProvider() {
@@ -267,7 +317,7 @@ export function pickBestProvider() {
     process.env.ANTHROPIC_API_KEY && newestDiscovered('claude_sonnet', MODEL_PRIORITIES.best.claude_sonnet),
     process.env.OPENAI_API_KEY && newestDiscovered('openai', MODEL_PRIORITIES.best.openai),
     process.env.GEMINI_API_KEY && newestDiscovered('gemini', MODEL_PRIORITIES.best.gemini),
-  ].filter(Boolean)
+  ].filter(automaticRouteUsable)
   return candidates[0] || pickStrongProvider()
 }
 
@@ -524,6 +574,29 @@ function banTextProvider(provId, ms = RATE_LIMIT_BAN_MS, reason = 'rate_limit') 
   }
   textBannedUntil[base] = expiresAt
   textBannedReason[base] = reason
+}
+
+// Explicit user-initiated tests inform this process's routing health. A failed
+// credits/format probe should not keep winning the automatic primary slot during
+// an interview. Manual re-test can immediately reinstate the provider.
+function clearTextProviderBan(provId) {
+  const endpoint = baseUrlFor(provId)
+  for (const id of Object.keys(textBannedUntil)) {
+    if (baseUrlFor(id) !== endpoint) continue
+    delete textBannedUntil[id]
+    delete textBannedReason[id]
+  }
+}
+
+function markProviderTestFailure(provId, error, model) {
+  if (isModelUnavailableError(error)) { quarantineModel(provId, model, error); return }
+  if (isQuotaExhausted(error) || Number(error?.status) === 400) {
+    banTextProvider(provId, 90 * 60 * 1000, isQuotaExhausted(error) ? 'quota' : 'request_invalid')
+  } else if (Number(error?.status) === 504 || error?.name === 'AbortError') {
+    banTextProvider(provId, 10 * 60 * 1000, 'timeout')
+  } else {
+    noteTextProviderFailure(provId, error, model)
+  }
 }
 
 function noteTextProviderFailure(provId, e, model = null) {
@@ -1303,9 +1376,21 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
       // After the first token only a stall ends the stream (no new text for
       // LIVE_STREAM_STALL_TIMEOUT_MS), so a long, healthy answer is never cut off.
       const requestOpts = { timeout: LIVE_SDK_CONNECT_TIMEOUT_MS, signal: deadline.signal }
-      const stream = await createWithThinkingFallback(llm, params, requestOpts, (_e, details = {}) => {
+      let stream
+      const recordThinkingRejection = (_e, details = {}) => {
         providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'stream', provider: provId, model, ...details }, 'warn')
-      })
+      }
+      try {
+        stream = await createWithThinkingFallback(llm, params, requestOpts, recordThinkingRejection)
+      } catch (error) {
+        // Gemini's OpenAI-compatible streaming endpoint can reject reasoning_effort,
+        // even when the same key/model answers blocking requests. Retry once without
+        // that optional field before abandoning the provider.
+        if (Number(error?.status) !== 400 || !params.reasoning_effort || deadline.signal.aborted) throw error
+        const { reasoning_effort: _unsupported, ...withoutReasoning } = params
+        providerDiagnostic('stream_reasoning_setting_rejected', { attemptId, operation: 'stream', provider: provId, model, status: 400 }, 'warn')
+        stream = await createWithThinkingFallback(llm, withoutReasoning, requestOpts, recordThinkingRejection)
+      }
       for await (const chunk of stream) {
         if (chunk?.usage) usage = chunk.usage
         if (chunk?.choices?.[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason
@@ -1316,6 +1401,11 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
       if (finishReason === 'length') {
         if (usage && onUsage) onUsage({ model,input:usage.prompt_tokens || 0,output:usage.completion_tokens || 0 })
         throw Object.assign(new Error('The model reached its output limit. Partial answer retained; retry for a complete answer.'),{ code:'output_truncated',status:502 })
+      }
+      if (!firstTokenAt) {
+        const error = new Error('Provider closed the stream without any answer text.')
+        error.status = 502
+        throw error
       }
       lastWorkingTextProvider = baseOf(provId)
       if (usage && onUsage) onUsage({ model, input: usage.prompt_tokens || 0, output: usage.completion_tokens || 0 })

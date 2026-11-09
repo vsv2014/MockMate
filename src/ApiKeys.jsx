@@ -65,7 +65,7 @@ function KeyField({ name, hint, value, onChange, added, status = 'ready', secret
           <Pill color={statusColor} bg={statusColor === T.success ? 'rgba(34,197,94,0.14)' : 'rgba(251,191,36,0.12)'}>{badge}</Pill>
         </span>
         {added && onTest && <button type="button" onClick={onTest} disabled={testing || edited || status !== 'ready'}
-          title={edited ? 'Save the replacement key before testing it.' : 'Verifies the key with a small probe request; the provider may charge a small amount.'}
+          title={edited ? 'Save the replacement key before testing it.' : 'Verifies blocking and streaming answers with two small probe requests; the provider may charge.'}
           aria-label={`Test ${name} connection`} aria-describedby={testState?.message ? testId : undefined}
           style={{ background: 'none', border: '1px solid rgba(94,234,212,0.3)', color: '#5eead4', fontSize: readableTextSize(10), cursor: testing || edited ? 'not-allowed' : 'pointer', opacity: testing || edited ? 0.55 : 1, padding: '3px 7px', borderRadius: 6 }}>
           {testing ? 'Testing…' : testState?.status === 'ok' || testState?.status === 'error' ? 'Test again' : 'Test connection'}
@@ -179,15 +179,19 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
     setTestResults(results => ({ ...results, [provider.k]: { status: 'testing', message: `Testing ${provider.name}…` } }))
     try {
       const response = await keyApiFetch('/api/providers/test', {
-        method: 'POST', timeoutMs: 12_000,
+        method: 'POST', timeoutMs: 22_000,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider: provider.testId }),
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok || !data.ok) throw new Error(data.error || `Provider test returned HTTP ${response.status}`)
-      setTestResults(results => ({ ...results, [provider.k]: { status: 'ok', message: provider.testId === 'deepgram' ? 'Deepgram key verified — transcription connection is valid.' : 'Text connection passed just now. Screenshot and voice capture are separate checks.' } }))
+      setTestResults(results => ({ ...results, [provider.k]: { status: 'ok', message: provider.testId === 'deepgram' ? 'Deepgram key verified — transcription connection is valid.' : `Blocking + streaming passed for ${data.model || provider.name}. Other models, screenshot analysis and audio still require separate checks.` } }))
     } catch (error) {
       setTestResults(results => ({ ...results, [provider.k]: { status: 'error', message: error?.message || 'Connection test failed.' } }))
+    } finally {
+      // The local service now benches failed tests and clears bans on success.
+      // Refresh the displayed model routing so it never advertises a failed key.
+      refresh().catch(() => {})
     }
   }
 
@@ -399,7 +403,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {canTestProviders && (
                     <button type="button" onClick={() => testProvider(p)} disabled={testing || keyStatus !== 'ready'}
-                      title="Sends one short text request; the provider may charge a small amount."
+                      title="Verifies both blocking and streaming answers; the provider may charge for two small requests."
                       aria-label={`Test ${p.name} connection`}
                       style={{ ...smallBtn('#5eead4', 'rgba(94,234,212,0.3)'), opacity: testing ? 0.55 : 1, cursor: testing ? 'not-allowed' : 'pointer' }}>
                       {testing ? 'Testing…' : test?.status ? 'Test again' : 'Test'}
