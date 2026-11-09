@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { webcrypto } from 'node:crypto'
+import { saveSession } from '../history.js'
 import { previewSelectedSource, approveSelectedSource, removeApprovedImport } from './connectedSources.js'
 import {
   ARCH_PROFESSIONAL_SCHEMA, loadProfessionalState, updateProfessionalProfile,
   addEvidenceQuote, removeEvidenceForImport, addProfessionalClaim, linkEvidenceToClaim,
-  recordProfessionalOutcome, buildProfessionalGraph, buildProfessionalReviewQueue,
+  recordProfessionalOutcome, recordApprovedInterviewOutcome, buildProfessionalGraph, buildProfessionalReviewQueue,
 } from './archProfessional.js'
 const local = new Map(), session = new Map()
 const store = map => ({
@@ -64,6 +65,31 @@ describe('Track B ARCH professional evidence', () => {
       .some(a => a.type === 'stale_evidence')).toBe(true)
     expect(buildProfessionalReviewQueue(loadProfessionalState(), [{ ...record, revision: 'rev-updated' }])
       .some(a => a.type === 'unverified_claim')).toBe(true)
+  })
+
+
+  it('imports a user-approved saved interview without inventing a score or duplicating its history link', async () => {
+    const saved = saveSession({
+      report: { overallScore: 84, summary: 'Practice answers improved with clearer structure.' },
+      config: { domainLabel: 'Software Engineer', source: 'solo' },
+    })
+    expect(saved?.id).toBeTruthy()
+    const first = await recordApprovedInterviewOutcome(saved.id)
+    expect(first.existing).toBe(false)
+    expect(first.outcome.result).toBe('Saved evaluation: 84/100')
+    expect(first.outcome.sourceSessionId).toBe(saved.id)
+    const repeated = await recordApprovedInterviewOutcome(saved.id)
+    expect(repeated.existing).toBe(true)
+    expect(loadProfessionalState().outcomes).toHaveLength(1)
+    const graph = buildProfessionalGraph()
+    expect(graph.edges.some(edge => edge.from === first.outcome.id
+      && edge.to === 'interview:' + saved.id && edge.relation === 'recorded_from')).toBe(true)
+    session.set('mm-active-account-scope', 'user-b')
+    await expect(recordApprovedInterviewOutcome(saved.id)).rejects.toThrow(/unavailable/)
+    session.set('mm-active-account-scope', 'user-a')
+    const unscored = saveSession({ report: { summary: 'Notes only' }, config: { source: 'live' } })
+    const imported = await recordApprovedInterviewOutcome(unscored.id)
+    expect(imported.outcome.result).toBe('Unscored')
   })
 
   it('requires exact evidence in an approved document and supports provenance deletion', async () => {
