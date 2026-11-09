@@ -1103,6 +1103,7 @@ function getConnectorGateway() {
   if (!connectorGateway) connectorGateway = createConnectorGateway({
     userData: app.getPath('userData'), safeStorage,
     openExternal: url => shell.openExternal(url),
+    currentOwner: () => connectorOwner(),
   })
   return connectorGateway
 }
