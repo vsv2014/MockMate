@@ -23,8 +23,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm audit fix --package-lock-only --no-fund
-          npm --prefix backend audit fix --package-lock-only --no-fund
+          npm audit fix --package-lock-only --no-fund || echo 'Some development-only advisories remain; enforcing production audits below.'
+          npm --prefix backend audit fix --package-lock-only --no-fund || echo 'Some backend advisories remain; enforcing production audits below.'
       - name: Ensure lockfiles actually fix production advisories
         shell: bash
         run: |
