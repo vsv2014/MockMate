@@ -1,0 +1,180 @@
+[
+  {
+    "origin": "synthetic",
+    "id": "dsa-array",
+    "category": "coding",
+    "question": "Write TypeScript code to find two sum indices in an array.",
+    "profile": {
+      "codingLanguage": "TypeScript"
+    },
+    "expected": {
+      "requiresCode": true,
+      "language": "typescript"
+    }
+  },
+  {
+    "origin": "synthetic",
+    "id": "dsa-queue",
+    "category": "coding",
+    "question": "Implement a queue in JavaScript with enqueue and dequeue.",
+    "profile": {
+      "codingLanguage": "JavaScript"
+    },
+    "expected": {
+      "requiresCode": true,
+      "language": "javascript"
+    }
+  },
+  {
+    "origin": "synthetic",
+    "id": "dsa-bfs",
+    "category": "coding",
+    "question": "Write Python code for breadth-first traversal of a graph.",
+    "profile": {
+      "codingLanguage": "Python"
+    },
+    "expected": {
+      "requiresCode": true,
+      "language": "python"
+    }
+  },
+  {
+    "origin": "synthetic",
+    "id": "dsa-complexity",
+    "category": "technical",
+    "question": "Explain time and space complexity of binary search.",
+    "expected": {
+      "requiredTerms": [
+        "binary search"
+      ]
+    }
+  },
+  {
+    "origin": "synthetic",
+    "id": "followup-code",
+    "category": "followup",
+    "question": "Show the complete code in TypeScript.",
+    "conversationHistory": [
+      {
+        "role": "interviewer",
+        "text": "How would you solve two sum?"
+      },
+      {
+        "role": "assistant",
+        "text": "Use a hash map to track prior indices."
+      }
+    ],
+    "profile": {
+      "codingLanguage": "TypeScript"
+    },
+    "expected": {
+      "requiresCode": true,
+      "language": "typescript"
+    }
+  },
+  {
+    "origin": "synthetic",
+    "id": "followup-why",
+    "category": "followup",
+    "question": "Why did you choose that?",
+    "conversationHistory": [
+      {
+        "role": "interviewer",
+        "text": "How would you design a rate limiter?"
+      },
+      {
+        "role": "assistant",
+        "text": "I would use a token bucket with Redis."
+      }
+    ],
+    "expected": {
+      "requiredTerms": [
+        "rate"
+      ]
+    }
+  },
+  {
+    "origin": "synthetic",
+    "id": "followup-correction",
+    "category": "followup",
+    "question": "Actually I meant minimum number of jumps, not whether it is reachable.",
+    "conversationHistory": [
+      {
+        "role": "interviewer",
+        "text": "Can you check whether the last index is reachable?"
+      },
+      {
+        "role": "assistant",
+        "text": "I would use a greedy reachability check."
+      }
+    ],
+    "expected": {
+      "requiredTerms": [
+        "jump"
+      ]
+    }
+  },
+  {
+    "origin": "synthetic",
+    "id": "behavioral-outage",
+    "category": "behavioral",
+    "question": "Tell me about a production incident you handled.",
+    "profile": {
+      "resume": "Built an internal on-call dashboard for notification failures. No published metrics."
+    },
+    "expected": {
+      "forbiddenTerms": [
+        "reduced incidents by 50%",
+        "saved $1 million"
+      ]
+    }
+  },
+  {
+    "origin": "synthetic",
+    "id": "behavioral-ownership",
+    "category": "behavioral",
+    "question": "Describe your role in the Atlas dashboard project.",
+    "profile": {
+      "resume": "Contributed the alert filtering UI for the Atlas dashboard. Did not own backend services."
+    },
+    "expected": {
+      "forbiddenTerms": [
+        "I built the entire backend",
+        "I led the backend"
+      ]
+    }
+  },
+  {
+    "origin": "synthetic",
+    "id": "system-design-cache",
+    "category": "system_design",
+    "question": "Design a distributed cache that handles failover.",
+    "expected": {
+      "requiredTerms": [
+        "cache"
+      ]
+    }
+  },
+  {
+    "origin": "synthetic",
+    "id": "system-design-limiter",
+    "category": "system_design",
+    "question": "Design an API rate limiter for multiple regions.",
+    "expected": {
+      "requiredTerms": [
+        "rate"
+      ]
+    }
+  },
+  {
+    "origin": "synthetic",
+    "id": "technical-mongo",
+    "category": "technical",
+    "question": "What are indexes in MongoDB and when would you use them?",
+    "expected": {
+      "requiredTerms": [
+        "index"
+      ]
+    }
+  }
+]
