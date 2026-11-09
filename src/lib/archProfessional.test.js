@@ -3,7 +3,7 @@ import { webcrypto } from 'node:crypto'
 import { previewSelectedSource, approveSelectedSource, removeApprovedImport } from './connectedSources.js'
 import {
   ARCH_PROFESSIONAL_SCHEMA, loadProfessionalState, updateProfessionalProfile,
-  addEvidenceQuote, removeEvidenceForImport,
+  addEvidenceQuote, removeEvidenceForImport, addProfessionalClaim, recordProfessionalOutcome, buildProfessionalGraph,
 } from './archProfessional.js'
 const local = new Map(), session = new Map()
 const store = map => ({
@@ -32,6 +32,20 @@ describe('Track B ARCH professional evidence', () => {
     expect(loadProfessionalState().profile.headline).toBe('')
     session.set('mm-active-account-scope', 'user-a')
     expect(loadProfessionalState().profile.goals).toContain('design')
+  })
+
+  it('projects a provenance graph with claims, outcomes and unresolved conflicts', async () => {
+    const preview = await previewSelectedSource(source)
+    const { record } = await approveSelectedSource(preview, source, { approved: true })
+    const quote = addEvidenceQuote({ importId: record.id, quote: 'reliable offline-first application' }).state.evidence[0]
+    const original = addProfessionalClaim({ key: 'Primary framework', value: 'Angular', evidenceIds: [quote.id] })
+    addProfessionalClaim({ key: 'Primary framework', value: 'React' })
+    recordProfessionalOutcome({ description: 'Completed a mock system design interview.' })
+    const graph = buildProfessionalGraph()
+    expect(graph.nodes.find(n => n.id === original.id).label).toContain('Angular')
+    expect(graph.edges.some(edge => edge.from === original.id && edge.to === quote.id)).toBe(true)
+    expect(graph.conflicts).toHaveLength(1)
+    expect(graph.nodes.some(node => node.kind === 'outcome')).toBe(true)
   })
 
   it('requires exact evidence in an approved document and supports provenance deletion', async () => {
