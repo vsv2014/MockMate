@@ -1,7 +1,9 @@
 // A second microphone channel is exclusively candidate speech; it never
 // feeds the interviewer's question detector or generates hints by itself.
 // Duplicate final packets on a reconnect must not double-count an answer.
-const normalizedSpeech = text => String(text ?? '').toLowerCase().replace(/[^\\p{L}\\p{N}\\s]/gu, ' ').replace(/\\s+/g, ' ').trim()\n\nexport function createCandidateMicGate({ now = () => Date.now(), duplicateWindowMs = 2500, echoWindowMs = 1800 } = {}) {
+const normalizedSpeech = text => String(text ?? '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()
+
+export function createCandidateMicGate({ now = () => Date.now(), duplicateWindowMs = 2500, echoWindowMs = 1800 } = {}) {
   let lastText = ''
   let lastAt = 0
   return ({ text, sourceId, sessionActive = true, systemFinal = null } = {}) => {
