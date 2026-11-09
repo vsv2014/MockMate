@@ -63,7 +63,13 @@ const loadRecords = () => {
   } catch { return [] }
 }
 const saveRecords = rows => setScopedItem(APPROVED_IMPORTS_KEY, JSON.stringify(rows.slice(-MAX_RECORDS)))
-export function listApprovedImports() { return loadRecords().map(record => ({ ...record })) }
+export function listApprovedImports() {
+  return loadRecords().map(record => {
+    const documents = record.kitId ? listKitDocs(record.kitId) : listDocs()
+    const doc = documents.find(item => item.id === record.documentId)
+    return { ...record, documentPresent: !!doc, selectedForLive: !!doc && doc.selected !== false }
+  })
+}
 
 function documentExists(record) {
   const rows = record.kitId ? listKitDocs(record.kitId) : listDocs()
