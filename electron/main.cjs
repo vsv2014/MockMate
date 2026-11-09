@@ -1145,6 +1145,7 @@ ipcMain.handle('connector-request', async (event, payload = {}) => {
       case 'unsubscribe': data = gateway.unsubscribe(owner, importId); break
       case 'sync': data = await gateway.syncNow(owner); break
       case 'sync-ack': data = gateway.acknowledgeSync(owner, importId, sha256); break
+      case 'purge': data = gateway.purgeOwner(owner); break
       default: throw new Error('Unsupported connector operation')
     }
     return { ok: true, data }
