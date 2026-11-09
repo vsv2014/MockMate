@@ -29,6 +29,7 @@ import { estimateCost } from './cost'
 import { extractPdfText } from './pdf'
 import { mountPip } from './pip'
 import { mergeTurns } from './lib/transcript'
+import { buildLiveSttKeyterms as resumeKeyterms } from './lib/liveSttKeyterms'
 import { glanceLayers, stripHintMeta, ensureCodingCodeBlock } from '../shared/hintLayers.js'
 import { classifyTurn, shouldRetrieveDocs } from '../shared/interviewClassify.js'
 import { evaluateScreenRelevance, formatScreenDebugTrace } from '../shared/screenContext.js'
@@ -68,24 +69,6 @@ function liveRagOpts(_classification, interviewConfig, budgetMs = 600) {
   }
 }
 
-// Pull boostable terms (tech, tools, acronyms, proper nouns) from the resume + target
-// role so Deepgram recognizes the candidate's domain jargon and names accurately.
-const KW_STOP = new Set('and the for with you your are was were our their from this that have has had will would over into per via team teams work working experience years year using used use built build led role responsibilities including based across also able strong excellent'.split(' '))
-function resumeKeyterms(profile = {}) {
-  const text = `${profile.targetRole || ''} ${profile.resume || ''}`
-  const freq = new Map()
-  for (const tok of text.match(/[A-Za-z][A-Za-z0-9+#.]{1,30}/g) || []) {
-    const low = tok.toLowerCase()
-    if (KW_STOP.has(low) || low.length < 2) continue
-    // Proper nouns / acronyms / tech tokens (caps, inner caps, digits, symbols) rank first.
-    const proper = /^[A-Z]/.test(tok) || /[A-Z0-9+#.]/.test(tok.slice(1))
-    const w = freq.get(tok) || { n: 0, proper }
-    w.n++; freq.set(tok, w)
-  }
-  return [...freq.entries()]
-    .sort((a, b) => (b[1].proper - a[1].proper) || (b[1].n - a[1].n))
-    .slice(0, 40).map(([t]) => t)
-}
 const THINKING_BY_LANG = {
   Spanish: 'Pensando…',
   French: 'Réflexion…',
