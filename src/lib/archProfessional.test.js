@@ -4,7 +4,7 @@ import { saveSession } from '../history.js'
 import { previewSelectedSource, approveSelectedSource, removeApprovedImport } from './connectedSources.js'
 import {
   ARCH_PROFESSIONAL_SCHEMA, loadProfessionalState, updateProfessionalProfile,
-  addEvidenceQuote, removeEvidenceForImport, addProfessionalClaim, linkEvidenceToClaim,
+  addEvidenceQuote, removeEvidence, removeEvidenceForImport, addProfessionalClaim, removeProfessionalClaim, linkEvidenceToClaim,
   recordProfessionalOutcome, recordApprovedInterviewOutcome, linkOutcomeToClaim, unlinkOutcomeFromClaim, buildProfessionalGraph, buildProfessionalReviewQueue,
 } from './archProfessional.js'
 const local = new Map(), session = new Map()
@@ -90,6 +90,22 @@ describe('Track B ARCH professional evidence', () => {
     const unscored = saveSession({ report: { summary: 'Notes only' }, config: { source: 'live' } })
     const imported = await recordApprovedInterviewOutcome(unscored.id)
     expect(imported.outcome.result).toBe('Unscored')
+  })
+
+  it('removing evidence and claims cascades only dependent local graph links', async () => {
+    const preview = await previewSelectedSource(source)
+    const { record } = await approveSelectedSource(preview, source, { approved: true })
+    const evidenceId = addEvidenceQuote({ importId: record.id, quote: 'reliable offline-first application' }).state.evidence[0].id
+    const claim = addProfessionalClaim({ key: 'Offline-first design', value: 'Practice', evidenceIds: [evidenceId] })
+    const outcome = recordProfessionalOutcome({ description: 'Practised offline-first application design.', claimIds: [claim.id] })
+    const cleared = removeEvidence(evidenceId)
+    expect(cleared.claims[0].evidenceIds).toEqual([])
+    expect(cleared.claims[0].status).toBe('needs_review')
+    expect(buildProfessionalReviewQueue().some(row => row.type === 'unverified_claim')).toBe(true)
+    const removed = removeProfessionalClaim(claim.id)
+    expect(removed.outcomes[0].claimIds).toEqual([])
+    expect(removed.outcomes[0].id).toBe(outcome.id)
+    expect(removed.claims).toEqual([])
   })
 
   it('reviewer links and unlinks a saved outcome without claiming automatic skill verification', () => {
