@@ -1117,7 +1117,7 @@ async function connectorOwner() {
   if (!/^[a-zA-Z0-9._-]{1,160}$/.test(String(decoded.sub || ''))) throw new Error('Invalid signed account identity')
   // Re-check current session against account service. Signature-only checks
   // would permit a token revoked by password reset (tokenVersion mismatch).
-  const status = await fetch(API_BASE.replace(/\\/$/, '') + '/auth/me', {
+  const status = await fetch((API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE) + '/auth/me', {
     headers: { Authorization: 'Bearer ' + token },
     signal: AbortSignal.timeout(5000),
     redirect: 'error',
