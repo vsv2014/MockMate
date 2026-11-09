@@ -1,6 +1,6 @@
-name: All Open PRs Local Test Build
+name: Build Portable Windows Local Preview
 
-# Branch-only CI for experimental integration. Not a stable release or PR merge gate.
+# Portable BYOK-only preview from source branch or manual ref. Not a signed or stable release.
 on:
   push:
     branches:
@@ -98,26 +98,27 @@ jobs:
           if ($sig.Status -ne 'NotSigned') { throw 'Unsigned test executable unexpectedly signed' }
           if (Test-Path 'release/win-unpacked/resources/app-update.yml') { throw 'No updater feed allowed in preview' }
           New-Item staged -ItemType Directory -Force | Out-Null
-          $zip = "staged/MockMate-Personal-Preview-1.6.6-all-prs-${{ github.run_number }}-PORTABLE.zip"
+          $version = [string](Get-Content package.json -Raw | ConvertFrom-Json).version
+          $zip = "staged/MockMate-Personal-Preview-$version-${{ github.run_number }}-PORTABLE.zip"
           Compress-Archive -Path 'release/win-unpacked/*' -DestinationPath $zip -CompressionLevel Optimal
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash *$(Split-Path $zip -Leaf)" | Set-Content staged/SHA256SUMS.txt -Encoding utf8
           @"
-          MockMate ALL-OPEN-PRs experimental test bundle — NOT a public release.
+          MockMate experimental portable test bundle — NOT a public release.
           Source commit: $env:SOURCE_SHA
           Branch: $env:SOURCE_REF
           Portable unsigned BYOK-only app; extract the ZIP into its own folder.
           Launch MockMatePersonalPreview.exe. No NSIS installer or auto updater.
           Stable MockMate app, shortcuts and userData are not intentionally modified.
           Unverified on your physical Windows audio / share-preview setup.
-          Contains code from PRs #118 #112 #108 #109 and docs #102.
+          Source-branch provenance only; inspect source ref to confirm which features are included.
           Composio OAuth, voice VAD, model benchmarks and hosted cloud sync are NOT integrated here.
           Never run real paid AI evaluations without explicit manual opt-in.
           "@ | Set-Content staged/TEST-NOTICE.txt -Encoding utf8
       - name: Upload portable preview archive, checksum and provenance
         uses: actions/upload-artifact@v4
         with:
-          name: mockmate-all-prs-windows-${{ github.run_number }}
+          name: mockmate-portable-windows-${{ github.run_number }}
           path: staged/*
           if-no-files-found: error
           retention-days: 14
