@@ -134,6 +134,24 @@ export function addProfessionalClaim({ key, value, category = 'skill', evidenceI
   if (!next) throw new Error('Unable to save claim')
   return claim
 }
+// Attach a reviewed quotation after a claim was created, without recreating the
+// claim or silently elevating its authority. Only current approved evidence ids.
+export function linkEvidenceToClaim(claimId, evidenceId) {
+  const current = loadProfessionalState()
+  const evidence = current.evidence.find(item => item.id === evidenceId)
+  if (!evidence) throw new Error('Select an existing approved evidence quotation')
+  const claim = current.claims.find(item => item.id === claimId)
+  if (!claim) throw new Error('Claim no longer exists')
+  if (claim.evidenceIds.includes(evidenceId)) return current
+  const changed = current.claims.map(row => row.id !== claimId ? row : {
+    ...row, evidenceIds: [...row.evidenceIds, evidenceId].slice(0, 15),
+    status: 'evidence_linked', updatedAt: new Date().toISOString(),
+  })
+  const next = persist({ ...current, claims: changed, history: addEvent(current, 'evidence_linked', claimId) })
+  if (!next) throw new Error('Could not save claim evidence')
+  return next
+}
+
 export function removeProfessionalClaim(id) {
   const current = loadProfessionalState()
   return persist({ ...current, claims: current.claims.filter(row => row.id !== id),
@@ -176,6 +194,7 @@ export function buildProfessionalGraph(state = loadProfessionalState(), imports 
     const src = importMap.get(item.importId)
     const doc = Array.isArray(docs) && docs.find(row => row?.id === item.documentId)
     const stale = !src || !doc || !String(doc.text || '').includes(item.quote)
+      || Boolean(item.sourceRevision && src?.revision && item.sourceRevision !== src.revision)
     nodes.push({ id: item.id, kind: 'evidence', label: item.quote, stale, sourceId: item.sourceId,
       revision: item.sourceRevision })
     if (src) edges.push({ from: item.id, to: 'src:' + item.importId, relation: 'quoted_from' })
@@ -216,4 +235,29 @@ export function buildProfessionalGraph(state = loadProfessionalState(), imports 
   return { schemaVersion: 2, nodes, edges, conflicts,
     staleEvidence: nodes.filter(row => row.kind === 'evidence' && row.stale).length,
     updatedAt: state.updatedAt }
+}
+
+// A deterministic action queue, not an LLM's invented skills or claims.
+// Never change the professional state without an explicit user action.
+export function buildProfessionalReviewQueue(state = loadProfessionalState(), imports = listApprovedImports()) {
+  const graph = buildProfessionalGraph(state, imports)
+  const stale = new Set(graph.nodes.filter(n => n.kind === 'evidence' && n.stale).map(n => n.id))
+  const queue = []
+  for (const evidence of state.evidence) if (stale.has(evidence.id)) {
+    queue.push({ id: 'stale:' + evidence.id, type: 'stale_evidence', severity: 'warning',
+      title: 'Recheck source quotation', detail: evidence.title || evidence.importId,
+      action: 'Open the approved source, verify its revision and replace the stale quote.' })
+  }
+  const conflictClaims = new Set(graph.conflicts.flatMap(c => [c.a, c.b]))
+  for (const claim of state.claims) {
+    if (conflictClaims.has(claim.id)) continue
+    const currentQuotes = claim.evidenceIds.filter(id => !stale.has(id) && state.evidence.some(ev => ev.id === id))
+    if (!currentQuotes.length) queue.push({ id: 'claim:' + claim.id, type: 'unverified_claim', severity: 'notice',
+      title: 'Claim needs supporting evidence', detail: claim.key + ': ' + claim.value,
+      action: 'Attach a verbatim quote from an approved source, or keep this explicitly self-reported.' })
+  }
+  for (const conflict of graph.conflicts) queue.push({ id: 'conflict:' + conflict.a + ':' + conflict.b,
+    type: 'conflicting_claims', severity: 'warning', title: 'Review contradictory claims', detail: conflict.key,
+    action: 'Compare the claims and supporting source quotations; choose what to retain manually.' })
+  return queue.slice(0, 200)
 }
