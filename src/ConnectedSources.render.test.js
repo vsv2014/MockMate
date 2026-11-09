@@ -3,8 +3,17 @@ import React from 'react'
 import { renderToString } from 'react-dom/server'
 import ConnectedSources from './ConnectedSources.jsx'
 import { AppShell } from './Dashboard.jsx'
+import { JourneyHome } from './journey/JourneyScreens.jsx'
 
 describe('Track B Sources & ARCH navigation', () => {
+  it('advertises connected accounts and ARCH from the home screen with a working navigation affordance', () => {
+    const html = renderToString(React.createElement(JourneyHome, {
+      auth: { guest: true }, onOpenSources: () => {}, kits: [], sessions: [],
+    }))
+    expect(html).toContain('Open Sources &amp; ARCH')
+    expect(html).toContain('Connect accounts')
+    expect(html).toContain('review imports')
+  })
   it('exposes a real workspace entry in desktop navigation', () => {
     const html = renderToString(React.createElement(AppShell, {
       active: 'sources', auth: { guest: true }, stealth: true,
