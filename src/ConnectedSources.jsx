@@ -41,6 +41,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
   const [draft, setDraft] = useState(blank)
   const [preview, setPreview] = useState(null)
   const [confirmed, setConfirmed] = useState(false)
+  const [importAutoSync, setImportAutoSync] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [imports, setImports] = useState(() => listApprovedImports())
@@ -254,6 +255,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           const state = await connectorRequest({
             op: 'subscribe', importId: record.id, provider: record.provider,
             accountId: record.connectedAccountId, sourceId: record.sourceId, sha256: record.sha256,
+            enabled: importAutoSync,
           })
           setConnections(state)
         } catch (error) {
@@ -266,6 +268,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
       setDraft(blank())
       setPreview(null)
       setConfirmed(false)
+      setImportAutoSync(false)
       setMessage(existing
         ? 'This exact source was already imported. No duplicate created.'
         : `Imported ${record.title} as an unselected document. Enable it explicitly in your document or Kit settings before AI retrieval.`)
@@ -438,6 +441,10 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
               <input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />
               I reviewed this preview and approve saving it as an unselected local document.
             </label>
+            {draft.connectedAccountId && <label style={{ ...small, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <input type="checkbox" checked={importAutoSync} onChange={e => setImportAutoSync(e.target.checked)} />
+              Enable 15-minute background sync only for this selected source (paused during Live).
+            </label>}
             <button style={action} disabled={busy || !confirmed} type="button" onClick={importApproved}>Approve &amp; import</button>
           </div>
         )}
