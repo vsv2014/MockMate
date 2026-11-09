@@ -147,7 +147,6 @@ export async function logout() {
 }
 export async function deleteAccount() {
   // Local deletion is acknowledged before credentials are removed. A local failure is explicit.
-  if (await sqliteEnabled()) await sqliteRequest('purge')
   // Remove OS-encrypted connector credentials while this signed identity still
   // exists. If the vault cannot be purged, do not orphan its tokens by deleting
   // the account first. Older app builds without connector support skip this step.
@@ -155,6 +154,7 @@ export async function deleteAccount() {
     const result = await window.electronAPI.connectors.request({ op: 'purge' })
     if (!result?.ok) throw new Error('Could not securely remove connected-account credentials. Account deletion was stopped: ' + (result?.error || 'vault unavailable'))
   }
+  if (await sqliteEnabled()) await sqliteRequest('purge')
   await request('/me', { method: 'DELETE', auth: true, timeoutMs: 30000 })
   // Blast-radius review fix: purge ALL account-scoped local data (documents,
   // persisted vector cache with original text, PI events, playbooks, …) BEFORE
