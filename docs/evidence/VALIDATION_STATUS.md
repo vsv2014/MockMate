@@ -1,5 +1,17 @@
 # Validation status
 
+## v1.6.9 unsigned Personal Preview (2026-11-09; Live transcript/scoring status)
+
+**Evidence is version-specific. This is NOT physical device certification.**
+
+- **Source fix:** [PR #129](https://github.com/vsv2014/MockMate/pull/129) merged as `1431a02ce5be7c74386b465dc83fcfd48e7ae1db`; Linux and Windows source/packaged smoke [run 42609817184](https://github.com/vsv2014/MockMate/actions/runs/42609817184) passed.
+- **Release:** [PR #133](https://github.com/vsv2014/MockMate/pull/133) merged as `666e82b54f3acc0f4b36dba16c5a5989715daa9a`; versioned [Desktop CI run 42610707338](https://github.com/vsv2014/MockMate/actions/runs/42610707338) passed.
+- **Unsigned publication:** [workflow run 42611395447](https://github.com/vsv2014/MockMate/actions/runs/42611395447) completed successfully. [GitHub release v1.6.9](https://github.com/vsv2014/MockMate/releases/tag/v1.6.9) exposes the uploaded UNSIGNED EXE, personal preview notice and SHA256SUMS; isolated BYOK app identity and update-feed absence validated by CI.
+- **Reported v1.6.8 Windows session:** 16-minute Live session, 160 final STT segments, 26 committed interviewer questions, 23 hints; no candidate responses in saved speech turns; not scored. `mergeTurns()` had collapsed interviewer-only questions into one paragraph. v1.6.9 now retains distinct committed question IDs for transcript merging. Context-sensitive domain STT keyterms and candidate-capture status were added.
+- **Still OPEN physically:** actual microphone attribution to candidate, headset/system-loopback output, Windows installer/userData preservation, RAG/LangChain/LangGraph word recognition against source audio, screen-share stealth checks and feedback score accuracy. CI cannot prove any of these on the user's laptop.
+- **Unresolved other findings:** five `VISION_UNAVAILABLE` screenshot requests [#130](https://github.com/vsv2014/MockMate/issues/130); nine preflight `/api/hint` HTTP 502 [#132](https://github.com/vsv2014/MockMate/issues/132). Future explicit opt-in two-source candidate scoring is [#131](https://github.com/vsv2014/MockMate/issues/131). None is claimed fixed by v1.6.9.
+
+
 ## v1.6.8 unsigned Personal Preview (2026-11-09; Ready Room fixes)
 
 **Evidence is commit- and version-specific. This is NOT a physically certified release.**
