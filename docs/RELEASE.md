@@ -43,3 +43,20 @@ This is the route used for v1.6.2, v1.6.3, v1.6.4 and v1.6.5. It is an explicit 
 4. Confirm the tag points at the merge commit, the asset names and versions match, and the checksum matches the downloaded EXE.
 
 Do not change `.github/release-request.json` for an unsigned preview: a push that changes it starts the signed `release.yml`.
+
+
+## Install and test every new development build (manual isolated preview)
+
+The separate `.github/workflows/manual-personal-preview.yml` workflow is a **manual, unsigned, BYOK-only Windows testing channel**. It is not the signed public release path and does not publish a GitHub Release. Once this workflow has been reviewed and merged to the default branch:
+
+1. Open GitHub **Actions → Build Isolated Windows Test Preview → Run workflow**. Choose the exact branch containing the code you want to test, not necessarily `main`. It creates an installer from that selected commit.
+2. Leave **allow_known_advisories** unchecked for a clean audit. If a known vulnerability blocks the experimental artifact, inspect the reported advisories first. The optional override explicitly permits a **private testing artifact only**; it never disables the stable release audit. Avoid production/sensitive accounts when advisories are unresolved.
+3. Wait for the **isolated-personal-preview** Windows job to succeed. Download the `mockmate-isolated-windows-test-<run number>` artifact from the run page (artifact retention: 14 days). This is a ZIP containing an unsigned `MockMate-Personal-Preview-*-UNSIGNED.exe`, a SHA-256 checksum and a notice with the exact commit SHA.
+4. Verify the checksum and install manually. Windows SmartScreen may warn because the preview is unsigned. The preview has a **separate application ID, shortcut and user-data directory**, preserving the existing signed MockMate install. There is no auto-update feed; install a fresh preview artifact to test later commits. Back up preview data before changing versions, and do not assume rollback/migration works without checking.
+5. Test Live, Solo, Settings, Interview Kits, key storage, app restart, overlay, logs and any changes under review. Record the source commit, device, observed outcome and reproduction steps in the release evidence log.
+
+All application tests, build and packaged-runtime smoke checks are **hard requirements** to upload a new manual preview. Only the dependency-advisory check permits the explicitly labeled, test-only override. Every advisory is still recorded in a separate artifact. The signed `release.yml` and public unsigned `unsigned-public.yml` security/release gates are **unchanged**.
+
+**Important:** `desktop-ci.yml` also produces validation installers attached to PR checks, but those use the normal MockMate application identity and should be tested only in an isolated Windows VM/profile, not installed over a stable installation. Prefer the manual isolated preview channel for routine local testing.
+
+GitHub CI packaged smoke is automated validation, **not** evidence of real Windows hardware or Zoom/Teams/Meet share-preview certification. A failed workflow does not produce a supported installer. The latest source/branch is not automatically a published release.

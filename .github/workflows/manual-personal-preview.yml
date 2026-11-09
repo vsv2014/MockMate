@@ -1,0 +1,161 @@
+name: Build Isolated Windows Test Preview
+
+# Manually build a BYOK-only unsigned test installer from the selected branch.
+# Never publishes GitHub Releases or updater metadata. Stable release gates are separate.
+on:
+  workflow_dispatch:
+    inputs:
+      allow_known_advisories:
+        type: boolean
+        required: true
+        default: false
+        description: "TEST ONLY: allow artifact when production dependency audit reports known advisories (never publish)"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-windows-preview-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  isolated-personal-preview:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.21.0
+          cache: npm
+
+      - name: Verify dependency and platform contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify:platform
+          npm run verify:react19
+          npm run verify:vitest5
+          npm run verify:dev-tooling
+          npm run verify:auth-config
+          npm run verify:express5
+
+      - name: Install locked dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm --prefix backend ci
+
+      - name: Production dependency advisory report (required evidence)
+        shell: bash
+        env:
+          ALLOW_KNOWN_ADVISORIES: ${{ inputs.allow_known_advisories }}
+        run: |
+          set +e
+          mkdir -p audit
+          npm audit --omit=dev --audit-level=low > audit/root.txt 2>&1
+          root_status=$?
+          npm --prefix backend audit --audit-level=low > audit/backend.txt 2>&1
+          backend_status=$?
+          set -e
+          cat audit/root.txt
+          cat audit/backend.txt
+          if [ "$root_status" -ne 0 ] || [ "$backend_status" -ne 0 ]; then
+            echo "::warning::Production dependency advisories remain. This is NOT a secure or approved public release."
+            if [ "$ALLOW_KNOWN_ADVISORIES" != "true" ]; then
+              echo "::error::Audit failed. To experiment with a non-production isolated preview, explicitly opt in; the stable release audit remains mandatory."
+              exit 1
+            fi
+          fi
+
+      - name: Verify isolated Personal Preview configuration contract
+        run: node --test scripts/personal-preview-contract.mjs
+
+      - name: Convert this CI workspace into a separate BYOK Personal Preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/configure-unsigned-release.mjs
+          npm run verify:platform
+          node -e "const p=require('./package.json'); if(p.personalPreviewBuild!==true || p.build.appId!=='com.mockmate.personal.preview' || p.build.productName!=='MockMate Personal Preview' || p.managedApiBase || p.build.publish!==null || p.build.win.forceCodeSigning!==false || p.build.win.verifyUpdateCodeSignature!==true) process.exit(1)"
+
+      - name: Verify unit tests, local API and renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          npm run smoke:api
+          npm run build
+          npm run verify:vite-output
+
+      - name: Bootstrap Electron
+        run: npx electron --version
+
+      - name: Build unsigned, isolated Windows NSIS installer
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          WIN_CSC_LINK: ''
+          WIN_CSC_KEY_PASSWORD: ''
+        run: |
+          set -euo pipefail
+          npx electron-builder --win --publish never
+
+      - name: Packaged runtime smoke
+        shell: pwsh
+        run: ./scripts/windows-packaged-smoke.ps1
+
+      - name: Verify test isolation and stage install artifact
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
+          RUN_ID: ${{ github.run_id }}
+          AUDIT_OVERRIDE: ${{ inputs.allow_known_advisories }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          if ($pkg.personalPreviewBuild -ne $true -or $pkg.build.appId -ne 'com.mockmate.personal.preview' -or $pkg.managedApiBase -ne '') { throw 'Not an isolated BYOK Personal Preview' }
+          if ($null -ne $pkg.build.publish) { throw 'Updater feed must be null' }
+          $installer = @(Get-ChildItem release -Filter 'MockMate-Personal-Preview-*-UNSIGNED.exe')
+          if ($installer.Count -ne 1) { throw 'Expected one isolated installer' }
+          $appExe = Get-Item 'release/win-unpacked/MockMatePersonalPreview.exe'
+          foreach ($file in @($installer[0], $appExe)) {
+            $sig = Get-AuthenticodeSignature -FilePath $file.FullName
+            if ($sig.Status -ne 'NotSigned') { throw "Expected unsigned test-only binary: $($file.Name) $($sig.Status)" }
+          }
+          if (Test-Path 'release/win-unpacked/resources/app-update.yml') { throw 'Preview unexpectedly contains an updater feed' }
+          New-Item staged -ItemType Directory -Force | Out-Null
+          Copy-Item $installer[0].FullName staged/
+          $hash = (Get-FileHash $installer[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash *$($installer[0].Name)" | Set-Content staged/SHA256SUMS.txt -Encoding utf8
+          @"
+          MOCKMATE ISOLATED MANUAL TEST PREVIEW — NOT A PUBLIC RELEASE
+          Source ref: $env:SOURCE_REF
+          Source commit: $env:SOURCE_SHA
+          GitHub Actions run: $env:RUN_ID
+          Security advisory override: $env:AUDIT_OVERRIDE
+          This unsigned installer is BYOK/local-only, is NOT security certified, and never auto-updates.
+          It has a separate app/shortcut/userData identity from stable MockMate. Do not test with sensitive accounts while advisories are unresolved.
+          Windows physical Live/audio/share-preview and other release checks are NOT certified by GitHub Actions.
+          GitHub Actions artifacts expire; each build must be downloaded and manually installed.
+          Do not enter API keys into GitHub Actions; if appropriate, configure them only inside the locally installed app.
+          "@ | Set-Content staged/TEST-PREVIEW-NOTICE.txt -Encoding utf8
+
+      - name: Upload manual installer + SHA256 + notice (no GitHub Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mockmate-isolated-windows-test-${{ github.run_number }}
+          path: staged/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload dependency audit evidence even when failed
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mockmate-preview-audit-${{ github.run_number }}
+          path: audit/*
+          if-no-files-found: ignore
+          retention-days: 14
