@@ -15,9 +15,20 @@ describe('ARCH interview completeness policy', () => {
     ['Explain only the approach',{questionType:'dsa'},false],
     ['Find subarray sum, without code',{questionType:'dsa'},false],
     ['What is dynamic programming?',{questionType:'dsa'},false],
+    ['In one short sentence, what does a hash map do?',{questionType:'dsa'},false],
+    ['Briefly explain what a hash map does.',{questionType:'dsa'},false],
+    ['How does a binary heap work?',{questionType:'dsa'},false],
+    ['Implement a hash map in JavaScript',{questionType:'dsa'},true],
+    ['Write code for a hash map',{questionType:'dsa'},true],
     ['Design a RAG pipeline',{questionType:'system_design'},false],
     ['Tell me about your project',{questionType:'experience'},false],
   ])('classifies implementation requirement: %s', (q,c,expected) => expect(requiresImplementation(q,c)).toBe(expected))
+  it('does not reject the Ready Room conceptual smoke probe for missing code', () => {
+    const question = 'In one short sentence, what does a hash map do?'
+    const policy = interviewAnswerPolicy({ question, classification: { questionType: 'dsa' }, baseBudget: 380 })
+    expect(policy.requiresCode).toBe(false)
+    expect(implementationIssue('A hash map stores key-value pairs and supports fast lookup by key.', policy.requiresCode)).toBeNull()
+  })
   it('does not override Coach mode or small conversational budgets', () => {
     expect(requiresImplementation('Implement a heap',{questionType:'dsa'},'coach')).toBe(false)
     expect(interviewAnswerPolicy({question:'What is cloud computing?',classification:{questionType:'technical'},baseBudget:380}).maxTokens).toBe(380)
