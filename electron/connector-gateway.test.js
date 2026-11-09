@@ -74,6 +74,8 @@ describe('native connected account security and sync', () => {
     gateway.setLivePaused(false)
     gateway.removeAccount('account-a', 'github', accountId)
     assert.deepEqual(gateway.state('account-a').subscriptions, [])
+    gateway.purgeOwner('account-a')
+    assert.deepEqual(gateway.state('account-a').accounts, [])
   })
   it('refuses plaintext token storage when OS encryption is not available', () => {
     const blocked = createConnectorGateway({ userData: dir, safeStorage: {
