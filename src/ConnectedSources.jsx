@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { T } from './auth/tokens'
 import { activeAccountScope } from './lib/accountScope'
+import { loadInterviewKitState } from './lib/interviewKits'
 import {
   SOURCE_TYPES, listApprovedImports, previewSelectedSource,
   approveSelectedSource, removeApprovedImport,
@@ -45,7 +46,8 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
   const [profileDraft, setProfileDraft] = useState(() => loadProfessionalState().profile)
   const [quote, setQuote] = useState('')
   const [quoteImportId, setQuoteImportId] = useState('')
-  const [accountScope] = useState(() => activeAccountScope())
+  // Never show a Kit from a stale workspace/identity after account switching.
+  const currentKit = loadInterviewKitState().kits.find(kit => kit.id === activeKit?.id) || null
   const providerEntries = Object.entries(SOURCE_TYPES)
   const pendingCount = imports.filter(x => x.selectedForLive === false).length
 
@@ -150,7 +152,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           <Field name="Destination">
             <select style={input} value={draft.kitId || ''} onChange={e => change('kitId', e.target.value || null)}>
               <option value="">Shared documents</option>
-              {activeKit?.id && <option value={activeKit.id}>Active Kit: {activeKit.title}</option>}
+              {currentKit?.id && <option value={currentKit.id}>Active Kit: {currentKit.title}</option>}
             </select>
           </Field>
         </div>
