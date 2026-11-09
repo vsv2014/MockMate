@@ -101,7 +101,17 @@ export function addEvidenceQuote({ importId, quote } = {}) {
 }
 export function removeEvidence(id) {
   const current = loadProfessionalState()
-  return persist({ ...current, evidence: current.evidence.filter(item => item.id !== id) })
+  if (!current.evidence.some(row => row.id === id)) return current
+  return persist({
+    ...current,
+    evidence: current.evidence.filter(item => item.id !== id),
+    claims: current.claims.map(claim => {
+      const kept = claim.evidenceIds.filter(evidenceId => evidenceId !== id)
+      return { ...claim, evidenceIds: kept,
+        status: claim.evidenceIds.length && !kept.length ? 'needs_review' : claim.status }
+    }),
+    history: addEvent(current, 'evidence_removed', id),
+  })
 }
 export function removeEvidenceForImport(importId) {
   const current = loadProfessionalState()
@@ -157,8 +167,12 @@ export function linkEvidenceToClaim(claimId, evidenceId) {
 
 export function removeProfessionalClaim(id) {
   const current = loadProfessionalState()
-  return persist({ ...current, claims: current.claims.filter(row => row.id !== id),
-    history: addEvent(current, 'claim_removed', id) })
+  return persist({
+    ...current,
+    claims: current.claims.filter(row => row.id !== id),
+    outcomes: current.outcomes.map(row => ({ ...row, claimIds: row.claimIds.filter(claimId => claimId !== id) })),
+    history: addEvent(current, 'claim_removed', id),
+  })
 }
 export function recordProfessionalOutcome({ description, result = '', eventAt = '', claimIds = [] } = {}) {
   const current = loadProfessionalState()
@@ -204,6 +218,31 @@ export async function recordApprovedInterviewOutcome(sessionId) {
     history: addEvent(current, 'session_outcome_imported', id) })
   if (!next) throw new Error('Could not save reviewed interview outcome')
   return { outcome, existing: false }
+}
+
+// An outcome may support a professional claim, but this is a user-reviewed
+// provenance edge, not verification of employment or model-inferred skill.
+export function linkOutcomeToClaim(outcomeId, claimId) {
+  const current = loadProfessionalState()
+  if (!current.claims.some(row => row.id === claimId)) throw new Error('Select an existing professional claim')
+  const outcome = current.outcomes.find(row => row.id === outcomeId)
+  if (!outcome) throw new Error('Select an existing professional outcome')
+  if (outcome.claimIds.includes(claimId)) return current
+  const outcomes = current.outcomes.map(row => row.id === outcomeId
+    ? { ...row, claimIds: [...row.claimIds, claimId].slice(0, 15) } : row)
+  const next = persist({ ...current, outcomes, history: addEvent(current, 'outcome_linked', outcomeId) })
+  if (!next) throw new Error('Could not save the outcome link')
+  return next
+}
+
+export function unlinkOutcomeFromClaim(outcomeId, claimId) {
+  const current = loadProfessionalState()
+  if (!current.outcomes.some(row => row.id === outcomeId)) throw new Error('Outcome no longer exists')
+  const outcomes = current.outcomes.map(row => row.id === outcomeId
+    ? { ...row, claimIds: row.claimIds.filter(id => id !== claimId) } : row)
+  const next = persist({ ...current, outcomes, history: addEvent(current, 'outcome_unlinked', outcomeId) })
+  if (!next) throw new Error('Could not remove the outcome link')
+  return next
 }
 
 export function removeProfessionalOutcome(id) {

@@ -11,7 +11,7 @@ import {
 import {
   loadProfessionalState, updateProfessionalProfile, addEvidenceQuote,
   removeEvidence, removeEvidenceForImport, addProfessionalClaim,
-  removeProfessionalClaim, linkEvidenceToClaim, recordProfessionalOutcome, recordApprovedInterviewOutcome, removeProfessionalOutcome, buildProfessionalGraph, buildProfessionalReviewQueue,
+  removeProfessionalClaim, linkEvidenceToClaim, recordProfessionalOutcome, recordApprovedInterviewOutcome, removeProfessionalOutcome, linkOutcomeToClaim, unlinkOutcomeFromClaim, buildProfessionalGraph, buildProfessionalReviewQueue,
 } from './lib/archProfessional'
 
 const panel = {
@@ -62,6 +62,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
   const [claimValue, setClaimValue] = useState('')
   const [claimEvidence, setClaimEvidence] = useState('')
   const [claimLinkChoice, setClaimLinkChoice] = useState({})
+  const [outcomeClaimChoice, setOutcomeClaimChoice] = useState({})
   const [outcomeDraft, setOutcomeDraft] = useState('')
   const [historySessions, setHistorySessions] = useState([])
   const [historyOutcomeId, setHistoryOutcomeId] = useState('')
@@ -159,6 +160,15 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
       setConnections(state); setRemoteSources([]); setSourceQuery('')
       setMessage('Active ' + (SOURCE_TYPES[provider]?.label || provider) + ' account changed.')
     } catch (error) { setMessage('⚠ ' + readableError(error)) }
+  }
+  async function verifyConnectedAccount(provider, accountId) {
+    setConnectorBusy(true); setMessage('')
+    try {
+      const result = await connectorRequest({ op: 'verify-account', provider, accountId })
+      await fetchConnections()
+      setMessage('✓ Verified connected ' + (result.account?.label || provider) + ' account. Access is current.')
+    } catch (error) { setMessage('⚠ Account verification failed: ' + readableError(error)) }
+    finally { setConnectorBusy(false) }
   }
   async function disconnect(provider, accountId) {
     if (!window.confirm('Disconnect this external account from MockMate? Its automatic sync subscriptions will stop; imported local documents remain.')) return
@@ -386,7 +396,11 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
                 {choices.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
               </select>}
               {choices.map(row => <div key={row.id} style={{ ...small, marginTop: 7 }}>
-                {row.label} <button type="button" style={{ ...quiet, padding: '3px 7px', marginLeft: 6 }} onClick={() => disconnect(id, row.id)}>Disconnect</button>
+                {row.label}
+                <span style={{ display: 'block' }}>Last checked: {row.lastVerifiedAt ? new Date(row.lastVerifiedAt).toLocaleString() : 'Not verified in this session'}</span>
+                <button type="button" disabled={connectorBusy} style={{ ...quiet, padding: '3px 7px', marginLeft: 6 }}
+                  onClick={() => verifyConnectedAccount(id, row.id)}>Check access</button>
+                <button type="button" style={{ ...quiet, padding: '3px 7px', marginLeft: 6 }} onClick={() => disconnect(id, row.id)}>Disconnect</button>
               </div>)}
             </div>
           })}
@@ -651,8 +665,25 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           </Field>
           <button style={{ ...action, marginTop: 10 }} disabled={outcomeDraft.trim().length < 10} onClick={createOutcome}>Record outcome</button>
           {professional.outcomes.map(row => <div key={row.id} style={{ borderTop: `1px solid ${T.border}`,
-            padding: '8px 0', fontSize: 13, display: 'flex', gap: 10 }}>
-            <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{row.description}</span>
+            padding: '10px 0', fontSize: 13, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ flex: '1 1 240px', overflowWrap: 'anywhere' }}>{row.description}
+              <span style={{ ...small, display: 'block' }}>Related claims: {row.claimIds.length ? row.claimIds.map(id => professional.claims.find(c => c.id === id)?.key || 'Removed claim').join(', ') : 'None'}</span>
+            </span>
+            {!!professional.claims.length && <>
+              <select aria-label={`Link a claim to outcome ${row.id}`} style={{ ...input, width: 'auto', flex: '1 1 145px' }}
+                value={outcomeClaimChoice[row.id] || ''} onChange={e => setOutcomeClaimChoice(old => ({ ...old, [row.id]: e.target.value }))}>
+                <option value="">Select a claim</option>
+                {professional.claims.map(claim => <option key={claim.id} value={claim.id}>{claim.key}</option>)}
+              </select>
+              <button style={quiet} disabled={!outcomeClaimChoice[row.id]} onClick={() => {
+                try { linkOutcomeToClaim(row.id, outcomeClaimChoice[row.id]); refresh() }
+                catch (error) { setMessage('⚠ ' + readableError(error)) }
+              }}>Link</button>
+              <button style={quiet} disabled={!row.claimIds.includes(outcomeClaimChoice[row.id])} onClick={() => {
+                try { unlinkOutcomeFromClaim(row.id, outcomeClaimChoice[row.id]); refresh() }
+                catch (error) { setMessage('⚠ ' + readableError(error)) }
+              }}>Unlink</button>
+            </>}
             <button style={quiet} onClick={() => { if (removeProfessionalOutcome(row.id)) refresh() }}>Remove</button>
           </div>)}
         </div>

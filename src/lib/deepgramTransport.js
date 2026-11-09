@@ -30,15 +30,26 @@ export function computeReconnectDelayMs(attempt = 1, retryAfterMs = 0) {
     : backoffMs
 }
 
+// Explicit, bounded Deepgram pause profiles. These use its provider VAD +
+// endpointing; they are NOT the separate Pipecat Smart Turn ML model.
+export const DEEPGRAM_TURN_PROFILES = Object.freeze({
+  responsive: Object.freeze({ endpointingMs: 200, utteranceEndMs: 1000 }),
+  balanced: Object.freeze({ endpointingMs: 300, utteranceEndMs: 1200 }),
+  thoughtful: Object.freeze({ endpointingMs: 500, utteranceEndMs: 1600 }),
+})
+
 export function buildDeepgramListenUrl({
   degraded = false,
   language = 'en-US',
   diarize = false,
   keyterms = [],
+  turnDetection = 'balanced',
 } = {}) {
   const model = degraded ? 'nova-2' : 'nova-3'
+  const pause = Object.hasOwn(DEEPGRAM_TURN_PROFILES, turnDetection)
+    ? DEEPGRAM_TURN_PROFILES[turnDetection] : DEEPGRAM_TURN_PROFILES.balanced
   const base = `wss://api.deepgram.com/v1/listen?model=${model}&encoding=linear16&sample_rate=16000&channels=1`
-    + '&interim_results=true&smart_format=true&punctuate=true&utterance_end_ms=1200&vad_events=true&endpointing=300'
+    + `&interim_results=true&smart_format=true&punctuate=true&utterance_end_ms=${pause.utteranceEndMs}&vad_events=true&endpointing=${pause.endpointingMs}`
     + `&language=${encodeURIComponent(language || 'en-US')}`
   if (!diarize) return base
   if (degraded) return `${base}&diarize_model=v1`

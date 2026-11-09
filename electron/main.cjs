@@ -1148,6 +1148,7 @@ ipcMain.handle('connector-request', async (event, payload = {}) => {
       case 'github-start': data = await gateway.startGithub(owner, clientId, { privateRepos }); break
       case 'google-start': data = await gateway.startGoogle(owner, provider, clientId, clientSecret); break
       case 'flow-status': data = await gateway.pollFlow(owner, flowId); break
+      case 'verify-account': data = await gateway.verifyAccount(owner, provider, accountId); break
       case 'switch': data = gateway.setActive(owner, provider, accountId); break
       case 'disconnect': data = gateway.removeAccount(owner, provider, accountId); break
       case 'list-sources': data = await gateway.listSources(owner, provider, accountId, query); break

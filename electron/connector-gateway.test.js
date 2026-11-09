@@ -59,6 +59,11 @@ describe('native connected account security and sync', () => {
     assert.deepEqual(gateway.state('account-b').accounts, [])
     const accountId = result.account.id
     assert.throws(() => gateway.setActive('account-b', 'github', accountId))
+    await assert.rejects(gateway.verifyAccount('account-b', 'github', accountId), /not owned/)
+    const verified = await gateway.verifyAccount('account-a', 'github', accountId)
+    assert.equal(verified.ok, true)
+    assert.equal(verified.account.subject, '1234')
+    assert.equal(JSON.stringify(verified).includes('secret-example'), false)
     const listed = await gateway.listSources('account-a', 'github', accountId, 'acme/repo')
     assert.deepEqual(listed.sources.map(x => x.title), ['README.md'])
     const item = await gateway.readSource('account-a', 'github', accountId, listed.sources[0].sourceId)
@@ -119,6 +124,9 @@ describe('native connected account security and sync', () => {
       }
       assert.equal(result.status, 'connected')
       assert.equal(result.account.label, 'dev@example.test')
+      const verified = await google.verifyAccount('account-a', 'googledrive', result.account.id)
+      assert.equal(verified.account.subject, 'google-sub-123')
+      assert.equal(JSON.stringify(verified).includes('GOOGLE_PRIVATE'), false)
       assert.deepEqual(google.state('account-b').accounts, [])
       assert.equal(JSON.stringify(google.state('account-a')).includes('GOOGLE_PRIVATE'), false)
     } finally { google.close() }
