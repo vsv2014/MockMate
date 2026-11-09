@@ -407,7 +407,10 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
         <p style={{ ...small, margin: '0 0 14px' }}>Source text stays in this account's local document store. Imports begin unselected for Live and Solo. Automatic sync is opt-in per reviewed source. No LLM rewriting or bulk mailbox/Drive imports.</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 245px), 1fr))', gap: 12 }}>
           <Field name="Source type">
-            <select style={input} value={draft.provider} onChange={e => { change('provider', e.target.value); setRemoteSources([]) }}>
+            <select style={input} value={draft.provider} onChange={e => {
+                setDraft({ ...blank(), provider: e.target.value, kitId: draft.kitId })
+                setPreview(null); setConfirmed(false); setImportAutoSync(false); setRemoteSources([])
+              }}>
               {providerEntries.map(([id, data]) => <option key={id} value={id}>{data.label}</option>)}
             </select>
           </Field>
