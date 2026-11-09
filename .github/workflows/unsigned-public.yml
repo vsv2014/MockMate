@@ -96,7 +96,7 @@ jobs:
           npx electron-builder --win --publish never
       - name: Real packaged runtime / React renderer smoke
         shell: pwsh
-        run: ./scripts/windows-packaged-smoke.ps1
+        run: ./scripts/windows-packaged-smoke.ps1 -SoakMinutes 1
       # Diagnostics run before the gate. If the assertion below fails, the
       # packaged app-update.yml is already in the job log, because release/
       # disappears with the runner as soon as the job ends.

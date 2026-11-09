@@ -2,6 +2,7 @@
 // Never injects evidence automatically into Live; imported text cannot alter interview answers.
 import { activeAccountScope, getScopedItem, setScopedItem } from './accountScope.js'
 import { listApprovedImports } from './connectedSources.js'
+import { getSessionAsync } from '../history.js'
 
 export const ARCH_PROFESSIONAL_KEY = 'mm-arch-professional-v1'
 export const ARCH_PROFESSIONAL_SCHEMA = 2
@@ -49,6 +50,8 @@ export function normalizeProfessionalState(value) {
   out.outcomes = list(value.outcomes, 120).flatMap(row => row?.id && row?.description ? [{
     id: str(row.id, 120), description: str(row.description, 900),
     result: str(row.result, 140), eventAt: str(row.eventAt, 40),
+    sourceSessionId: str(row.sourceSessionId, 120),
+    provenance: str(row.provenance, 50) || 'user_recorded',
     claimIds: Array.isArray(row.claimIds) ? row.claimIds.map(id => str(id, 120)).slice(0, 15) : [],
     createdAt: str(row.createdAt, 40),
   }] : [])
@@ -134,6 +137,24 @@ export function addProfessionalClaim({ key, value, category = 'skill', evidenceI
   if (!next) throw new Error('Unable to save claim')
   return claim
 }
+// Attach a reviewed quotation after a claim was created, without recreating the
+// claim or silently elevating its authority. Only current approved evidence ids.
+export function linkEvidenceToClaim(claimId, evidenceId) {
+  const current = loadProfessionalState()
+  const evidence = current.evidence.find(item => item.id === evidenceId)
+  if (!evidence) throw new Error('Select an existing approved evidence quotation')
+  const claim = current.claims.find(item => item.id === claimId)
+  if (!claim) throw new Error('Claim no longer exists')
+  if (claim.evidenceIds.includes(evidenceId)) return current
+  const changed = current.claims.map(row => row.id !== claimId ? row : {
+    ...row, evidenceIds: [...row.evidenceIds, evidenceId].slice(0, 15),
+    status: 'evidence_linked', updatedAt: new Date().toISOString(),
+  })
+  const next = persist({ ...current, claims: changed, history: addEvent(current, 'evidence_linked', claimId) })
+  if (!next) throw new Error('Could not save claim evidence')
+  return next
+}
+
 export function removeProfessionalClaim(id) {
   const current = loadProfessionalState()
   return persist({ ...current, claims: current.claims.filter(row => row.id !== id),
@@ -155,6 +176,36 @@ export function recordProfessionalOutcome({ description, result = '', eventAt = 
   if (!next) throw new Error('Unable to save outcome')
   return row
 }
+// User-approved link to a REAL local history entry. Never ingest all transcripts,
+// silently attach generated hints, or turn a missing score into a fabricated grade.
+export async function recordApprovedInterviewOutcome(sessionId) {
+  const scope = activeAccountScope()
+  const id = str(sessionId, 120)
+  if (!id) throw new Error('Select a saved interview first')
+  const source = await getSessionAsync(id)
+  if (scope !== activeAccountScope()) throw new Error('Account changed during session review')
+  if (!source || source.id !== id) throw new Error('Saved interview is unavailable in this account')
+  const current = loadProfessionalState()
+  const prior = current.outcomes.find(row => row.sourceSessionId === id)
+  if (prior) return { outcome: prior, existing: true }
+  const label = str(source.label || source.role || 'Interview', 140)
+  const summary = str(source.report?.summary, 650)
+  const descriptor = summary ? label + ': ' + summary : label + ' — completed interview session'
+  const score = typeof source.score === 'number' && Number.isFinite(source.score)
+    ? Math.max(0, Math.min(100, source.score)) : null
+  const outcome = {
+    id: makeId('outcome'), description: str(descriptor, 900),
+    result: score !== null ? 'Saved evaluation: ' + score + '/100' : 'Unscored',
+    eventAt: new Date(Number.isFinite(source.ts) ? source.ts : Date.now()).toISOString(),
+    claimIds: [], createdAt: new Date().toISOString(),
+    sourceSessionId: id, provenance: 'approved_saved_session',
+  }
+  const next = persist({ ...current, outcomes: [...current.outcomes, outcome],
+    history: addEvent(current, 'session_outcome_imported', id) })
+  if (!next) throw new Error('Could not save reviewed interview outcome')
+  return { outcome, existing: false }
+}
+
 export function removeProfessionalOutcome(id) {
   const current = loadProfessionalState()
   return persist({ ...current, outcomes: current.outcomes.filter(row => row.id !== id),
@@ -176,6 +227,7 @@ export function buildProfessionalGraph(state = loadProfessionalState(), imports 
     const src = importMap.get(item.importId)
     const doc = Array.isArray(docs) && docs.find(row => row?.id === item.documentId)
     const stale = !src || !doc || !String(doc.text || '').includes(item.quote)
+      || Boolean(item.sourceRevision && src?.revision && item.sourceRevision !== src.revision)
     nodes.push({ id: item.id, kind: 'evidence', label: item.quote, stale, sourceId: item.sourceId,
       revision: item.sourceRevision })
     if (src) edges.push({ from: item.id, to: 'src:' + item.importId, relation: 'quoted_from' })
@@ -195,8 +247,14 @@ export function buildProfessionalGraph(state = loadProfessionalState(), imports 
   }
   for (const outcome of state.outcomes) {
     nodes.push({ id: outcome.id, kind: 'outcome', label: outcome.description, result: outcome.result,
-      eventAt: outcome.eventAt, provenance: 'user_recorded' })
+      eventAt: outcome.eventAt, provenance: outcome.provenance || 'user_recorded' })
     edges.push({ from: 'professional', to: outcome.id, relation: 'recorded' })
+    if (outcome.sourceSessionId) {
+      const sessionNode = 'interview:' + outcome.sourceSessionId
+      if (!nodes.some(n => n.id === sessionNode)) nodes.push({ id: sessionNode, kind: 'interview_session',
+        label: 'Reviewed interview record', provenance: 'local_saved_history' })
+      edges.push({ from: outcome.id, to: sessionNode, relation: 'recorded_from' })
+    }
     for (const id of outcome.claimIds) if (state.claims.some(claim => claim.id === id))
       edges.push({ from: outcome.id, to: id, relation: 'observes' })
   }
@@ -216,4 +274,29 @@ export function buildProfessionalGraph(state = loadProfessionalState(), imports 
   return { schemaVersion: 2, nodes, edges, conflicts,
     staleEvidence: nodes.filter(row => row.kind === 'evidence' && row.stale).length,
     updatedAt: state.updatedAt }
+}
+
+// A deterministic action queue, not an LLM's invented skills or claims.
+// Never change the professional state without an explicit user action.
+export function buildProfessionalReviewQueue(state = loadProfessionalState(), imports = listApprovedImports()) {
+  const graph = buildProfessionalGraph(state, imports)
+  const stale = new Set(graph.nodes.filter(n => n.kind === 'evidence' && n.stale).map(n => n.id))
+  const queue = []
+  for (const evidence of state.evidence) if (stale.has(evidence.id)) {
+    queue.push({ id: 'stale:' + evidence.id, type: 'stale_evidence', severity: 'warning',
+      title: 'Recheck source quotation', detail: evidence.title || evidence.importId,
+      action: 'Open the approved source, verify its revision and replace the stale quote.' })
+  }
+  const conflictClaims = new Set(graph.conflicts.flatMap(c => [c.a, c.b]))
+  for (const claim of state.claims) {
+    if (conflictClaims.has(claim.id)) continue
+    const currentQuotes = claim.evidenceIds.filter(id => !stale.has(id) && state.evidence.some(ev => ev.id === id))
+    if (!currentQuotes.length) queue.push({ id: 'claim:' + claim.id, type: 'unverified_claim', severity: 'notice',
+      title: 'Claim needs supporting evidence', detail: claim.key + ': ' + claim.value,
+      action: 'Attach a verbatim quote from an approved source, or keep this explicitly self-reported.' })
+  }
+  for (const conflict of graph.conflicts) queue.push({ id: 'conflict:' + conflict.a + ':' + conflict.b,
+    type: 'conflicting_claims', severity: 'warning', title: 'Review contradictory claims', detail: conflict.key,
+    action: 'Compare the claims and supporting source quotations; choose what to retain manually.' })
+  return queue.slice(0, 200)
 }

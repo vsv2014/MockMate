@@ -8,6 +8,8 @@ const RAG_PREFETCH_DEBOUNCE_MS = 320
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { apiFetch } from './lib/apiClient'
 import { useSystemAudio } from './useSystemAudio'
+import { useDeepgram } from './useDeepgram'
+import { createCandidateMicGate } from './lib/dualChannelCapture.js'
 import SoloFeedback from './SoloFeedback'
 import { T } from './auth/tokens'
 import { isManaged } from './lib/aiMode'
@@ -588,6 +590,10 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
   })
   const [transcript, setTranscript] = useState([])
   const [candidateSpeechTurns, setCandidateSpeechTurns] = useState(0)
+  // Explicit opt-in. This is a separate STT stream (with separate provider usage),
+  // never mixed into the interviewer audio or hint-generation pipeline.
+  const [candidateMicEnabled, setCandidateMicEnabled] = useState(false)
+  const [candidateMicError, setCandidateMicError] = useState('')
   const [hint, setHint] = useState(null)
   const [hintLoading, setHintLoading] = useState(false)
   const [buyTimePhrase, setBuyTimePhrase] = useState('') // holds thinkingLabel only (never a scripted "Say:" line)
@@ -1738,6 +1744,49 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
 
   const [liveSourceId, setLiveSourceId] = useState(sourceId)
   const audio = useSystemAudio(onFinal, reason => { metricsRef.current?.markError?.(reason); setError(`Transcription stopped: ${reason}`) }, onEarlyQuestion, () => metricsRef.current?.markSttReconnect?.())
+  // In System Audio mode the interviewer's audio is never a reliable record
+  // of the candidate's response. Capture the microphone as a second channel
+  // only after an explicit user action; voice data goes to Deepgram.
+  const candidateMicGateRef = useRef(null)
+  if (!candidateMicGateRef.current) candidateMicGateRef.current = createCandidateMicGate()
+  const onCandidateMicFinal = useCallback((spoken) => {
+    const text = candidateMicGateRef.current({ spoken, text: spoken,
+      sourceId: liveSourceIdRef.current, sessionActive: sessionActiveRef.current })
+    if (!text) return
+    const captured = interviewStateRef.current?.recordCandidate?.(text)
+    if (captured) {
+      setCandidateSpeechTurns(n => n + 1)
+      diagnostic('stt', 'candidate_microphone_final', { wordCount: text.split(/\s+/).length, source: 'dual_channel' })
+    }
+  }, [])
+  const candidateAudio = useDeepgram(onCandidateMicFinal, (reason) => {
+    setCandidateMicError('Candidate microphone stopped: ' + String(reason || 'unknown error'))
+    setCandidateMicEnabled(false)
+  }, STT_LANG[profile?.language] || 'en-US')
+  async function toggleCandidateMic() {
+    if (candidateMicEnabled) {
+      candidateAudio.stop()
+      setCandidateMicEnabled(false)
+      setCandidateMicError('')
+      return
+    }
+    if (liveSourceIdRef.current === 'microphone') {
+      setCandidateMicError('Switch interviewer capture to System Audio before enabling the separate candidate microphone.')
+      return
+    }
+    setCandidateMicError('')
+    // Set intent before awaiting permission/token so a synchronous onFail callback
+    // cannot be overwritten by a stale success flag after start() resolves.
+    setCandidateMicEnabled(true)
+    try {
+      await candidateAudio.start()
+      // Real transport readiness comes from candidateAudio.active, not this intent flag.
+    } catch (error) {
+      candidateAudio.stop()
+      setCandidateMicEnabled(false)
+      setCandidateMicError('Cannot start candidate microphone: ' + String(error?.message || error))
+    }
+  }
 
   useEffect(() => { liveSourceIdRef.current = liveSourceId }, [liveSourceId])
   useEffect(() => {
@@ -1784,6 +1833,11 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
     setError('')
     setSwitchingAudio(true)
     setLiveSourceId(id === 'microphone' ? 'microphone' : id)
+    if (id === 'microphone') {
+      candidateAudio.stop()
+      setCandidateMicEnabled(false)
+      setCandidateMicError('')
+    }
     try {
       await audio.restart(id, audioOpts())
       // Source switching is still the SAME Live session — keep the Turn-1 Finalize
@@ -1880,7 +1934,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
     speculativeHintRef.current?.cancel('session_ended')
     try { genManagerRef.current?.cancelCurrent?.('end_session') } catch {}
 
-    audio.stop(); stopSpeaking()
+    audio.stop(); candidateAudio.stop(); stopSpeaking()
     clearTimeout(postMetaTimerRef.current)
     // The REAL conversation: interviewer questions + what YOU actually said (diarized),
     // NOT the AI's suggested answers. Merge consecutive same-speaker segments into clean turns.
@@ -2080,8 +2134,27 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
               ? audio.diarizationLocked && !audio.degraded
                 ? 'Microphone speaker lock active, but no candidate answers identified yet. Verify your speech is being recognized before expecting a score.'
                 : 'Microphone speaker lock pending. Questions may need manual confirmation; candidate answers are not yet captured for scoring.'
-              : 'System Audio captures interviewer playback only. AI hints work, but candidate scoring is unavailable until your answers are captured. Switch to Microphone to capture answers.'}
+              : candidateMicEnabled
+                ? candidateAudio.active ? 'Separate candidate microphone is recording for scoring. Verify it recognizes only your speech; this stream has separate STT usage.' : 'Separate candidate microphone is connecting or reconnecting. Candidate scoring requires captured answer text.'
+                : 'System Audio captures interviewer playback only. Enable the separate candidate mic below to capture your answers for scoring.'}
         </div>
+
+        {liveSourceId !== 'microphone' && (
+          <div style={{ padding: '8px 10px', marginBottom: 8, border: `1px solid ${T.border}`, borderRadius: 7, fontSize: readableTextSize(11.5), color: T.text2 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={candidateMicEnabled} onChange={() => { void toggleCandidateMic() }}
+                aria-label="Record my microphone on a separate candidate channel" />
+              Record my microphone separately for candidate-answer scoring
+            </label>
+            <div style={{ fontSize: readableTextSize(10.5), marginTop: 4 }}>
+              Off by default. Requires microphone permission and sends candidate speech to Deepgram as an additional billable STT stream. Headphones reduce interviewer echo; only your captured speech should be scored.
+            </div>
+            {candidateMicEnabled && <div role="status" style={{ marginTop: 4, color: candidateAudio.active ? '#5eead4' : '#fcd34d' }}>
+              {candidateAudio.active ? 'Candidate microphone connected' : candidateAudio.reconnecting ? 'Candidate microphone reconnecting' : 'Candidate microphone starting'}
+            </div>}
+            {candidateMicError && <div role="alert" style={{ marginTop: 4, color: '#fca5a5' }}>{candidateMicError}</div>}
+          </div>
+        )}
 
         {/* Coding platform auto-detected → one tap to capture + solve (no surprise auto-captures) */}
         {codingDetected && !screenAnalyzing && !screenAnalysis && (

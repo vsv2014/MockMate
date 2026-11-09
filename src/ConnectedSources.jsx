@@ -3,6 +3,7 @@ import { T } from './auth/tokens'
 import { activeAccountScope } from './lib/accountScope'
 import { setDocSelected, setKitDocSelected } from './lib/docs'
 import { loadInterviewKitState } from './lib/interviewKits'
+import { loadSessionsAsync } from './history'
 import {
   SOURCE_TYPES, listApprovedImports, previewSelectedSource,
   approveSelectedSource, removeApprovedImport, applyApprovedRemoteUpdate,
@@ -10,7 +11,7 @@ import {
 import {
   loadProfessionalState, updateProfessionalProfile, addEvidenceQuote,
   removeEvidence, removeEvidenceForImport, addProfessionalClaim,
-  removeProfessionalClaim, recordProfessionalOutcome, removeProfessionalOutcome, buildProfessionalGraph,
+  removeProfessionalClaim, linkEvidenceToClaim, recordProfessionalOutcome, recordApprovedInterviewOutcome, removeProfessionalOutcome, buildProfessionalGraph, buildProfessionalReviewQueue,
 } from './lib/archProfessional'
 
 const panel = {
@@ -60,7 +61,10 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
   const [claimKey, setClaimKey] = useState('')
   const [claimValue, setClaimValue] = useState('')
   const [claimEvidence, setClaimEvidence] = useState('')
+  const [claimLinkChoice, setClaimLinkChoice] = useState({})
   const [outcomeDraft, setOutcomeDraft] = useState('')
+  const [historySessions, setHistorySessions] = useState([])
+  const [historyOutcomeId, setHistoryOutcomeId] = useState('')
   const [graph, setGraph] = useState(() => buildProfessionalGraph())
   const [connectorBusy, setConnectorBusy] = useState(false)
 
@@ -68,6 +72,16 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
   const currentKit = loadInterviewKitState().kits.find(kit => kit.id === activeKit?.id) || null
   const providerEntries = Object.entries(SOURCE_TYPES)
   const pendingCount = imports.filter(x => x.selectedForLive === false).length
+  const reviewQueue = buildProfessionalReviewQueue(professional, imports)
+
+  useEffect(() => {
+    let current = true
+    const scope = activeAccountScope()
+    loadSessionsAsync().then(result => {
+      if (current && activeAccountScope() === scope) setHistorySessions((result.sessions || []).filter(row => row?.id))
+    }).catch(() => { if (current) setHistorySessions([]) })
+    return () => { current = false }
+  }, [auth?.user?.id, auth?.guest])
 
   function change(key, value) {
     setDraft(old => ({ ...old, [key]: value }))
@@ -298,6 +312,19 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
     refresh()
     setMessage(selected ? 'Source enabled for selected-document AI retrieval.' : 'Source excluded from AI retrieval.')
   }
+  function downloadProfessionalGraph() {
+    // Only after an explicit click, and only into a local file. No external sync.
+    const payload = JSON.stringify({ exportedAt: new Date().toISOString(),
+      schemaVersion: professional.schemaVersion, professional, graph, reviewQueue }, null, 2)
+    const blob = new Blob([payload], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url; anchor.download = 'mockmate-professional-evidence.json'
+    document.body.appendChild(anchor); anchor.click(); anchor.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    setMessage('Local evidence export created. It contains personal claims and source quotations; store securely.')
+  }
+
   function saveProfile() {
     const saved = updateProfessionalProfile(profileDraft)
     if (!saved) { setMessage('⚠ Profile could not be saved; check storage capacity'); return }
@@ -548,6 +575,20 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
         <h3 style={{ fontSize: 17, margin: '0 0 8px' }}>ARCH professional evidence graph</h3>
         <p style={small}>{graph.nodes.length} nodes · {graph.edges.length} relationships · {graph.conflicts.length} unresolved conflict(s)
           · {graph.staleEvidence} stale source quotation(s). Claims and outcomes are user-entered, never invented.</p>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 9, marginBottom: 14 }}>
+          <span role="status" style={small}>{reviewQueue.length} evidence-review action(s)</span>
+          <button type="button" style={quiet} onClick={downloadProfessionalGraph}>Export evidence graph JSON</button>
+        </div>
+        {reviewQueue.length > 0 && <div role="region" aria-label="Professional evidence review queue"
+          style={{ border: `1px solid ${T.border}`, borderRadius: 9, padding: 12, marginBottom: 14, background: T.surface2 }}>
+          <strong style={{ fontSize: 13 }}>Evidence review queue</strong>
+          <p style={{ ...small, margin: '5px 0' }}>Only deterministic gaps and conflicts are shown. Nothing is rewritten or verified automatically.</p>
+          {reviewQueue.slice(0, 20).map(row => <div key={row.id} style={{ padding: '7px 0', borderTop: `1px solid ${T.border}` }}>
+            <div style={{ fontSize: 12, color: row.severity === 'warning' ? '#fbbf24' : T.text1 }}><strong>{row.title}</strong> · {row.detail}</div>
+            <div style={small}>{row.action}</div>
+          </div>)}
+          {reviewQueue.length > 20 && <p style={small}>{reviewQueue.length - 20} more review actions are included in the JSON export.</p>}
+        </div>}
         <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))' }}>
           <Field name="Claim / skill / role">
             <input style={input} value={claimKey} onChange={e => setClaimKey(e.target.value)} placeholder="e.g. Angular" />
@@ -568,12 +609,43 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
         {professional.claims.map(row => <div key={row.id} style={{ display: 'flex', gap: 9, alignItems: 'center',
           borderTop: `1px solid ${T.border}`, padding: '8px 0', flexWrap: 'wrap' }}>
           <span style={{ flex: '1 1 200px', fontSize: 13 }}>{row.key}: {row.value} <span style={small}>({row.status})</span></span>
+          {!!professional.evidence.length && <>
+            <select aria-label={`Evidence for ${row.key}`} style={{ ...input, width: 'auto', flex: '1 1 150px' }}
+              value={claimLinkChoice[row.id] || ''} onChange={e => setClaimLinkChoice(old => ({ ...old, [row.id]: e.target.value }))}>
+              <option value="">Choose approved quote</option>
+              {professional.evidence.filter(ev => !row.evidenceIds.includes(ev.id)).map(ev =>
+                <option key={ev.id} value={ev.id}>{ev.quote.slice(0, 65)}</option>)}
+            </select>
+            <button style={quiet} disabled={!claimLinkChoice[row.id]} onClick={() => {
+              try { linkEvidenceToClaim(row.id, claimLinkChoice[row.id]); setClaimLinkChoice(old => ({ ...old, [row.id]: '' })); refresh() }
+              catch (error) { setMessage('⚠ ' + readableError(error)) }
+            }}>Link evidence</button>
+          </>}
           <button style={quiet} onClick={() => { if (removeProfessionalClaim(row.id)) refresh() }}>Remove</button>
         </div>)}
         {graph.conflicts.length > 0 && <div role="alert" style={{ ...small, color: '#fbbf24', marginTop: 8 }}>
           Conflicting claims detected: {graph.conflicts.map(row => row.key).join(', ')}. Review rather than silently picking one.
         </div>}
         <div style={{ marginTop: 17 }}>
+          <h4 style={{ fontSize: 15, margin: '0 0 7px' }}>Link a saved MockMate interview</h4>
+          <p style={small}>Only after your approval. Stores the existing session's label, summary and recorded score (or “Unscored”) with a link to its local history ID. No transcript or AI hint is copied into the evidence graph.</p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '9px 0' }}>
+            <select aria-label="Saved interview outcome" style={{ ...input, width: 'auto', flex: '1 1 230px' }}
+              value={historyOutcomeId} onChange={e => setHistoryOutcomeId(e.target.value)}>
+              <option value="">Choose saved interview</option>
+              {historySessions.map(session => <option key={session.id} value={session.id}>
+                {session.label || session.role || 'Interview'} · {session.score == null ? 'unscored' : session.score + '/100'}
+              </option>)}
+            </select>
+            <button type="button" style={action} disabled={!historyOutcomeId} onClick={async () => {
+              try {
+                const result = await recordApprovedInterviewOutcome(historyOutcomeId)
+                refresh()
+                setMessage(result.existing ? 'This interview is already linked.' : 'Saved interview outcome linked to ARCH with its local provenance.')
+              } catch (error) { setMessage('⚠ ' + readableError(error)) }
+            }}>Import selected outcome</button>
+          </div>
+          {!historySessions.length && <p style={small}>No locally saved interview history found for this account.</p>}
           <Field name="Record an interview, project or career outcome (self-reported)">
             <textarea style={{ ...input, minHeight: 64 }} value={outcomeDraft} onChange={e => setOutcomeDraft(e.target.value)} />
           </Field>

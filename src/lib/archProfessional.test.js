@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { webcrypto } from 'node:crypto'
+import { saveSession } from '../history.js'
 import { previewSelectedSource, approveSelectedSource, removeApprovedImport } from './connectedSources.js'
 import {
   ARCH_PROFESSIONAL_SCHEMA, loadProfessionalState, updateProfessionalProfile,
-  addEvidenceQuote, removeEvidenceForImport, addProfessionalClaim, recordProfessionalOutcome, buildProfessionalGraph,
+  addEvidenceQuote, removeEvidenceForImport, addProfessionalClaim, linkEvidenceToClaim,
+  recordProfessionalOutcome, recordApprovedInterviewOutcome, buildProfessionalGraph, buildProfessionalReviewQueue,
 } from './archProfessional.js'
 const local = new Map(), session = new Map()
 const store = map => ({
@@ -46,6 +48,48 @@ describe('Track B ARCH professional evidence', () => {
     expect(graph.edges.some(edge => edge.from === original.id && edge.to === quote.id)).toBe(true)
     expect(graph.conflicts).toHaveLength(1)
     expect(graph.nodes.some(node => node.kind === 'outcome')).toBe(true)
+  })
+
+  it('links approved evidence to existing claims and surfaces deterministic review actions', async () => {
+    const preview = await previewSelectedSource(source)
+    const { record } = await approveSelectedSource(preview, source, { approved: true })
+    const quote = addEvidenceQuote({ importId: record.id, quote: 'reliable offline-first application' }).state.evidence[0]
+    const claim = addProfessionalClaim({ key: 'Architecture', value: 'Offline-first' })
+    expect(buildProfessionalReviewQueue().some(a => a.id === 'claim:' + claim.id)).toBe(true)
+    const linked = linkEvidenceToClaim(claim.id, quote.id)
+    expect(linked.claims.find(c => c.id === claim.id).evidenceIds).toContain(quote.id)
+    expect(buildProfessionalReviewQueue().some(a => a.id === 'claim:' + claim.id)).toBe(false)
+    expect(() => linkEvidenceToClaim(claim.id, 'unknown-evidence')).toThrow(/approved evidence/)
+    expect(buildProfessionalGraph(loadProfessionalState(), [{ ...record, revision: 'rev-updated' }]).staleEvidence).toBe(1)
+    expect(buildProfessionalReviewQueue(loadProfessionalState(), [{ ...record, revision: 'rev-updated' }])
+      .some(a => a.type === 'stale_evidence')).toBe(true)
+    expect(buildProfessionalReviewQueue(loadProfessionalState(), [{ ...record, revision: 'rev-updated' }])
+      .some(a => a.type === 'unverified_claim')).toBe(true)
+  })
+
+
+  it('imports a user-approved saved interview without inventing a score or duplicating its history link', async () => {
+    const saved = saveSession({
+      report: { overallScore: 84, summary: 'Practice answers improved with clearer structure.' },
+      config: { domainLabel: 'Software Engineer', source: 'solo' },
+    })
+    expect(saved?.id).toBeTruthy()
+    const first = await recordApprovedInterviewOutcome(saved.id)
+    expect(first.existing).toBe(false)
+    expect(first.outcome.result).toBe('Saved evaluation: 84/100')
+    expect(first.outcome.sourceSessionId).toBe(saved.id)
+    const repeated = await recordApprovedInterviewOutcome(saved.id)
+    expect(repeated.existing).toBe(true)
+    expect(loadProfessionalState().outcomes).toHaveLength(1)
+    const graph = buildProfessionalGraph()
+    expect(graph.edges.some(edge => edge.from === first.outcome.id
+      && edge.to === 'interview:' + saved.id && edge.relation === 'recorded_from')).toBe(true)
+    session.set('mm-active-account-scope', 'user-b')
+    await expect(recordApprovedInterviewOutcome(saved.id)).rejects.toThrow(/unavailable/)
+    session.set('mm-active-account-scope', 'user-a')
+    const unscored = saveSession({ report: { summary: 'Notes only' }, config: { source: 'live' } })
+    const imported = await recordApprovedInterviewOutcome(unscored.id)
+    expect(imported.outcome.result).toBe('Unscored')
   })
 
   it('requires exact evidence in an approved document and supports provenance deletion', async () => {
