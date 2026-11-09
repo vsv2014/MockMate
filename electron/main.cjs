@@ -1106,7 +1106,7 @@ function getConnectorGateway() {
   })
   return connectorGateway
 }
-function connectorOwner() {
+async function connectorOwner() {
   const tokenBytes = fs.readFileSync(AUTH_TOKEN_FILE())
   const token = safeStorage.isEncryptionAvailable()
     ? safeStorage.decryptString(tokenBytes) : tokenBytes.toString('utf8')
@@ -1115,6 +1115,17 @@ function connectorOwner() {
   // will require a separate backend-mediated authorization implementation.
   const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] })
   if (!/^[a-zA-Z0-9._-]{1,160}$/.test(String(decoded.sub || ''))) throw new Error('Invalid signed account identity')
+  // Re-check current session against account service. Signature-only checks
+  // would permit a token revoked by password reset (tokenVersion mismatch).
+  const status = await fetch(API_BASE.replace(/\\/$/, '') + '/auth/me', {
+    headers: { Authorization: 'Bearer ' + token },
+    signal: AbortSignal.timeout(5000),
+    redirect: 'error',
+  })
+  if (!status.ok) throw new Error('MockMate account session is not active; sign in again')
+  const identity = await status.json()
+  if (String(identity?.user?.id || identity?.user?._id || '') !== String(decoded.sub))
+    throw new Error('Signed account identity mismatch')
   return String(decoded.sub)
 }
 function connectorSender(event) {
@@ -1126,7 +1137,7 @@ ipcMain.handle('connector-request', async (event, payload = {}) => {
   if (!payload || typeof payload !== 'object' || Buffer.byteLength(JSON.stringify(payload)) > 16000)
     return { ok: false, error: 'Invalid connector request' }
   try {
-    const owner = connectorOwner()
+    const owner = await connectorOwner()
     const gateway = getConnectorGateway()
     const { op, provider, accountId, flowId, clientId, clientSecret, privateRepos, sourceId,
       query, importId, sha256, enabled } = payload
@@ -1164,7 +1175,7 @@ ipcMain.handle('connector-set-live', (event, enabled) => {
 async function pollApprovedConnectorSources() {
   if (!mainWindow || mainWindow.isDestroyed()) return
   try {
-    const owner = connectorOwner()
+    const owner = await connectorOwner()
     const result = await getConnectorGateway().syncNow(owner)
     if (result.updates?.length || result.failures?.length) {
       mainWindow.webContents.send('connector-sync', { owner, ...result })
