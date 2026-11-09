@@ -185,7 +185,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok || !data.ok) throw new Error(data.error || `Provider test returned HTTP ${response.status}`)
-      setTestResults(results => ({ ...results, [provider.k]: { status: 'ok', message: provider.testId === 'deepgram' ? 'Deepgram key verified — transcription connection is valid.' : 'Blocking and streaming text passed just now. Screenshot and voice capture are separate checks.' } }))
+      setTestResults(results => ({ ...results, [provider.k]: { status: 'ok', message: provider.testId === 'deepgram' ? 'Deepgram key verified — transcription connection is valid.' : `Blocking + streaming passed for ${data.model || provider.name}. Other models, screenshot analysis and audio still require separate checks.` } }))
     } catch (error) {
       setTestResults(results => ({ ...results, [provider.k]: { status: 'error', message: error?.message || 'Connection test failed.' } }))
     } finally {
