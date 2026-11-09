@@ -336,6 +336,11 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
         </nav>
         <p style={{ ...small, margin: '10px 0 0' }}>GitHub / Google use native read-only OAuth flows. Composio SDK and Activepieces workflow automation are not connected to this desktop build.</p>
       </div>
+      {auth?.guest && <div role="status" style={{ ...panel, background: 'rgba(20,184,166,0.07)', borderColor: 'rgba(20,184,166,0.3)' }}>
+        <strong style={{ color: T.text1 }}>Local profile active</strong>
+        <p style={{ ...small, margin: '5px 0 12px' }}>You can create local ARCH evidence and reviewed imports as a guest. Connecting GitHub or Google accounts requires signing in to a MockMate account first so credentials remain isolated per user.</p>
+        <button type="button" style={action} onClick={() => auth?.signIn?.()}>Sign in to connect accounts</button>
+      </div>}
       {message && <div role="status" aria-live="polite" style={{ ...panel, padding: '10px 14px', color: message.startsWith('⚠') ? '#fda4af' : '#5eead4' }}>{message}</div>}
       <section id="mm-sources-connections" style={panel} aria-label="Connection status">
         <h3 style={{ fontSize: 17, margin: '0 0 8px' }}>Connected accounts</h3>
@@ -384,7 +389,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           Google requires a Desktop client with consent and enabled Drive/Calendar APIs. Google read-only scopes
           can cover many files/events upstream; MockMate only imports the individual sources you approve.
         </p>
-        <button style={action} disabled={connectorBusy || !oauthClient.trim() || !!oauthFlow} onClick={startOAuth}>
+        <button style={action} disabled={auth?.guest || connectorBusy || !oauthClient.trim() || !!oauthFlow} onClick={startOAuth}>
           {connectorBusy ? 'Connecting…' : 'Authorize external account'}
         </button>
         {oauthFlow && <div role="status" style={{ ...small, marginTop: 10, padding: 10, border: `1px solid ${T.accentBorder}`, borderRadius: 9 }}>
