@@ -1,6 +1,6 @@
 # MockMate release checklist
 
-**Current source version: 1.6.7 startup hotfix candidate.** The v1.6.6 Windows Personal Preview was published unsigned; the 1.6.7 preview still requires its own build and tests. No signed v1.6.x stable release has been published. The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
+**Current source version: 1.6.8 unsigned Personal Preview candidate.** Previously published unsigned v1.6.7 includes the Windows startup fix; the new v1.6.8 candidate adds dashboard/Ready Room layout and AI/System Audio preflight improvements (#124). It must pass its own CI and Windows device checks. No signed v1.6.x stable release exists. The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
 
 **Rule: do not describe any build as physically certified until every applicable box below is checked on a REAL packaged build.** The separate explicit manual unsigned-preview path may publish only as an isolated, manual-update pre-release after automated CI; it is not a substitute for these physical checks.
 Every 1.4.2 defect (CSP broke Solo+Live, STT coupled to the LLM cap, dangling `mintToken` import,
@@ -148,3 +148,13 @@ protects the moat — do not skip it.*
 - [ ] Reproduce both a slow-start and preoccupied-port case in an isolated test environment; no third-party process is killed.
 - [ ] Verify local API keys, account sign-in and session history survive an in-place preview upgrade; check Windows Security Protection history if the utility process is blocked.
 - [ ] Record Windows version, antivirus/endpoint protection, exact installer SHA256, boot duration and redacted startup diagnostic events. CI smoke is not physical confirmation.
+
+## v1.6.8 Ready Room and workspace visual/audio acceptance (physical device)
+
+- [ ] On the affected laptop, open Home, Interview Kits, Ready Room, Solo, Jobs, Resume Studio, Settings, and Sessions at Windows 100%, 125%, and 150% scaling. Verify sidebar icons never overlap labels; controls remain clickable and text wraps without clipping. Report other overflowing views for #125.
+- [ ] In Ready Room, run the real provider test that asks what a hash map does in one sentence. It must return an answer (and not a `code_missing` error); a separate actual coding question must still demand complete code.
+- [ ] After an AI error the readiness summary displays Failed and Retry rather than showing misleading indefinite Pending.
+- [ ] Run microphone playback separately; then select System Audio for the intended display/Windows output, play spoken meeting audio, and verify a FINAL Deepgram transcript. Do not infer System Audio success from microphone success.
+- [ ] Wait through the ten-second system capture and up to five-second finalization window; if system playback fails, preserve redacted diagnostics and note chosen Windows output device/source and whether any audio track was acquired.
+- [ ] Confirm Live answer text is still legible and unaffected by management-workspace font sizing. Check Zoom/Teams meeting share-preview privacy manually.
+- [ ] Do not uninstall the existing app, delete local AppData, or reset stored BYOK keys/sessions to run these checks.
