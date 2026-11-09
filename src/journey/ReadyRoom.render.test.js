@@ -61,6 +61,14 @@ describe('Ready Room (linear preflight)', () => {
     expect(html).toMatch(/Continue to Live setup|Complete readiness checks|Checking services|Run the AI test|Test (microphone|system audio)|Configure|Add context|Create an Interview Kit|Review Linux risk|privacy check/)
   })
 
+  it('does not misrepresent a microphone check as verified System Audio', () => {
+    const html = renderReadyRoom()
+    expect(html).toContain('This verifies only the microphone')
+    expect(html).toContain('System Audio')
+    expect(html).toContain('Test microphone')
+    expect(html).toContain('AI round trip')
+  })
+
   it('asks for a Kit when none is selected instead of showing a dead action rail', () => {
     const html = renderReadyRoom({ kit: null })
     expect(html).toContain('Open Interview Kits')
