@@ -25,6 +25,10 @@ describe('Track B Sources & ARCH navigation', () => {
   it('shows manual review, explicit consent and honest OAuth status', () => {
     const html = renderToString(React.createElement(ConnectedSources, { auth: { guest: true } }))
     expect(html).toContain('Connected accounts')
+    expect(html).toContain('Sign in to connect accounts')
+    expect(html).toContain('Accounts &amp; OAuth')
+    expect(html).toContain('ARCH graph')
+    expect(html).toContain('Composio SDK and Activepieces workflow automation are not connected')
     expect(html).toContain('Authorize external account')
     expect(html).toContain('Connected accounts')
     expect(html).toContain('ARCH professional evidence graph')
