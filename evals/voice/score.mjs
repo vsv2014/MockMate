@@ -51,6 +51,7 @@ export function scoreCapturePlayback(run) {
     firstUsefulAnswerP50Ms: percentile(latencies, 50),
     firstUsefulAnswerP95Ms: percentile(latencies, 95),
     timedQuestions: latencies.length,
+    missingLatencyQuestions: run.turns.length - missed - latencies.length,
   };
 }
 
@@ -62,8 +63,11 @@ export function comparePlaybackRuns(baselineRun, candidateRun, { maxAddedP95Ms =
   if (baseline.recordingId !== candidate.recordingId ||
       JSON.stringify(baseline.referenceIds) !== JSON.stringify(candidate.referenceIds))
     throw new Error('Not the same reference recording/questions');
+  // A candidate may not silently omit slow successful turns to inflate its p95.
+  // Missed turns are excluded from the timing denominator by construction.
   const latencyComparable = baseline.firstUsefulAnswerP95Ms !== null &&
-    candidate.firstUsefulAnswerP95Ms !== null;
+    candidate.firstUsefulAnswerP95Ms !== null &&
+    baseline.missingLatencyQuestions === 0 && candidate.missingLatencyQuestions === 0;
   const noLatencyRegression = latencyComparable &&
     candidate.firstUsefulAnswerP95Ms <= baseline.firstUsefulAnswerP95Ms + maxAddedP95Ms;
   const reducedBurden = candidate.totalUserVisibleErrors < baseline.totalUserVisibleErrors;
