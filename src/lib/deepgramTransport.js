@@ -46,7 +46,8 @@ export function buildDeepgramListenUrl({
   turnDetection = 'balanced',
 } = {}) {
   const model = degraded ? 'nova-2' : 'nova-3'
-  const pause = DEEPGRAM_TURN_PROFILES[turnDetection] || DEEPGRAM_TURN_PROFILES.balanced
+  const pause = Object.hasOwn(DEEPGRAM_TURN_PROFILES, turnDetection)
+    ? DEEPGRAM_TURN_PROFILES[turnDetection] : DEEPGRAM_TURN_PROFILES.balanced
   const base = `wss://api.deepgram.com/v1/listen?model=${model}&encoding=linear16&sample_rate=16000&channels=1`
     + `&interim_results=true&smart_format=true&punctuate=true&utterance_end_ms=${pause.utteranceEndMs}&vad_events=true&endpointing=${pause.endpointingMs}`
     + `&language=${encodeURIComponent(language || 'en-US')}`
