@@ -1,6 +1,6 @@
 # Test the integrated MockMate build locally (experimental)
 
-This is a historical integration snapshot of five PRs assembled on 2026-11-09. [Integration PR #119](https://github.com/vsv2014/MockMate/pull/119) incorporates this work into `main` when merged. The offline test scaffolds do **not** make the planned connector, VAD, agent or sync product features functional.
+Five PRs were integrated into `main` on 2026-11-09 by [PR #119](https://github.com/vsv2014/MockMate/pull/119). Their original PRs were closed as incorporated, not separately merged. The offline test scaffolds do **not** make the planned connector, VAD, agent or sync product features functional. `package.json` remains at version **1.6.6**; no public release was created by this merge.
 
 | Source | Included | What actually works |
 |---|---|---|
@@ -28,7 +28,7 @@ npm run smoke:api
 npm run electron:dev
 ```
 
-For local testing **before PR #119 merges**, substitute `git switch --track origin/test/all-open-prs-20261109` for `git switch main` and omit the main pull. Once #119 is merged, use updated `main`. Keep this source build separate from your stable installed app.
+Use updated `main` for the integrated code. Keep the source-running development build separate from any installed stable MockMate application. For debugging the exact prior integration snapshot, the historical branch `test/all-open-prs-20261109` is still available.
 
 You can run offline experiment tests without API keys:
 
@@ -63,4 +63,4 @@ Record the exact branch commit, device, steps, expected behavior, observed behav
 
 ## Updating the snapshot
 
-PR #119 incorporates a **specific snapshot** of five PRs; it is not an automatic union that keeps updating. Any subsequent feature fix requires a new commit and re-validation. Always inspect the source ref and commit SHA in the CI artifact notice.
+PR #119 incorporated a **specific snapshot** of five PRs into `main`; future changes require new commits and re-validation. Always inspect the source ref and commit SHA in the CI artifact notice. A passing CI build is not proof of physical microphone, screen-sharing, low-end-device, hosted auth, or signed-updater readiness.
