@@ -9,6 +9,7 @@ describe('opt-in dual-channel candidate source', () => {
     expect(gate({ text: 'Explain RAG', sourceId: 'screen:0', sessionActive: false })).toBeNull()
     expect(gate({ text: 'Hi', sourceId: 'screen:0' })).toBeNull()
   })
+  it('rejects only recent, near-exact system-audio echoes while retaining genuine candidate speech', () => {\n    let t = 12000\n    const gate = createCandidateMicGate({ now: () => t, echoWindowMs: 1800 })\n    const previous = { text: 'Can you explain how React rendering works?', at: t - 650 }\n    expect(gate({ text: 'Can you explain how React rendering works', sourceId: 'screen:0', systemFinal: previous })).toBeNull()\n    expect(gate({ text: 'React uses a reconciliation algorithm', sourceId: 'screen:0', systemFinal: previous })).toBe('React uses a reconciliation algorithm')\n    t += 2200\n    expect(gate({ text: previous.text, sourceId: 'screen:0', systemFinal: previous })).toBe(previous.text)\n  })\n
   it('keeps genuine candidate speech but deduplicates close repeated STT finals', () => {
     let t = 10000
     const gate = createCandidateMicGate({ now: () => t, duplicateWindowMs: 2500 })
