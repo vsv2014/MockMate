@@ -1140,7 +1140,7 @@ ipcMain.handle('connector-request', async (event, payload = {}) => {
       case 'disconnect': data = gateway.removeAccount(owner, provider, accountId); break
       case 'list-sources': data = await gateway.listSources(owner, provider, accountId, query); break
       case 'read-source': data = await gateway.readSource(owner, provider, accountId, sourceId); break
-      case 'subscribe': data = gateway.subscribe(owner, { importId, provider, accountId, sourceId, sha256, autoSync: true }); break
+      case 'subscribe': data = gateway.subscribe(owner, { importId, provider, accountId, sourceId, sha256, autoSync: enabled === true }); break
       case 'sync-enable': data = gateway.setSync(owner, importId, enabled); break
       case 'unsubscribe': data = gateway.unsubscribe(owner, importId); break
       case 'sync': data = await gateway.syncNow(owner); break
