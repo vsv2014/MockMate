@@ -28,7 +28,8 @@ function init() {
         access_token: 'secret-example', token_type: 'bearer', scope: 'read:user',
       })
       if (url === 'https://api.github.com/user') return fakeResponse({ id: 1234, login: 'dev' })
-      if (url.includes('/repos/acme/repo/git/trees/HEAD')) return fakeResponse({
+      if (url === 'https://api.github.com/repos/acme/repo') return fakeResponse({ default_branch: 'main' })
+      if (url.includes('/repos/acme/repo/git/trees/main')) return fakeResponse({
         tree: [{ path: 'README.md', type: 'blob', sha: 'sha1', size: 100 },
           { path: 'secrets.env', type: 'blob', size: 100 }, { path: 'huge.md', type: 'blob', size: 300000 }],
       })
