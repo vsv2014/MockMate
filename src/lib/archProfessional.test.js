@@ -3,7 +3,8 @@ import { webcrypto } from 'node:crypto'
 import { previewSelectedSource, approveSelectedSource, removeApprovedImport } from './connectedSources.js'
 import {
   ARCH_PROFESSIONAL_SCHEMA, loadProfessionalState, updateProfessionalProfile,
-  addEvidenceQuote, removeEvidenceForImport, addProfessionalClaim, recordProfessionalOutcome, buildProfessionalGraph,
+  addEvidenceQuote, removeEvidenceForImport, addProfessionalClaim, linkEvidenceToClaim,
+  recordProfessionalOutcome, buildProfessionalGraph, buildProfessionalReviewQueue,
 } from './archProfessional.js'
 const local = new Map(), session = new Map()
 const store = map => ({
@@ -46,6 +47,23 @@ describe('Track B ARCH professional evidence', () => {
     expect(graph.edges.some(edge => edge.from === original.id && edge.to === quote.id)).toBe(true)
     expect(graph.conflicts).toHaveLength(1)
     expect(graph.nodes.some(node => node.kind === 'outcome')).toBe(true)
+  })
+
+  it('links approved evidence to existing claims and surfaces deterministic review actions', async () => {
+    const preview = await previewSelectedSource(source)
+    const { record } = await approveSelectedSource(preview, source, { approved: true })
+    const quote = addEvidenceQuote({ importId: record.id, quote: 'reliable offline-first application' }).state.evidence[0]
+    const claim = addProfessionalClaim({ key: 'Architecture', value: 'Offline-first' })
+    expect(buildProfessionalReviewQueue().some(a => a.id === 'claim:' + claim.id)).toBe(true)
+    const linked = linkEvidenceToClaim(claim.id, quote.id)
+    expect(linked.claims.find(c => c.id === claim.id).evidenceIds).toContain(quote.id)
+    expect(buildProfessionalReviewQueue().some(a => a.id === 'claim:' + claim.id)).toBe(false)
+    expect(() => linkEvidenceToClaim(claim.id, 'unknown-evidence')).toThrow(/approved evidence/)
+    expect(buildProfessionalGraph(loadProfessionalState(), [{ ...record, revision: 'rev-updated' }]).staleEvidence).toBe(1)
+    expect(buildProfessionalReviewQueue(loadProfessionalState(), [{ ...record, revision: 'rev-updated' }])
+      .some(a => a.type === 'stale_evidence')).toBe(true)
+    expect(buildProfessionalReviewQueue(loadProfessionalState(), [{ ...record, revision: 'rev-updated' }])
+      .some(a => a.type === 'unverified_claim')).toBe(true)
   })
 
   it('requires exact evidence in an approved document and supports provenance deletion', async () => {
