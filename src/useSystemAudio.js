@@ -188,6 +188,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     const sock = activeSocketRef.current || ws.current
     if (userStop.current || !sock || sock.readyState !== 1) return false
     try {
+      finalizeSent.current = true
       sock.send(JSON.stringify({ type: 'Finalize' }))
       diagnostic('stt', 'ready_room_finalize_requested', { source: 'system' })
       return true
