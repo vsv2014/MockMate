@@ -5,7 +5,7 @@ import { previewSelectedSource, approveSelectedSource, removeApprovedImport } fr
 import {
   ARCH_PROFESSIONAL_SCHEMA, loadProfessionalState, updateProfessionalProfile,
   addEvidenceQuote, removeEvidenceForImport, addProfessionalClaim, linkEvidenceToClaim,
-  recordProfessionalOutcome, recordApprovedInterviewOutcome, buildProfessionalGraph, buildProfessionalReviewQueue,
+  recordProfessionalOutcome, recordApprovedInterviewOutcome, linkOutcomeToClaim, unlinkOutcomeFromClaim, buildProfessionalGraph, buildProfessionalReviewQueue,
 } from './archProfessional.js'
 const local = new Map(), session = new Map()
 const store = map => ({
@@ -90,6 +90,23 @@ describe('Track B ARCH professional evidence', () => {
     const unscored = saveSession({ report: { summary: 'Notes only' }, config: { source: 'live' } })
     const imported = await recordApprovedInterviewOutcome(unscored.id)
     expect(imported.outcome.result).toBe('Unscored')
+  })
+
+  it('reviewer links and unlinks a saved outcome without claiming automatic skill verification', () => {
+    const claim = addProfessionalClaim({ key: 'System design', value: 'Practice exposure' })
+    const outcome = recordProfessionalOutcome({ description: 'Completed a system design practice interview.' })
+    expect(buildProfessionalGraph().edges.some(e => e.relation === 'observes')).toBe(false)
+    expect(() => linkOutcomeToClaim(outcome.id, 'not-owned')).toThrow(/existing professional claim/)
+    const linked = linkOutcomeToClaim(outcome.id, claim.id)
+    expect(linked.outcomes.find(x => x.id === outcome.id).claimIds).toContain(claim.id)
+    expect(linkOutcomeToClaim(outcome.id, claim.id).outcomes[0].claimIds).toEqual([claim.id])
+    expect(buildProfessionalGraph().edges.some(e => e.relation === 'observes' && e.from === outcome.id && e.to === claim.id)).toBe(true)
+    expect(loadProfessionalState().claims[0].status).toBe('self_reported')
+    const updated = unlinkOutcomeFromClaim(outcome.id, claim.id)
+    expect(updated.outcomes[0].claimIds).toEqual([])
+    expect(buildProfessionalGraph().edges.some(e => e.relation === 'observes')).toBe(false)
+    session.set('mm-active-account-scope', 'user-b')
+    expect(() => linkOutcomeToClaim(outcome.id, claim.id)).toThrow(/existing professional claim/)
   })
 
   it('requires exact evidence in an approved document and supports provenance deletion', async () => {
