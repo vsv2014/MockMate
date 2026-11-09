@@ -149,6 +149,32 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     }
     return entry.accessToken
   }
+  // Explicit, read-only re-verification of a saved account. Never trust a
+  // renderer-supplied subject and never replace an account with a different one.
+  async function verifyAccount(owner, provider, accountId) {
+    providerCheck(provider)
+    const vault = readVault(), row = accountState(vault, owner)
+    const entry = row.accounts.find(x => x.id === accountId && x.provider === provider)
+    if (!entry) fail('Connected account not owned by current MockMate user')
+    const token = await bearer(owner, provider, accountId)
+    const target = provider === 'github'
+      ? 'https://api.github.com/user'
+      : 'https://www.googleapis.com/oauth2/v3/userinfo'
+    const identity = await request(target, {
+      headers: { Authorization: 'Bearer ' + token, ...(provider === 'github' ? { 'User-Agent': 'MockMate-Desktop' } : {}) },
+      fetchImpl,
+    })
+    const subject = provider === 'github' ? String(identity.id || '') : String(identity.sub || '')
+    if (!subject || subject !== entry.subject) fail('Connector account identity changed; disconnect and reauthorize')
+    // Re-read after possible token refresh, retaining the updated encrypted token.
+    const latest = readVault(), current = accountState(latest, owner)
+    const saved = current.accounts.find(x => x.id === accountId && x.provider === provider)
+    if (!saved || saved.subject !== subject) fail('Connected account changed during verification')
+    saved.lastVerifiedAt = new Date(now()).toISOString()
+    writeVault(latest)
+    return { ok: true, account: accountPublic(saved) }
+  }
+
   function saveConnected(owner, provider, metadata, token, opts = {}) {
     providerCheck(provider)
     const vault = readVault(), row = accountState(vault, owner)
@@ -475,7 +501,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
   }
   function setLivePaused(value) { livePaused = value === true }
   function close() { for (const flow of flows.values()) { try { flow.server?.close() } catch {} }; flows.clear() }
-  return { state, setActive, removeAccount, startGithub, startGoogle, pollFlow, listSources, readSource,
+  return { state, setActive, removeAccount, verifyAccount, startGithub, startGoogle, pollFlow, listSources, readSource,
     subscribe, setSync, unsubscribe, syncNow, acknowledgeSync, purgeOwner, setLivePaused, close,
     _forTests: { saveConnected, readVault, sourceCheck } }
 }
