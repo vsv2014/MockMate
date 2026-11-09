@@ -2,14 +2,14 @@
 
 MockMate is a desktop-first interview preparation and live-performance companion. It combines Solo practice, Resume Studio, Job Matching, Documents, session history, and a content-protected Live overlay that can transcribe interview audio and generate resume-grounded guidance.
 
-## Release status — v1.6.6 candidate
+## Release status — v1.6.6 unsigned personal preview
 
-The desktop source/package version is **1.6.6**. Automated Linux and Windows CI, including an isolated portable Windows packaged-runtime smoke test, passed on the integrated source; **physical Windows microphone, content-protection, upgrade and signed release checks remain open**. Version 1.6.6 is **not** published as a tagged GitHub Release or stable installer. The latest published GitHub pre-release installer is v1.6.5 (unsigned BYOK personal preview).
+The desktop source/package version is **1.6.6**. The [v1.6.6 unsigned BYOK Personal Preview](https://github.com/vsv2014/MockMate/releases/tag/v1.6.6) is published with a Windows NSIS installer, checksum and notice; production dependency audits, tests, and packaged Electron runtime smoke passed. **Physical Windows microphone, content-protection, upgrade and signed stable release checks remain open.** This is a prerelease without an automatic updater, not a signed stable installer.
 
 ### Download and test the newest Windows code
 
-- **v1.6.6 local testing (all integrated PRs):** [Download the verified unsigned Windows portable build from GitHub Actions](https://github.com/vsv2014/MockMate/actions/runs/42591076289/artifacts/13661263558) (GitHub sign-in may be required; Actions artifacts expire). Extract the downloaded artifact ZIP, verify the provided SHA-256 checksum, then extract its *inner* portable ZIP and run `MockMatePersonalPreview.exe`. This runs beside a stable installation with a distinct app identity, and has **no automatic updater**.
-- **v1.6.5 downloadable installer:** [Latest published unsigned personal preview](https://github.com/vsv2014/MockMate/releases/tag/v1.6.5). This is older code and does **not** include the latest merged experiments.
+- **v1.6.6 latest installer:** [Download the official unsigned Windows EXE](https://github.com/vsv2014/MockMate/releases/download/v1.6.6/MockMate-Personal-Preview-1.6.6-UNSIGNED.exe) from the [release page](https://github.com/vsv2014/MockMate/releases/tag/v1.6.6). Verify its `SHA256SUMS.txt` from that release before installing. It uses a distinct Personal Preview app identity, is BYOK/local-only, and does **not** auto-update. For a portable ZIP instead, [use the prior CI artifact](https://github.com/vsv2014/MockMate/actions/runs/42591076289) while it remains available.
+- **v1.6.5 previous installer:** [Older unsigned personal preview](https://github.com/vsv2014/MockMate/releases/tag/v1.6.5). This does **not** include the recent merged experiments.
 - **Test the current `main` commit:** [Build Portable Windows Local Preview](https://github.com/vsv2014/MockMate/actions/workflows/test-all-open-prs.yml) → **Run workflow** and select `main`, or see [source/testing instructions](docs/LOCAL_ALL_PRS_TESTING.md). This builds a new portable artifact for the selected commit after tests pass.
 - [The v1.6.0 release page](https://github.com/vsv2014/MockMate/releases/tag/v1.6.0) is historical and has **no binary assets**. It may appear as GitHub's latest *non-prerelease* release because subsequent Windows previews are explicitly marked as prereleases. Do **not** move older tags or relabel a preview as a signed stable release to change that display.
 
