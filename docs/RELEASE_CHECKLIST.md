@@ -1,6 +1,6 @@
 # MockMate release checklist
 
-**Current source version: 1.6.6, prepared as a release candidate; not yet tagged or published.** The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
+**Current source version: 1.6.7 startup hotfix candidate.** The v1.6.6 Windows Personal Preview was published unsigned; the 1.6.7 preview still requires its own build and tests. No signed v1.6.x stable release has been published. The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
 
 **Rule: do not describe any build as physically certified until every applicable box below is checked on a REAL packaged build.** The separate explicit manual unsigned-preview path may publish only as an isolated, manual-update pre-release after automated CI; it is not a substitute for these physical checks.
 Every 1.4.2 defect (CSP broke Solo+Live, STT coupled to the LLM cap, dangling `mintToken` import,
@@ -138,3 +138,13 @@ protects the moat — do not skip it.*
 - [ ] Microphone interviewer questions auto-answer after speaker lock; candidate/unknown speech does not auto-trigger. Verify speaker ID 0 and degraded audio.
 - [ ] Explicit Answer this and retry never intentionally auto-skip; failures remain visible.
 - [ ] End a session: Back/minimize/close stay reachable on notes. During report generation, leaving works and timeout returns notes without a report.
+
+## v1.6.7 Windows startup regression acceptance (physical host)
+
+- [ ] On a computer that experienced v1.6.6 local service timeouts, install the new Personal Preview **without deleting AppData, keys, sessions or local account storage**.
+- [ ] Cold-launch and restart ten times; verify own local UI service on port 3002 and account service on port 4000 become ready and the renderer opens.
+- [ ] Confirm local health responses report the service identity and process PID; the fallback must never accept a different process on either port.
+- [ ] If account service cannot start, BYOK/guest remains available; preserve diagnostic logs and do not silently create a new account/profile.
+- [ ] Reproduce both a slow-start and preoccupied-port case in an isolated test environment; no third-party process is killed.
+- [ ] Verify local API keys, account sign-in and session history survive an in-place preview upgrade; check Windows Security Protection history if the utility process is blocked.
+- [ ] Record Windows version, antivirus/endpoint protection, exact installer SHA256, boot duration and redacted startup diagnostic events. CI smoke is not physical confirmation.
