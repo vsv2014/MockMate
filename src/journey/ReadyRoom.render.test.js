@@ -65,7 +65,7 @@ describe('Ready Room (linear preflight)', () => {
     const html = renderReadyRoom()
     expect(html).toContain('This verifies only the microphone')
     expect(html).toContain('System Audio')
-    expect(html).toContain('Test microphone')
+    expect(html).toContain('Microphone — includes your voice')
     expect(html).toContain('AI round trip')
   })
 
