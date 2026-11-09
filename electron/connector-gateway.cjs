@@ -251,7 +251,8 @@ function createConnectorGateway({ userData, safeStorage, openExternal, fetchImpl
       try { u = new URL(req.url, 'http://127.0.0.1') } catch { res.writeHead(400); res.end('Invalid request'); return }
       if (u.pathname !== '/oauth/callback') { res.writeHead(404); res.end('Not found'); return }
       const code = u.searchParams.get('code')
-      if (!crypto.timingSafeEqual(Buffer.from(u.searchParams.get('state') || ''.padEnd(43, '0')), Buffer.from(stateValue))) {
+      const returnedState = u.searchParams.get('state') || ''
+      if (returnedState.length !== stateValue.length || !crypto.timingSafeEqual(Buffer.from(returnedState), Buffer.from(stateValue))) {
         res.writeHead(400); res.end('Invalid OAuth state'); return
       }
       if (!code || flow.status !== 'pending') { res.writeHead(400); res.end('No pending authorization'); return }
