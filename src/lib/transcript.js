@@ -5,11 +5,21 @@
 // as a real interviewer ↔ candidate conversation.
 export function mergeTurns(log) {
   const out = []
+  let lastQuestionId = null
   for (const e of log || []) {
     if (!e?.text?.trim()) continue
     const last = out[out.length - 1]
-    if (last && last.role === e.role) last.text += ' ' + e.text.trim()
-    else out.push({ role: e.role, text: e.text.trim() })
+    // Every committed question is a distinct interview turn, even when System
+    // Audio has no candidate speech between questions. Without this boundary
+    // a 16-minute interviewer-only session becomes one enormous paragraph.
+    const distinctCommittedQuestions = e.role === 'interviewer'
+      && !!e.questionId && !!lastQuestionId && e.questionId !== lastQuestionId
+    if (last && last.role === e.role && !distinctCommittedQuestions) {
+      last.text += ' ' + e.text.trim()
+    } else {
+      out.push({ role: e.role, text: e.text.trim() })
+    }
+    lastQuestionId = e.questionId || null
   }
   return out
 }
