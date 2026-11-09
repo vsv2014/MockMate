@@ -187,7 +187,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, fetchImpl
   }
   async function startGithub(owner, clientId, { privateRepos = false } = {}) {
     const client = clean(clientId, 160)
-    if (!/^[a-zA-Z0-9]{10,160}$/.test(client)) fail('A GitHub OAuth App client ID is required')
+    if (!/^[a-zA-Z0-9._-]{10,160}$/.test(client)) fail('A GitHub OAuth App client ID is required')
     const scope = privateRepos === true ? 'read:user repo' : 'read:user'
     const result = await request('https://github.com/login/device/code', {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -314,8 +314,10 @@ function createConnectorGateway({ userData, safeStorage, openExternal, fetchImpl
     let raw, sources = []
     if (provider === 'github') {
       if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(q)) fail('Enter a selected GitHub owner/repository')
+      const repoInfo = await authorized(owner, provider, accountId, 'https://api.github.com/repos/' + q)
+      const ref = encodeURIComponent(String(repoInfo.default_branch || 'main'))
       raw = await authorized(owner, provider, accountId,
-        'https://api.github.com/repos/' + q + '/git/trees/HEAD?recursive=1')
+        'https://api.github.com/repos/' + q + '/git/trees/' + ref + '?recursive=1')
       sources = (raw.tree || []).filter(x => x.type === 'blob' && /\.(md|markdown|txt)$/i.test(x.path)
         && x.size <= MAX_BYTES && !x.path.includes('..')).slice(0, 100)
         .map(x => ({ sourceId: q + ':' + x.path, title: x.path, revision: x.sha }))
