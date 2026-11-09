@@ -752,7 +752,7 @@ export function ReadyRoom({
   }
   const primaryLabel = {
     kits: 'Create an Interview Kit', context: 'Add context to this Kit', checking: 'Checking services…',
-    service: 'Retry the AI service check', 'ai-settings': 'Configure an AI provider', 'ai-test': aiBusy ? 'Testing AI…' : 'Run the AI test',
+    service: 'Retry the AI service check', 'ai-settings': 'Configure an AI provider', 'ai-test': aiBusy ? 'Testing AI…' : aiTest.status === 'failed' ? 'Retry the AI test' : 'Run the AI test',
     'voice-settings': 'Configure Voice (Deepgram)', 'voice-test': voiceTest.status === 'listening' ? (voice.active ? 'Stop voice test' : 'Connecting to microphone…') : (voiceTest.status === 'passed' ? 'Voice test passed' : (audioSource === 'microphone' ? 'Test microphone' : 'Test system audio')),
     privacy: isLinux ? 'Review Linux visibility risk' : 'Complete privacy check', continue: 'Continue to Live setup',
   }[firstAction]
@@ -891,8 +891,8 @@ export function ReadyRoom({
               <div style={{ color: T.text2, fontSize: workspaceTextSize(11), lineHeight: 1.55, marginTop: 5 }}>{allReady ? 'Continue to the existing Live setup. Its final start gate remains in place.' : 'Each status is based on a real test or an explicit manual confirmation—not just a saved setting.'}</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px 10px', alignItems: 'center', borderTop: `1px solid ${T.border}`, paddingTop: 12, marginTop: 13 }}>
                 <span style={{ color: T.text3, fontSize: workspaceTextSize(10.5) }}>Kit context</span><Pill tone={contextReady ? 'teal' : 'red'}>{contextReady ? 'OK' : 'Pending'}</Pill>
-                <span style={{ color: T.text3, fontSize: workspaceTextSize(10.5) }}>AI round trip</span><Pill tone={aiTest.status === 'passed' ? 'teal' : 'neutral'}>{aiTest.status === 'passed' ? 'OK' : 'Pending'}</Pill>
-                <span style={{ color: T.text3, fontSize: workspaceTextSize(10.5) }}>{audioSource === 'microphone' ? 'Microphone transcript' : 'System transcript'}</span><Pill tone={voiceTest.status === 'passed' ? 'teal' : 'neutral'}>{voiceTest.status === 'passed' ? 'OK' : 'Pending'}</Pill>
+                <span style={{ color: T.text3, fontSize: workspaceTextSize(10.5) }}>AI round trip</span><Pill tone={aiTest.status === 'passed' ? 'teal' : aiTest.status === 'failed' ? 'red' : 'neutral'}>{aiTest.status === 'passed' ? 'OK' : aiTest.status === 'failed' ? 'Failed' : aiTest.status === 'testing' ? 'Testing' : 'Pending'}</Pill>
+                <span style={{ color: T.text3, fontSize: workspaceTextSize(10.5) }}>{audioSource === 'microphone' ? 'Microphone transcript' : 'System transcript'}</span><Pill tone={voiceTest.status === 'passed' ? 'teal' : voiceTest.status === 'failed' ? 'red' : 'neutral'}>{voiceTest.status === 'passed' ? 'OK' : voiceTest.status === 'failed' ? 'Failed' : voiceTest.status === 'listening' || voiceTest.status === 'finishing' ? 'Testing' : 'Pending'}</Pill>
                 <span style={{ color: T.text3, fontSize: workspaceTextSize(10.5) }}>Privacy check</span><Pill tone={privacyReady ? 'teal' : 'neutral'}>{privacyReady ? 'OK' : 'Pending'}</Pill>
               </div>
             </section>
