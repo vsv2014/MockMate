@@ -322,7 +322,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
                 ? '⚠ Microphone — may hear you; tap Answer this for each question (prefer System Audio on Win/macOS)'
                 : isLinux
                   ? '⚠ System Audio unavailable on Linux — use Microphone'
-                  : '✓ System Audio — hears the interviewer (recommended)'}
+                  : '⚠ System Audio hears interviewer playback only — this session will not be scored unless candidate answers are captured separately'}
             </div>
             <div style={{ color: isLinux ? '#fbbf24' : (inElectron ? '#4ade80' : '#fbbf24') }}>
               {isLinux
@@ -401,7 +401,7 @@ function SetupScreen({ onStart, onHome, recoveredLive, onRecoverLive, onDiscardL
             const onMic = sourceId === 'microphone'
             return (
               <div style={{ fontSize: readableTextSize(12.5), color: T.text2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span>{onMic ? '🎤 Microphone' : '🖥️ System Audio'} <span style={{ color: T.text3 }}>· {onMic ? 'includes your voice; questions need confirmation' : 'hears the interviewer (recommended on Win/macOS)'}</span></span>
+                <span>{onMic ? '🎤 Microphone' : '🖥️ System Audio'} <span style={{ color: T.text3 }}>· {onMic ? 'includes your voice; questions need confirmation' : 'interviewer-only; unscored unless you capture candidate answers'}</span></span>
                 {!isLinux && (
                   <button type="button" onClick={() => setSourceId(onMic ? systemId : 'microphone')}
                     style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.accentFrom, cursor: 'pointer', fontSize: readableTextSize(12), textDecoration: 'underline', padding: 0, fontFamily: T.font }}>
@@ -590,6 +590,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
     ...(kitId ? { kitId } : {}),
   })
   const [transcript, setTranscript] = useState([])
+  const [candidateSpeechTurns, setCandidateSpeechTurns] = useState(0)
   const [hint, setHint] = useState(null)
   const [hintLoading, setHintLoading] = useState(false)
   const [buyTimePhrase, setBuyTimePhrase] = useState('') // holds thinkingLabel only (never a scripted "Say:" line)
@@ -1693,13 +1694,19 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
     metricsRef.current?.markSttFinal?.({
       confidence: meta?.confidence,
       degraded: !!meta?.degraded,
-      diarizationLocked: !!meta?.diarizationLocked,
+      // System playback is interviewer-only; its forced 'locked' identity is
+      // not evidence that the microphone can distinguish candidate speech.
+      diarizationLocked: liveSourceIdRef.current === 'microphone' && !!meta?.diarizationLocked && !meta?.degraded,
     })
 
     // Candidate speech: record, never commit as question.
     if (meta?.isCandidate) {
-      if (!meta?.isQuestion && trimmed.split(/\s+/).length >= 2) {
-        interviewStateRef.current?.recordCandidate?.(trimmed)
+      // A real candidate's response may contain a rhetorical question.
+      // Trust speaker attribution rather than discarding question-shaped
+      // candidate speech, and never treat it as an interviewer prompt.
+      if (trimmed.split(/\s+/).length >= 2) {
+        const captured = interviewStateRef.current?.recordCandidate?.(trimmed)
+        if (captured) setCandidateSpeechTurns(n => n + 1)
       }
       captureRef.current?.ingest?.({
         text: trimmed,
@@ -1883,7 +1890,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
     const conversation = mergeTurns(
       (interviewStateRef.current?.getSnapshot?.()?.speechTurns || [])
         .filter(t => t.role === 'interviewer' || t.role === 'candidate')
-        .map(t => ({ role: t.role, text: t.text, ts: t.ts })),
+        .map(t => ({ role: t.role, text: t.text, ts: t.ts, questionId: t.questionId })),
     )
     if (conversation.length === 0) {
       await onCaptured?.({ runId: sessionIdRef.current, conversation, evaluationStatus: 'not_applicable' })
@@ -1912,11 +1919,11 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
         runId: sessionIdRef.current, evaluationStatus: 'not_applicable',
         conversation: withHints.length ? withHints : conversation,
         report: {
-          summary: 'No candidate speech was captured (System Audio hears the interviewer only, or Mic diarization never locked). Hints are below — this is not a scored interview.',
+          summary: 'No candidate answers were captured. System Audio records interviewer playback, not your microphone; microphone mode also requires a reliable candidate-speaker attribution. These are interviewer notes and AI hints, not a scored interview.',
           overallScore: null,
           dimensions: [],
           strengths: [],
-          improvements: ['Use Microphone with diarization lock, or speak so your answers are captured for a real score.'],
+          improvements: ['For a real score, select Microphone and verify MockMate recognizes your speech as candidate answers before ending the session. System Audio alone cannot score your answers.'],
         },
       })
       return
@@ -2063,6 +2070,21 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
             </div>
           </div>
         )}
+
+        <div role="status" aria-label="Candidate speech capture status" style={{
+          padding: '7px 10px', marginBottom: 8, borderRadius: 7,
+          background: candidateSpeechTurns ? 'rgba(20,184,166,0.10)' : 'rgba(245,158,11,0.10)',
+          border: `1px solid ${candidateSpeechTurns ? 'rgba(20,184,166,0.30)' : 'rgba(245,158,11,0.35)'}`,
+          color: candidateSpeechTurns ? '#5eead4' : '#fcd34d', fontSize: 18, lineHeight: 1.4,
+        }}>
+          {candidateSpeechTurns
+            ? `Candidate answers captured: ${candidateSpeechTurns} speech segment${candidateSpeechTurns === 1 ? '' : 's'}. Only captured answers can be scored.`
+            : liveSourceId === 'microphone'
+              ? audio.diarizationLocked && !audio.degraded
+                ? 'Microphone speaker lock active, but no candidate answers identified yet. Verify your speech is being recognized before expecting a score.'
+                : 'Microphone speaker lock pending. Questions may need manual confirmation; candidate answers are not yet captured for scoring.'
+              : 'System Audio captures interviewer playback only. AI hints work, but candidate scoring is unavailable until your answers are captured. Switch to Microphone to capture answers.'}
+        </div>
 
         {/* Coding platform auto-detected → one tap to capture + solve (no surprise auto-captures) */}
         {codingDetected && !screenAnalyzing && !screenAnalysis && (
