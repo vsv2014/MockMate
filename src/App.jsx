@@ -925,7 +925,7 @@ function ElectronShell({ auth }) {
         />
       </div>
     )
-    else if (view === 'sources') content = <ConnectedSources auth={auth} activeKit={activeKit} />
+    else if (view === 'sources') content = <ConnectedSources key={activeAccountScope()} auth={auth} activeKit={activeKit} />
     else if (view === 'settings') content = (
       <div className="mm-settings" style={{ maxWidth: 980, width: '100%', margin: '0 auto' }}>
         <div style={shellHeader}>Settings</div>

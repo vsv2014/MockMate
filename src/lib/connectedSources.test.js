@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { webcrypto } from 'node:crypto'
-import { listDocs, listKitDocs, getKitSelectedDocIds } from './docs.js'
+import { listDocs, listKitDocs, getKitSelectedDocIds, setDocSelected } from './docs.js'
 import {
   MAX_SOURCE_BYTES, normalizeSourceText, previewSelectedSource,
   approveSelectedSource, listApprovedImports, removeApprovedImport,
@@ -50,6 +50,9 @@ describe('Track B reviewed import', () => {
     expect(again.existing).toBe(true)
     expect(listDocs()).toHaveLength(1)
     expect(listApprovedImports()).toHaveLength(1)
+    expect(listApprovedImports()[0].selectedForLive).toBe(false)
+    expect(setDocSelected(first.record.documentId, true).selected).toBe(true)
+    expect(listApprovedImports()[0].selectedForLive).toBe(true)
     expect(removeApprovedImport(first.record.id)).toBe(true)
     expect(listDocs()).toHaveLength(0)
     expect(listApprovedImports()).toHaveLength(0)
