@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { webcrypto } from 'node:crypto'
-import { listDocs, listKitDocs, getKitSelectedDocIds, setDocSelected } from './docs.js'
+import { listDocs, listKitDocs, getKitSelectedDocIds, setDocSelected, documentIndexStatus, documentSignature } from './docs.js'
+import { setScopedItem } from './accountScope.js'
 import {
   MAX_SOURCE_BYTES, normalizeSourceText, previewSelectedSource,
   approveSelectedSource, listApprovedImports, removeApprovedImport, applyApprovedRemoteUpdate, sha256,
@@ -86,6 +87,56 @@ describe('Track B reviewed import', () => {
     expect((await applyApprovedRemoteUpdate(update)).unchanged).toBe(true)
     session.set('mm-active-account-scope', 'bob')
     await expect(applyApprovedRemoteUpdate(update)).rejects.toThrow(/does not match/)
+  })
+
+  it('reports retrieval readiness only for a persisted index matching the current text', async () => {
+    const input = source()
+    const preview = await previewSelectedSource(input)
+    const { record } = await approveSelectedSource(preview, input, { approved: true })
+    expect(documentIndexStatus(record.documentId)).toMatchObject({ state: 'needs_indexing' })
+    const signature = documentSignature(input.text)
+    expect(setScopedItem('mm-docs-index-v1', JSON.stringify({
+      [record.documentId]: {
+        sig: signature, dimensions: 3, embeddingModel: 'unit-embedding',
+        chunks: [{ text: input.text, vector: [0.1, 0.2, 0.3] }],
+      },
+    }))).toBe(true)
+    expect(documentIndexStatus(record.documentId)).toMatchObject({
+      state: 'ready', documentRevision: signature, indexRevision: signature,
+      embeddingModel: 'unit-embedding', chunkCount: 1,
+    })
+    const updatedText = 'This is the new source revision requiring a fresh embedding index.'
+    await applyApprovedRemoteUpdate({
+      importId: record.id, accountId: 'github:123', provider: 'github',
+      sourceId: input.sourceId, title: input.title, revision: 'sha-2',
+      text: updatedText, sha256: await sha256(updatedText),
+    }).catch(() => {}) // no linked remote account: source must reject this update
+    expect(documentIndexStatus(record.documentId).state).toBe('ready')
+    session.set('mm-active-account-scope', 'bob')
+    expect(documentIndexStatus(record.documentId).state).toBe('missing')
+    session.set('mm-active-account-scope', 'alice')
+    expect(documentIndexStatus(record.documentId).state).toBe('ready')
+    expect(removeApprovedImport(record.id)).toBe(true)
+    expect(documentIndexStatus(record.documentId).state).toBe('missing')
+  })
+
+  it('invalidates a previously ready index when a connected source revision changes', async () => {
+    const input = source({ connectedAccountId: 'github:1234' })
+    const preview = await previewSelectedSource(input)
+    const { record } = await approveSelectedSource(preview, input, { approved: true })
+    const signature = documentSignature(input.text)
+    setScopedItem('mm-docs-index-v1', JSON.stringify({
+      [record.documentId]: { sig: signature, dimensions: 2, embeddingModel: 'test',
+        chunks: [{ text: input.text, vector: [0.5, 0.6] }] },
+    }))
+    expect(documentIndexStatus(record.documentId).state).toBe('ready')
+    const updatedText = 'New revision must invalidate the previously persisted vector index.'
+    await applyApprovedRemoteUpdate({
+      importId: record.id, accountId: 'github:1234', provider: 'github',
+      sourceId: input.sourceId, title: input.title, revision: 'sha-2',
+      text: updatedText, sha256: await sha256(updatedText),
+    })
+    expect(documentIndexStatus(record.documentId).state).toBe('needs_indexing')
   })
 
   it('retains source account isolation and prevents automatic Kit retrieval', async () => {
