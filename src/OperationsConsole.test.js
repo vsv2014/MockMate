@@ -9,7 +9,7 @@ describe('ARCH operations management UI', () => {
     expect(html).toContain('ARCH Operations')
     expect(html).toContain('Execution explorer')
     expect(html).toContain('Module consumption ledger')
-    expect(html).toContain('Unknown token counts')
+    expect(html).toContain('Unknown provider token counts')
     expect(html).not.toContain('dangerouslySetInnerHTML')
   })
 })

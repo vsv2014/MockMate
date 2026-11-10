@@ -1935,9 +1935,14 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
   useEffect(() => () => evaluationRef.current?.controller.abort(), [])
   async function leaveEvaluation() {
     const pending = evaluationRef.current
+    if (!pending) return
+    // A close click while scoring was the primary cause of aborted evaluations
+    // in the real diagnostics. Make loss of this scoring attempt explicit.
+    if (!window.confirm('Cancel scoring? Your transcript is already saved. You can retry scoring later from Sessions, but this AI request will stop.')) return
+    if (evaluationRef.current !== pending) return
     evaluationRef.current = null
-    pending?.controller.abort()
-    await onEnd({ runId: sessionIdRef.current, conversation: pending?.conversation || [], report: null, evaluationStatus: 'cancelled' })
+    pending.controller.abort()
+    await onEnd({ runId: sessionIdRef.current, conversation: pending.conversation, report: null, evaluationStatus: 'cancelled' })
   }
 
   async function endSession() {
@@ -1965,7 +1970,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
     const hasCandidate = conversation.some(t => t.role === 'candidate')
     // Commit captured material before starting any evaluator request.
     const captureCommit = await onCaptured?.({ runId: sessionIdRef.current, conversation, evaluationStatus: hasCandidate ? 'pending' : 'not_applicable' })
-    if (captureCommit && !captureCommit.stored) {
+    if (!captureCommit?.stored) {
       await onEnd({ runId: sessionIdRef.current, conversation, evaluationStatus: 'failed', report: { overallScore: null, summary: 'Evaluation was not requested because transcript preservation failed.', dimensions: [], strengths: [], improvements: [] } })
       return
     }
@@ -1999,7 +2004,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
     setEnding(true)
     try {
       const res = await apiFetch('/api/evaluate', {
-        timeoutMs: 30000, signal: pendingEvaluation.controller.signal,
+        timeoutMs: 45000, signal: pendingEvaluation.controller.signal,
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           config: { runId: sessionIdRef.current, domainLabel: profileRef.current?.targetRole || 'Live interview', roundLabel: 'Live interview' },
@@ -2008,11 +2013,16 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
           provider: providerRef.current
         })
       }).then(async r => { if (!r.ok) throw new Error('Evaluation request failed'); return r.json() })
-      if (evaluationRef.current === pendingEvaluation) await onEnd({ runId: sessionIdRef.current, conversation, report: res?.report || null, evaluationStatus: res?.report?.overallScore != null ? 'scored' : 'failed' })
+      if (evaluationRef.current === pendingEvaluation) {
+        evaluationRef.current = null
+        await onEnd({ runId: sessionIdRef.current, conversation, report: res?.report || null, evaluationStatus: res?.report?.overallScore != null ? 'scored' : 'failed' })
+      }
     } catch {
-      if (evaluationRef.current === pendingEvaluation) await onEnd({ runId: sessionIdRef.current, conversation, report: null, evaluationStatus: 'failed' })
-    }
-    setEnding(false)
+      if (evaluationRef.current === pendingEvaluation) {
+        evaluationRef.current = null
+        await onEnd({ runId: sessionIdRef.current, conversation, report: null, evaluationStatus: 'failed' })
+      }
+    } finally { setEnding(false) }
   }
   const badge = (bg, color) => ({ fontSize: readableTextSize(19), padding: '2px 7px', background: bg, color, borderRadius: 10, fontWeight: 600, whiteSpace: 'nowrap', letterSpacing: '0.01em' })
   const btn = (bg, color) => ({ fontSize: 21, padding: '3px 9px', minHeight: 22, background: bg, color, border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: T.font })
@@ -2072,7 +2082,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
         onClose={leaveEvaluation} extra={<span style={{ fontSize: 22, fontWeight: 600, color: '#5eead4' }}>Ending…</span>}>
         <div role="status" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24, textAlign: 'center' }}>
           <div style={{ fontSize: 28, fontWeight: 600, color: T.text1 }}>Wrapping up…</div>
-          <div style={{ fontSize: 24, color: T.text2, lineHeight: 1.45 }}>Building your notes. You can close this panel to continue without a report.</div>
+          <div style={{ fontSize: 24, color: T.text2, lineHeight: 1.45 }}>Scoring from your saved transcript. Leave this panel open for the result. If you cancel, you can retry from Sessions.</div>
         </div>
       </OverlayPanel>
     )

@@ -1,5 +1,7 @@
 // Renderer-side non-blocking diagnostics. Payloads contain metadata only; Electron performs a
 // second redaction pass before disk. Flushes are best-effort and must never affect product flows.
+import { activeAccountScope } from './accountScope.js'
+
 const queue = []
 let timer = null
 let common = {}
@@ -32,7 +34,8 @@ export function diagnostic(component, event, fields = {}, level = 'info') {
       else if (Array.isArray(v)) safe[k] = v.slice(0, 30)
       else if (typeof v === 'object') safe[k] = v
     }
-    queue.push({ ts: new Date().toISOString(), level, component, event, ...common, ...safe })
+    queue.push({ ts: new Date().toISOString(), level, component, event,
+      ...common, ...safe, accountScope: activeAccountScope() })
     if (queue.length > 1000) queue.splice(0, queue.length - 1000)
     if (!timer) timer = setTimeout(flushDiagnostics, 250)
   } catch {}

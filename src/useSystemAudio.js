@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { diagnostic } from './lib/diagnostics'
 import { watchAudioTrackEnded, shouldRecoverEndedTrack } from './lib/audioTrackRecovery'
-import { isAudioFrameStalled } from './lib/audioFrameHealth'
+import { isAudioFrameStalled, samplePcmActivity } from './lib/audioFrameHealth'
 import {
   MAX_RECONNECTS,
   KEEPALIVE_MS,
@@ -104,6 +104,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const ws = useRef(null), ctx = useRef(null), proc = useRef(null), stream = useRef(null), srcNode = useRef(null)
   const keepAlive = useRef(null), reconnectTimer = useRef(null), reconnectAttempts = useRef(0)
   const captureWatchdog = useRef(null), lastPcmFrameAt = useRef(0), captureStalledRef = useRef(false)
+  const pcmHealth = useRef({ startedAt: 0, frames: 0, audibleFrames: 0, peakRms: 0 })
   const userStop = useRef(false)
   const connectGen = useRef(0)
   const restartGen = useRef(0)
@@ -162,6 +163,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
     clearInterval(keepAlive.current); keepAlive.current = null
     clearInterval(captureWatchdog.current); captureWatchdog.current = null
     captureStalledRef.current = false; lastPcmFrameAt.current = 0
+    pcmHealth.current = { startedAt: 0, frames: 0, audibleFrames: 0, peakRms: 0 }
     setCaptureStalled(false)
     clearInterval(finalizeWatcher.current); finalizeWatcher.current = null
     pendingInterim.current = false; finalizeSent.current = false
@@ -218,10 +220,27 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
 
   const buildAudioGraph = useCallback(async (audioStream) => {
     lastPcmFrameAt.current = Date.now()
+    pcmHealth.current = { startedAt: Date.now(), frames: 0, audibleFrames: 0, peakRms: 0 }
     captureStalledRef.current = false
     setCaptureStalled(false)
     const sendPCM = buf => {
-      lastPcmFrameAt.current = Date.now()
+      const time = Date.now()
+      lastPcmFrameAt.current = time
+      const activity = samplePcmActivity(buf)
+      const bucket = pcmHealth.current
+      bucket.frames += 1
+      if (activity.audible) bucket.audibleFrames += 1
+      bucket.peakRms = Math.max(bucket.peakRms, activity.rms)
+      if (time - bucket.startedAt >= 15_000) {
+        diagnostic('stt', 'audio_pcm_heartbeat', {
+          mode: sourceIdRef.current === 'microphone' ? 'microphone' : 'system_audio',
+          pcmFrames: bucket.frames, audibleFrames: bucket.audibleFrames,
+          peakRms: Number(bucket.peakRms.toFixed(5)),
+          socketOpen: (activeSocketRef.current || ws.current)?.readyState === 1,
+          contextState: ctx.current?.state || 'unknown',
+        })
+        pcmHealth.current = { startedAt: time, frames: 0, audibleFrames: 0, peakRms: 0 }
+      }
       if (captureStalledRef.current) {
         captureStalledRef.current = false
         setCaptureStalled(false)
@@ -341,7 +360,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
           }, 'warn')
         }
       }, 5000)
-      diagnostic('stt', 'socket_open', { generation: gen, degraded: degradedAudio.current, reconnectAttempt: reconnectAttempts.current })
+      diagnostic('stt', 'socket_open', { generation: gen, mode: sourceIdRef.current === 'microphone' ? 'microphone' : 'system_audio',
+        degraded: degradedAudio.current, reconnectAttempt: reconnectAttempts.current })
       try { ctx.current?.resume?.() } catch {}
       flushQueuedPcm({
         sock,

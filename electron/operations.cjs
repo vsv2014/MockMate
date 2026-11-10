@@ -20,6 +20,7 @@ function ledgerRow(row) {
     ts: typeof row.ts === 'string' ? row.ts : new Date().toISOString(),
     event: row.event, attemptId: row.attemptId,
     requestId: SAFE_ID.test(String(row.requestId || '')) ? row.requestId : null,
+    accountScope: /^[a-zA-Z0-9._-]{1,160}$/.test(String(row.accountScope || '')) ? row.accountScope : null,
     operation: textSafe(row.operation), provider: textSafe(row.provider), model: textSafe(row.model),
     attemptIndex: numberOrNull(row.attemptIndex), requestIndex: numberOrNull(row.requestIndex),
     durationMs: numberOrNull(row.durationMs), status: numberOrNull(row.status),
@@ -185,6 +186,25 @@ function summarizeModuleActivity(rows = []) {
   return Object.values(modules)
 }
 
+/**
+ * Account-specific read model. Backend provider events have the same opaque
+ * request ID as renderer API events, but no access to the renderer's account.
+ * Bind them only when a renderer API event in THIS scope proves the link.
+ * Never guess the owner for old unscoped telemetry.
+ */
+function filterAccountOperations(rows = [], ledgerEntries = [], scope = 'guest') {
+  if (!/^[a-zA-Z0-9._-]{1,160}$/.test(String(scope)))
+    throw new Error('Invalid operational account scope')
+  const linked = new Set(rows.filter(row =>
+    row?.component === 'api' && row.accountScope === scope &&
+    SAFE_ID.test(String(row.requestId || ''))).map(row => row.requestId))
+  const own = rows.filter(row => row?.accountScope === scope ||
+    (row?.component === 'llm' && linked.has(row.requestId)))
+  const usage = ledgerEntries.filter(row => row?.accountScope === scope ||
+    (row?.requestId && linked.has(row.requestId)))
+  return { rows: own, ledgerEntries: usage }
+}
+
 function summarizeOperations(rows = [], ledgerEntries = []) {
   const recent = rows.slice(-5000)
   const requests = new Map()
@@ -246,4 +266,5 @@ function summarizeOperations(rows = [], ledgerEntries = []) {
   }
 }
 
-module.exports = { UsageLedger, ledgerRow, summarizeUsage, summarizeOperations, summarizeModuleActivity, readJsonl }
+module.exports = { UsageLedger, ledgerRow, summarizeUsage, summarizeOperations,
+  summarizeModuleActivity, filterAccountOperations, readJsonl }

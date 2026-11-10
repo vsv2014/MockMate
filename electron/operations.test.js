@@ -4,7 +4,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 const require = createRequire(import.meta.url)
-const { UsageLedger, ledgerRow, summarizeUsage, summarizeOperations, summarizeModuleActivity } = require('./operations.cjs')
+const { UsageLedger, ledgerRow, summarizeUsage, summarizeOperations, summarizeModuleActivity,
+  filterAccountOperations } = require('./operations.cjs')
 
 describe('privacy-safe operational ledger and execution explorer', () => {
   it('accepts numeric known usage, keeps unavailable distinct from zero and rejects content keys', () => {
@@ -54,6 +55,32 @@ describe('privacy-safe operational ledger and execution explorer', () => {
       { module: 'stt', unit: 'final speech segments', completedCalls: 1, failedCalls: 1, processedUnits: 1, elapsedMs: null },
       { module: 'connectors', unit: 'approved source checks', completedCalls: 1, failedCalls: 1, processedUnits: 3, elapsedMs: 110 },
     ])
+  })
+
+  it('isolates provider retries, STT and usage per account without guessing legacy owners', () => {
+    const rows = [
+      { component: 'api', event: 'request_started', accountScope: 'alice', requestId: 'req_a', path: '/api/hint' },
+      { component: 'api', event: 'request_started', accountScope: 'bob', requestId: 'req_b', path: '/api/evaluate' },
+      { component: 'llm', event: 'attempt_started', requestId: 'req_a', attemptId: 'llm_a' },
+      { component: 'llm', event: 'attempt_started', requestId: 'req_b', attemptId: 'llm_b' },
+      { component: 'llm', event: 'attempt_started', attemptId: 'llm_legacy' },
+      { component: 'stt', event: 'final_received', accountScope: 'bob' },
+      { component: 'stt', event: 'final_received', accountScope: 'alice' },
+    ]
+    const ledger = [
+      { event: 'attempt_succeeded', requestId: 'req_a', attemptId: 'llm_a', operation: 'stream', provider: 'openai', inputTokens: 10, outputTokens: 5 },
+      { event: 'attempt_succeeded', requestId: 'req_b', attemptId: 'llm_b', operation: 'stream', provider: 'groq', inputTokens: 20, outputTokens: 9 },
+      { event: 'attempt_succeeded', attemptId: 'llm_legacy', operation: 'stream', provider: 'gemini', inputTokens: 30, outputTokens: 10 },
+    ]
+    const alice = filterAccountOperations(rows, ledger, 'alice')
+    const bob = filterAccountOperations(rows, ledger, 'bob')
+    expect(alice.rows.map(row => row.attemptId).filter(Boolean)).toEqual(['llm_a'])
+    expect(bob.rows.map(row => row.attemptId).filter(Boolean)).toEqual(['llm_b'])
+    expect(alice.ledgerEntries).toHaveLength(1)
+    expect(bob.ledgerEntries).toHaveLength(1)
+    expect(summarizeOperations(alice.rows, alice.ledgerEntries).usage[0].confirmedOutputTokens).toBe(5)
+    expect(summarizeOperations(bob.rows, bob.ledgerEntries).usage[0].confirmedOutputTokens).toBe(9)
+    expect(() => filterAccountOperations(rows, ledger, 'bad/../alice')).toThrow(/Invalid/)
   })
 
   it('durably records usage across process reopening and isolates request timelines', async () => {

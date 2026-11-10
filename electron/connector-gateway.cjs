@@ -7,6 +7,7 @@ const crypto = require('crypto')
 
 const MAX_BYTES = 250 * 1024
 const MODES = new Set(['github', 'googledrive', 'googlecalendar'])
+const { newSyncRun, beginRun, finishRun, acknowledgeRun, publicSyncRuns } = require('./sync-run.cjs')
 const GOOGLE_SCOPES = {
   googledrive: 'openid email profile https://www.googleapis.com/auth/drive.readonly',
   googlecalendar: 'openid email profile https://www.googleapis.com/auth/calendar.events.readonly',
@@ -103,6 +104,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     return {
       accounts: row.accounts.map(accountPublic), active: { ...row.active },
       subscriptions: row.subscriptions.map(s => ({ ...s })),
+      syncRuns: publicSyncRuns(row, { active: busy.has(owner) }),
       paused: livePaused,
     }
   }
@@ -494,6 +496,12 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
         ? Math.max(0, snapshot[cursorKey]) % selected.length : 0)
       const batch = Array.from({ length: Math.min(30, selected.length) },
         (_, index) => selected[(start + index) % selected.length])
+      // Persist the checking state BEFORE any provider I/O. A crash leaves a
+      // visible interrupted run, not a false successful or absent operation.
+      const run = newSyncRun({ now: now(), manual, selected: batch.length, targeted: !!importId })
+      const beginVault = readVault()
+      beginRun(accountState(beginVault, owner), run)
+      writeVault(beginVault)
       const updates = [], failures = [], checkedStatus = []
       let deferredByBackoff = 0
       for (const sub of batch) {
@@ -544,6 +552,8 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
       // before saving sync metadata to avoid overwriting freshly rotated tokens.
       const latest = readVault()
       const row = latest.owners[owner]
+      let approvedUpdates = []
+      let runStatus = 'interrupted'
       if (row) {
         for (const status of checkedStatus) {
           const sub = row.subscriptions.find(item =>
@@ -559,15 +569,39 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
           if (!status.lastError) {
             sub.sourceRevision = status.sourceRevision
             sub.lastFullCheckedAt = status.lastFullCheckedAt
+            // A newer check can supersede an old pending source revision; keep
+            // the prior run in history but do not claim it was applied.
+            if (status.pendingSha && sub.pendingRunId && sub.pendingRunId !== run.id) {
+              const previous = row.syncRuns?.find(item => item.id === sub.pendingRunId)
+              if (previous && previous.pending > 0) {
+                previous.pending -= 1
+                previous.status = 'superseded'
+                previous.finishedAt = new Date(now()).toISOString()
+              }
+            }
             sub.pendingSha = status.pendingSha
+            sub.pendingRunId = status.pendingSha ? run.id : null
             if (status.unchanged) sub.lastSyncedAt = status.lastCheckedAt
           }
+        }
+        // Disconnected sources cannot be delivered to the renderer based on
+        // an earlier snapshot. Each apply must still pass local approval checks.
+        const allowed = new Set(row.subscriptions.map(s => s.importId))
+        approvedUpdates = updates.filter(update => allowed.has(update.importId))
+        const currentRun = row.syncRuns?.find(item => item.id === run.id)
+        if (currentRun) {
+          finishRun(currentRun, {
+            checked: checkedStatus.length, changed: approvedUpdates.length,
+            failures: failures.length, paused: livePaused, at: now(),
+          })
+          runStatus = currentRun.status
         }
         if (!importId) row[cursorKey] = selected.length ? (start + checkedStatus.length) % selected.length : 0
         writeVault(latest)
       }
       return {
-        paused: livePaused, updates, failures, checked: checkedStatus.length,
+        runId: run.id, runStatus, paused: livePaused, updates: approvedUpdates,
+        failures, checked: checkedStatus.length,
         deferred: Math.max(0, selected.length - checkedStatus.length),
         retryDeferred: deferredByBackoff,
       }
@@ -582,8 +616,11 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     // "synchronized" state. Only the latest pending fingerprint is eligible.
     if (!sub.pendingSha || sub.pendingSha !== sha256)
       fail('Sync acknowledgement has no matching pending source revision')
+    const pendingRunId = sub.pendingRunId
     sub.appliedSha = sha256
     sub.pendingSha = null
+    sub.pendingRunId = null
+    acknowledgeRun(row, pendingRunId, { at: now() })
     sub.lastSyncedAt = new Date(now()).toISOString()
     // The local document is updated and its old vector cache invalidated.
     // This is NOT proof that retrieval indexing has completed.
@@ -605,6 +642,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     if (!sub) fail('Selected source not found')
     sub.lastErrorCode = 'local_apply_failed'
     sub.lastError = 'Source was fetched, but local persistence failed. Retry this source.'
+    acknowledgeRun(row, sub.pendingRunId, { failed: true, at: now() })
     sub.lastCheckedAt = new Date(now()).toISOString()
     writeVault(vault)
     return state(owner)

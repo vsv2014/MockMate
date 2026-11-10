@@ -80,7 +80,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeProviderKey: provider => ipcRenderer.invoke('remove-provider-key', provider),
   appendSessionMetrics: row => ipcRenderer.invoke('append-session-metrics', row),
   readSessionMetricsSummary: () => ipcRenderer.invoke('read-session-metrics-summary'),
-  readOperationsSummary: () => ipcRenderer.invoke('read-operations-summary'),
+  readOperationsSummary: scope => ipcRenderer.invoke('read-operations-summary', { scope }),
   appendDiagnostics: rows => ipcRenderer.invoke('append-diagnostics', rows),
   exportDiagnostics: () => ipcRenderer.invoke('export-diagnostics'),
   clearDiagnostics: () => ipcRenderer.invoke('clear-diagnostics'),

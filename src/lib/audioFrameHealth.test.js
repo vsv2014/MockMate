@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AUDIO_FRAME_STALL_MS, isAudioFrameStalled } from './audioFrameHealth.js'
+import { AUDIO_FRAME_STALL_MS, isAudioFrameStalled, samplePcmActivity } from './audioFrameHealth.js'
 
 const base = { activeSocket: true, contextState: 'running',
   stopped: false, suspended: false, lastFrameAt: 1_000 }
@@ -12,6 +12,15 @@ describe('PCM audio continuity watchdog', () => {
     expect(isAudioFrameStalled({ ...base, now: 1_000 + 300_000, suspended: true })).toBe(false)
     expect(isAudioFrameStalled({ ...base, now: 1_000 + 300_000, stopped: true })).toBe(false)
     expect(isAudioFrameStalled({ ...base, now: 1_000 + 300_000, contextState: 'suspended' })).toBe(false)
+  })
+
+  it('identifies digital silence versus active PCM without returning audio samples', () => {
+    const silent = samplePcmActivity(new Int16Array(512).buffer)
+    expect(silent).toEqual({ rms: 0, audible: false })
+    const loud = samplePcmActivity(new Int16Array(512).fill(12000).buffer)
+    expect(loud.audible).toBe(true)
+    expect(loud.rms).toBeGreaterThan(0.30)
+    expect(samplePcmActivity(null)).toEqual({ rms: 0, audible: false })
   })
 
   it('does not mistake transcript silence for a failed capture graph while PCM frames flow', () => {
