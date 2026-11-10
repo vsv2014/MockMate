@@ -89,6 +89,22 @@ export default function OperationsConsole() {
           </ol>
         </div>}
       </section>
+      <section aria-label="Cross-module resource activity" style={panel}>
+        <h2 style={{ fontSize: readableTextSize(16), margin: '0 0 8px' }}>Cross-module activity</h2>
+        <p style={{ ...label, margin: '0 0 10px' }}>
+          Embedding inputs, finalized speech segments and approved-source checks are measured activity—not
+          provider-confirmed billed minutes, token charges, or external API invoice units.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 195px),1fr))', gap: 8 }}>
+          {(snapshot?.moduleActivity || []).map(activity => <div key={activity.module}
+            style={{ padding: 12, borderRadius: 8, background: T.surface2 }}>
+            <strong style={{ fontSize: readableTextSize(13), textTransform: 'capitalize' }}>{activity.module}</strong>
+            <div style={label}>{format(activity.processedUnits)} {activity.unit}</div>
+            <div style={label}>{format(activity.completedCalls)} completed event(s) · {format(activity.failedCalls)} failure event(s)</div>
+            {activity.elapsedMs != null && <div style={label}>{format(activity.elapsedMs)} ms measured duration</div>}
+          </div>)}
+        </div>
+      </section>
       <section aria-label="Effective ABL configuration" style={panel}>
         <h2 style={{ fontSize: readableTextSize(16), margin: '0 0 8px' }}>Effective ABL configuration</h2>
         {policy
