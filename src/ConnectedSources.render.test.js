@@ -35,6 +35,8 @@ describe('Track B Sources & ARCH navigation', () => {
     expect(html).toContain('Import one selected source')
     expect(html).toContain('Synchronization &amp; indexing')
     expect(html).toContain('Check approved sources now')
+    expect(html).toContain('Recent sync runs')
+    expect(html).toContain('awaiting apply')
     expect(html).toContain('A source update is not considered retrieval-ready')
     expect(html).toContain('Preview selected source')
     expect(html).toContain('ARCH professional profile')
