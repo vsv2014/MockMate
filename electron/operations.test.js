@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 const require = createRequire(import.meta.url)
-const { UsageLedger, ledgerRow, summarizeUsage, summarizeOperations } = require('./operations.cjs')
+const { UsageLedger, ledgerRow, summarizeUsage, summarizeOperations, summarizeModuleActivity } = require('./operations.cjs')
 
 describe('privacy-safe operational ledger and execution explorer', () => {
   it('accepts numeric known usage, keeps unavailable distinct from zero and rejects content keys', () => {
@@ -40,6 +40,20 @@ describe('privacy-safe operational ledger and execution explorer', () => {
       attempts: 1, measuredRequests: 2, confirmedInputTokens: 50, confirmedOutputTokens: 12, unmeasuredAttempts: 0 })
     expect(by.find(r => r.provider === 'groq')).toMatchObject({
       attempts: 2, measuredRequests: 1, unmeasuredAttempts: 1, confirmedInputTokens: 10 })
+  })
+
+  it('counts only actual non-LLM work and never invents provider billing amounts', () => {
+    expect(summarizeModuleActivity([
+      { component: 'rag', event: 'embedding_completed', inputCount: 5, durationMs: 125 },
+      { component: 'rag', event: 'embedding_failed', inputCount: 9, durationMs: 30 },
+      { component: 'stt', event: 'final_received', wordCount: 10 },
+      { component: 'stt', event: 'audio_frames_stalled' },
+      { component: 'connectors', event: 'sync_pass_completed', checked: 3, failures: 1, durationMs: 110 },
+    ])).toEqual([
+      { module: 'rag', unit: 'embedding inputs', completedCalls: 1, failedCalls: 1, processedUnits: 5, elapsedMs: 155 },
+      { module: 'stt', unit: 'final speech segments', completedCalls: 1, failedCalls: 1, processedUnits: 1, elapsedMs: null },
+      { module: 'connectors', unit: 'approved source checks', completedCalls: 1, failedCalls: 1, processedUnits: 3, elapsedMs: 110 },
+    ])
   })
 
   it('durably records usage across process reopening and isolates request timelines', async () => {
