@@ -448,6 +448,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       if (ws.current === sock) ws.current = null
       connecting.current = false
       clearInterval(keepAlive.current); keepAlive.current = null
+      clearInterval(captureWatchdog.current); captureWatchdog.current = null
       clearInterval(finalizeWatcher.current); finalizeWatcher.current = null
       pendingInterim.current = false; finalizeSent.current = false
       if (userStop.current || suspendPaused.current) return
