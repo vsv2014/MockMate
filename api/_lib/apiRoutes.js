@@ -111,7 +111,7 @@ export function registerApiRoutes(app, opts = {}) {
   if (opts.enableLocalProviderTest === true) {
     app.post('/api/providers/test', ...guardLight, async (req, res) => {
       try {
-        res.json(await testProviderConnection(req.body?.provider))
+        res.json(await testProviderConnection(req.body?.provider, { optimize: req.body?.optimize === true }))
       } catch (e) {
         const status = Number(e?.status || e?.statusCode) || 502
         res.status(status >= 400 && status <= 599 ? status : 502).json({
