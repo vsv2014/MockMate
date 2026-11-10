@@ -64,6 +64,7 @@ export function compareVoiceCorpus(baselineCorpus, candidateCorpus, {
       baselineMissed: result.baseline.missed,
       candidateMissed: result.candidate.missed,
       latencyComparable: result.latencyComparable,
+      noLatencyRegression: result.noLatencyRegression,
       decision: result.decision,
     })
   }
@@ -72,7 +73,8 @@ export function compareVoiceCorpus(baselineCorpus, candidateCorpus, {
     candidate.length >= minRecordings && !missingScenarios.length
   const completeLatency = perRecording.every(r => r.latencyComparable)
   const baselineP95 = p95(baselineLatencies), candidateP95 = p95(candidateLatencies)
-  const noAddedP95 = completeLatency && candidateP95 <= baselineP95 + maxAddedP95Ms
+  const noAddedP95 = completeLatency && candidateP95 <= baselineP95 + maxAddedP95Ms &&
+    perRecording.every(record => record.noLatencyRegression)
   const noFalseRegressions = perRecording.every(r =>
     r.candidateFalseCommits <= r.baselineFalseCommits &&
     r.candidateMissed <= r.baselineMissed)
