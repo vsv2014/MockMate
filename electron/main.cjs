@@ -1141,7 +1141,7 @@ ipcMain.handle('connector-request', async (event, payload = {}) => {
     const owner = await connectorOwner()
     const gateway = getConnectorGateway()
     const { op, provider, accountId, flowId, clientId, clientSecret, privateRepos, sourceId,
-      query, importId, sha256, enabled, manual } = payload
+      query, cursor, importId, sha256, enabled, manual } = payload
     let data
     switch (op) {
       case 'status': data = gateway.state(owner); break
@@ -1151,7 +1151,7 @@ ipcMain.handle('connector-request', async (event, payload = {}) => {
       case 'verify-account': data = await gateway.verifyAccount(owner, provider, accountId); break
       case 'switch': data = gateway.setActive(owner, provider, accountId); break
       case 'disconnect': data = gateway.removeAccount(owner, provider, accountId); break
-      case 'list-sources': data = await gateway.listSources(owner, provider, accountId, query); break
+      case 'list-sources': data = await gateway.listSources(owner, provider, accountId, query, cursor); break
       case 'read-source': data = await gateway.readSource(owner, provider, accountId, sourceId); break
       case 'subscribe': data = gateway.subscribe(owner, { importId, provider, accountId, sourceId, sha256, autoSync: enabled === true }); break
       case 'sync-enable': data = gateway.setSync(owner, importId, enabled); break
@@ -1433,6 +1433,30 @@ ipcMain.handle('read-operations-summary', async (event, payload = {}) => {
     return { ok: true, data: await diagnostics?.readOperations(scope) }
   } catch {
     return { ok: false, error: 'Verify your current sign-in to view account-specific operational history' }
+  }
+})
+
+ipcMain.handle('abl-policy-local', async (event, payload = {}) => {
+  if (!connectorSender(event)) return { ok: false, error: 'Untrusted policy request' }
+  if (!payload || typeof payload !== 'object') return { ok: false, error: 'Invalid policy request' }
+  try {
+    const { loadAblSpec } = await import('../backend/src/abl.js')
+    if (payload.op === 'read') {
+      // The desktop's local spec is a starting point, not proof that a hosted
+      // backend uses the same revision. The schema forbids credentials.
+      return { ok: true, data: { text: JSON.stringify(loadAblSpec({ force: true }), null, 2),
+        source: process.env.MOCKMATE_ABL_PATH ? 'operator_override' : 'bundled_default' } }
+    }
+    if (payload.op === 'preview') {
+      if (typeof payload.text !== 'string' || Buffer.byteLength(payload.text) > 128 * 1024)
+        return { ok: false, error: 'Policy proposal must be JSON no larger than 128 KiB' }
+      const { previewAblRevision } = await import('../backend/src/ablRevisions.js')
+      return { ok: true, data: previewAblRevision(payload.text) }
+    }
+    return { ok: false, error: 'Unsupported read-only policy operation' }
+  } catch (error) {
+    // Never echo or log the submitted policy body or a provider credential.
+    return { ok: false, error: String(error?.message || 'Policy validation failed').slice(0, 180) }
   }
 })
 

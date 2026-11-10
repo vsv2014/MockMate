@@ -353,10 +353,15 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
         'X-GitHub-Api-Version': '2022-11-28' } : {}),
     }, fetchImpl })
   }
-  async function listSources(owner, provider, accountId, query = '') {
+  async function listSources(owner, provider, accountId, query = '', cursor = null) {
     providerCheck(provider)
     const q = clean(query, 140)
-    let raw, sources = []
+    // The cursor is only a provider-supplied opaque pageToken, not a URL.
+    // URLSearchParams does the escaping. Never treat it as an endpoint.
+    if (cursor != null && (typeof cursor !== 'string' || cursor.length > 2048 ||
+      !/^[\x21-\x7e]+$/.test(cursor))) fail('Invalid source browsing cursor')
+    if (cursor && provider === 'github') fail('GitHub tree listing does not support page tokens')
+    let raw, sources = [], nextCursor = null, partial = false
     if (provider === 'github') {
       if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(q)) fail('Enter a selected GitHub owner/repository')
       const repoInfo = await authorized(owner, provider, accountId, 'https://api.github.com/repos/' + q)
@@ -366,23 +371,32 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
       sources = (raw.tree || []).filter(x => x.type === 'blob' && /\.(md|markdown|txt)$/i.test(x.path)
         && x.size <= MAX_BYTES && !x.path.includes('..')).slice(0, 100)
         .map(x => ({ sourceId: q + ':' + x.path, title: x.path, revision: x.sha }))
+      partial = raw.truncated === true || (raw.tree || []).filter(x => x.type === 'blob' &&
+        /\.(md|markdown|txt)$/i.test(x.path) && x.size <= MAX_BYTES && !x.path.includes('..')).length > 100
     } else if (provider === 'googledrive') {
       const queryFilter = "trashed = false and (mimeType = 'application/vnd.google-apps.document' or mimeType = 'text/plain')"
-      const params = new URLSearchParams({ page_size: '40', pageSize: '40',
+      const params = new URLSearchParams({ pageSize: '40',
         fields: 'nextPageToken,files(id,name,mimeType,modifiedTime,size)',
         q: queryFilter + (q ? " and name contains '" + q.replace(/['\\]/g, '') + "'" : ''),
         orderBy: 'modifiedTime desc' })
+      if (cursor) params.set('pageToken', cursor)
       raw = await authorized(owner, provider, accountId, 'https://www.googleapis.com/drive/v3/files?' + params)
       sources = (raw.files || []).slice(0, 40).map(x => ({ sourceId: x.id, title: x.name, revision: x.modifiedTime, mimeType: x.mimeType }))
+      nextCursor = raw.nextPageToken || null
     } else {
       const params = new URLSearchParams({ maxResults: '40', singleEvents: 'true', orderBy: 'startTime',
         timeMin: new Date(now() - 24 * 3600 * 1000).toISOString(),
         timeMax: new Date(now() + 100 * 24 * 3600 * 1000).toISOString() })
+      if (q) params.set('q', q)
+      if (cursor) params.set('pageToken', cursor)
       raw = await authorized(owner, provider, accountId, 'https://www.googleapis.com/calendar/v3/calendars/primary/events?' + params)
       sources = (raw.items || []).filter(x => x.status !== 'cancelled' && x.id)
         .slice(0, 40).map(x => ({ sourceId: 'primary::' + x.id, title: x.summary || 'Untitled event', revision: x.updated }))
+      nextCursor = raw.nextPageToken || null
     }
-    return { sources }
+    if (nextCursor && (typeof nextCursor !== 'string' || nextCursor.length > 2048 ||
+      !/^[\x21-\x7e]+$/.test(nextCursor))) fail('Provider returned invalid pagination data')
+    return { sources, nextCursor, partial }
   }
   async function readSource(owner, provider, accountId, sourceId, { knownRevision = null } = {}) {
     providerCheck(provider)

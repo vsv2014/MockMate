@@ -33,13 +33,13 @@ const label = { display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, c
 const small = { color: T.text3, fontSize: 12, lineHeight: 1.5 }
 const blank = () => ({ provider: 'github', title: '', sourceId: '', accountLabel: '', connectedAccountId: null, revision: '', text: '', selectedByUser: false, kitId: null })
 const readableError = error => error?.message || 'Operation failed; no changes were made.'
-function sourceSyncHealth(subscription) {
+export function sourceSyncHealth(subscription) {
   if (!subscription) return 'Not subscribed to background sync.'
-  if (!subscription.autoSync) return 'Automatic sync paused.'
   if (subscription.tombstone) return 'Remote source missing or permission revoked; local approved copy is retained. Reconnect or remove explicitly.'
   if (subscription.lastError) return 'Sync needs attention: ' + subscription.lastError
-    + (subscription.nextRetryAt ? ' · Automatic retry after ' + lastSyncTime(subscription.nextRetryAt) : '')
+    + (subscription.autoSync && subscription.nextRetryAt ? ' · Automatic retry after ' + lastSyncTime(subscription.nextRetryAt) : ' · Use Check now to retry.')
   if (subscription.pendingSha) return 'New revision fetched; waiting for local apply.'
+  if (!subscription.autoSync) return 'Automatic sync paused; manual refresh available.'
   if (subscription.lastSyncedAt) return subscription.indexStatus === 'rebuild_on_retrieval'
     ? 'Source updated locally. Retrieval-index readiness is not yet verified.'
     : 'Source checked; no outstanding remote updates known.'
@@ -75,6 +75,9 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
   const [oauthFlow, setOauthFlow] = useState(null)
   const [sourceQuery, setSourceQuery] = useState('')
   const [remoteSources, setRemoteSources] = useState([])
+  const [remoteCursor, setRemoteCursor] = useState(null)
+  const [remotePartial, setRemotePartial] = useState(false)
+  const sourceBrowseSerialRef = useRef(0)
   const [claimKey, setClaimKey] = useState('')
   const [claimValue, setClaimValue] = useState('')
   const [claimEvidence, setClaimEvidence] = useState('')
@@ -180,7 +183,8 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
   async function changeActive(provider, accountId) {
     try {
       const state = await connectorRequest({ op: 'switch', provider, accountId })
-      setConnections(state); setRemoteSources([]); setSourceQuery('')
+      sourceBrowseSerialRef.current += 1
+      setConnections(state); setRemoteSources([]); setRemoteCursor(null); setRemotePartial(false); setSourceQuery('')
       setMessage('Active ' + (SOURCE_TYPES[provider]?.label || provider) + ' account changed.')
     } catch (error) { setMessage('⚠ ' + readableError(error)) }
   }
@@ -197,18 +201,26 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
     if (!window.confirm('Disconnect this external account from MockMate? Its automatic sync subscriptions will stop; imported local documents remain.')) return
     try {
       const state = await connectorRequest({ op: 'disconnect', provider, accountId })
-      setConnections(state); setRemoteSources([])
+      sourceBrowseSerialRef.current += 1
+      setConnections(state); setRemoteSources([]); setRemoteCursor(null); setRemotePartial(false)
       setMessage('Account disconnected locally. Revoke its upstream authorization in Google/GitHub settings if needed.')
     } catch (error) { setMessage('⚠ ' + readableError(error)) }
   }
-  async function browseRemote() {
+  async function browseRemote(more = false) {
     const provider = draft.provider, accountId = connections.active?.[provider]
     if (!accountId) { setMessage('⚠ Connect and select an account for this source type first.'); return }
+    if (more && !remoteCursor) return
+    const serial = ++sourceBrowseSerialRef.current
     setConnectorBusy(true); setMessage('')
     try {
-      const result = await connectorRequest({ op: 'list-sources', provider, accountId, query: sourceQuery })
-      setRemoteSources(result.sources || [])
-      setMessage('Select one source to preview. Listing is not consent to import.')
+      const result = await connectorRequest({ op: 'list-sources', provider, accountId, query: sourceQuery,
+        ...(more ? { cursor: remoteCursor } : {}) })
+      if (serial !== sourceBrowseSerialRef.current) return
+      setRemoteSources(previous => more ? [...previous, ...(result.sources || [])] : (result.sources || []))
+      setRemoteCursor(result.nextCursor || null)
+      setRemotePartial(result.partial === true)
+      setMessage(result.partial ? '⚠ Source list is partial (provider limit/truncated GitHub tree). Narrow the repository or filter.'
+        : 'Select one source to preview. More results can be loaded when available; listing is not consent to import.')
     } catch (error) { setMessage('⚠ ' + readableError(error)) }
     finally { setConnectorBusy(false) }
   }
@@ -457,9 +469,15 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
                 value={connections.active?.[id] || ''} onChange={e => changeActive(id, e.target.value)}>
                 {choices.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
               </select>}
-              {choices.map(row => <div key={row.id} style={{ ...small, marginTop: 7 }}>
+              {choices.map(row => <div key={row.id} style={{ ...small, marginTop: 7, overflowWrap: 'anywhere' }}>
                 {row.label}
                 <span style={{ display: 'block' }}>Last checked: {row.lastVerifiedAt ? new Date(row.lastVerifiedAt).toLocaleString() : 'Not verified in this session'}</span>
+                <details style={{ margin: '5px 0' }}>
+                  <summary style={{ cursor: 'pointer' }}>Review upstream permissions</summary>
+                  <div style={{ overflowWrap: 'anywhere', marginTop: 5 }}>{row.scopes || 'Provider did not report its granted scopes.'}</div>
+                  <div>Provider authorization may cover more data than the individual files you approve.
+                    MockMate imports only explicitly reviewed sources. Revoke upstream access in the provider settings.</div>
+                </details>
                 <button type="button" disabled={connectorBusy} style={{ ...quiet, padding: '3px 7px', marginLeft: 6 }}
                   onClick={() => verifyConnectedAccount(id, row.id)}>Check access</button>
                 <button type="button" style={{ ...quiet, padding: '3px 7px', marginLeft: 6 }} onClick={() => disconnect(id, row.id)}>Disconnect</button>
@@ -513,8 +531,9 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9, marginTop: 10 }}>
             <input style={{ ...input, flex: '1 1 220px', width: 'auto' }} value={sourceQuery}
-              onChange={e => setSourceQuery(e.target.value)} placeholder="Repository or name filter" />
-            <button type="button" style={quiet} onClick={browseRemote} disabled={connectorBusy || !connections.active?.[draft.provider]}>
+              onChange={e => { sourceBrowseSerialRef.current += 1; setSourceQuery(e.target.value);
+                setRemoteSources([]); setRemoteCursor(null); setRemotePartial(false) }} placeholder="Repository or name filter" />
+            <button type="button" style={quiet} onClick={() => browseRemote(false)} disabled={connectorBusy || !connections.active?.[draft.provider]}>
               Browse selected source
             </button>
           </div>
@@ -523,6 +542,9 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
             <span style={{ flex: '1 1 220px', minWidth: 0, overflowWrap: 'anywhere', fontSize: 13 }}>{row.title}</span>
             <button type="button" style={quiet} onClick={() => selectRemote(row)} disabled={connectorBusy}>Select &amp; review</button>
           </div>)}
+          {remoteCursor && <button type="button" style={quiet} onClick={() => browseRemote(true)}
+            disabled={connectorBusy} aria-label="Load more approved source choices">{connectorBusy ? 'Loading…' : 'Load more sources'}</button>}
+          {remotePartial && <p role="status" style={small}>This repository listing was truncated. Search a narrower repository or select a specific supported source.</p>}
         </div>
 
         <p style={{ ...small, margin: '0 0 14px' }}>Source text stays in this account's local document store. Imports begin unselected for Live and Solo. Automatic sync is opt-in per reviewed source. No LLM rewriting or bulk mailbox/Drive imports.</p>
@@ -530,7 +552,9 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           <Field name="Source type">
             <select style={input} value={draft.provider} onChange={e => {
                 setDraft({ ...blank(), provider: e.target.value, kitId: draft.kitId })
-                setPreview(null); setConfirmed(false); setImportAutoSync(false); setRemoteSources([])
+                sourceBrowseSerialRef.current += 1
+                setPreview(null); setConfirmed(false); setImportAutoSync(false)
+                setRemoteSources([]); setRemoteCursor(null); setRemotePartial(false)
               }}>
               {providerEntries.map(([id, data]) => <option key={id} value={id}>{data.label}</option>)}
             </select>

@@ -81,6 +81,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   appendSessionMetrics: row => ipcRenderer.invoke('append-session-metrics', row),
   readSessionMetricsSummary: () => ipcRenderer.invoke('read-session-metrics-summary'),
   readOperationsSummary: scope => ipcRenderer.invoke('read-operations-summary', { scope }),
+  ablPolicy: { request: payload => ipcRenderer.invoke('abl-policy-local', payload) },
   appendDiagnostics: rows => ipcRenderer.invoke('append-diagnostics', rows),
   exportDiagnostics: () => ipcRenderer.invoke('export-diagnostics'),
   clearDiagnostics: () => ipcRenderer.invoke('clear-diagnostics'),

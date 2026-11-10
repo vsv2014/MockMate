@@ -84,6 +84,52 @@ describe('native connected account security and sync', () => {
     gateway.purgeOwner('account-a')
     assert.deepEqual(gateway.state('account-a').accounts, [])
   })
+  it('paginates only explicitly browsed Drive and Calendar sources without broad imports', async () => {
+    const pages = []
+    const scoped = createConnectorGateway({
+      userData: dir,
+      safeStorage: { isEncryptionAvailable: () => true,
+        encryptString: value => Buffer.from('encrypted:' + value),
+        decryptString: value => value.toString().slice(10) },
+      fetchImpl: async url => {
+        const u = new URL(String(url))
+        pages.push(u)
+        if (u.pathname === '/drive/v3/files')
+          return fakeResponse(u.searchParams.get('pageToken') === 'next-drive'
+            ? { files: [{ id: 'd2', name: 'Second.txt', mimeType: 'text/plain' }] }
+            : { nextPageToken: 'next-drive', files: [{ id: 'd1', name: 'First.txt', mimeType: 'text/plain' }] })
+        if (u.pathname.endsWith('/calendars/primary/events'))
+          return fakeResponse(u.searchParams.get('pageToken') === 'next-cal'
+            ? { items: [{ id: 'c2', summary: 'Second event' }] }
+            : { nextPageToken: 'next-cal', items: [{ id: 'c1', summary: 'First event' }] })
+        throw new Error('Unrecognized scoped provider request')
+      },
+    })
+    try {
+      const drive = scoped._forTests.saveConnected('account-a', 'googledrive',
+        { subject: 'owner', label: 'user@example.test' }, { access_token: 'fake' })
+      const calendar = scoped._forTests.saveConnected('account-a', 'googlecalendar',
+        { subject: 'owner', label: 'user@example.test' }, { access_token: 'fake' })
+      const first = await scoped.listSources('account-a', 'googledrive', drive.id, 'Notes')
+      assert.equal(first.sources[0].sourceId, 'd1')
+      assert.equal(first.nextCursor, 'next-drive')
+      const second = await scoped.listSources('account-a', 'googledrive', drive.id, 'Notes', first.nextCursor)
+      assert.deepEqual(second.sources.map(item => item.sourceId), ['d2'])
+      assert.equal(second.nextCursor, null)
+      assert.equal(pages[0].searchParams.get('pageSize'), '40')
+      assert.equal(pages[1].searchParams.get('pageToken'), 'next-drive')
+      const cal = await scoped.listSources('account-a', 'googlecalendar', calendar.id, 'Interview')
+      assert.equal(cal.nextCursor, 'next-cal')
+      const calPage2 = await scoped.listSources('account-a', 'googlecalendar', calendar.id, 'Interview', cal.nextCursor)
+      assert.deepEqual(calPage2.sources.map(item => item.sourceId), ['primary::c2'])
+      assert.equal(pages[2].searchParams.get('q'), 'Interview')
+      await assert.rejects(scoped.listSources('account-b', 'googledrive', drive.id), /not found|owned|belong|account/i)
+      await assert.rejects(scoped.listSources('account-a', 'googledrive', drive.id, '', '\r\n'), /Invalid source browsing cursor/)
+      assert.equal(scoped.state('account-a').subscriptions.length, 0,
+        'Browsing and pagination must never subscribe or import sources')
+    } finally { scoped.close() }
+  })
+
   it('exposes persistent sync run phases and only finishes when local revision is acknowledged', async () => {
     const { flowId } = await gateway.startGithub('account-a', 'Iv1abcdef12345')
     const connected = await gateway.pollFlow('account-a', flowId)

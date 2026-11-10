@@ -38,12 +38,16 @@ export function scoreCapturePlayback(run) {
       latencies.push(turn.firstUsefulAnswerMs);
     }
   }
+  // Orphan false commits (questions emitted when no reference question exists)
+  // have no turn to attach to, but are still user-visible interruptions.
+  const orphanFalseCommits = safeCount(run.orphanFalseCommits ?? 0, 'orphanFalseCommits');
+  falseCommits += orphanFalseCommits;
   const totalErrors = missed + falseCommits + corrections + overrides;
   return {
     recordingId: run.recordingId,
     referenceIds: [...ids].sort(),
     totalQuestions: run.turns.length,
-    missed, falseCommits, correctionAttempts: corrections, userOverrides: overrides,
+    missed, falseCommits, orphanFalseCommits, correctionAttempts: corrections, userOverrides: overrides,
     affectedQuestions: affected,
     totalUserVisibleErrors: totalErrors,
     errorsPer100Questions: Number((100 * totalErrors / run.turns.length).toFixed(2)),
@@ -61,6 +65,8 @@ export function comparePlaybackRuns(baselineRun, candidateRun, { maxAddedP95Ms =
   const baseline = scoreCapturePlayback(baselineRun);
   const candidate = scoreCapturePlayback(candidateRun);
   if (baseline.recordingId !== candidate.recordingId ||
+      (baselineRun.recordingSha256 && candidateRun.recordingSha256 &&
+        baselineRun.recordingSha256 !== candidateRun.recordingSha256) ||
       JSON.stringify(baseline.referenceIds) !== JSON.stringify(candidate.referenceIds))
     throw new Error('Not the same reference recording/questions');
   // A candidate may not silently omit slow successful turns to inflate its p95.

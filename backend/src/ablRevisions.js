@@ -23,6 +23,38 @@ function parseSpec(text) {
 }
 function digest(value) { return createHash('sha256').update(value).digest('hex') }
 function snapshots(target) { return path.join(path.dirname(target), '.abl-revisions') }
+const localActiveSpec = () => parseSpec(fs.readFileSync(process.env.MOCKMATE_ABL_PATH
+  ? configTarget() : new URL('../../arch/mockmate.abl.json', import.meta.url), 'utf8'));
+const revDigest = spec => digest(JSON.stringify(spec)).slice(0, 16)
+function changedPaths(before, after, prefix = '', output = []) {
+  if (JSON.stringify(before) === JSON.stringify(after) || output.length >= 60) return output
+  if (before && after && typeof before === 'object' && typeof after === 'object' &&
+      !Array.isArray(before) && !Array.isArray(after)) {
+    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      if (output.length >= 60) break
+      changedPaths(before[key], after[key], prefix ? prefix + '.' + key : key, output)
+    }
+  } else output.push(prefix || 'root')
+  return output
+}
+
+/** Validate and compare a proposal without ever writing it to disk. */
+export function previewAblRevision(input) {
+  const proposed = typeof input === 'string' ? parseSpec(input) :
+    parseSpec(JSON.stringify(structuredClone(input)))
+  const current = localActiveSpec()
+  const changed = changedPaths(current, proposed)
+  return {
+    changed: changed.length > 0,
+    currentDigest: revDigest(current), proposedDigest: revDigest(proposed),
+    changedPaths: changed,
+    requiresLiveRetest: changed.some(p => /^(routing|runtime|capabilities\\.speech|answerQuality)/.test(p)),
+    requiresPrivacyReview: changed.some(p => /^(policies|capabilities\\.telemetry)/.test(p)),
+    risk: changed.length === 0 ? 'none' : changed.some(p => /^(routing|runtime|capabilities\\.speech|answerQuality)/.test(p))
+      ? 'live_behavior' : 'configuration',
+    note: 'Validation and change preview only. No policy was published or applied.',
+  }
+}
 
 export function listAblRevisions() {
   const target = configTarget()
@@ -40,13 +72,15 @@ export function currentAblPolicyStatus() {
     availableRollbackRevisions: target ? listAblRevisions().length : 0 }
 }
 
-export function applyAblRevision(input) {
+export function applyAblRevision(input, { expectedDigest = null } = {}) {
   const target = configTarget()
   const next = typeof input === 'string' ? parseSpec(input) : validateAblSpec(structuredClone(input))
   const nextString = JSON.stringify(next, null, 2) + '\n'
   if (Buffer.byteLength(nextString) > MAX_BYTES) throw new Error('ABL configuration exceeds 128 KiB')
   const currentText = fs.readFileSync(target, 'utf8')
   const current = parseSpec(currentText)
+  if (expectedDigest !== null && expectedDigest !== revDigest(current))
+    throw new Error('Active policy changed since review; preview again before approval')
   if (digest(JSON.stringify(current)) === digest(JSON.stringify(next)))
     return { changed: false, ...currentAblPolicyStatus() }
   const dir = snapshots(target)
@@ -66,7 +100,7 @@ export function applyAblRevision(input) {
   return { changed: true, previousRevision: rev, ...currentAblPolicyStatus() }
 }
 
-export function rollbackAblRevision(revision) {
+export function rollbackAblRevision(revision, { expectedDigest = null } = {}) {
   const target = configTarget()
   if (!SAFE_REV.test(String(revision))) throw new Error('Invalid rollback revision ID')
   const file = path.join(snapshots(target), revision + '.json')
@@ -75,5 +109,5 @@ export function rollbackAblRevision(revision) {
   const targetSpec = parseSpec(JSON.stringify(saved.spec))
   if (digest(JSON.stringify(targetSpec)) !== saved.sourceDigest)
     throw new Error('Archived revision failed integrity verification')
-  return applyAblRevision(targetSpec)
+  return applyAblRevision(targetSpec, { expectedDigest })
 }

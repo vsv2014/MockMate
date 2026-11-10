@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import React from 'react'
 import { renderToString } from 'react-dom/server'
-import ConnectedSources from './ConnectedSources.jsx'
+import ConnectedSources, { sourceSyncHealth } from './ConnectedSources.jsx'
 import { AppShell } from './Dashboard.jsx'
 import { JourneyHome } from './journey/JourneyScreens.jsx'
 
@@ -22,6 +22,14 @@ describe('Track B Sources & ARCH navigation', () => {
     expect(html).toContain('aria-label="Sources &amp; ARCH"')
     expect(html).toContain('Sources workspace')
   })
+  it('makes disabled-auto-sync failures, missing sources and pending manual changes visible', () => {
+    expect(sourceSyncHealth({ autoSync: false, lastError: 'Network failed',
+      nextRetryAt: '2026-11-10T09:00:00Z' })).toMatch(/Sync needs attention: Network failed/)
+    expect(sourceSyncHealth({ autoSync: false, tombstone: true })).toMatch(/Remote source missing/)
+    expect(sourceSyncHealth({ autoSync: false, pendingSha: 'a'.repeat(64) })).toMatch(/waiting for local apply/)
+    expect(sourceSyncHealth({ autoSync: false })).toMatch(/manual refresh available/)
+  })
+
   it('shows manual review, explicit consent and honest OAuth status', () => {
     const html = renderToString(React.createElement(ConnectedSources, { auth: { guest: true } }))
     expect(html).toContain('Connected accounts')
