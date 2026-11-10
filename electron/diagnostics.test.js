@@ -30,6 +30,33 @@ describe('diagnostic redaction', () => {
     expect(out.values).toHaveLength(30)
   })
 
+  it('never exports raw account identifiers and isolates even shared provider attempts', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mm-scoped-diag-'))
+    const store = new DiagnosticStore({ userData: dir, appVersion: 'test', platform: 'win32', arch: 'x64' })
+    try {
+      store.event('api', 'request_started', { accountScope: 'alice-account', requestId: 'req_alice', path: '/api/hint' })
+      store.event('llm', 'attempt_succeeded', { requestId: 'req_alice', attemptId: 'llm_0123',
+        operation: 'stream', provider: 'openai', inputTokens: 4, outputTokens: 2 })
+      store.event('api', 'request_started', { accountScope: 'bob-account', requestId: 'req_bob', path: '/api/evaluate' })
+      const alice = await store.readOperations('alice-account')
+      const bob = await store.readOperations('bob-account')
+      expect(alice.requests).toHaveLength(1)
+      expect(alice.requests[0].requestId).toBe('req_alice')
+      expect(alice.usage[0].confirmedOutputTokens).toBe(2)
+      expect(bob.requests).toHaveLength(1)
+      expect(bob.requests[0].requestId).toBe('req_bob')
+      expect(bob.usage).toHaveLength(0)
+      const raw = fs.readFileSync(path.join(dir, 'logs', 'diagnostics.jsonl'), 'utf8')
+      expect(raw).not.toContain('alice-account')
+      expect(raw).not.toContain('bob-account')
+      expect(raw).toMatch(/acct_[a-f0-9]{24}/)
+      expect(store.hashScope('alice-account')).not.toBe(store.hashScope('bob-account'))
+    } finally {
+      await store.close()
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('writes, exports, and clears a redacted local bundle', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mockmate-diag-'))
     const store = new DiagnosticStore({ userData: dir, appVersion: 'test', platform: 'win32', arch: 'x64' })
