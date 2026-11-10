@@ -67,7 +67,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
   const [profileDraft, setProfileDraft] = useState(() => loadProfessionalState().profile)
   const [quote, setQuote] = useState('')
   const [quoteImportId, setQuoteImportId] = useState('')
-  const [connections, setConnections] = useState({ accounts: [], active: {}, subscriptions: [] })
+  const [connections, setConnections] = useState({ accounts: [], active: {}, subscriptions: [], syncRuns: [] })
   const [oauthProvider, setOauthProvider] = useState('github')
   const [oauthClient, setOauthClient] = useState('')
   const [oauthSecret, setOauthSecret] = useState('')
@@ -594,6 +594,28 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           {connectorBusy ? 'Checking sources…' : 'Check approved sources now'}
         </button>
         {connections.paused && <p role="status" style={{ ...small, marginTop: 8 }}>Background work is paused during Live.</p>}
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
+          <h4 style={{ margin: '0 0 8px', fontSize: 14 }}>Recent sync runs</h4>
+          {!(connections.syncRuns || []).length && <p style={small}>No synchronization runs recorded for this account yet.</p>}
+          {(connections.syncRuns || []).slice(0, 5).map(run => (
+            <div key={run.id} role="status" style={{
+              display: 'flex', flexWrap: 'wrap', alignItems: 'center',
+              gap: 9, background: T.surface2, borderRadius: 7, padding: '8px 10px', marginBottom: 6,
+            }}>
+              <strong style={{ ...small, color: run.status === 'completed' ? '#5eead4' : '#fcd34d' }}>
+                {run.status.replace(/_/g, ' ')}
+              </strong>
+              <span style={small}>{run.trigger === 'manual' ? 'Manual' : 'Scheduled'} · {lastSyncTime(run.startedAt)}</span>
+              <span style={small}>{run.checked} checked · {run.changed} changed · {run.applied} applied · {run.pending} pending · {run.failures} errors</span>
+              {['interrupted', 'needs_attention', 'partial', 'paused'].includes(run.status) &&
+                <span style={small}>Retry the approved source above after resolving the issue.</span>}
+            </div>
+          ))}
+          <p style={small}>
+            A run marked awaiting apply is not complete; retrieval indexing has its own separate readiness state.
+            If the app restarts during a check, the unfinished run is recorded as interrupted.
+          </p>
+        </div>
       </section>
 
       <section id="mm-sources-approved" style={panel} aria-label="Approved imports">
