@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  testProviderConnection, describeAutomaticRouting,
+  testProviderConnection, describeAutomaticRouting, streamText, completeJSON,
   _getProviderHealthForTests, _resetProviderHealthForTests,
 } from './core.js'
 
@@ -74,6 +74,49 @@ describe('provider connection test', () => {
     }))
     await expect(testProviderConnection('groq')).rejects.toThrow()
     expect(_getProviderHealthForTests().lastWorkingTextProvider).toBeNull()
+  })
+
+  it('probes Gemini blocking and streaming without unsupported reasoning_effort', async () => {
+    process.env.GEMINI_API_KEY = 'unit-test-gemini'
+    const requests = []
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+      const request = JSON.parse(options.body)
+      requests.push(request)
+      if ('reasoning_effort' in request) {
+        return new Response(JSON.stringify({ error: { message: 'Unsupported reasoning parameter' } }), {
+          status: 400, headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      return request.stream ? streamingAnswer(request.model) : jsonAnswer()
+    }))
+    await expect(testProviderConnection('gemini')).resolves.toMatchObject({
+      ok: true, provider: 'gemini', checked: ['blocking', 'streaming'],
+    })
+    expect(requests).toHaveLength(2)
+    expect(requests.every(req => !('reasoning_effort' in req))).toBe(true)
+  })
+
+  it('uses a single compatible Gemini attempt in Live streaming and structured JSON', async () => {
+    process.env.GEMINI_API_KEY = 'unit-test-gemini'
+    const requests = []
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+      const request = JSON.parse(options.body)
+      requests.push(request)
+      if ('reasoning_effort' in request) return new Response(JSON.stringify({
+        error: { message: 'Unsupported reasoning parameter' },
+      }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+      return request.stream ? streamingAnswer(request.model) : new Response(JSON.stringify({
+        choices: [{ index: 0, message: { role: 'assistant', content: '{"ok":true}' }, finish_reason: 'stop' }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+    let text = ''
+    await streamText({ messages: [{ role: 'user', content: 'Say OK' }], provider: 'gemini',
+      onToken: token => { text += token } })
+    expect(text).toContain('OK')
+    await expect(completeJSON({ messages: [{ role: 'user', content: 'Return JSON' }], provider: 'gemini' }))
+      .resolves.toEqual({ ok: true })
+    expect(requests).toHaveLength(2)
+    expect(requests.every(req => !('reasoning_effort' in req))).toBe(true)
   })
 
   it('recovers a retired default once, then tests both transports on the replacement', async () => {

@@ -458,21 +458,80 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     writeVault(vault)
     return state(owner)
   }
+  function classifySyncFailure(error) {
+    const message = String(error?.message || '')
+    if (/authorization|token expired|reauthoriz|401|403|scope/i.test(message))
+      return { code: 'auth_required', error: 'Connector access expired or was denied. Verify or reconnect this account.' }
+    if (/rate limit|429|too many/i.test(message))
+      return { code: 'rate_limited', error: 'Provider rate limit reached. Retry after its allowance resets.' }
+    if (/not found|not permitted|404/i.test(message))
+      return { code: 'source_unavailable', error: 'Approved source is missing or access has been revoked.' }
+    return { code: 'fetch_failed', error: 'Could not refresh this approved source. Retry synchronization.' }
+  }
   async function syncNow(owner) {
-    if (livePaused) return { paused: true, updates: [], failures: [] }
     assertOwner(owner)
-    if (busy.has(owner)) return { busy: true, updates: [], failures: [] }
+    if (livePaused) return { paused: true, updates: [], failures: [], checked: 0, deferred: 0 }
+    if (busy.has(owner)) return { busy: true, updates: [], failures: [], checked: 0, deferred: 0 }
     busy.add(owner)
     try {
-      const records = readVault().owners[owner]?.subscriptions || []
-      const updates = [], failures = []
-      for (const sub of records.filter(s => s.autoSync).slice(0, 30)) {
+      const snapshot = readVault().owners[owner]
+      const enabled = (snapshot?.subscriptions || []).filter(s => s.autoSync)
+      // A fixed slice(0, 30) permanently starved subscriptions 31+. Rotate a
+      // persisted per-owner offset so the limit stays bounded and fair across
+      // repeated polls and desktop restarts.
+      const start = enabled.length ? (Number.isSafeInteger(snapshot?.syncCursor)
+        ? Math.max(0, snapshot.syncCursor) % enabled.length : 0) : 0
+      const batch = Array.from({ length: Math.min(30, enabled.length) },
+        (_, index) => enabled[(start + index) % enabled.length])
+      const updates = [], failures = [], checkedStatus = []
+      for (const sub of batch) {
+        if (livePaused) break // Do not start more network work after entering Live.
+        const checkedAt = new Date(now()).toISOString()
         try {
           const source = await readSource(owner, sub.provider, sub.accountId, sub.sourceId)
-          if (source.sha256 !== sub.appliedSha) updates.push({ ...source, importId: sub.importId })
-        } catch (error) { failures.push({ importId: sub.importId, error: error.message }) }
+          const changed = source.sha256 !== sub.appliedSha
+          if (changed) updates.push({ ...source, importId: sub.importId })
+          checkedStatus.push({
+            importId: sub.importId, provider: sub.provider, accountId: sub.accountId, sourceId: sub.sourceId,
+            lastCheckedAt: checkedAt, lastError: null, lastErrorCode: null,
+            sourceRevision: source.revision, pendingSha: changed ? source.sha256 : null,
+            unchanged: !changed,
+          })
+        } catch (error) {
+          const failure = classifySyncFailure(error)
+          failures.push({ importId: sub.importId, ...failure })
+          checkedStatus.push({
+            importId: sub.importId, provider: sub.provider, accountId: sub.accountId, sourceId: sub.sourceId,
+            lastCheckedAt: checkedAt, lastError: failure.error, lastErrorCode: failure.code,
+          })
+        }
       }
-      return { paused: false, updates, failures }
+      // readSource may refresh and persist OAuth credentials. Re-read the vault
+      // before saving sync metadata to avoid overwriting freshly rotated tokens.
+      const latest = readVault()
+      const row = latest.owners[owner]
+      if (row) {
+        for (const status of checkedStatus) {
+          const sub = row.subscriptions.find(item =>
+            item.importId === status.importId && item.provider === status.provider &&
+            item.accountId === status.accountId && item.sourceId === status.sourceId)
+          if (!sub) continue // A source can be disconnected while its fetch is in flight.
+          sub.lastCheckedAt = status.lastCheckedAt
+          sub.lastError = status.lastError
+          sub.lastErrorCode = status.lastErrorCode
+          if (!status.lastError) {
+            sub.sourceRevision = status.sourceRevision
+            sub.pendingSha = status.pendingSha
+            if (status.unchanged) sub.lastSyncedAt = status.lastCheckedAt
+          }
+        }
+        row.syncCursor = enabled.length ? (start + checkedStatus.length) % enabled.length : 0
+        writeVault(latest)
+      }
+      return {
+        paused: livePaused, updates, failures, checked: checkedStatus.length,
+        deferred: Math.max(0, enabled.length - checkedStatus.length),
+      }
     } finally { busy.delete(owner) }
   }
   function acknowledgeSync(owner, importId, sha256) {
@@ -480,11 +539,18 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     const sub = row.subscriptions.find(s => s.importId === importId)
     if (!sub) fail('Subscription not found')
     if (!/^[a-f0-9]{64}$/.test(sha256)) fail('Invalid sync fingerprint')
+    // Only the latest fetched revision may be acknowledged as locally applied.
+    if (sub.pendingSha && sub.pendingSha !== sha256) fail('Sync acknowledgement is for an outdated source revision')
     sub.appliedSha = sha256
+    sub.pendingSha = null
     sub.lastSyncedAt = new Date(now()).toISOString()
+    // The local document is updated and its old vector cache invalidated.
+    // This is NOT proof that retrieval indexing has completed.
+    sub.indexStatus = 'rebuild_on_retrieval'
     sub.lastError = null
+    sub.lastErrorCode = null
     writeVault(vault)
-    return { ok: true }
+    return { ok: true, indexStatus: sub.indexStatus }
   }
   function purgeOwner(owner) {
     assertOwner(owner)

@@ -82,6 +82,56 @@ describe('native connected account security and sync', () => {
     gateway.purgeOwner('account-a')
     assert.deepEqual(gateway.state('account-a').accounts, [])
   })
+  it('fairly rotates more than 30 approved subscriptions and persists sync progress', async () => {
+    const { flowId } = await gateway.startGithub('account-a', 'Iv1abcdef12345')
+    const connected = await gateway.pollFlow('account-a', flowId)
+    const accountId = connected.account.id
+    for (let i = 0; i < 35; i++) {
+      gateway.subscribe('account-a', {
+        importId: 'imp_batch_' + i, provider: 'github', accountId,
+        sourceId: 'acme/repo:README.md', sha256: 'a'.repeat(64),
+      })
+    }
+    const first = await gateway.syncNow('account-a')
+    assert.equal(first.checked, 30)
+    assert.equal(first.deferred, 5)
+    assert.equal(first.updates.length, 30)
+    const second = await gateway.syncNow('account-a')
+    assert.equal(second.checked, 30)
+    assert.equal(second.deferred, 5)
+    const visited = new Set([...first.updates, ...second.updates].map(x => x.importId))
+    assert.equal(visited.size, 35, 'sources outside the initial batch must not starve')
+    const subscription = gateway.state('account-a').subscriptions.find(s => s.importId === 'imp_batch_34')
+    assert.ok(subscription.lastCheckedAt)
+    assert.equal(subscription.lastError, null)
+    assert.ok(subscription.pendingSha)
+    assert.throws(() => gateway.acknowledgeSync('account-a', 'imp_batch_34', 'b'.repeat(64)),
+      /outdated source revision/)
+    gateway.acknowledgeSync('account-a', 'imp_batch_34', subscription.pendingSha)
+    const applied = gateway.state('account-a').subscriptions.find(s => s.importId === 'imp_batch_34')
+    assert.ok(applied.lastSyncedAt)
+    assert.equal(applied.indexStatus, 'rebuild_on_retrieval')
+    assert.equal(applied.pendingSha, null)
+  })
+
+  it('persists a source-specific, safe failure status instead of reporting a successful sync', async () => {
+    const { flowId } = await gateway.startGithub('account-a', 'Iv1abcdef12345')
+    const connected = await gateway.pollFlow('account-a', flowId)
+    gateway.subscribe('account-a', {
+      importId: 'imp_missing', provider: 'github', accountId: connected.account.id,
+      sourceId: 'acme/repo:missing.md', sha256: 'a'.repeat(64),
+    })
+    const result = await gateway.syncNow('account-a')
+    assert.equal(result.checked, 1)
+    assert.equal(result.failures.length, 1)
+    assert.equal(result.failures[0].code, 'fetch_failed')
+    const sub = gateway.state('account-a').subscriptions[0]
+    assert.equal(sub.lastErrorCode, 'fetch_failed')
+    assert.ok(sub.lastCheckedAt)
+    assert.equal(sub.lastSyncedAt, null)
+    assert.equal(sub.pendingSha, undefined)
+  })
+
   it('completes Google Desktop PKCE callback with state verification and encrypted identity', async () => {
     const opened = []
     const safeStorage = {

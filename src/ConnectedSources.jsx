@@ -33,6 +33,21 @@ const label = { display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, c
 const small = { color: T.text3, fontSize: 12, lineHeight: 1.5 }
 const blank = () => ({ provider: 'github', title: '', sourceId: '', accountLabel: '', connectedAccountId: null, revision: '', text: '', selectedByUser: false, kitId: null })
 const readableError = error => error?.message || 'Operation failed; no changes were made.'
+function sourceSyncHealth(subscription) {
+  if (!subscription) return 'Not subscribed to background sync.'
+  if (!subscription.autoSync) return 'Automatic sync paused.'
+  if (subscription.lastError) return 'Sync needs attention: ' + subscription.lastError
+  if (subscription.pendingSha) return 'New revision fetched; waiting for local apply.'
+  if (subscription.lastSyncedAt) return subscription.indexStatus === 'rebuild_on_retrieval'
+    ? 'Source updated locally. Retrieval-index readiness is not yet verified.'
+    : 'Source checked; no outstanding remote updates known.'
+  return 'Waiting for first background check.'
+}
+function lastSyncTime(value) {
+  if (!value) return 'Not checked yet'
+  const d = new Date(value)
+  return Number.isFinite(d.getTime()) ? d.toLocaleString() : 'Unknown'
+}
 
 function Field({ name, children }) {
   return <label style={label}>{name}{children}</label>
@@ -109,7 +124,10 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
   }
   useEffect(() => {
     fetchConnections().catch(error => setMessage('⚠ ' + readableError(error)))
-    const onSynced = () => refresh()
+    const onSynced = () => {
+      refresh()
+      fetchConnections().catch(error => setMessage('⚠ Could not refresh connection status: ' + readableError(error)))
+    }
     window.addEventListener('mm-connected-sync', onSynced)
     return () => window.removeEventListener('mm-connected-sync', onSynced)
   }, [])
@@ -204,8 +222,16 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
     finally { setConnectorBusy(false) }
   }
   async function handleSync(result) {
+    if (result?.paused) {
+      setMessage('Synchronization is paused during Live. No source check was started.')
+      return
+    }
+    if (result?.busy) {
+      setMessage('A synchronization pass is already in progress.')
+      return
+    }
     const updates = result?.updates || []
-    const failures = result?.failures || []
+    const failures = [...(result?.failures || [])]
     let applied = 0
     for (const update of updates) {
       try {
@@ -218,8 +244,14 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
     }
     refresh()
     await fetchConnections()
-    setMessage(failures.length ? '⚠ Sync finished with ' + failures.length + ' issue(s): ' + failures[0].error
-      : 'Source synchronization complete. ' + applied + ' source(s) updated.')
+    const inspected = Number.isFinite(result?.checked) ? result.checked : null
+    const deferred = Number.isFinite(result?.deferred) ? result.deferred : 0
+    const progress = inspected == null ? '' : ` Checked ${inspected} source(s).`
+    const nextPass = deferred ? ` ${deferred} deferred to a future pass.` : ''
+    setMessage(failures.length
+      ? '⚠ Sync completed with ' + failures.length + ' issue(s): ' + failures[0].error + progress + nextPass
+      : 'Sync check completed. ' + applied + ' source(s) updated.' + progress + nextPass
+        + ' Retrieval indexing may still be pending.')
     window.dispatchEvent(new Event('mm-connected-sync'))
   }
   async function syncNow() {
@@ -538,6 +570,13 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
               </label>
               <span style={small}>{row.versions?.length || 0} previous revision(s)</span>
             </>}
+            {row.connectedAccountId && <div role="status"
+              aria-label={`Synchronization status for ${row.title}`}
+              style={{ ...small, flexBasis: '100%', padding: '7px 10px', border: `1px solid ${T.border}`, borderRadius: 7 }}>
+              <strong style={{ color: T.text1 }}>Sync:</strong>{' '}
+              {sourceSyncHealth(connections.subscriptions.find(s => s.importId === row.id))}
+              <span style={{ display: 'block' }}>Last checked: {lastSyncTime(connections.subscriptions.find(s => s.importId === row.id)?.lastCheckedAt)}</span>
+            </div>}
             <button style={quiet} type="button" onClick={() => deleteImport(row.id)}>Remove import</button>
           </div>
         ))}

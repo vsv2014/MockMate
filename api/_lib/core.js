@@ -219,18 +219,11 @@ export async function testProviderConnection(providerId) {
         }
 
         const streamParams = { ...params, stream: true }
-        if (/gemini/i.test(provider.model)) streamParams.reasoning_effort = 'none'
         if (/openai\\.com|groq\\.com/i.test(provider.baseURL || '')) {
           streamParams.stream_options = { include_usage: true }
         }
-        let stream
-        try {
-          stream = await createWithThinkingFallback(llm, streamParams, options)
-        } catch (error) {
-          if (Number(error?.status) !== 400 || !streamParams.reasoning_effort || controller.signal.aborted) throw error
-          const { reasoning_effort: _unsupported, ...withoutReasoning } = streamParams
-          stream = await createWithThinkingFallback(llm, withoutReasoning, options)
-        }
+        // Probe the same compatible request shape Live will use.
+        const stream = await createWithThinkingFallback(llm, streamParams, options)
         // Do not mark a provider ready on its first token: the stream may fail
         // before completion. Consume through DONE to verify the Live transport.
         let sawText = false
@@ -903,14 +896,9 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
     const attemptId = newProviderAttemptId()
     providerDiagnostic('attempt_started', { attemptId, operation: 'json', provider: provId, model, maxTokens: Object.values(completionBudget(prov, maxTokens, thinkingTokenFloor))[0], attemptIndex: queueIndex, contextChars: JSON.stringify(messages).length })
 
-    // Thinking-by-default Gemini models can consume hidden reasoning tokens — reasoning silently eats the token
-    // budget, so the actual answer gets truncated into invalid JSON. Disable it
-    // and force a clean JSON object (no ```json fences). Scoped to Gemini so
-    // Groq/OpenAI requests are unchanged.
-    const isGemini = /gemini/i.test(model)
-    // JSON mode is for OpenAI/Groq only. Gemini OpenAI-compatible requests have rejected
-    // response_format:json_object — it just needs reasoning_effort:'none' (set below) to stop
-    // its default "thinking" from eating the token budget. This matches streamText, which works.
+    // JSON mode is supported only for OpenAI/Groq here. Gemini's OpenAI-
+    // compatible endpoint rejects reasoning_effort on live workloads, so do
+    // not send that unsupported parameter in either JSON or streaming calls.
     const jsonMode = /openai\.com|groq\.com/i.test(prov.baseURL || '')
     // Claude 5-generation thinking is invisible here, eats max_tokens and adds latency.
     const claudeThinking = claudeThinkingFor(prov)
@@ -921,7 +909,6 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
         try {
           signal?.throwIfAborted()
           const params = { model, ...completionBudget(prov, maxTokens, thinkingTokenFloor), messages: msgs }
-          if (useExtras && isGemini) params.reasoning_effort = 'none'
           if (useExtras && jsonMode) params.response_format = { type: 'json_object' }
           if (useExtras && claudeThinking) params.thinking = claudeThinking
           const requestIndex = requestCount++
@@ -945,10 +932,9 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
           return choice.message.content ?? ''
         } catch (e) {
           if (signal?.aborted || e?.name === 'AbortError' || e?.name === 'APIUserAbortError' || e?.code === 'output_truncated') throw e
-          // A 400 while sending the optional JSON-mode/reasoning params usually means THIS
-          // provider/model rejects one of them (e.g. some Gemini models 400 on reasoning_effort).
+          // A 400 on optional JSON-mode/thinking can indicate incompatible provider features.
           // Drop the extras and retry once before treating it as a real failure.
-          if (e?.status === 400 && useExtras && (jsonMode || isGemini || claudeThinking)) {
+          if (e?.status === 400 && useExtras && (jsonMode || claudeThinking)) {
             console.warn(`[llm] ${provId} rejected optional JSON-mode/reasoning/thinking params (400) → retrying without them`)
             if (claudeThinking) providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'json', provider: provId, model, ...thinkingRejectionDetails(e) }, 'warn')
             useExtras = false
@@ -1364,7 +1350,6 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
     try { onProviderEvent?.({ type: 'started', attemptId, attemptIndex, provider: provId, model }) } catch {}
     try {
       const params = { model, ...completionBudget(prov, maxTokens, thinkingTokenFloor), messages, stream: true }
-      if (/gemini/i.test(model)) params.reasoning_effort = 'none'
       const claudeThinking = claudeThinkingFor(prov)
       if (claudeThinking) params.thinking = claudeThinking
       // Only OpenAI/Groq reliably support stream usage; gate it so others don't 400.
@@ -1377,21 +1362,12 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
       // After the first token only a stall ends the stream (no new text for
       // LIVE_STREAM_STALL_TIMEOUT_MS), so a long, healthy answer is never cut off.
       const requestOpts = { timeout: LIVE_SDK_CONNECT_TIMEOUT_MS, signal: deadline.signal }
-      let stream
       const recordThinkingRejection = (_e, details = {}) => {
         providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'stream', provider: provId, model, ...details }, 'warn')
       }
-      try {
-        stream = await createWithThinkingFallback(llm, params, requestOpts, recordThinkingRejection)
-      } catch (error) {
-        // Gemini's OpenAI-compatible streaming endpoint can reject reasoning_effort,
-        // even when the same key/model answers blocking requests. Retry once without
-        // that optional field before abandoning the provider.
-        if (Number(error?.status) !== 400 || !params.reasoning_effort || deadline.signal.aborted) throw error
-        const { reasoning_effort: _unsupported, ...withoutReasoning } = params
-        providerDiagnostic('stream_reasoning_setting_rejected', { attemptId, operation: 'stream', provider: provId, model, status: 400 }, 'warn')
-        stream = await createWithThinkingFallback(llm, withoutReasoning, requestOpts, recordThinkingRejection)
-      }
+      // No speculative Gemini reasoning_effort probe: a known-rejected setting
+      // caused an extra 400 and an avoidable round-trip on nearly every hint.
+      const stream = await createWithThinkingFallback(llm, params, requestOpts, recordThinkingRejection)
       for await (const chunk of stream) {
         if (chunk?.usage) usage = chunk.usage
         if (chunk?.choices?.[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason
