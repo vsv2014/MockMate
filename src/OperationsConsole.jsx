@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { T } from './auth/tokens'
 import { readableTextSize } from './lib/typography.js'
 import { apiFetch } from './lib/apiClient.js'
+import { activeAccountScope } from './lib/accountScope.js'
 
 // Only receives an allowlisted, on-device read model from Electron; no raw
 // diagnostic bundle, session text, prompts or credentials are exposed here.
@@ -22,7 +23,7 @@ export default function OperationsConsole() {
   async function refresh() {
     setLoading(true); setError('')
     try {
-      const res = await window.electronAPI?.readOperationsSummary?.()
+      const res = await window.electronAPI?.readOperationsSummary?.(activeAccountScope())
       if (!res?.ok || !res.data) throw new Error(res?.error || 'This build does not expose operational data')
       setSnapshot(res.data)
       try {
@@ -47,7 +48,7 @@ export default function OperationsConsole() {
         <button type="button" style={button} onClick={refresh} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
       </header>
       <div role="note" style={{ ...label, border: `1px solid ${T.border}`, borderRadius: 8, padding: 10 }}>
-        Device-wide operational metadata may include activity from multiple local accounts. Unlinked legacy provider attempts are shown as uncorrelated rather than attached to a guessed request. Unknown token counts are never presented as zero.
+        This account’s operational metadata only. Legacy events without verified account attribution are excluded. Unknown provider token counts are never presented as zero.
       </div>
       {error && <div role="alert" style={{ ...panel, color: '#fca5a5' }}>{error}</div>}
       <section aria-label="Module health and latency" style={panel}>
