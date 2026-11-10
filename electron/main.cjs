@@ -1418,10 +1418,22 @@ ipcMain.handle('clear-diagnostics', async () => {
   catch (e) { return { ok: false, error: e.message } }
 })
 
-ipcMain.handle('read-operations-summary', async event => {
+ipcMain.handle('read-operations-summary', async (event, payload = {}) => {
   if (!connectorSender(event)) return { ok: false, error: 'Untrusted operations reader' }
-  try { return { ok: true, data: await diagnostics?.readOperations() } }
-  catch { return { ok: false, error: 'Operational history is temporarily unavailable' } }
+  const scope = String(payload?.scope || '')
+  if (!/^[a-zA-Z0-9._-]{1,160}$/.test(scope))
+    return { ok: false, error: 'Invalid account scope' }
+  try {
+    if (scope !== 'guest') {
+      // Cross-account isolation comes from the signed and live-verified identity,
+      // never from a renderer-provided scope or an obsolete sessionStorage value.
+      const verified = await connectorOwner()
+      if (scope !== verified) return { ok: false, error: 'Account switched; reload this view' }
+    }
+    return { ok: true, data: await diagnostics?.readOperations(scope) }
+  } catch {
+    return { ok: false, error: 'Verify your current sign-in to view account-specific operational history' }
+  }
 })
 
 ipcMain.handle('read-session-metrics-summary', () => {
