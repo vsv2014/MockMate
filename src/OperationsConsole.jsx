@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { T } from './auth/tokens'
 import { readableTextSize } from './lib/typography.js'
+import { apiFetch } from './lib/apiClient.js'
 
 // Only receives an allowlisted, on-device read model from Electron; no raw
 // diagnostic bundle, session text, prompts or credentials are exposed here.
@@ -17,12 +18,17 @@ export default function OperationsConsole() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
+  const [policy, setPolicy] = useState(null)
   async function refresh() {
     setLoading(true); setError('')
     try {
       const res = await window.electronAPI?.readOperationsSummary?.()
       if (!res?.ok || !res.data) throw new Error(res?.error || 'This build does not expose operational data')
       setSnapshot(res.data)
+      try {
+        const response = await apiFetch('/api/arch', { timeoutMs: 8000 })
+        if (response.ok) setPolicy((await response.json())?.policyRevision || null)
+      } catch { setPolicy(null) }
     } catch (err) { setError(err?.message || 'Operational history could not be loaded') }
     finally { setLoading(false) }
   }
@@ -82,6 +88,21 @@ export default function OperationsConsole() {
             </li>)}
           </ol>
         </div>}
+      </section>
+      <section aria-label="Effective ABL configuration" style={panel}>
+        <h2 style={{ fontSize: readableTextSize(16), margin: '0 0 8px' }}>Effective ABL configuration</h2>
+        {policy
+          ? <div style={label}>
+              <div>Schema version: <strong>{policy.ablVersion}</strong></div>
+              <div>Current revision: <code>{policy.revisionDigest}</code></div>
+              <div>Configuration source: {policy.source === 'operator_override' ? 'Private operator override' : 'Bundled validated default'}</div>
+              <div>Archived revisions available for rollback: {policy.availableRollbackRevisions}</div>
+            </div>
+          : <p style={label}>Effective policy metadata isn't available from this backend.</p>}
+        <p style={{ ...label, marginTop: 10 }}>
+          For safety, applying or rolling back a policy requires trusted local operator access.
+          Use the versioned ABL CLI with a private MOCKMATE_ABL_PATH. No remote configuration-write API is exposed.
+        </p>
       </section>
       <section aria-label="Module consumption ledger" style={panel}>
         <h2 style={{ fontSize: readableTextSize(16), margin: '0 0 5px' }}>Module consumption ledger</h2>
