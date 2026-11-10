@@ -489,8 +489,15 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
       const batch = Array.from({ length: Math.min(30, selected.length) },
         (_, index) => selected[(start + index) % selected.length])
       const updates = [], failures = [], checkedStatus = []
+      let deferredByBackoff = 0
       for (const sub of batch) {
         if (livePaused) break // Do not start more network work after entering Live.
+        // Persisted nextRetryAt survives restarts. Manual refresh intentionally
+        // bypasses this cooldown so an operator can repair access immediately.
+        if (!manual && sub.nextRetryAt && Date.parse(sub.nextRetryAt) > now()) {
+          deferredByBackoff += 1
+          continue
+        }
         const checkedAt = new Date(now()).toISOString()
         try {
           const source = await readSource(owner, sub.provider, sub.accountId, sub.sourceId)
@@ -500,14 +507,22 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
             importId: sub.importId, provider: sub.provider, accountId: sub.accountId, sourceId: sub.sourceId,
             lastCheckedAt: checkedAt, lastError: null, lastErrorCode: null,
             sourceRevision: source.revision, pendingSha: changed ? source.sha256 : null,
-            unchanged: !changed,
+            unchanged: !changed, consecutiveFailures: 0, nextRetryAt: null,
+            tombstone: false,
           })
         } catch (error) {
           const failure = classifySyncFailure(error)
-          failures.push({ importId: sub.importId, ...failure })
+          const failuresSoFar = Math.min(10, (Number(sub.consecutiveFailures) || 0) + 1)
+          // 30s, 60s, 120s ... capped at 15 min. Access-denied and
+          // tombstone states are displayed; remote data is NEVER auto-deleted.
+          const delayMs = Math.min(15 * 60_000, 30_000 * 2 ** (failuresSoFar - 1))
+          const nextRetryAt = new Date(now() + delayMs).toISOString()
+          failures.push({ importId: sub.importId, ...failure, nextRetryAt })
           checkedStatus.push({
             importId: sub.importId, provider: sub.provider, accountId: sub.accountId, sourceId: sub.sourceId,
             lastCheckedAt: checkedAt, lastError: failure.error, lastErrorCode: failure.code,
+            consecutiveFailures: failuresSoFar, nextRetryAt,
+            tombstone: failure.code === 'source_unavailable',
           })
         }
       }
@@ -524,6 +539,9 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
           sub.lastCheckedAt = status.lastCheckedAt
           sub.lastError = status.lastError
           sub.lastErrorCode = status.lastErrorCode
+          sub.consecutiveFailures = status.consecutiveFailures
+          sub.nextRetryAt = status.nextRetryAt
+          sub.tombstone = status.tombstone
           if (!status.lastError) {
             sub.sourceRevision = status.sourceRevision
             sub.pendingSha = status.pendingSha
@@ -536,6 +554,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
       return {
         paused: livePaused, updates, failures, checked: checkedStatus.length,
         deferred: Math.max(0, selected.length - checkedStatus.length),
+        retryDeferred: deferredByBackoff,
       }
     } finally { busy.delete(owner) }
   }
@@ -556,6 +575,9 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     sub.indexStatus = 'rebuild_on_retrieval'
     sub.lastError = null
     sub.lastErrorCode = null
+    sub.consecutiveFailures = 0
+    sub.nextRetryAt = null
+    sub.tombstone = false
     writeVault(vault)
     return { ok: true, indexStatus: sub.indexStatus }
   }
