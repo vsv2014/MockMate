@@ -1,6 +1,7 @@
 import { requiresImplementation } from '../../shared/answerQuality.js'
 import { compileAblRuntime } from './abl.js'
 import { envFlag } from './hostedConfig.js'
+import { currentAblPolicyStatus } from './ablRevisions.js'
 import { redactInteractionEvent, summarizeProductIntelligence } from '../../shared/productIntelligence.js'
 
 const LLM_PROVIDERS = [
@@ -250,6 +251,7 @@ export function archRuntimeSummary(options = {}) {
     designGoals: plan.designGoals,
     routing: plan.reasoning.routing,
     answerQuality: plan.answerQuality,
+    policyRevision: currentAblPolicyStatus(),
     ...(includePerformance ? { performance: performanceSnapshot() } : {}),
     ...(includeProductIntelligence ? { productIntelligence: archProductIntelligenceSnapshot() } : {}),
   }

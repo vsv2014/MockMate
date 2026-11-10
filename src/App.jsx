@@ -28,6 +28,7 @@ import ApiKeysPanel from './ApiKeys'
 import { getAiMode } from './lib/aiMode'
 import { getAnswerStyle, setAnswerStyle, getScreenshotSpeed, setScreenshotSpeed, screenshotStyle, getAutoSkip, setAutoSkip, getDocThreshold, setDocThreshold } from './lib/aiSettings'
 import { loadSessionsAsync, getSessionAsync, deleteSessionAsync } from './history'
+import { canRetrySavedEvaluation, retrySavedEvaluation } from './lib/evaluationRecovery'
 import { removeKitDocs } from './lib/docs'
 import { applyApprovedRemoteUpdate } from './lib/connectedSources'
 import { scoreColor, TYPE_LABEL } from './lib/ui'
@@ -45,6 +46,7 @@ import { canRunLanguage, runJavaScriptIsolated } from './lib/codeRunner'
 import { diagnostic } from './lib/diagnostics'
 import { trackProductEvent, attachRageClickObserver } from './lib/productIntelligence'
 import ProductIntelligencePanel from './components/ProductIntelligencePanel'
+import OperationsConsole from './OperationsConsole'
 import {
   createScreenContextRecord,
   previousScreenForContinuation,
@@ -64,7 +66,7 @@ const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform ==
 // Views that render in the full windowed app shell (large window + sidebar). Solo runs
 // here too — there's no interviewer watching, so it gets the roomy dashboard, not the
 // overlay. ONLY the Live companion drops to the compact always-on-top overlay.
-const SHELL_VIEWS = ['home', 'kits', 'ready-room', 'solo', 'duo', 'jobs', 'career', 'sources', 'settings', 'account', 'history']
+const SHELL_VIEWS = ['home', 'kits', 'ready-room', 'solo', 'duo', 'jobs', 'career', 'sources', 'operations', 'settings', 'account', 'history']
 
 function StealthSafetyPrompt({ confirmOff, notice, onCancel, onConfirmOff }) {
   if (!confirmOff && !notice) return null
@@ -364,6 +366,20 @@ function ElectronShell({ auth }) {
   const [historyTotal, setHistoryTotal] = useState(0)
   const [historyError, setHistoryError] = useState('')
   const [openSession, setOpenSession] = useState(null)
+  const [evaluationRetryId, setEvaluationRetryId] = useState(null)
+  const runSavedEvaluation = async id => {
+    if (evaluationRetryId) return
+    if (!window.confirm('Retry scoring from the saved candidate transcript? This makes a new AI provider request and may consume credits.')) return
+    setEvaluationRetryId(id)
+    setHistoryError('')
+    try {
+      const saved = await retrySavedEvaluation(id)
+      setOpenSession(current => current?.id === id ? saved : current)
+      await refreshSessions()
+    } catch (error) {
+      setHistoryError(error?.message || 'Evaluation failed. The original transcript is preserved.')
+    } finally { setEvaluationRetryId(null) }
+  }
   const refreshSessions = useCallback(async (offset = 0) => {
     const scope = activeAccountScope()
     try { const result = await loadSessionsAsync(offset); if (scope !== activeAccountScope()) return; setSessions(rows => offset ? [...rows,...result.sessions] : result.sessions); setHistoryTotal(result.total); setHistoryError(result.warning || '') }
@@ -972,6 +988,7 @@ function ElectronShell({ auth }) {
       </div>
     )
     else if (view === 'sources') content = <ConnectedSources key={activeAccountScope()} auth={auth} activeKit={activeKit} />
+    else if (view === 'operations') content = <OperationsConsole />
     else if (view === 'settings') content = (
       <div className="mm-settings" style={{ maxWidth: 980, width: '100%', margin: '0 auto' }}>
         <div style={shellHeader}>Settings</div>
@@ -1010,13 +1027,24 @@ function ElectronShell({ auth }) {
     else if (view === 'history') content = (
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
         {openSession ? (
-          <SoloFeedback report={openSession.report} transcript={openSession.transcript}
-            onAgain={() => setOpenSession(null)} onAgainLabel="← Back to sessions" />
+          <>
+            {canRetrySavedEvaluation(openSession) && <div style={{ marginBottom: 12 }}>
+              <button type="button" disabled={!!evaluationRetryId} onClick={() => runSavedEvaluation(openSession.id)}
+                style={{ padding: '9px 14px', border: `1px solid ${T.accentBorder}`, borderRadius: 8, background: T.accentSoft,
+                  color: T.text1, fontSize: 13, fontFamily: T.font, cursor: evaluationRetryId ? 'wait' : 'pointer' }}>
+                {evaluationRetryId === openSession.id ? 'Re-evaluating saved transcript…' : 'Retry scoring from saved transcript'}
+              </button>
+            </div>}
+            {historyError && <div role="alert" style={{ color: '#fca5a5', marginBottom: 12 }}>{historyError}</div>}
+            <SoloFeedback report={openSession.report} transcript={openSession.transcript}
+              onAgain={() => setOpenSession(null)} onAgainLabel="← Back to sessions" />
+          </>
         ) : (
           <>
             <div style={shellHeader}>Sessions</div>
             {historyError && <div role="alert">{historyError}<button onClick={() => refreshSessions()}>Retry History</button><button onClick={() => downloadTextFile('mockmate-legacy-history.json', getScopedItem('mm-sessions','[]'),'application/json')}>Export legacy data</button></div>}
-            <SessionsTable sessions={sessions} onOpen={async s => { try { setOpenSession(await getSessionAsync(s.id)) } catch { setHistoryError('This session could not be opened. Please retry.') } }}
+            <SessionsTable sessions={sessions} evaluationRetryId={evaluationRetryId} onRetryEvaluation={runSavedEvaluation}
+              onOpen={async s => { try { setOpenSession(await getSessionAsync(s.id)) } catch { setHistoryError('This session could not be opened. Please retry.') } }}
               onDelete={async id => { if (window.confirm('Delete this session from History? Original legacy migration copies may still be retained.')) { if (sessions.find(row => row.id === id)?.legacyReadOnly) { setHistoryError('Read-only legacy sessions cannot be deleted until import is resolved.'); return } try { await deleteSessionAsync(id); await refreshSessions() } catch { setHistoryError('Delete failed. The session has been retained.') } } }} />
             {sessions.length < historyTotal && <button onClick={() => refreshSessions(sessions.length)}>Load more sessions</button>}
           </>

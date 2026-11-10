@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { diagnostic } from './lib/diagnostics'
 import { watchAudioTrackEnded, shouldRecoverEndedTrack } from './lib/audioTrackRecovery'
+import { isAudioFrameStalled } from './lib/audioFrameHealth'
 import {
   MAX_RECONNECTS,
   KEEPALIVE_MS,
@@ -98,9 +99,11 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   const [interim, setInterim] = useState('')
   const [diarizationLocked, setDiarizationLocked] = useState(false)
   const [degraded, setDegraded] = useState(false)
+  const [captureStalled, setCaptureStalled] = useState(false)
 
   const ws = useRef(null), ctx = useRef(null), proc = useRef(null), stream = useRef(null), srcNode = useRef(null)
   const keepAlive = useRef(null), reconnectTimer = useRef(null), reconnectAttempts = useRef(0)
+  const captureWatchdog = useRef(null), lastPcmFrameAt = useRef(0), captureStalledRef = useRef(false)
   const userStop = useRef(false)
   const connectGen = useRef(0)
   const restartGen = useRef(0)
@@ -157,6 +160,9 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
 
   const teardown = useCallback(() => {
     clearInterval(keepAlive.current); keepAlive.current = null
+    clearInterval(captureWatchdog.current); captureWatchdog.current = null
+    captureStalledRef.current = false; lastPcmFrameAt.current = 0
+    setCaptureStalled(false)
     clearInterval(finalizeWatcher.current); finalizeWatcher.current = null
     pendingInterim.current = false; finalizeSent.current = false
     // NOTE (PR review fix): `finalizeEnabled` is deliberately NOT reset here. teardown
@@ -211,12 +217,23 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   }, [teardown])
 
   const buildAudioGraph = useCallback(async (audioStream) => {
-    const sendPCM = buf => enqueueOrSendPcm(buf, {
+    lastPcmFrameAt.current = Date.now()
+    captureStalledRef.current = false
+    setCaptureStalled(false)
+    const sendPCM = buf => {
+      lastPcmFrameAt.current = Date.now()
+      if (captureStalledRef.current) {
+        captureStalledRef.current = false
+        setCaptureStalled(false)
+        diagnostic('stt', 'audio_frames_resumed', { source: sourceIdRef.current })
+      }
+      return enqueueOrSendPcm(buf, {
       wsRef: ws,
       pcmQueueRef: pcmQueue,
       pcmQueueBytesRef: pcmQueueBytes,
       pcmDroppedBytesRef: pcmDroppedBytes,
-    })
+      })
+    }
     await createDeepgramAudioGraph(audioStream, {
       ctxRef: ctx,
       srcNodeRef: srcNode,
@@ -305,6 +322,25 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       }, 30_000)
       sock.addEventListener('close', () => clearTimeout(stableTimer), { once: true })
       setActive(true); setReconnecting(false)
+      clearInterval(captureWatchdog.current)
+      captureWatchdog.current = setInterval(() => {
+        if (!owns()) return
+        if (isAudioFrameStalled({
+          activeSocket: sock.readyState === 1,
+          contextState: ctx.current?.state || '',
+          stopped: userStop.current,
+          suspended: suspendPaused.current,
+          lastFrameAt: lastPcmFrameAt.current,
+          now: Date.now(),
+        }) && !captureStalledRef.current) {
+          captureStalledRef.current = true
+          setCaptureStalled(true)
+          diagnostic('stt', 'audio_frames_stalled', {
+            source: sourceIdRef.current,
+            idleMs: Date.now() - lastPcmFrameAt.current,
+          }, 'warn')
+        }
+      }, 5000)
       diagnostic('stt', 'socket_open', { generation: gen, degraded: degradedAudio.current, reconnectAttempt: reconnectAttempts.current })
       try { ctx.current?.resume?.() } catch {}
       flushQueuedPcm({
@@ -412,6 +448,7 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
       if (ws.current === sock) ws.current = null
       connecting.current = false
       clearInterval(keepAlive.current); keepAlive.current = null
+      clearInterval(captureWatchdog.current); captureWatchdog.current = null
       clearInterval(finalizeWatcher.current); finalizeWatcher.current = null
       pendingInterim.current = false; finalizeSent.current = false
       if (userStop.current || suspendPaused.current) return
@@ -598,5 +635,6 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
   }, [abandonSocket, connectSocket, restart])
 
   useEffect(() => () => { userStop.current = true; connectGen.current += 1; teardown() }, [teardown])
-  return { supported: true, active, reconnecting, interim, diarizationLocked, degraded, start, stop, restart, setFinalizeOnPause, finalizeForReadinessTest }
+  return { supported: true, active, reconnecting, interim, diarizationLocked, degraded,
+    captureStalled, start, stop, restart, setFinalizeOnPause, finalizeForReadinessTest }
 }

@@ -36,7 +36,9 @@ const readableError = error => error?.message || 'Operation failed; no changes w
 function sourceSyncHealth(subscription) {
   if (!subscription) return 'Not subscribed to background sync.'
   if (!subscription.autoSync) return 'Automatic sync paused.'
+  if (subscription.tombstone) return 'Remote source missing or permission revoked; local approved copy is retained. Reconnect or remove explicitly.'
   if (subscription.lastError) return 'Sync needs attention: ' + subscription.lastError
+    + (subscription.nextRetryAt ? ' · Automatic retry after ' + lastSyncTime(subscription.nextRetryAt) : '')
   if (subscription.pendingSha) return 'New revision fetched; waiting for local apply.'
   if (subscription.lastSyncedAt) return subscription.indexStatus === 'rebuild_on_retrieval'
     ? 'Source updated locally. Retrieval-index readiness is not yet verified.'
@@ -584,6 +586,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           <span style={quiet}>{connections.subscriptions.length} approved connection(s)</span>
           <span style={quiet}>{connections.subscriptions.filter(row => row.autoSync).length} on auto-sync</span>
           <span style={quiet}>{connections.subscriptions.filter(row => row.lastError).length} need attention</span>
+          <span style={quiet}>{connections.subscriptions.filter(row => row.tombstone).length} missing/revoked</span>
           <span style={quiet}>{imports.filter(row => documentIndexStatus(row.documentId, { kitId: row.kitId || null }).state === 'ready').length} indexed</span>
         </div>
         <button type="button" style={action} disabled={connectorBusy || !!indexBusyId || !!connections.paused || !connections.subscriptions.length}

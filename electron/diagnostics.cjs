@@ -1,6 +1,7 @@
 // Production-safe local diagnostics. JSONL, buffered, rotated, and aggressively redacted.
 const fs = require('fs')
 const path = require('path')
+const { UsageLedger, summarizeOperations, readJsonl } = require('./operations.cjs')
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024
 const MAX_FILES = 4
@@ -31,6 +32,7 @@ class DiagnosticStore {
     this.queue = []
     this.flushing = false
     this.base = { appVersion, platform, arch, pid: process.pid }
+    this.usageLedger = new UsageLedger(userData)
     try { fs.mkdirSync(this.dir, { recursive: true }) } catch {}
     this.timer = setInterval(() => this.flush(), 500)
     this.timer.unref?.()
@@ -45,6 +47,7 @@ class DiagnosticStore {
       if (line.length > 16_000) return false
       if (this.queue.length >= MAX_QUEUE) this.queue.splice(0, this.queue.length - MAX_QUEUE + 1)
       this.queue.push(line)
+      this.usageLedger.record(row)
       if (this.queue.length >= 100) this.flush()
       return true
     } catch { return false }
@@ -106,6 +109,17 @@ class DiagnosticStore {
     }
   }
 
+  async readOperations() {
+    await this.flush()
+    while (this.flushing) await new Promise(resolve => setTimeout(resolve, 10))
+    const files = Array.from({ length: MAX_FILES - 1 }, (_, i) =>
+      `${this.file}.${MAX_FILES - 1 - i}`).concat(this.file)
+    const rows = files.flatMap(file => readJsonl(file, 2500)).slice(-5000)
+    const ledgerEntries = await this.usageLedger.entries()
+    return { ...summarizeOperations(rows, ledgerEntries),
+      accountingStatus: this.usageLedger.writeError ? 'storage_unavailable' : 'available' }
+  }
+
   async clear() {
     while (this.flushing) await new Promise(resolve => setTimeout(resolve, 10))
     this.queue = []
@@ -113,6 +127,8 @@ class DiagnosticStore {
       const f = i === 0 ? this.file : `${this.file}.${i}`
       try { await fs.promises.unlink(f) } catch {}
     }
+    // One privacy action clears the related derived operational history too.
+    await this.usageLedger.clear()
   }
 
   async exportTo(destination) {
@@ -142,6 +158,7 @@ class DiagnosticStore {
     process.removeListener('exit', this.exitHandler)
     await this.flush()
     this.flushSync()
+    await this.usageLedger.close()
   }
 }
 

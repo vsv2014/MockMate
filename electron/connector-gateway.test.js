@@ -4,6 +4,7 @@ const require = createRequire(import.meta.url)
 const assert = require('node:assert/strict')
 const { mkdtempSync, rmSync } = require('node:fs')
 const { tmpdir } = require('node:os')
+const { createHash } = require('node:crypto')
 const path = require('node:path')
 const { createConnectorGateway, normalizedText, sourceCheck } = require('./connector-gateway.cjs')
 let dir, gateway, requests
@@ -33,6 +34,7 @@ function init() {
         tree: [{ path: 'README.md', type: 'blob', sha: 'sha1', size: 100 },
           { path: 'secrets.env', type: 'blob', size: 100 }, { path: 'huge.md', type: 'blob', size: 300000 }],
       })
+      if (url.includes('/repos/acme/repo/contents/deleted.md')) return fakeResponse({ message: 'Not Found' }, 404)
       if (url.includes('/repos/acme/repo/contents/README.md')) return fakeResponse({
         type: 'file', name: 'README.md', size: 70, sha: 'sha1', encoding: 'base64',
         content: Buffer.from('This is a test description of backend architecture.').toString('base64'),
@@ -177,6 +179,106 @@ describe('native connected account security and sync', () => {
     assert.equal(after.pendingSha, before.pendingSha)
     assert.equal(after.lastSyncedAt, null)
     assert.throws(() => gateway.reportApplyFailure('account-b', 'imp_apply'), /not found/)
+  })
+
+  it('records a durable non-destructive tombstone, exponential retry window and manual recovery attempts', async () => {
+    const { flowId } = await gateway.startGithub('account-a', 'Iv1abcdef12345')
+    const connected = await gateway.pollFlow('account-a', flowId)
+    gateway.subscribe('account-a', { importId: 'imp_deleted', provider: 'github',
+      accountId: connected.account.id, sourceId: 'acme/repo:deleted.md',
+      sha256: 'a'.repeat(64), autoSync: true })
+    const first = await gateway.syncNow('account-a')
+    assert.equal(first.failures[0].code, 'source_unavailable')
+    let sub = gateway.state('account-a').subscriptions[0]
+    assert.equal(sub.tombstone, true)
+    assert.equal(sub.consecutiveFailures, 1)
+    assert.equal(sub.appliedSha, 'a'.repeat(64), 'never delete the approved local revision')
+    assert.ok(Date.parse(sub.nextRetryAt) > Date.now())
+    const calls = requests.length
+    const scheduled = await gateway.syncNow('account-a')
+    assert.equal(scheduled.checked, 0)
+    assert.equal(scheduled.retryDeferred, 1)
+    assert.equal(requests.length, calls, 'backoff must avoid another network call')
+    await gateway.syncNow('account-a', { manual: true, importId: 'imp_deleted' })
+    sub = gateway.state('account-a').subscriptions[0]
+    assert.equal(sub.consecutiveFailures, 2)
+    assert.equal(sub.lastErrorCode, 'source_unavailable')
+    assert.equal(sub.appliedSha, 'a'.repeat(64))
+  })
+
+  it('skips unchanged Google Drive media downloads with durable revision checkpoint and reconciles manually', async () => {
+    const state = { now: 1_750_000_000_000, metadata: 0, media: 0 }
+    const content = 'Read-only approved external source text.'
+    const safeStorage = { isEncryptionAvailable: () => true,
+      encryptString: value => Buffer.from('test:' + value),
+      decryptString: buf => buf.toString().slice(5),
+    }
+    const alternate = createConnectorGateway({ userData: dir, safeStorage,
+      now: () => state.now, fetchImpl: async url => {
+        if (String(url).includes('?alt=media')) {
+          state.media++
+          return new Response(content, { status: 200 })
+        }
+        if (String(url).includes('/drive/v3/files/testFileA1')) {
+          state.metadata++
+          return fakeResponse({ id: 'testFileA1', name: 'Notes.txt',
+            mimeType: 'text/plain', modifiedTime: '2026-11-10T07:00:00Z',
+            size: content.length })
+        }
+        throw new Error('Unexpected endpoint ' + url)
+      } })
+    try {
+      const connected = alternate._forTests.saveConnected('account-a', 'googledrive',
+        { subject: 'owner123', label: 'user@example.test' }, { access_token: 'unit-key' })
+      const sha256 = createHash('sha256').update(content).digest('hex')
+      alternate.subscribe('account-a', { importId: 'imp_google', provider: 'googledrive',
+        accountId: connected.id, sourceId: 'testFileA1', sha256 })
+      const first = await alternate.syncNow('account-a')
+      assert.equal(first.checked, 1)
+      assert.equal(state.media, 1)
+      assert.equal(first.updates.length, 0)
+      const second = await alternate.syncNow('account-a')
+      assert.equal(second.checked, 1)
+      assert.equal(state.media, 1, 'unchanged source should not be downloaded again')
+      await alternate.syncNow('account-a', { manual: true, importId: 'imp_google' })
+      assert.equal(state.media, 2, 'manual refresh performs full read')
+      state.now += 25 * 3600_000
+      await alternate.syncNow('account-a')
+      assert.equal(state.media, 3, 'daily reconciliation performs full read')
+    } finally { alternate.close() }
+  })
+
+  it('recovers a pending approved-source revision after process restart without duplicate writes', async () => {
+    const safeStorage = { isEncryptionAvailable: () => true,
+      encryptString: value => Buffer.from('sealed:' + value),
+      decryptString: buffer => buffer.toString().replace(/^sealed:/, ''),
+    }
+    const content = 'Durable approved source content.'
+    const fetchImpl = async url => {
+      if (String(url).includes('/repos/acme/repo/contents/README.md'))
+        return fakeResponse({ type: 'file', name: 'README.md', size: content.length, sha: 'rev1',
+          encoding: 'base64', content: Buffer.from(content).toString('base64') })
+      throw Error('Unexpected request')
+    }
+    const create = () => createConnectorGateway({ userData: dir, safeStorage, fetchImpl })
+    const initial = create()
+    const account = initial._forTests.saveConnected('account-a', 'github', { subject: '55', label: 'dev' },
+      { access_token: 'unit-key' })
+    initial.subscribe('account-a', { importId: 'imp_crash', provider: 'github', accountId: account.id,
+      sourceId: 'acme/repo:README.md', sha256: 'a'.repeat(64) })
+    const pending = await initial.syncNow('account-a')
+    assert.equal(pending.updates.length, 1)
+    const savedSha = pending.updates[0].sha256
+    initial.close() // Simulated crash before renderer persists/acknowledges update.
+    const recovered = create()
+    try {
+      assert.equal(recovered.state('account-a').subscriptions[0].pendingSha, savedSha)
+      const replay = await recovered.syncNow('account-a')
+      assert.equal(replay.updates.length, 1)
+      assert.equal(replay.updates[0].sha256, savedSha)
+      recovered.acknowledgeSync('account-a', 'imp_crash', savedSha)
+      assert.equal((await recovered.syncNow('account-a')).updates.length, 0)
+    } finally { recovered.close() }
   })
 
   it('completes Google Desktop PKCE callback with state verification and encrypted identity', async () => {

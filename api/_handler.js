@@ -7,9 +7,11 @@ import { publicProxyDisabled } from './_lib/publicProxyGuard.js'
 // Refuse by default on Vercel unless MOCKMATE_ALLOW_PUBLIC_API=1 (escape hatch only).
 import { applyArchReasoningPolicy, isProviderFailureError, OPERATION_BY_PATH } from './_lib/apiRoutes.js'
 import { recordArchMetric } from '../backend/src/arch.js'
+import { withRequestTrace } from './_lib/traceContext.js'
 
 export function postHandler(fn, key) {
   return async function handler(req, res) {
+    return withRequestTrace(req, async () => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
     if (publicProxyDisabled(res)) return
     const startedAt = Date.now()
@@ -24,5 +26,6 @@ export function postHandler(fn, key) {
       if (isProviderFailureError(e)) recordArchMetric('provider_failure_count', 1)
       res.status(e.status || 500).json({ error: e.message })
     }
+    })
   }
 }

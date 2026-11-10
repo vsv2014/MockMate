@@ -1156,8 +1156,17 @@ ipcMain.handle('connector-request', async (event, payload = {}) => {
       case 'subscribe': data = gateway.subscribe(owner, { importId, provider, accountId, sourceId, sha256, autoSync: enabled === true }); break
       case 'sync-enable': data = gateway.setSync(owner, importId, enabled); break
       case 'unsubscribe': data = gateway.unsubscribe(owner, importId); break
-      case 'sync': data = await gateway.syncNow(owner, { manual: manual === true,
-        importId: typeof importId === 'string' && importId ? importId : null }); break
+      case 'sync': {
+        const startedAt = Date.now()
+        data = await gateway.syncNow(owner, { manual: manual === true,
+          importId: typeof importId === 'string' && importId ? importId : null })
+        diag('connectors', 'sync_pass_completed', {
+          checked: data.checked || 0, failures: data.failures?.length || 0,
+          updates: data.updates?.length || 0, deferred: data.deferred || 0,
+          manual: manual === true, durationMs: Date.now() - startedAt,
+        })
+        break
+      }
       case 'sync-ack': data = gateway.acknowledgeSync(owner, importId, sha256); break
       case 'sync-apply-failed': data = gateway.reportApplyFailure(owner, importId); break
       case 'purge': data = gateway.purgeOwner(owner); break
@@ -1180,7 +1189,13 @@ async function pollApprovedConnectorSources() {
   if (!mainWindow || mainWindow.isDestroyed()) return
   try {
     const owner = await connectorOwner()
+    const startedAt = Date.now()
     const result = await getConnectorGateway().syncNow(owner)
+    diag('connectors', 'sync_pass_completed', {
+      checked: result.checked || 0, failures: result.failures?.length || 0,
+      updates: result.updates?.length || 0, deferred: result.deferred || 0,
+      manual: false, durationMs: Date.now() - startedAt,
+    })
     if (result.updates?.length || result.failures?.length) {
       mainWindow.webContents.send('connector-sync', { owner, ...result })
     }
@@ -1401,6 +1416,12 @@ ipcMain.handle('export-diagnostics', async () => {
 ipcMain.handle('clear-diagnostics', async () => {
   try { await diagnostics?.clear(); diag('diagnostics', 'cleared'); return { ok: true } }
   catch (e) { return { ok: false, error: e.message } }
+})
+
+ipcMain.handle('read-operations-summary', async event => {
+  if (!connectorSender(event)) return { ok: false, error: 'Untrusted operations reader' }
+  try { return { ok: true, data: await diagnostics?.readOperations() } }
+  catch { return { ok: false, error: 'Operational history is temporarily unavailable' } }
 })
 
 ipcMain.handle('read-session-metrics-summary', () => {

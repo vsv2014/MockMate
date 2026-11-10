@@ -202,6 +202,45 @@ export async function saveSessionAsync(args = {}) {
     return await saveSession({ ...args,previousEntry,sink:entry => sqliteRequest('save',{ entry },scope) })
   } catch { return null }
 }
+/**
+ * Update only the stored report after an explicitly requested retry. Keep the
+ * original transcript, setup, Kit snapshot, timestamp and account ownership.
+ * A delayed evaluator must not recreate a deleted session or overwrite one
+ * whose transcript was modified while the request was in flight.
+ */
+export async function replaceSavedEvaluationAsync(id, report, { expectedTranscript } = {}) {
+  const scope = activeAccountScope()
+  if (!id || !report || !Number.isFinite(report.overallScore) ||
+      report.overallScore < 0 || report.overallScore > 100)
+    throw new Error('A complete numeric evaluation is required')
+  const enabled = await sqliteEnabled()
+  const current = enabled
+    ? await sqliteRequest('get', { runId: id }, scope)
+    : loadSessions().find(row => row.id === id)
+  if (!current || scope !== activeAccountScope()) throw new Error('Saved session is no longer available')
+  if (current.mode !== 'live' || current.score != null)
+    throw new Error('This session is not eligible for an evaluation retry')
+  if (expectedTranscript && JSON.stringify(current.transcript) !== JSON.stringify(expectedTranscript))
+    throw new Error('Saved transcript changed during evaluation; retry with the latest session')
+  const updated = {
+    ...current, evaluationStatus: 'scored', report, score: report.overallScore,
+    verdict: report.verdict || null, note: undefined,
+  }
+  if (enabled) {
+    const result = await sqliteRequest('save', { entry: updated }, scope)
+    if (!result || scope !== activeAccountScope()) throw new Error('Unable to store completed evaluation')
+  } else {
+    const rows = loadSessions()
+    if (!rows.some(row => row.id === id) || scope !== activeAccountScope())
+      throw new Error('Saved session disappeared before update')
+    writeSessions(rows.map(row => row.id === id ? updated : row))
+    const persisted = loadSessions().find(row => row.id === id)
+    if (!persisted || persisted.score !== report.overallScore)
+      throw new Error('Evaluation save could not be verified')
+  }
+  return updated
+}
+
 export async function deleteSessionAsync(id) {
   if (!await sqliteEnabled()) return deleteSession(id)
   await sqliteRequest('delete',{ runId:id })

@@ -382,7 +382,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     }
     return { sources }
   }
-  async function readSource(owner, provider, accountId, sourceId) {
+  async function readSource(owner, provider, accountId, sourceId, { knownRevision = null } = {}) {
     providerCheck(provider)
     const id = sourceCheck(provider, sourceId)
     let title, revision, text
@@ -393,6 +393,8 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
         'https://api.github.com/repos/' + repo + '/contents/' + filePath.split('/').map(encodeURIComponent).join('/'))
       if (raw.type !== 'file' || raw.encoding !== 'base64' || raw.size > MAX_BYTES) fail('Selected GitHub source must be a small text file')
       title = raw.name; revision = raw.sha
+      if (knownRevision && revision === knownRevision)
+        return { provider, accountId, sourceId: id, title, revision, unchanged: true }
       text = Buffer.from(String(raw.content || '').replace(/\s/g, ''), 'base64').toString('utf8')
     } else if (provider === 'googledrive') {
       const raw = await authorized(owner, provider, accountId,
@@ -400,6 +402,8 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
       if (raw.size && Number(raw.size) > MAX_BYTES) fail('Selected Drive file is too large')
       if (!['application/vnd.google-apps.document', 'text/plain'].includes(raw.mimeType)) fail('Only Google Docs or plain text are supported')
       title = raw.name; revision = raw.modifiedTime
+      if (knownRevision && revision && revision === knownRevision)
+        return { provider, accountId, sourceId: id, title, revision, unchanged: true }
       const target = raw.mimeType === 'text/plain'
         ? 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '?alt=media'
         : 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '/export?mimeType=text%2Fplain'
@@ -417,6 +421,8 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
         'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calendarId)
         + '/events/' + encodeURIComponent(eventId))
       title = raw.summary || 'Untitled event'; revision = raw.updated || raw.etag
+      if (knownRevision && revision && revision === knownRevision)
+        return { provider, accountId, sourceId: id, title, revision, unchanged: true }
       text = [
         'Title: ' + title,
         'Start: ' + (raw.start?.dateTime || raw.start?.date || 'Unknown'),
@@ -489,25 +495,48 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
       const batch = Array.from({ length: Math.min(30, selected.length) },
         (_, index) => selected[(start + index) % selected.length])
       const updates = [], failures = [], checkedStatus = []
+      let deferredByBackoff = 0
       for (const sub of batch) {
         if (livePaused) break // Do not start more network work after entering Live.
+        // Persisted nextRetryAt survives restarts. Manual refresh intentionally
+        // bypasses this cooldown so an operator can repair access immediately.
+        if (!manual && sub.nextRetryAt && Date.parse(sub.nextRetryAt) > now()) {
+          deferredByBackoff += 1
+          continue
+        }
         const checkedAt = new Date(now()).toISOString()
         try {
-          const source = await readSource(owner, sub.provider, sub.accountId, sub.sourceId)
-          const changed = source.sha256 !== sub.appliedSha
+          // Source-version fast path avoids re-downloading an unchanged Google
+          // Drive document. Force a full reconciliation at least daily, on
+          // manual checks and while any pending local revision needs recovery.
+          const lastFull = Date.parse(sub.lastFullCheckedAt || '') || 0
+          const revisionCheck = !manual && !sub.pendingSha && !sub.lastError &&
+            sub.sourceRevision && (now() - lastFull < 24 * 60 * 60 * 1000)
+          const source = await readSource(owner, sub.provider, sub.accountId, sub.sourceId,
+            { knownRevision: revisionCheck ? sub.sourceRevision : null })
+          const changed = !source.unchanged && source.sha256 !== sub.appliedSha
           if (changed) updates.push({ ...source, importId: sub.importId })
           checkedStatus.push({
             importId: sub.importId, provider: sub.provider, accountId: sub.accountId, sourceId: sub.sourceId,
             lastCheckedAt: checkedAt, lastError: null, lastErrorCode: null,
             sourceRevision: source.revision, pendingSha: changed ? source.sha256 : null,
-            unchanged: !changed,
+            unchanged: !changed, consecutiveFailures: 0, nextRetryAt: null,
+            tombstone: false,
+            lastFullCheckedAt: source.unchanged ? sub.lastFullCheckedAt : checkedAt,
           })
         } catch (error) {
           const failure = classifySyncFailure(error)
-          failures.push({ importId: sub.importId, ...failure })
+          const failuresSoFar = Math.min(10, (Number(sub.consecutiveFailures) || 0) + 1)
+          // 30s, 60s, 120s ... capped at 15 min. Access-denied and
+          // tombstone states are displayed; remote data is NEVER auto-deleted.
+          const delayMs = Math.min(15 * 60_000, 30_000 * 2 ** (failuresSoFar - 1))
+          const nextRetryAt = new Date(now() + delayMs).toISOString()
+          failures.push({ importId: sub.importId, ...failure, nextRetryAt })
           checkedStatus.push({
             importId: sub.importId, provider: sub.provider, accountId: sub.accountId, sourceId: sub.sourceId,
             lastCheckedAt: checkedAt, lastError: failure.error, lastErrorCode: failure.code,
+            consecutiveFailures: failuresSoFar, nextRetryAt,
+            tombstone: failure.code === 'source_unavailable',
           })
         }
       }
@@ -524,8 +553,12 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
           sub.lastCheckedAt = status.lastCheckedAt
           sub.lastError = status.lastError
           sub.lastErrorCode = status.lastErrorCode
+          sub.consecutiveFailures = status.consecutiveFailures
+          sub.nextRetryAt = status.nextRetryAt
+          sub.tombstone = status.tombstone
           if (!status.lastError) {
             sub.sourceRevision = status.sourceRevision
+            sub.lastFullCheckedAt = status.lastFullCheckedAt
             sub.pendingSha = status.pendingSha
             if (status.unchanged) sub.lastSyncedAt = status.lastCheckedAt
           }
@@ -536,6 +569,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
       return {
         paused: livePaused, updates, failures, checked: checkedStatus.length,
         deferred: Math.max(0, selected.length - checkedStatus.length),
+        retryDeferred: deferredByBackoff,
       }
     } finally { busy.delete(owner) }
   }
@@ -556,6 +590,9 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     sub.indexStatus = 'rebuild_on_retrieval'
     sub.lastError = null
     sub.lastErrorCode = null
+    sub.consecutiveFailures = 0
+    sub.nextRetryAt = null
+    sub.tombstone = false
     writeVault(vault)
     return { ok: true, indexStatus: sub.indexStatus }
   }
