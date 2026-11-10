@@ -356,7 +356,7 @@ const bannerBtn = {
 }
 
 // ── Sessions table (Workspace) ──
-export function SessionsTable({ sessions = [], onOpen, onDelete }) {
+export function SessionsTable({ sessions = [], onOpen, onDelete, onRetryEvaluation, evaluationRetryId = null }) {
   if (!sessions.length) {
     return (
       <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, padding: '40px 24px', textAlign: 'center', color: T.text3, fontSize: workspaceTextSize(13), lineHeight: 1.6 }}>
@@ -364,10 +364,10 @@ export function SessionsTable({ sessions = [], onOpen, onDelete }) {
       </div>
     )
   }
-  const cols = '1.8fr 0.9fr 70px 70px 84px'
+  const cols = 'minmax(170px, 1.8fr) minmax(80px, .9fr) 60px 60px minmax(150px, 172px)'
   const cell = { padding: '12px 14px', fontSize: workspaceTextSize(12.5), color: T.text2, display: 'flex', alignItems: 'center', minWidth: 0 }
   return (
-    <div role="table" aria-label="Saved interview sessions" style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, overflow: 'hidden' }}>
+    <div role="table" aria-label="Saved interview sessions" style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, overflowX: 'auto' }}>
       <div role="row" style={{ display: 'grid', gridTemplateColumns: cols, background: T.surface2, borderBottom: `1px solid ${T.border}` }}>
         {['Session', 'Date', 'Score', 'Msgs', 'Actions'].map((h, i) => (
           <div key={i} role="columnheader" style={{ ...cell, fontSize: workspaceTextSize(10.5), fontWeight: 600, letterSpacing: '0.05em', color: T.text3, textTransform: 'uppercase' }}>{h}</div>
@@ -392,9 +392,17 @@ export function SessionsTable({ sessions = [], onOpen, onDelete }) {
             <div role="cell" style={cell}>{dateLabel}</div>
             <div role="cell" style={cell}>{typeof s.score === 'number' ? <span style={{ color: scoreColor(s.score), fontWeight: 600 }}>{(s.score / 10).toFixed(1)}</span> : <span style={{ color: s.report?.error || s.note === 'evaluate_error' ? '#fca5a5' : T.text3 }}>{s.report?.error || s.note === 'evaluate_error' ? 'Err' : '—'}</span>}</div>
             <div role="cell" style={cell}>{s.transcriptCount ?? s.transcript?.length ?? 0}</div>
-            <div role="cell" style={{ ...cell, gap: 4 }}>
+            <div role="cell" style={{ ...cell, gap: 4, flexWrap: 'wrap' }}>
               <button type="button" onClick={() => onOpen?.(s)} data-pi-target="history_session_view" title="View" aria-label={`View session ${label}`} style={iconBtn}>👁</button>
               <button type="button" onClick={() => onDelete?.(s.id)} data-pi-target="history_session_delete" title="Delete" aria-label={`Delete session ${label}`} style={iconBtn}>🗑</button>
+              {s.mode === 'live' && s.score == null && ['failed', 'cancelled', 'pending'].includes(s.evaluationStatus) &&
+                s.captureStatus !== 'provisional' && !s.legacyReadOnly &&
+                <button type="button" disabled={!!evaluationRetryId}
+                  aria-label={`Retry evaluation for ${label}`}
+                  onClick={() => onRetryEvaluation?.(s.id)}
+                  style={{ ...iconBtn, fontSize: workspaceTextSize(10.5), border: `1px solid ${T.borderStrong}`, padding: '4px 5px', borderRadius: 5 }}>
+                  {evaluationRetryId === s.id ? 'Scoring…' : 'Retry score'}
+                </button>}
             </div>
           </div>
         )
