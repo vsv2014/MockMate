@@ -124,7 +124,7 @@ describe('native connected account security and sync', () => {
       assert.deepEqual(calPage2.sources.map(item => item.sourceId), ['primary::c2'])
       assert.equal(pages[2].searchParams.get('q'), 'Interview')
       await assert.rejects(scoped.listSources('account-b', 'googledrive', drive.id), /not found|owned|belong|account/i)
-      await assert.rejects(scoped.listSources('account-a', 'googledrive', drive.id, '', '\\r\\n'), /Invalid source browsing cursor/)
+      await assert.rejects(scoped.listSources('account-a', 'googledrive', drive.id, '', '\r\n'), /Invalid source browsing cursor/)
       assert.equal(scoped.state('account-a').subscriptions.length, 0,
         'Browsing and pagination must never subscribe or import sources')
     } finally { scoped.close() }
