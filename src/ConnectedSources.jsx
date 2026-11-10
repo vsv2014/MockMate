@@ -33,7 +33,7 @@ const label = { display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, c
 const small = { color: T.text3, fontSize: 12, lineHeight: 1.5 }
 const blank = () => ({ provider: 'github', title: '', sourceId: '', accountLabel: '', connectedAccountId: null, revision: '', text: '', selectedByUser: false, kitId: null })
 const readableError = error => error?.message || 'Operation failed; no changes were made.'
-function sourceSyncHealth(subscription) {
+export function sourceSyncHealth(subscription) {
   if (!subscription) return 'Not subscribed to background sync.'
   if (subscription.tombstone) return 'Remote source missing or permission revoked; local approved copy is retained. Reconnect or remove explicitly.'
   if (subscription.lastError) return 'Sync needs attention: ' + subscription.lastError
@@ -546,7 +546,9 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           <Field name="Source type">
             <select style={input} value={draft.provider} onChange={e => {
                 setDraft({ ...blank(), provider: e.target.value, kitId: draft.kitId })
-                setPreview(null); setConfirmed(false); setImportAutoSync(false); setRemoteSources([])
+                sourceBrowseSerialRef.current += 1
+                setPreview(null); setConfirmed(false); setImportAutoSync(false)
+                setRemoteSources([]); setRemoteCursor(null); setRemotePartial(false)
               }}>
               {providerEntries.map(([id, data]) => <option key={id} value={id}>{data.label}</option>)}
             </select>
