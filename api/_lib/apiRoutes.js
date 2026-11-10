@@ -8,6 +8,7 @@ import { findJobs } from './jobs.js'
 import { atsScore, tailorResume, referralMessage, resumeLatex } from './career.js'
 import { archRuntimeSummary, recordArchMetric, reasoningPolicy as defaultReasoningPolicy } from '../../backend/src/arch.js'
 import { isQuotaExhausted, isRateLimit, isTransient } from '../../shared/llm-errors.js'
+import { withRequestTrace, currentRequestTrace } from './traceContext.js'
 
 export function isProviderFailureError(e, { closed = false, signal = null } = {}) {
   if (closed || signal?.aborted || e?.name === 'AbortError' || e?.message === 'client_disconnected') return false
@@ -80,6 +81,9 @@ export function applyArchReasoningPolicy(path, raw = {}, resolveReasoningPolicy 
 }
 
 export function registerApiRoutes(app, opts = {}) {
+  // Preserve renderer -> API -> provider correlation for every Express route.
+  // The provider's AsyncLocalStorage stays isolated across concurrent requests.
+  app.use('/api', (req, _res, next) => withRequestTrace(req, next))
   const guard = opts.auth ? [].concat(opts.auth) : []
   const guardLight = opts.authLight ? [].concat(opts.authLight) : guard
   // STT quota enforcement is injected by the server (round-5/6 review): the Express
