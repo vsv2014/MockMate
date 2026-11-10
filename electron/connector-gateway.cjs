@@ -382,7 +382,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     }
     return { sources }
   }
-  async function readSource(owner, provider, accountId, sourceId) {
+  async function readSource(owner, provider, accountId, sourceId, { knownRevision = null } = {}) {
     providerCheck(provider)
     const id = sourceCheck(provider, sourceId)
     let title, revision, text
@@ -393,6 +393,8 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
         'https://api.github.com/repos/' + repo + '/contents/' + filePath.split('/').map(encodeURIComponent).join('/'))
       if (raw.type !== 'file' || raw.encoding !== 'base64' || raw.size > MAX_BYTES) fail('Selected GitHub source must be a small text file')
       title = raw.name; revision = raw.sha
+      if (knownRevision && revision === knownRevision)
+        return { provider, accountId, sourceId: id, title, revision, unchanged: true }
       text = Buffer.from(String(raw.content || '').replace(/\s/g, ''), 'base64').toString('utf8')
     } else if (provider === 'googledrive') {
       const raw = await authorized(owner, provider, accountId,
@@ -400,6 +402,8 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
       if (raw.size && Number(raw.size) > MAX_BYTES) fail('Selected Drive file is too large')
       if (!['application/vnd.google-apps.document', 'text/plain'].includes(raw.mimeType)) fail('Only Google Docs or plain text are supported')
       title = raw.name; revision = raw.modifiedTime
+      if (knownRevision && revision && revision === knownRevision)
+        return { provider, accountId, sourceId: id, title, revision, unchanged: true }
       const target = raw.mimeType === 'text/plain'
         ? 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '?alt=media'
         : 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '/export?mimeType=text%2Fplain'
@@ -417,6 +421,8 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
         'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calendarId)
         + '/events/' + encodeURIComponent(eventId))
       title = raw.summary || 'Untitled event'; revision = raw.updated || raw.etag
+      if (knownRevision && revision && revision === knownRevision)
+        return { provider, accountId, sourceId: id, title, revision, unchanged: true }
       text = [
         'Title: ' + title,
         'Start: ' + (raw.start?.dateTime || raw.start?.date || 'Unknown'),
@@ -500,8 +506,15 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
         }
         const checkedAt = new Date(now()).toISOString()
         try {
-          const source = await readSource(owner, sub.provider, sub.accountId, sub.sourceId)
-          const changed = source.sha256 !== sub.appliedSha
+          // Source-version fast path avoids re-downloading an unchanged Google
+          // Drive document. Force a full reconciliation at least daily, on
+          // manual checks and while any pending local revision needs recovery.
+          const lastFull = Date.parse(sub.lastFullCheckedAt || '') || 0
+          const revisionCheck = !manual && !sub.pendingSha && !sub.lastError &&
+            sub.sourceRevision && (now() - lastFull < 24 * 60 * 60 * 1000)
+          const source = await readSource(owner, sub.provider, sub.accountId, sub.sourceId,
+            { knownRevision: revisionCheck ? sub.sourceRevision : null })
+          const changed = !source.unchanged && source.sha256 !== sub.appliedSha
           if (changed) updates.push({ ...source, importId: sub.importId })
           checkedStatus.push({
             importId: sub.importId, provider: sub.provider, accountId: sub.accountId, sourceId: sub.sourceId,
@@ -509,6 +522,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
             sourceRevision: source.revision, pendingSha: changed ? source.sha256 : null,
             unchanged: !changed, consecutiveFailures: 0, nextRetryAt: null,
             tombstone: false,
+            lastFullCheckedAt: source.unchanged ? sub.lastFullCheckedAt : checkedAt,
           })
         } catch (error) {
           const failure = classifySyncFailure(error)
@@ -544,6 +558,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
           sub.tombstone = status.tombstone
           if (!status.lastError) {
             sub.sourceRevision = status.sourceRevision
+            sub.lastFullCheckedAt = status.lastFullCheckedAt
             sub.pendingSha = status.pendingSha
             if (status.unchanged) sub.lastSyncedAt = status.lastCheckedAt
           }
