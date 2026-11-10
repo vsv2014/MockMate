@@ -60,12 +60,15 @@ export function validateAblSpec(spec) {
 
 export function loadAblSpec({ force = false } = {}) {
   const ablPath = path.resolve(process.env.MOCKMATE_ABL_PATH || DEFAULT_ABL_PATH)
-  const stat = fs.statSync(ablPath)
-  if (!force && cached && cachedPath === ablPath && cachedMtime === stat.mtimeMs) return cached
+  // Atomic replacement may happen within the same millisecond. Include inode,
+  // nanosecond mtime and length so a rollback cannot leave a stale compiled plan.
+  const stat = fs.statSync(ablPath, { bigint: true })
+  const stamp = [stat.mtimeNs, stat.ino, stat.size].join(':')
+  if (!force && cached && cachedPath === ablPath && cachedMtime === stamp) return cached
   const parsed = JSON.parse(fs.readFileSync(ablPath, 'utf8'))
   cached = Object.freeze(validateAblSpec(parsed))
   cachedPath = ablPath
-  cachedMtime = stat.mtimeMs
+  cachedMtime = stamp
   return cached
 }
 
