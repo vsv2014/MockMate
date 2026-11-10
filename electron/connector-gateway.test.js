@@ -132,6 +132,53 @@ describe('native connected account security and sync', () => {
     assert.equal(sub.pendingSha, undefined)
   })
 
+  it('manually refreshes an auto-sync-disabled source without opting it into background polling', async () => {
+    const { flowId } = await gateway.startGithub('account-a', 'Iv1abcdef12345')
+    const connected = await gateway.pollFlow('account-a', flowId)
+    const accountId = connected.account.id
+    gateway.subscribe('account-a', { importId: 'imp_disabled', provider: 'github', accountId,
+      sourceId: 'acme/repo:README.md', sha256: 'a'.repeat(64), autoSync: false })
+    assert.equal((await gateway.syncNow('account-a')).checked, 0)
+    const checked = await gateway.syncNow('account-a', { manual: true, importId: 'imp_disabled' })
+    assert.equal(checked.checked, 1)
+    assert.equal(checked.updates.length, 1)
+    assert.equal(gateway.state('account-a').subscriptions[0].autoSync, false)
+    assert.throws(() => gateway.acknowledgeSync('account-a', 'imp_disabled', 'a'.repeat(64)), /no matching pending/)
+    gateway.acknowledgeSync('account-a', 'imp_disabled', checked.updates[0].sha256)
+    assert.equal((await gateway.syncNow('account-a', { manual: true, importId: 'imp_disabled' })).updates.length, 0)
+  })
+
+  it('limits targeted refresh and cannot inspect another account or nonexistent import', async () => {
+    const { flowId } = await gateway.startGithub('account-a', 'Iv1abcdef12345')
+    const connected = await gateway.pollFlow('account-a', flowId)
+    for (const id of ['imp_one', 'imp_two']) gateway.subscribe('account-a', {
+      importId: id, provider: 'github', accountId: connected.account.id,
+      sourceId: 'acme/repo:README.md', sha256: 'a'.repeat(64), autoSync: false })
+    const baseline = requests.length
+    const result = await gateway.syncNow('account-a', { manual: true, importId: 'imp_two' })
+    assert.deepEqual(result.updates.map(x => x.importId), ['imp_two'])
+    assert.equal(requests.length - baseline, 1)
+    await assert.rejects(gateway.syncNow('account-b', { manual: true, importId: 'imp_two' }), /not connected/)
+    await assert.rejects(gateway.syncNow('account-a', { manual: true, importId: 'imp_unknown' }), /not connected/)
+  })
+
+  it('persists local apply failure without storing raw exception or clearing the pending update', async () => {
+    const { flowId } = await gateway.startGithub('account-a', 'Iv1abcdef12345')
+    const connected = await gateway.pollFlow('account-a', flowId)
+    gateway.subscribe('account-a', { importId: 'imp_apply', provider: 'github',
+      accountId: connected.account.id, sourceId: 'acme/repo:README.md', sha256: 'a'.repeat(64) })
+    await gateway.syncNow('account-a')
+    const before = gateway.state('account-a').subscriptions[0]
+    assert.ok(before.pendingSha)
+    gateway.reportApplyFailure('account-a', 'imp_apply')
+    const after = gateway.state('account-a').subscriptions[0]
+    assert.equal(after.lastErrorCode, 'local_apply_failed')
+    assert.match(after.lastError, /persistence failed/i)
+    assert.equal(after.pendingSha, before.pendingSha)
+    assert.equal(after.lastSyncedAt, null)
+    assert.throws(() => gateway.reportApplyFailure('account-b', 'imp_apply'), /not found/)
+  })
+
   it('completes Google Desktop PKCE callback with state verification and encrypted identity', async () => {
     const opened = []
     const safeStorage = {
