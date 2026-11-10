@@ -248,6 +248,39 @@ describe('native connected account security and sync', () => {
     } finally { alternate.close() }
   })
 
+  it('recovers a pending approved-source revision after process restart without duplicate writes', async () => {
+    const safeStorage = { isEncryptionAvailable: () => true,
+      encryptString: value => Buffer.from('sealed:' + value),
+      decryptString: buffer => buffer.toString().replace(/^sealed:/, ''),
+    }
+    const content = 'Durable approved source content.'
+    const fetchImpl = async url => {
+      if (String(url).includes('/repos/acme/repo/contents/README.md'))
+        return fakeResponse({ type: 'file', name: 'README.md', size: content.length, sha: 'rev1',
+          encoding: 'base64', content: Buffer.from(content).toString('base64') })
+      throw Error('Unexpected request')
+    }
+    const create = () => createConnectorGateway({ userData: dir, safeStorage, fetchImpl })
+    const initial = create()
+    const account = initial._forTests.saveConnected('account-a', 'github', { subject: '55', label: 'dev' },
+      { access_token: 'unit-key' })
+    initial.subscribe('account-a', { importId: 'imp_crash', provider: 'github', accountId: account.id,
+      sourceId: 'acme/repo:README.md', sha256: 'a'.repeat(64) })
+    const pending = await initial.syncNow('account-a')
+    assert.equal(pending.updates.length, 1)
+    const savedSha = pending.updates[0].sha256
+    initial.close() // Simulated crash before renderer persists/acknowledges update.
+    const recovered = create()
+    try {
+      assert.equal(recovered.state('account-a').subscriptions[0].pendingSha, savedSha)
+      const replay = await recovered.syncNow('account-a')
+      assert.equal(replay.updates.length, 1)
+      assert.equal(replay.updates[0].sha256, savedSha)
+      recovered.acknowledgeSync('account-a', 'imp_crash', savedSha)
+      assert.equal((await recovered.syncNow('account-a')).updates.length, 0)
+    } finally { recovered.close() }
+  })
+
   it('completes Google Desktop PKCE callback with state verification and encrypted identity', async () => {
     const opened = []
     const safeStorage = {
