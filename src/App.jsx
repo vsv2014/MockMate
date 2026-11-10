@@ -46,6 +46,7 @@ import { canRunLanguage, runJavaScriptIsolated } from './lib/codeRunner'
 import { diagnostic } from './lib/diagnostics'
 import { trackProductEvent, attachRageClickObserver } from './lib/productIntelligence'
 import ProductIntelligencePanel from './components/ProductIntelligencePanel'
+import OperationsConsole from './OperationsConsole'
 import {
   createScreenContextRecord,
   previousScreenForContinuation,
@@ -65,7 +66,7 @@ const isLinux = typeof window !== 'undefined' && window.electronAPI?.platform ==
 // Views that render in the full windowed app shell (large window + sidebar). Solo runs
 // here too — there's no interviewer watching, so it gets the roomy dashboard, not the
 // overlay. ONLY the Live companion drops to the compact always-on-top overlay.
-const SHELL_VIEWS = ['home', 'kits', 'ready-room', 'solo', 'duo', 'jobs', 'career', 'sources', 'settings', 'account', 'history']
+const SHELL_VIEWS = ['home', 'kits', 'ready-room', 'solo', 'duo', 'jobs', 'career', 'sources', 'operations', 'settings', 'account', 'history']
 
 function StealthSafetyPrompt({ confirmOff, notice, onCancel, onConfirmOff }) {
   if (!confirmOff && !notice) return null
@@ -987,6 +988,7 @@ function ElectronShell({ auth }) {
       </div>
     )
     else if (view === 'sources') content = <ConnectedSources key={activeAccountScope()} auth={auth} activeKit={activeKit} />
+    else if (view === 'operations') content = <OperationsConsole />
     else if (view === 'settings') content = (
       <div className="mm-settings" style={{ maxWidth: 980, width: '100%', margin: '0 auto' }}>
         <div style={shellHeader}>Settings</div>
