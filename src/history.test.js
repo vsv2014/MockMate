@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { clearSoloDraft, loadSessions, loadSoloDraft, saveSession, saveSoloDraft } from './history.js'
+import { clearSoloDraft, loadSessions, loadSoloDraft, saveSession, saveSoloDraft, replaceSavedEvaluationAsync } from './history.js'
 
 const store = new Map()
 vi.stubGlobal('localStorage', {
@@ -29,6 +29,35 @@ describe('session history persistence', () => {
       language: 'English', responseStyle: 'balanced', modelStrategy: null,
     })
     expect(loadSessions()[0].company).toBe('Acme')
+  })
+
+  it('repairs a failed Live evaluation without losing transcript, Kit snapshot or creation time', async () => {
+    const transcript = [{ role: 'interviewer', text: 'Q' }, { role: 'candidate', text: 'A' }]
+    const before = saveSession({ runId: 'live-retry-1', report: { summary: 'Evaluation cancelled' }, transcript,
+      evaluationStatus: 'cancelled', captureStatus: 'captured',
+      config: { interviewSetup: { source: 'live', targetRole: 'Engineer',
+        kitId: 'kit-1', resumeText: 'Private resume' } } })
+    const after = await replaceSavedEvaluationAsync(before.id, { overallScore: 83, summary: 'Recovered score' },
+      { expectedTranscript: transcript })
+    expect(after.evaluationStatus).toBe('scored')
+    expect(after.score).toBe(83)
+    expect(after.ts).toBe(before.ts)
+    expect(after.transcript).toEqual(before.transcript)
+    expect(after.kitSnapshot.resumeText).toBe('Private resume')
+    expect(loadSessions()[0].evaluationStatus).toBe('scored')
+    await expect(replaceSavedEvaluationAsync(before.id, { overallScore: 90 })).rejects.toThrow(/not eligible/)
+  })
+
+  it('rejects changed transcript and invalid evaluation without changing saved data', async () => {
+    const before = saveSession({ runId: 'live-retry-2', report: { summary: 'Pending' },
+      evaluationStatus: 'failed', captureStatus: 'captured',
+      transcript: [{ role: 'candidate', text: 'Original answer' }],
+      config: { interviewSetup: { source: 'live' } } })
+    await expect(replaceSavedEvaluationAsync(before.id, { overallScore: 101 })).rejects.toThrow(/numeric/)
+    await expect(replaceSavedEvaluationAsync(before.id, { overallScore: 73 },
+      { expectedTranscript: [{ role: 'candidate', text: 'Different' }] })).rejects.toThrow(/changed/)
+    expect(loadSessions()[0].score).toBeNull()
+    expect(loadSessions()[0].transcript).toEqual(before.transcript)
   })
 
   it('isolates interrupted Solo drafts by Kit while preserving the shared-profile draft key', () => {
