@@ -332,7 +332,7 @@ export function describeAutomaticRouting() {
       const verified = Boolean(record && id === `${family}::${record.model}`
         && Date.now() - record.checkedAt <= VERIFIED_ROUTE_TTL_MS
         && !isQuarantinedModel(family, record.model) && automaticRouteUsable(family))
-      return { id, model: provider.model, label: modelDisplayName(provider.model), verified }
+      return { id, model: provider.model, label: modelDisplayName(provider.model), ...(verified ? { verified: true } : {}) }
     } catch { return null }
   }
   return { fast: describe(pickFastProvider()), strong: describe(pickStrongProvider()) }
