@@ -483,8 +483,9 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
         fail('Selected source is not connected to this account')
       // A targeted check doesn't move the background cursor or scan other data.
       const selected = importId ? eligible.filter(s => s.importId === importId) : eligible
-      const start = importId || manual ? 0 : (selected.length && Number.isSafeInteger(snapshot?.syncCursor)
-        ? Math.max(0, snapshot.syncCursor) % selected.length : 0)
+      const cursorKey = manual ? 'manualSyncCursor' : 'syncCursor'
+      const start = importId ? 0 : (selected.length && Number.isSafeInteger(snapshot?.[cursorKey])
+        ? Math.max(0, snapshot[cursorKey]) % selected.length : 0)
       const batch = Array.from({ length: Math.min(30, selected.length) },
         (_, index) => selected[(start + index) % selected.length])
       const updates = [], failures = [], checkedStatus = []
@@ -529,7 +530,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
             if (status.unchanged) sub.lastSyncedAt = status.lastCheckedAt
           }
         }
-        if (!manual && !importId) row.syncCursor = selected.length ? (start + checkedStatus.length) % selected.length : 0
+        if (!importId) row[cursorKey] = selected.length ? (start + checkedStatus.length) % selected.length : 0
         writeVault(latest)
       }
       return {
