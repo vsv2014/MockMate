@@ -397,7 +397,7 @@ export function SessionsTable({ sessions = [], onOpen, onDelete, onRetryEvaluati
               <button type="button" onClick={() => onOpen?.(s)} data-pi-target="history_session_view" title="View" aria-label={`View session ${label}`} style={iconBtn}>👁</button>
               <button type="button" onClick={() => onDelete?.(s.id)} data-pi-target="history_session_delete" title="Delete" aria-label={`Delete session ${label}`} style={iconBtn}>🗑</button>
               {s.mode === 'live' && s.score == null && ['failed', 'cancelled', 'pending'].includes(s.evaluationStatus) &&
-                s.captureStatus !== 'provisional' && !s.legacyReadOnly &&
+                s.captureStatus === 'captured' && !s.legacyReadOnly &&
                 <button type="button" disabled={!!evaluationRetryId}
                   aria-label={`Retry evaluation for ${label}`}
                   onClick={() => onRetryEvaluation?.(s.id)}
