@@ -116,7 +116,7 @@ describe('Claude thinking settings for Live answers', () => {
     const core = await import('./core.js')
     await runStream(core, { provider: 'gemini_3_flash' })
     expect(calls[0].params.thinking).toBeUndefined()
-    expect(calls[0].params.reasoning_effort).toBe('none')
+    expect(calls[0].params.reasoning_effort).toBeUndefined()
   })
 
   it('retries once without the thinking field if Anthropic rejects it', async () => {
@@ -148,7 +148,7 @@ describe('Claude thinking settings for Live answers', () => {
 })
 
 describe('provider streaming recovery and answer-content integrity', () => {
-  it('retries one Gemini streaming 400 without optional reasoning_effort', async () => {
+  it('does not incur a Gemini 400 probe when streaming a normal answer', async () => {
     process.env.GEMINI_API_KEY = 'test-gemini'
     script = (params, opts) => {
       if (params.reasoning_effort) throw Object.assign(new Error('unsupported reasoning_effort'), { status: 400 })
@@ -158,9 +158,8 @@ describe('provider streaming recovery and answer-content integrity', () => {
     const { tokens, error } = await runStream(core, { provider: 'gemini_flash_lite' })
     expect(error).toBeNull()
     expect(tokens).toEqual(['answer'])
-    expect(calls).toHaveLength(2)
-    expect(calls[0].params.reasoning_effort).toBe('none')
-    expect(calls[1].params.reasoning_effort).toBeUndefined()
+    expect(calls).toHaveLength(1)
+    expect(calls[0].params.reasoning_effort).toBeUndefined()
   })
 
   it('never labels an empty stream successful; falls back before any content is shown', async () => {
