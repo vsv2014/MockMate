@@ -26,18 +26,34 @@ export function analyzeLiveSession(rows, { minDurationMs = MIN_LIVE_SOAK_MS, ses
   const speech = ordered.filter(r => r.component === 'session' && r.event === 'stt_final')
   const commits = ordered.filter(r => r.component === 'session' && r.event === 'question_committed')
   const ttfts = ordered.filter(r => r.component === 'session' && r.event === 'ttft')
+  const pcmHeartbeats = ordered.filter(r => r.component === 'stt' && r.event === 'audio_pcm_heartbeat' &&
+    r.mode === 'system_audio' && r.socketOpen === true && r.contextState === 'running')
+  const audibleHeartbeats = pcmHeartbeats.filter(r => Number(r.audibleFrames) > 0)
   const stopFrames = ordered.filter(r => r.component === 'stt' && r.event === 'audio_frames_stalled')
   const resumedFrames = ordered.filter(r => r.component === 'stt' && r.event === 'audio_frames_resumed')
   const history = rows.filter(r => r.component === 'session' && r.runId === ending.sessionId && r.event === 'history_commit_succeeded')
   const latestHistory = history.at(-1)
   const duration = Number(ending.durationMs) || 0
   const failures = [], warnings = []
+  const startMs = start ? Date.parse(start.ts) : null
+  const firstCandidateMs = captures.length ? Date.parse(captures[0].ts) : null
+  const finalCandidateMs = captures.length ? Date.parse(captures[captures.length - 1].ts) : null
+  const micStartMs = micOpens.length ? Date.parse(micOpens[0].ts) : null
+  const lastPcmMs = pcmHeartbeats.length ? Date.parse(pcmHeartbeats[pcmHeartbeats.length - 1].ts) : null
+  const pcmMinimum = Math.max(30, Math.floor(duration / 60_000) * 2)
   const checks = {
+    windowsPlatform: ending.platform === 'win32',
     duration: duration >= minDurationMs,
     completeTelemetry: Boolean(start),
     systemAudioConnected: systemOpens.length > 0,
     candidateMicConnected: micOpens.length > 0,
     candidateResponses: captures.length >= 5,
+    candidateMicStartedEarly: startMs != null && micStartMs != null && micStartMs - startMs <= 10 * 60_000,
+    candidateCoverage: startMs != null && firstCandidateMs != null && finalCandidateMs != null &&
+      firstCandidateMs - startMs <= 10 * 60_000 && Date.parse(ending.ts) - finalCandidateMs <= 15 * 60_000,
+    pcmMonitoring: pcmHeartbeats.length >= pcmMinimum &&
+      lastPcmMs != null && Date.parse(ending.ts) - lastPcmMs <= 5 * 60_000,
+    pcmSignalDetected: audibleHeartbeats.length >= 5,
     questionsCommitted: commits.length >= 10,
     hintsDelivered: (Number(ending.hints) || 0) >= 10 && ttfts.length >= 10,
     audioCaptureHealthy: stopFrames.length === 0 || resumedFrames.length >= stopFrames.length,
@@ -47,11 +63,16 @@ export function analyzeLiveSession(rows, { minDurationMs = MIN_LIVE_SOAK_MS, ses
     evaluationScored: latestHistory?.evaluationStatus === 'scored',
   }
   const descriptions = {
+    windowsPlatform: 'The completed Live run was not captured on Windows',
     duration: 'Live recording shorter than 60 minutes',
     completeTelemetry: 'Session start record absent; logs may be rotated/incomplete',
     systemAudioConnected: 'No system-audio STT socket opened in the captured session',
     candidateMicConnected: 'No separate candidate microphone socket opened',
     candidateResponses: 'Fewer than five candidate speech segments captured',
+    candidateMicStartedEarly: 'Candidate microphone did not connect within the first ten minutes',
+    candidateCoverage: 'Candidate speech coverage began too late or stopped before the last fifteen minutes',
+    pcmMonitoring: 'Not enough continuous system-audio PCM monitoring evidence (or no recent heartbeat)',
+    pcmSignalDetected: 'No sufficient audible system-audio signal was captured for the test',
     questionsCommitted: 'Fewer than ten interviewer questions committed',
     hintsDelivered: 'Fewer than ten completed hint first tokens recorded',
     audioCaptureHealthy: 'Audio PCM capture stalled and did not fully recover',
@@ -86,6 +107,9 @@ export function analyzeLiveSession(rows, { minDurationMs = MIN_LIVE_SOAK_MS, ses
       sessionSTTFinals: Number(ending.sttFinals) || 0,
       systemSpeechEvents: speech.length,
       candidateSpeechSegments: captures.length,
+      systemPcmHeartbeats: pcmHeartbeats.length,
+      audibleSystemHeartbeats: audibleHeartbeats.length,
+      requiredSystemPcmHeartbeats: pcmMinimum,
       questionsCommitted: commits.length,
       hintsDelivered: Number(ending.hints) || 0,
       providerFallbacks: Number(ending.providerFallbacks) || 0,
