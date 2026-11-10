@@ -218,7 +218,11 @@ export async function replaceSavedEvaluationAsync(id, report, { expectedTranscri
     ? await sqliteRequest('get', { runId: id }, scope)
     : loadSessions().find(row => row.id === id)
   if (!current || scope !== activeAccountScope()) throw new Error('Saved session is no longer available')
-  if (current.mode !== 'live' || current.score != null)
+  if (current.mode !== 'live' || current.score != null ||
+      current.captureStatus !== 'captured' ||
+      !['pending', 'failed', 'cancelled'].includes(current.evaluationStatus) ||
+      !Array.isArray(current.transcript) ||
+      !current.transcript.some(turn => turn?.role === 'candidate' && String(turn.text || '').trim()))
     throw new Error('This session is not eligible for an evaluation retry')
   if (expectedTranscript && JSON.stringify(current.transcript) !== JSON.stringify(expectedTranscript))
     throw new Error('Saved transcript changed during evaluation; retry with the latest session')
