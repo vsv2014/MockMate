@@ -97,6 +97,10 @@ function BrowserGate() {
 // ── Electron shell — wraps every screen in the floating overlay ───────────────
 function ElectronShell({ auth }) {
   const [view, setView] = useState('home')
+  // Background sync events can arrive after the user starts a Live session.
+  // Read the current view rather than the initial effect closure.
+  const liveViewRef = useRef(false)
+  liveViewRef.current = view === 'companion'
   // End-to-end sync: main fetches only previously approved source IDs. The
   // renderer owns its account-scoped document store and acknowledges ONLY after
   // the new revision and index invalidation have persisted successfully.
@@ -105,9 +109,9 @@ function ElectronShell({ auth }) {
     if (!bridge?.onSync) return
     let disposed = false
     const applyChanges = async result => {
-      if (disposed || result?.owner !== activeAccountScope()) return
+      if (disposed || liveViewRef.current || result?.owner !== activeAccountScope()) return
       for (const update of (result.updates || []).slice(0, 30)) {
-        if (disposed || result.owner !== activeAccountScope()) return
+        if (disposed || liveViewRef.current || result.owner !== activeAccountScope()) return
         try {
           await applyApprovedRemoteUpdate(update)
           const ack = await bridge.request({ op: 'sync-ack', importId: update.importId, sha256: update.sha256 })
@@ -121,7 +125,7 @@ function ElectronShell({ auth }) {
     const unsubscribe = bridge.onSync(applyChanges)
     // Catch up after the app/account becomes ready, not during active Live.
     const timer = setTimeout(async () => {
-      if (disposed || view === 'companion' || !auth?.user?.id) return
+      if (disposed || liveViewRef.current || !auth?.user?.id) return
       try {
         const result = await bridge.request({ op: 'sync' })
         if (result?.ok) await applyChanges({ owner: activeAccountScope(), ...result.data })
