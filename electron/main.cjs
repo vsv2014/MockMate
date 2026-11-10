@@ -1141,7 +1141,7 @@ ipcMain.handle('connector-request', async (event, payload = {}) => {
     const owner = await connectorOwner()
     const gateway = getConnectorGateway()
     const { op, provider, accountId, flowId, clientId, clientSecret, privateRepos, sourceId,
-      query, importId, sha256, enabled, manual } = payload
+      query, cursor, importId, sha256, enabled, manual } = payload
     let data
     switch (op) {
       case 'status': data = gateway.state(owner); break
@@ -1151,7 +1151,7 @@ ipcMain.handle('connector-request', async (event, payload = {}) => {
       case 'verify-account': data = await gateway.verifyAccount(owner, provider, accountId); break
       case 'switch': data = gateway.setActive(owner, provider, accountId); break
       case 'disconnect': data = gateway.removeAccount(owner, provider, accountId); break
-      case 'list-sources': data = await gateway.listSources(owner, provider, accountId, query); break
+      case 'list-sources': data = await gateway.listSources(owner, provider, accountId, query, cursor); break
       case 'read-source': data = await gateway.readSource(owner, provider, accountId, sourceId); break
       case 'subscribe': data = gateway.subscribe(owner, { importId, provider, accountId, sourceId, sha256, autoSync: enabled === true }); break
       case 'sync-enable': data = gateway.setSync(owner, importId, enabled); break
