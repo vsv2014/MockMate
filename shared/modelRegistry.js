@@ -55,6 +55,32 @@ export function modelPreferenceScore(model) {
     || 20
 }
 
+// A balanced, interview-oriented order: prefer capable fast/balanced models over
+// expensive maximum-reasoning models. This is a curated preference, NOT a live
+// pricing, latency, or answer-quality benchmark. Only provider-discovered model
+// IDs are eligible; the runtime must still successfully probe the chosen model.
+export const EFFICIENT_MODEL_ORDER = {
+  openai: ['gpt-6.1-sol', 'gpt-6-luna', 'gpt-6-sol', 'gpt-6-astra'],
+  gemini: ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.5-flash-lite'],
+  claude_sonnet: ['claude-sonnet-5-5', 'claude-sonnet-5', 'claude-haiku-5-5', 'claude-haiku-4-5-20251001', 'claude-opus-5', 'claude-fable-5'],
+  groq: ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b'],
+  cerebras: ['gpt-oss-120b', 'zai-glm-4.7'],
+  openrouter: [MODEL_CATALOG.openrouter.defaultModel],
+}
+
+export function preferredEfficientModel(provider, discoveredIds = []) {
+  const ids = [...new Set(discoveredIds.filter(id => typeof id === 'string' && id.trim()))]
+  if (!ids.length) return null
+  const order = EFFICIENT_MODEL_ORDER[provider] || []
+  const priority = id => {
+    const index = order.findIndex(preferred => withoutAnthropicDate(preferred) === withoutAnthropicDate(id))
+    return index < 0 ? Number.POSITIVE_INFINITY : index
+  }
+  return ids.sort((a, b) => priority(a) - priority(b)
+    || modelPreferenceScore({ provider, model: b }) - modelPreferenceScore({ provider, model: a })
+    || a.localeCompare(b))[0]
+}
+
 // Claude 5-generation models think by default. Through the OpenAI-compatible
 // endpoint that thinking is never returned, still counts toward max_tokens, is
 // billed as output, and reasoning_effort is ignored. Live answers are latency
