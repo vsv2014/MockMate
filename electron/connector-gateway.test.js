@@ -106,7 +106,7 @@ describe('native connected account security and sync', () => {
     assert.equal(subscription.lastError, null)
     assert.ok(subscription.pendingSha)
     assert.throws(() => gateway.acknowledgeSync('account-a', 'imp_batch_34', 'b'.repeat(64)),
-      /outdated source revision/)
+      /no matching pending source revision/)
     gateway.acknowledgeSync('account-a', 'imp_batch_34', subscription.pendingSha)
     const applied = gateway.state('account-a').subscriptions.find(s => s.importId === 'imp_batch_34')
     assert.ok(applied.lastSyncedAt)
