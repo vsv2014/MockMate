@@ -6,6 +6,7 @@ import {
   getSelectedDocIds, getKitSelectedDocIds, setDocSelected, setKitDocSelected,
   setDocType, setKitDocType, filterDocsForRetrieve, DOC_TYPES,
   sampleChunksForIndex, retrieveContext, canReuseSpeculativeRag,
+  documentIndexStatus, prepareDocumentIndex,
 } from './docs.js'
 
 const store = new Map()
@@ -183,6 +184,51 @@ describe('Kit-owned supporting documents', () => {
     expect(result).toContain('Acme private notes')
     expect(result).not.toContain('Shared notes')
     expect(result).not.toContain('Northstar private notes')
+  })
+})
+
+describe('explicit durable retrieval-index readiness', () => {
+  beforeEach(() => { store.clear(); apiFetchMock.mockReset() })
+  const stubEmbeddings = () => apiFetchMock.mockImplementation(async (_path, options) => {
+    const input = JSON.parse(options.body).input
+    return { ok: true, json: async () => ({ vectors: input.map(() => [1, 0, 0]), embeddingModel: 'test:embedding' }) }
+  })
+
+  it('verifies current-revision index only after the vector projection is durably stored', async () => {
+    stubEmbeddings()
+    const d = addDoc({ name: 'Approved notes', type: 'knowledge', text: 'Approved source text for explicit indexing.', selected: false })
+    expect(documentIndexStatus(d.id).state).toBe('needs_indexing')
+    const result = await prepareDocumentIndex(d.id)
+    expect(result).toMatchObject({
+      state: 'ready', indexRevision: result.documentRevision,
+      embeddingModel: 'test:embedding', dimensions: 3, chunkCount: 1,
+    })
+    expect(documentIndexStatus(d.id)).toMatchObject({ state: 'ready', documentRevision: result.indexRevision })
+    expect(getSelectedDocIds()).not.toContain(d.id)
+    expect(apiFetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('never marks a memory-only index as ready after local storage quota failure', async () => {
+    stubEmbeddings()
+    const d = addDoc({ name: 'Notes', type: 'knowledge', text: 'This source cannot persist index vectors under quota.' })
+    const previous = localStorage.setItem
+    localStorage.setItem = (key, value) => {
+      if (String(key).includes('mm-docs-index-v1')) throw new Error('QuotaExceededError')
+      return previous(key, value)
+    }
+    try {
+      await expect(prepareDocumentIndex(d.id)).rejects.toThrow(/not durably stored/i)
+      expect(documentIndexStatus(d.id).state).toBe('needs_indexing')
+    } finally { localStorage.setItem = previous }
+  })
+
+  it('never indexes a Kit-owned document through the shared-library boundary', async () => {
+    stubEmbeddings()
+    const d = addDoc({ name: 'Kit-only notes', type: 'knowledge', text: 'Restricted project knowledge for one kit.', kitId: 'kit-only' })
+    expect(documentIndexStatus(d.id).state).toBe('missing')
+    await expect(prepareDocumentIndex(d.id)).rejects.toThrow(/no longer exists/)
+    expect((await prepareDocumentIndex(d.id, { kitId: 'kit-only' })).state).toBe('ready')
+    expect(documentIndexStatus(d.id, { kitId: 'kit-other' }).state).toBe('missing')
   })
 })
 
