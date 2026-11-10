@@ -21,6 +21,16 @@ describe('net voice error benchmark', () => {
     expect(r.errorsPer100Questions).toBe(125);
     expect(r.firstUsefulAnswerP95Ms).toBe(800);
   });
+  it('counts orphan false commits with no reference turn as user-visible failures', () => {
+    const result = scoreCapturePlayback({ recordingId: 'voice-test',
+      orphanFalseCommits: 2, turns: [turn('q1'), turn('q2')] })
+    expect(result.falseCommits).toBe(2)
+    expect(result.totalUserVisibleErrors).toBe(2)
+    expect(result.affectedQuestions).toBe(0)
+    expect(() => scoreCapturePlayback({ recordingId: 'voice-test',
+      orphanFalseCommits: -1, turns: [turn('q1')] })).toThrow(/orphanFalseCommits/)
+  })
+
   it('rejects missing labels and duplicate reference turns', () => {
     expect(() => scoreCapturePlayback(run([turn('q1'),turn('q1')]))).toThrow(/unique/);
     expect(() => scoreCapturePlayback(run([{referenceId:'q1',missed:false}]))).toThrow(/falseCommits/);
