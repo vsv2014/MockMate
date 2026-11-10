@@ -347,6 +347,41 @@ async function embed(texts, signal) {
   return vectors
 }
 
+/**
+ * Durable readiness is determined from the current document text and the
+ * persisted vector projection, not an in-memory promise or successful HTTP 200.
+ * A locally imported document may be usable via lexical fallback without
+ * having a confirmed embedding index.
+ */
+export function documentIndexStatus(documentId, { kitId = null } = {}) {
+  const doc = load().find(item => item.id === documentId && belongsToScope(item, kitId))
+  if (!doc) return { state: 'missing' }
+  const signature = documentSignature(doc.text)
+  const entry = loadPersistedIndexEntry(doc.id, signature)
+  if (!entry || !entry.chunks.length ||
+      entry.chunks.some(c => !Array.isArray(c.vector) || c.vector.length !== entry.dimensions)) {
+    return { state: 'needs_indexing', documentId, documentRevision: signature }
+  }
+  return {
+    state: 'ready', documentId, documentRevision: signature,
+    indexRevision: entry.sig, embeddingModel: entry.embeddingModel,
+    chunkCount: entry.chunks.length, dimensions: entry.dimensions,
+  }
+}
+
+/** User-initiated reindexing; never part of connector polling or Live setup. */
+export async function prepareDocumentIndex(documentId, { kitId = null, signal } = {}) {
+  const origin = ensureCurrentScope()
+  const doc = load().find(item => item.id === documentId && belongsToScope(item, kitId))
+  if (!doc) throw new Error('Approved source document no longer exists')
+  await indexOne(doc, signal, false)
+  assertCurrentScope(origin)
+  const status = documentIndexStatus(documentId, { kitId })
+  if (status.state !== 'ready')
+    throw new Error('Embedding index is not durably stored. Check API access and device storage, then retry.')
+  return status
+}
+
 export function warmDocs(docIds, { kitId } = {}) {
   ensureCurrentScope()
   const docs = filterDocs(load(), { docIds, scope: kitId ? 'kit' : 'shared', kitId })
