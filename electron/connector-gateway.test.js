@@ -4,6 +4,7 @@ const require = createRequire(import.meta.url)
 const assert = require('node:assert/strict')
 const { mkdtempSync, rmSync } = require('node:fs')
 const { tmpdir } = require('node:os')
+const { createHash } = require('node:crypto')
 const path = require('node:path')
 const { createConnectorGateway, normalizedText, sourceCheck } = require('./connector-gateway.cjs')
 let dir, gateway, requests
@@ -203,6 +204,48 @@ describe('native connected account security and sync', () => {
     assert.equal(sub.consecutiveFailures, 2)
     assert.equal(sub.lastErrorCode, 'source_unavailable')
     assert.equal(sub.appliedSha, 'a'.repeat(64))
+  })
+
+  it('skips unchanged Google Drive media downloads with durable revision checkpoint and reconciles manually', async () => {
+    const state = { now: 1_750_000_000_000, metadata: 0, media: 0 }
+    const content = 'Read-only approved external source text.'
+    const safeStorage = { isEncryptionAvailable: () => true,
+      encryptString: value => Buffer.from('test:' + value),
+      decryptString: buf => buf.toString().slice(5),
+    }
+    const alternate = createConnectorGateway({ userData: dir, safeStorage,
+      now: () => state.now, fetchImpl: async url => {
+        if (String(url).includes('?alt=media')) {
+          state.media++
+          return new Response(content, { status: 200 })
+        }
+        if (String(url).includes('/drive/v3/files/testFileA1')) {
+          state.metadata++
+          return fakeResponse({ id: 'testFileA1', name: 'Notes.txt',
+            mimeType: 'text/plain', modifiedTime: '2026-11-10T07:00:00Z',
+            size: content.length })
+        }
+        throw new Error('Unexpected endpoint ' + url)
+      } })
+    try {
+      const connected = alternate._forTests.saveConnected('account-a', 'googledrive',
+        { subject: 'owner123', label: 'user@example.test' }, { access_token: 'unit-key' })
+      const sha256 = createHash('sha256').update(content).digest('hex')
+      alternate.subscribe('account-a', { importId: 'imp_google', provider: 'googledrive',
+        accountId: connected.id, sourceId: 'testFileA1', sha256 })
+      const first = await alternate.syncNow('account-a')
+      assert.equal(first.checked, 1)
+      assert.equal(state.media, 1)
+      assert.equal(first.updates.length, 0)
+      const second = await alternate.syncNow('account-a')
+      assert.equal(second.checked, 1)
+      assert.equal(state.media, 1, 'unchanged source should not be downloaded again')
+      await alternate.syncNow('account-a', { manual: true, importId: 'imp_google' })
+      assert.equal(state.media, 2, 'manual refresh performs full read')
+      state.now += 25 * 3600_000
+      await alternate.syncNow('account-a')
+      assert.equal(state.media, 3, 'daily reconciliation performs full read')
+    } finally { alternate.close() }
   })
 
   it('completes Google Desktop PKCE callback with state verification and encrypted identity', async () => {
