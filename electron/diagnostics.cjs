@@ -1,7 +1,7 @@
 // Production-safe local diagnostics. JSONL, buffered, rotated, and aggressively redacted.
 const fs = require('fs')
 const path = require('path')
-const { UsageLedger, summarizeOperations, readJsonl } = require('./operations.cjs')
+const { UsageLedger, summarizeOperations, filterAccountOperations, readJsonl } = require('./operations.cjs')
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024
 const MAX_FILES = 4
@@ -109,14 +109,16 @@ class DiagnosticStore {
     }
   }
 
-  async readOperations() {
+  async readOperations(accountScope = 'guest') {
     await this.flush()
     while (this.flushing) await new Promise(resolve => setTimeout(resolve, 10))
     const files = Array.from({ length: MAX_FILES - 1 }, (_, i) =>
       `${this.file}.${MAX_FILES - 1 - i}`).concat(this.file)
     const rows = files.flatMap(file => readJsonl(file, 2500)).slice(-5000)
     const ledgerEntries = await this.usageLedger.entries()
-    return { ...summarizeOperations(rows, ledgerEntries),
+    const scoped = filterAccountOperations(rows, ledgerEntries, accountScope)
+    return { ...summarizeOperations(scoped.rows, scoped.ledgerEntries),
+      scope: 'current_account_metadata',
       accountingStatus: this.usageLedger.writeError ? 'storage_unavailable' : 'available' }
   }
 
