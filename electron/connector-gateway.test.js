@@ -33,6 +33,7 @@ function init() {
         tree: [{ path: 'README.md', type: 'blob', sha: 'sha1', size: 100 },
           { path: 'secrets.env', type: 'blob', size: 100 }, { path: 'huge.md', type: 'blob', size: 300000 }],
       })
+      if (url.includes('/repos/acme/repo/contents/deleted.md')) return fakeResponse({ message: 'Not Found' }, 404)
       if (url.includes('/repos/acme/repo/contents/README.md')) return fakeResponse({
         type: 'file', name: 'README.md', size: 70, sha: 'sha1', encoding: 'base64',
         content: Buffer.from('This is a test description of backend architecture.').toString('base64'),
@@ -177,6 +178,31 @@ describe('native connected account security and sync', () => {
     assert.equal(after.pendingSha, before.pendingSha)
     assert.equal(after.lastSyncedAt, null)
     assert.throws(() => gateway.reportApplyFailure('account-b', 'imp_apply'), /not found/)
+  })
+
+  it('records a durable non-destructive tombstone, exponential retry window and manual recovery attempts', async () => {
+    const { flowId } = await gateway.startGithub('account-a', 'Iv1abcdef12345')
+    const connected = await gateway.pollFlow('account-a', flowId)
+    gateway.subscribe('account-a', { importId: 'imp_deleted', provider: 'github',
+      accountId: connected.account.id, sourceId: 'acme/repo:deleted.md',
+      sha256: 'a'.repeat(64), autoSync: true })
+    const first = await gateway.syncNow('account-a')
+    assert.equal(first.failures[0].code, 'source_unavailable')
+    let sub = gateway.state('account-a').subscriptions[0]
+    assert.equal(sub.tombstone, true)
+    assert.equal(sub.consecutiveFailures, 1)
+    assert.equal(sub.appliedSha, 'a'.repeat(64), 'never delete the approved local revision')
+    assert.ok(Date.parse(sub.nextRetryAt) > Date.now())
+    const calls = requests.length
+    const scheduled = await gateway.syncNow('account-a')
+    assert.equal(scheduled.checked, 0)
+    assert.equal(scheduled.retryDeferred, 1)
+    assert.equal(requests.length, calls, 'backoff must avoid another network call')
+    await gateway.syncNow('account-a', { manual: true, importId: 'imp_deleted' })
+    sub = gateway.state('account-a').subscriptions[0]
+    assert.equal(sub.consecutiveFailures, 2)
+    assert.equal(sub.lastErrorCode, 'source_unavailable')
+    assert.equal(sub.appliedSha, 'a'.repeat(64))
   })
 
   it('completes Google Desktop PKCE callback with state verification and encrypted identity', async () => {
