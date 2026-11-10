@@ -250,8 +250,9 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       if (!applied?.ok) throw new Error(`Key cleared, but the local service could not reload: ${applied?.error || 'restart request failed'}`)
       await new Promise(resolve => setTimeout(resolve, 1200))
       await refresh()
-      const providerRow = PROVIDERS.find(row => row.providerIds.includes(provider))
-      if (providerRow) setTestResults(results => ({ ...results, [providerRow.k]: undefined }))
+      // Applying any key change restarts the local service and invalidates every
+      // provider's in-memory verification, not just the edited provider.
+      setTestResults({})
       setMsg(`✓ ${label} key cleared; updated provider configuration loaded. Connection status is not a key-validity check.`)
       onSaved?.()
     } catch (error) {
@@ -292,7 +293,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
     setAddSaving(true); setAddMsg(''); setMsg(''); setOptimizationResult('')
     try {
       await persistKeyLines(`${targetProvider.envKey}=${detection.value}\n`)
-      setTestResults(results => ({ ...results, [targetProvider.envKey]: undefined }))
+      setTestResults({})
       setAddKey(''); setAddChoice(''); setReplacing(null)
       try {
         await refresh()
