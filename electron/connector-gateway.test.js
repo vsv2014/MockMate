@@ -84,6 +84,45 @@ describe('native connected account security and sync', () => {
     gateway.purgeOwner('account-a')
     assert.deepEqual(gateway.state('account-a').accounts, [])
   })
+  it('exposes persistent sync run phases and only finishes when local revision is acknowledged', async () => {
+    const { flowId } = await gateway.startGithub('account-a', 'Iv1abcdef12345')
+    const connected = await gateway.pollFlow('account-a', flowId)
+    gateway.subscribe('account-a', {
+      importId: 'imp_run_test', provider: 'github', accountId: connected.account.id,
+      sourceId: 'acme/repo:README.md', sha256: 'a'.repeat(64),
+    })
+    const first = await gateway.syncNow('account-a')
+    assert.match(first.runId, /^sync_[a-z0-9]+_[a-f0-9]{8}$/)
+    assert.equal(first.runStatus, 'awaiting_apply')
+    const during = gateway.state('account-a')
+    assert.equal(during.syncRuns[0].status, 'awaiting_apply')
+    assert.equal(during.syncRuns[0].pending, 1)
+    assert.equal(during.syncRuns[0].finishedAt, null)
+    assert.equal(during.subscriptions[0].pendingRunId, first.runId)
+    gateway.acknowledgeSync('account-a', 'imp_run_test', first.updates[0].sha256)
+    const after = gateway.state('account-a')
+    assert.equal(after.syncRuns[0].status, 'completed')
+    assert.equal(after.syncRuns[0].pending, 0)
+    assert.equal(after.syncRuns[0].applied, 1)
+    assert.ok(after.syncRuns[0].finishedAt)
+    assert.equal(after.subscriptions[0].pendingRunId, null)
+    assert.equal(gateway.state('account-b').syncRuns.length, 0)
+  })
+
+  it('records a failed local apply as needs-attention instead of a successful run', async () => {
+    const { flowId } = await gateway.startGithub('account-a', 'Iv1abcdef12345')
+    const connected = await gateway.pollFlow('account-a', flowId)
+    gateway.subscribe('account-a', { importId: 'imp_savefail', provider: 'github',
+      accountId: connected.account.id, sourceId: 'acme/repo:README.md',
+      sha256: 'a'.repeat(64), autoSync: true })
+    await gateway.syncNow('account-a')
+    gateway.reportApplyFailure('account-a', 'imp_savefail')
+    const status = gateway.state('account-a')
+    assert.equal(status.syncRuns[0].status, 'needs_attention')
+    assert.equal(status.syncRuns[0].pending, 1)
+    assert.equal(status.syncRuns[0].finishedAt, null)
+  })
+
   it('fairly rotates more than 30 approved subscriptions and persists sync progress', async () => {
     const { flowId } = await gateway.startGithub('account-a', 'Iv1abcdef12345')
     const connected = await gateway.pollFlow('account-a', flowId)
