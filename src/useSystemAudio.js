@@ -341,7 +341,8 @@ export function useSystemAudio(onFinal, onFail, onEarlyQuestion, onReconnect) {
           }, 'warn')
         }
       }, 5000)
-      diagnostic('stt', 'socket_open', { generation: gen, degraded: degradedAudio.current, reconnectAttempt: reconnectAttempts.current })
+      diagnostic('stt', 'socket_open', { generation: gen, mode: sourceIdRef.current === 'microphone' ? 'microphone' : 'system_audio',
+        degraded: degradedAudio.current, reconnectAttempt: reconnectAttempts.current })
       try { ctx.current?.resume?.() } catch {}
       flushQueuedPcm({
         sock,
