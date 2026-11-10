@@ -117,6 +117,9 @@ function ElectronShell({ auth }) {
           const ack = await bridge.request({ op: 'sync-ack', importId: update.importId, sha256: update.sha256 })
           if (!ack?.ok) throw new Error('Sync acknowledgement was rejected')
         } catch (error) {
+          // Preserve a retriable, privacy-safe failure for the source even if
+          // the user isn't looking at the Sources page during background sync.
+          await bridge.request({ op: 'sync-apply-failed', importId: update.importId }).catch(() => {})
           diagnostic('connectors', 'source_sync_failed', { code: 'source_sync_rejected' }, 'warn')
         }
       }
