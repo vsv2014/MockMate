@@ -2136,6 +2136,25 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
           </div>
         )}
 
+        {audio.captureStalled && (
+          <div role="alert" style={{
+            padding: '8px 10px', marginBottom: 8, borderRadius: 7,
+            background: 'rgba(245,158,11,0.14)', border: '1px solid rgba(245,158,11,0.5)',
+            color: '#fcd34d', fontSize: readableTextSize(16), lineHeight: 1.5,
+          }}>
+            <strong>Audio capture needs attention.</strong> The transcription socket is open,
+            but audio frames have stopped reaching it. This differs from normal quiet speech.
+            Check your selected audio device or screen share.
+            <button type="button" onClick={retryTranscription}
+              style={{ display: 'block', marginTop: 7, padding: '5px 9px',
+                border: '1px solid rgba(245,158,11,0.5)', borderRadius: 6,
+                background: 'rgba(245,158,11,0.12)', color: '#fcd34d',
+                fontSize: readableTextSize(14), cursor: 'pointer' }}>
+              Restart transcription
+            </button>
+          </div>
+        )}
+
         <div role="status" aria-label="Candidate speech capture status" style={{
           padding: '7px 10px', marginBottom: 8, borderRadius: 7,
           background: candidateSpeechTurns ? 'rgba(20,184,166,0.10)' : 'rgba(245,158,11,0.10)',
