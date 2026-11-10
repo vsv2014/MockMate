@@ -1403,6 +1403,12 @@ ipcMain.handle('clear-diagnostics', async () => {
   catch (e) { return { ok: false, error: e.message } }
 })
 
+ipcMain.handle('read-operations-summary', async event => {
+  if (!connectorSender(event)) return { ok: false, error: 'Untrusted operations reader' }
+  try { return { ok: true, data: await diagnostics?.readOperations() } }
+  catch { return { ok: false, error: 'Operational history is temporarily unavailable' } }
+})
+
 ipcMain.handle('read-session-metrics-summary', () => {
   try {
     const f = path.join(app.getPath('userData'), 'session-metrics.jsonl')
