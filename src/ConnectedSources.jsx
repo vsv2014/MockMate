@@ -38,8 +38,8 @@ export function sourceSyncHealth(subscription) {
   if (subscription.tombstone) return 'Remote source missing or permission revoked; local approved copy is retained. Reconnect or remove explicitly.'
   if (subscription.lastError) return 'Sync needs attention: ' + subscription.lastError
     + (subscription.autoSync && subscription.nextRetryAt ? ' · Automatic retry after ' + lastSyncTime(subscription.nextRetryAt) : ' · Use Check now to retry.')
-  if (!subscription.autoSync) return 'Automatic sync paused; manual refresh available.'
   if (subscription.pendingSha) return 'New revision fetched; waiting for local apply.'
+  if (!subscription.autoSync) return 'Automatic sync paused; manual refresh available.'
   if (subscription.lastSyncedAt) return subscription.indexStatus === 'rebuild_on_retrieval'
     ? 'Source updated locally. Retrieval-index readiness is not yet verified.'
     : 'Source checked; no outstanding remote updates known.'
