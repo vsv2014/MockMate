@@ -469,9 +469,15 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
                 value={connections.active?.[id] || ''} onChange={e => changeActive(id, e.target.value)}>
                 {choices.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
               </select>}
-              {choices.map(row => <div key={row.id} style={{ ...small, marginTop: 7 }}>
+              {choices.map(row => <div key={row.id} style={{ ...small, marginTop: 7, overflowWrap: 'anywhere' }}>
                 {row.label}
                 <span style={{ display: 'block' }}>Last checked: {row.lastVerifiedAt ? new Date(row.lastVerifiedAt).toLocaleString() : 'Not verified in this session'}</span>
+                <details style={{ margin: '5px 0' }}>
+                  <summary style={{ cursor: 'pointer' }}>Review upstream permissions</summary>
+                  <div style={{ overflowWrap: 'anywhere', marginTop: 5 }}>{row.scopes || 'Provider did not report its granted scopes.'}</div>
+                  <div>Provider authorization may cover more data than the individual files you approve.
+                    MockMate imports only explicitly reviewed sources. Revoke upstream access in the provider settings.</div>
+                </details>
                 <button type="button" disabled={connectorBusy} style={{ ...quiet, padding: '3px 7px', marginLeft: 6 }}
                   onClick={() => verifyConnectedAccount(id, row.id)}>Check access</button>
                 <button type="button" style={{ ...quiet, padding: '3px 7px', marginLeft: 6 }} onClick={() => disconnect(id, row.id)}>Disconnect</button>
