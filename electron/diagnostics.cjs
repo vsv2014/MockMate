@@ -1,6 +1,7 @@
 // Production-safe local diagnostics. JSONL, buffered, rotated, and aggressively redacted.
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 const { UsageLedger, summarizeOperations, filterAccountOperations, readJsonl } = require('./operations.cjs')
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024
@@ -34,15 +35,37 @@ class DiagnosticStore {
     this.base = { appVersion, platform, arch, pid: process.pid }
     this.usageLedger = new UsageLedger(userData)
     try { fs.mkdirSync(this.dir, { recursive: true }) } catch {}
+    // An installation-specific key avoids exposing account identifiers in the
+    // exported JSONL or correlating accounts between different installations.
+    // Unavailable key storage fails closed: unattributed rows remain hidden
+    // from the account-specific Operations view.
+    this.scopeSalt = null
+    try {
+      const saltFile = path.join(this.dir, 'scope-salt.bin')
+      if (!fs.existsSync(saltFile)) {
+        try { fs.writeFileSync(saltFile, crypto.randomBytes(32), { flag: 'wx', mode: 0o600 }) }
+        catch (error) { if (error?.code !== 'EEXIST') throw error }
+      }
+      const value = fs.readFileSync(saltFile)
+      if (value.length === 32) this.scopeSalt = value
+    } catch {}
     this.timer = setInterval(() => this.flush(), 500)
     this.timer.unref?.()
     this.exitHandler = () => { try { this.flushSync() } catch {} }
     process.once('exit', this.exitHandler)
   }
 
+  hashScope(scope) {
+    if (!this.scopeSalt || !/^[a-zA-Z0-9._-]{1,160}$/.test(String(scope || ''))) return null
+    return 'acct_' + crypto.createHmac('sha256', this.scopeSalt).update(String(scope)).digest('hex').slice(0, 24)
+  }
+
   event(component, event, fields = {}, level = 'info') {
     try {
-      const row = clean({ ts: new Date().toISOString(), level, component, event, ...this.base, ...fields })
+      const { accountScope, ...allowedFields } = fields || {}
+      const hashedScope = this.hashScope(accountScope)
+      const row = clean({ ts: new Date().toISOString(), level, component, event, ...this.base,
+        ...allowedFields, ...(hashedScope ? { accountScope: hashedScope } : {}) })
       const line = JSON.stringify(row)
       if (line.length > 16_000) return false
       if (this.queue.length >= MAX_QUEUE) this.queue.splice(0, this.queue.length - MAX_QUEUE + 1)
@@ -116,7 +139,8 @@ class DiagnosticStore {
       `${this.file}.${MAX_FILES - 1 - i}`).concat(this.file)
     const rows = files.flatMap(file => readJsonl(file, 2500)).slice(-5000)
     const ledgerEntries = await this.usageLedger.entries()
-    const scoped = filterAccountOperations(rows, ledgerEntries, accountScope)
+    const scope = this.hashScope(accountScope)
+    const scoped = scope ? filterAccountOperations(rows, ledgerEntries, scope) : { rows: [], ledgerEntries: [] }
     return { ...summarizeOperations(scoped.rows, scoped.ledgerEntries),
       scope: 'current_account_metadata',
       accountingStatus: this.usageLedger.writeError ? 'storage_unavailable' : 'available' }
