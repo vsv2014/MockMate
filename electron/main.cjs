@@ -1141,7 +1141,7 @@ ipcMain.handle('connector-request', async (event, payload = {}) => {
     const owner = await connectorOwner()
     const gateway = getConnectorGateway()
     const { op, provider, accountId, flowId, clientId, clientSecret, privateRepos, sourceId,
-      query, importId, sha256, enabled } = payload
+      query, importId, sha256, enabled, manual } = payload
     let data
     switch (op) {
       case 'status': data = gateway.state(owner); break
@@ -1156,8 +1156,10 @@ ipcMain.handle('connector-request', async (event, payload = {}) => {
       case 'subscribe': data = gateway.subscribe(owner, { importId, provider, accountId, sourceId, sha256, autoSync: enabled === true }); break
       case 'sync-enable': data = gateway.setSync(owner, importId, enabled); break
       case 'unsubscribe': data = gateway.unsubscribe(owner, importId); break
-      case 'sync': data = await gateway.syncNow(owner); break
+      case 'sync': data = await gateway.syncNow(owner, { manual: manual === true,
+        importId: typeof importId === 'string' && importId ? importId : null }); break
       case 'sync-ack': data = gateway.acknowledgeSync(owner, importId, sha256); break
+      case 'sync-apply-failed': data = gateway.reportApplyFailure(owner, importId); break
       case 'purge': data = gateway.purgeOwner(owner); break
       default: throw new Error('Unsupported connector operation')
     }
