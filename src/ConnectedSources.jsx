@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { T } from './auth/tokens'
 import { activeAccountScope } from './lib/accountScope'
-import { setDocSelected, setKitDocSelected } from './lib/docs'
+import { setDocSelected, setKitDocSelected, documentIndexStatus, prepareDocumentIndex } from './lib/docs'
 import { loadInterviewKitState } from './lib/interviewKits'
 import { loadSessionsAsync } from './history'
 import {
@@ -83,6 +83,9 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
   const [historyOutcomeId, setHistoryOutcomeId] = useState('')
   const [graph, setGraph] = useState(() => buildProfessionalGraph())
   const [connectorBusy, setConnectorBusy] = useState(false)
+  const [indexBusyId, setIndexBusyId] = useState(null)
+  const indexAbortRef = useRef(null)
+  useEffect(() => () => indexAbortRef.current?.abort(), [])
 
   // Never show a Kit from a stale workspace/identity after account switching.
   const currentKit = loadInterviewKitState().kits.find(kit => kit.id === activeKit?.id) || null
@@ -240,6 +243,9 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
         applied += 1
       } catch (error) {
         failures.push({ importId: update.importId, error: readableError(error) })
+        // Report a sanitized, actionable failure instead of silently leaving
+        // the connector marked healthy after a failed local apply.
+        await connectorRequest({ op: 'sync-apply-failed', importId: update.importId }).catch(() => {})
       }
     }
     refresh()
@@ -254,11 +260,32 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
         + ' Retrieval indexing may still be pending.')
     window.dispatchEvent(new Event('mm-connected-sync'))
   }
-  async function syncNow() {
+  async function syncNow(importId = null) {
     setConnectorBusy(true)
-    try { await handleSync(await connectorRequest({ op: 'sync' })) }
-    catch (error) { setMessage('⚠ ' + readableError(error)) }
+    try {
+      // Explicit user action: include an approved source even when background
+      // auto-sync is disabled. Per-source retry never scans unrelated sources.
+      await handleSync(await connectorRequest({ op: 'sync', manual: true, ...(importId ? { importId } : {}) }))
+    } catch (error) { setMessage('⚠ ' + readableError(error)) }
     finally { setConnectorBusy(false) }
+  }
+  async function buildIndexFor(row) {
+    if (indexBusyId || connectorBusy || connections.paused) return
+    if (!window.confirm('Build this document\'s retrieval index now? Selected text will be sent to your configured embedding provider. This action may use provider credits.')) return
+    const controller = new AbortController()
+    indexAbortRef.current = controller
+    setIndexBusyId(row.id)
+    setMessage('')
+    try {
+      const result = await prepareDocumentIndex(row.documentId, { kitId: row.kitId || null, signal: controller.signal })
+      refresh()
+      setMessage('Retrieval index verified for ' + row.title + ' (' + result.chunkCount + ' chunks, ' + result.embeddingModel + ').')
+    } catch (error) {
+      if (!controller.signal.aborted) setMessage('⚠ Could not verify retrieval index for ' + row.title + ': ' + readableError(error))
+    } finally {
+      if (indexAbortRef.current === controller) indexAbortRef.current = null
+      setIndexBusyId(null)
+    }
   }
   async function toggleAutoSync(record, enabled) {
     try {
@@ -398,6 +425,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
             ['mm-sources-connections', 'Accounts & OAuth'],
             ['mm-sources-review', 'Review & import'],
             ['mm-sources-approved', 'Approved sources'],
+            ['mm-sources-sync', 'Sync & indexing'],
             ['mm-sources-profile', 'Professional profile'],
             ['mm-sources-graph', 'ARCH graph'],
           ].map(([id, title]) => <button key={id} type="button" style={quiet}
@@ -472,10 +500,6 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           <div>Waiting for provider authorization. No token is sent to the UI.</div>
           <button style={{ ...quiet, marginTop: 7 }} onClick={() => setOauthFlow(null)}>Stop checking</button>
         </div>}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-          <button style={quiet} disabled={connectorBusy} onClick={syncNow}>Synchronize approved sources</button>
-          <span style={small}>15-minute background checks; automatically paused during Live.</span>
-        </div>
       </section>
 
       <section id="mm-sources-review" style={panel} aria-label="Review and import source">
@@ -548,6 +572,27 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
         )}
       </section>
 
+      <section id="mm-sources-sync" style={panel} aria-label="Synchronization and retrieval indexing">
+        <h3 style={{ margin: '0 0 6px', fontSize: 17 }}>Synchronization &amp; indexing</h3>
+        <p style={{ ...small, margin: '0 0 12px' }}>
+          Choose individual approved sources to refresh, even if automatic sync is off. Background
+          checks run every 15 minutes while the desktop app is open, and pause during Live.
+          A source update is not considered retrieval-ready until its current embedding index
+          has been stored and verified.
+        </p>
+        <div role="status" style={{ display: 'flex', flexWrap: 'wrap', gap: 9, marginBottom: 12 }}>
+          <span style={quiet}>{connections.subscriptions.length} approved connection(s)</span>
+          <span style={quiet}>{connections.subscriptions.filter(row => row.autoSync).length} on auto-sync</span>
+          <span style={quiet}>{connections.subscriptions.filter(row => row.lastError).length} need attention</span>
+          <span style={quiet}>{imports.filter(row => documentIndexStatus(row.documentId, { kitId: row.kitId || null }).state === 'ready').length} indexed</span>
+        </div>
+        <button type="button" style={action} disabled={connectorBusy || !!indexBusyId || !!connections.paused || !connections.subscriptions.length}
+          onClick={() => syncNow()}>
+          {connectorBusy ? 'Checking sources…' : 'Check approved sources now'}
+        </button>
+        {connections.paused && <p role="status" style={{ ...small, marginTop: 8 }}>Background work is paused during Live.</p>}
+      </section>
+
       <section id="mm-sources-approved" style={panel} aria-label="Approved imports">
         <h3 style={{ fontSize: 17, margin: '0 0 8px' }}>Approved imports ({imports.length})</h3>
         <p style={{ ...small, margin: '0 0 10px' }}>{pendingCount} imported source(s) initially excluded from AI retrieval. Turn on selected documents only when you want them used.</p>
@@ -569,6 +614,10 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
                 Auto-sync
               </label>
               <span style={small}>{row.versions?.length || 0} previous revision(s)</span>
+              <button type="button" style={quiet} disabled={connectorBusy || !!indexBusyId || !!connections.paused}
+                onClick={() => syncNow(row.id)} aria-label={`Check ${row.title} now`}>
+                {connectorBusy ? 'Checking…' : 'Check now'}
+              </button>
             </>}
             {row.connectedAccountId && <div role="status"
               aria-label={`Synchronization status for ${row.title}`}
@@ -577,6 +626,17 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
               {sourceSyncHealth(connections.subscriptions.find(s => s.importId === row.id))}
               <span style={{ display: 'block' }}>Last checked: {lastSyncTime(connections.subscriptions.find(s => s.importId === row.id)?.lastCheckedAt)}</span>
             </div>}
+            <div role="status" aria-label={`Retrieval index for ${row.title}`}
+              style={{ ...small, flexBasis: '100%', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span>Retrieval index: {documentIndexStatus(row.documentId, { kitId: row.kitId || null }).state === 'ready'
+                ? 'Verified for current document revision'
+                : 'Not indexed or out of date (lexical fallback remains available)'}</span>
+              <button type="button" style={quiet}
+                disabled={!row.documentPresent || connectorBusy || !!indexBusyId || !!connections.paused}
+                onClick={() => buildIndexFor(row)} aria-label={`Build retrieval index for ${row.title}`}>
+                {indexBusyId === row.id ? 'Building index…' : 'Build / verify index'}
+              </button>
+            </div>
             <button style={quiet} type="button" onClick={() => deleteImport(row.id)}>Remove import</button>
           </div>
         ))}
