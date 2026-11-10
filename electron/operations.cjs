@@ -145,6 +145,46 @@ function summarizeUsage(entries = []) {
   return [...byModule.values()].sort((a, b) => b.attempts - a.attempts).slice(0, 30)
 }
 
+/**
+ * Non-LLM resource activity is counted from explicit, metadata-only events.
+ * These are not billed units: provider pricing, STT minutes and API usage
+ * remain unknown unless the provider explicitly confirms them.
+ */
+function summarizeModuleActivity(rows = []) {
+  const modules = {
+    rag: { module: 'rag', unit: 'embedding inputs', completedCalls: 0, failedCalls: 0,
+      processedUnits: 0, elapsedMs: 0 },
+    stt: { module: 'stt', unit: 'final speech segments', completedCalls: 0, failedCalls: 0,
+      processedUnits: 0, elapsedMs: null },
+    connectors: { module: 'connectors', unit: 'approved source checks', completedCalls: 0, failedCalls: 0,
+      processedUnits: 0, elapsedMs: 0 },
+  }
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue
+    if (row.component === 'rag' && ['embedding_completed', 'embedding_failed'].includes(row.event)) {
+      const item = modules.rag
+      item[row.event === 'embedding_completed' ? 'completedCalls' : 'failedCalls']++
+      if (row.event === 'embedding_completed') item.processedUnits += numberOrNull(row.inputCount) || 0
+      item.elapsedMs += numberOrNull(row.durationMs) || 0
+    } else if (row.component === 'stt') {
+      const item = modules.stt
+      if (row.event === 'final_received' || row.event === 'candidate_microphone_final') {
+        item.completedCalls++
+        item.processedUnits++
+      } else if (['provider_error','token_failed','audio_frames_stalled'].includes(row.event)) {
+        item.failedCalls++
+      }
+    } else if (row.component === 'connectors' && row.event === 'sync_pass_completed') {
+      const item = modules.connectors
+      item.completedCalls++
+      item.failedCalls += numberOrNull(row.failures) || 0
+      item.processedUnits += numberOrNull(row.checked) || 0
+      item.elapsedMs += numberOrNull(row.durationMs) || 0
+    }
+  }
+  return Object.values(modules)
+}
+
 function summarizeOperations(rows = [], ledgerEntries = []) {
   const recent = rows.slice(-5000)
   const requests = new Map()
@@ -200,9 +240,10 @@ function summarizeOperations(rows = [], ledgerEntries = []) {
     requests: [...requests.values()].sort((a,b)=>String(b.startedAt || b.completedAt || '').localeCompare(String(a.startedAt || a.completedAt || ''))).slice(0, 50),
     modules: moduleSummaries,
     usage: summarizeUsage(ledgerEntries),
+    moduleActivity: summarizeModuleActivity(recent),
     uncorrelatedProviderEvents,
     caveat: 'Provider-supplied tokens are confirmed when present; missing values are unknown. Cost is not inferred. Rotated local history is bounded.',
   }
 }
 
-module.exports = { UsageLedger, ledgerRow, summarizeUsage, summarizeOperations, readJsonl }
+module.exports = { UsageLedger, ledgerRow, summarizeUsage, summarizeOperations, summarizeModuleActivity, readJsonl }
