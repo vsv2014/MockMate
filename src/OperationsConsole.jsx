@@ -3,6 +3,7 @@ import { T } from './auth/tokens'
 import { readableTextSize } from './lib/typography.js'
 import { apiFetch } from './lib/apiClient.js'
 import { activeAccountScope } from './lib/accountScope.js'
+import PolicyProposalEditor from './components/PolicyProposalEditor.jsx'
 
 // Only receives an allowlisted, on-device read model from Electron; no raw
 // diagnostic bundle, session text, prompts or credentials are exposed here.
@@ -120,6 +121,7 @@ export default function OperationsConsole() {
           For safety, applying or rolling back a policy requires trusted local operator access.
           Use the versioned ABL CLI with a private MOCKMATE_ABL_PATH. No remote configuration-write API is exposed.
         </p>
+        <PolicyProposalEditor />
       </section>
       <section aria-label="Module consumption ledger" style={panel}>
         <h2 style={{ fontSize: readableTextSize(16), margin: '0 0 5px' }}>Module consumption ledger</h2>
