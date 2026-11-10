@@ -468,21 +468,25 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
       return { code: 'source_unavailable', error: 'Approved source is missing or access has been revoked.' }
     return { code: 'fetch_failed', error: 'Could not refresh this approved source. Retry synchronization.' }
   }
-  async function syncNow(owner) {
+  async function syncNow(owner, { manual = false, importId = null } = {}) {
     assertOwner(owner)
     if (livePaused) return { paused: true, updates: [], failures: [], checked: 0, deferred: 0 }
     if (busy.has(owner)) return { busy: true, updates: [], failures: [], checked: 0, deferred: 0 }
     busy.add(owner)
     try {
       const snapshot = readVault().owners[owner]
-      const enabled = (snapshot?.subscriptions || []).filter(s => s.autoSync)
-      // A fixed slice(0, 30) permanently starved subscriptions 31+. Rotate a
-      // persisted per-owner offset so the limit stays bounded and fair across
-      // repeated polls and desktop restarts.
-      const start = enabled.length ? (Number.isSafeInteger(snapshot?.syncCursor)
-        ? Math.max(0, snapshot.syncCursor) % enabled.length : 0) : 0
-      const batch = Array.from({ length: Math.min(30, enabled.length) },
-        (_, index) => enabled[(start + index) % enabled.length])
+      // Manual checks are an explicit user action and must work for an approved
+      // source even when automatic sync is disabled. Scheduled checks retain the
+      // opt-in restriction. Both are blocked during Live.
+      const eligible = (snapshot?.subscriptions || []).filter(s => manual || s.autoSync)
+      if (importId && !eligible.some(s => s.importId === importId))
+        fail('Selected source is not connected to this account')
+      // A targeted check doesn't move the background cursor or scan other data.
+      const selected = importId ? eligible.filter(s => s.importId === importId) : eligible
+      const start = importId || manual ? 0 : (selected.length && Number.isSafeInteger(snapshot?.syncCursor)
+        ? Math.max(0, snapshot.syncCursor) % selected.length : 0)
+      const batch = Array.from({ length: Math.min(30, selected.length) },
+        (_, index) => selected[(start + index) % selected.length])
       const updates = [], failures = [], checkedStatus = []
       for (const sub of batch) {
         if (livePaused) break // Do not start more network work after entering Live.
@@ -525,12 +529,12 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
             if (status.unchanged) sub.lastSyncedAt = status.lastCheckedAt
           }
         }
-        row.syncCursor = enabled.length ? (start + checkedStatus.length) % enabled.length : 0
+        if (!manual && !importId) row.syncCursor = selected.length ? (start + checkedStatus.length) % selected.length : 0
         writeVault(latest)
       }
       return {
         paused: livePaused, updates, failures, checked: checkedStatus.length,
-        deferred: Math.max(0, enabled.length - checkedStatus.length),
+        deferred: Math.max(0, selected.length - checkedStatus.length),
       }
     } finally { busy.delete(owner) }
   }
@@ -539,8 +543,10 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     const sub = row.subscriptions.find(s => s.importId === importId)
     if (!sub) fail('Subscription not found')
     if (!/^[a-f0-9]{64}$/.test(sha256)) fail('Invalid sync fingerprint')
-    // Only the latest fetched revision may be acknowledged as locally applied.
-    if (sub.pendingSha && sub.pendingSha !== sha256) fail('Sync acknowledgement is for an outdated source revision')
+    // Acknowledging an unverified/unscheduled revision would create false
+    // "synchronized" state. Only the latest pending fingerprint is eligible.
+    if (!sub.pendingSha || sub.pendingSha !== sha256)
+      fail('Sync acknowledgement has no matching pending source revision')
     sub.appliedSha = sha256
     sub.pendingSha = null
     sub.lastSyncedAt = new Date(now()).toISOString()
@@ -551,6 +557,19 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     sub.lastErrorCode = null
     writeVault(vault)
     return { ok: true, indexStatus: sub.indexStatus }
+  }
+  function reportApplyFailure(owner, importId) {
+    // The renderer may report that a local document/index update failed, but
+    // never supply the raw error: source text and credentials must stay out of
+    // the encrypted status/read-model and the diagnostic log.
+    const vault = readVault(), row = accountState(vault, owner)
+    const sub = row.subscriptions.find(s => s.importId === importId)
+    if (!sub) fail('Selected source not found')
+    sub.lastErrorCode = 'local_apply_failed'
+    sub.lastError = 'Source was fetched, but local persistence failed. Retry this source.'
+    sub.lastCheckedAt = new Date(now()).toISOString()
+    writeVault(vault)
+    return state(owner)
   }
   function purgeOwner(owner) {
     assertOwner(owner)
@@ -568,7 +587,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
   function setLivePaused(value) { livePaused = value === true }
   function close() { for (const flow of flows.values()) { try { flow.server?.close() } catch {} }; flows.clear() }
   return { state, setActive, removeAccount, verifyAccount, startGithub, startGoogle, pollFlow, listSources, readSource,
-    subscribe, setSync, unsubscribe, syncNow, acknowledgeSync, purgeOwner, setLivePaused, close,
+    subscribe, setSync, unsubscribe, syncNow, acknowledgeSync, reportApplyFailure, purgeOwner, setLivePaused, close,
     _forTests: { saveConnected, readVault, sourceCheck } }
 }
 module.exports = { createConnectorGateway, normalizedText, sourceCheck, MAX_BYTES }
