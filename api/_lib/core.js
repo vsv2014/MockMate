@@ -1,4 +1,5 @@
 import { REPORT_JSON_FIELDS } from '../../shared/reportSchema.js'
+import { currentRequestTrace } from './traceContext.js'
 import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget, claudeLowLatencyThinking, isThinkingModel, modelDisplayName } from '../../shared/modelRegistry.js'
 // Shared logic for the serverless functions (api/*.js) and the local dev server
 // (server.js). Files prefixed with _ are not treated as routes by Vercel.
@@ -39,7 +40,8 @@ export function isHostedDeploy(env = process.env) {
 }
 
 function providerDiagnostic(event, fields = {}, level = 'info') {
-  const row = { component: 'llm', event, level, ...fields }
+  const row = { component: 'llm', event, level, ...fields,
+    ...(currentRequestTrace()?.requestId ? { requestId: currentRequestTrace().requestId } : {}) }
   try {
     if (typeof process.send === 'function') process.send({ type: 'diagnostic', row })
     else if (process.parentPort) process.parentPort.postMessage({ type: 'diagnostic', row })
