@@ -23,6 +23,7 @@ const NAV = [
   { id: 'jobs', icon: '💼', label: 'Jobs' },
   { id: 'career', icon: '📄', label: 'Resume Studio' },
   { id: 'sources', icon: '🔗', label: 'Sources & ARCH' },
+  { id: 'operations', icon: '📈', label: 'ARCH Operations' },
   { id: 'settings', icon: '⚙️', label: 'Settings' },
   { id: 'history', icon: '🕘', label: 'Sessions' },
 ]
