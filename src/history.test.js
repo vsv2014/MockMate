@@ -60,6 +60,23 @@ describe('session history persistence', () => {
     expect(loadSessions()[0].transcript).toEqual(before.transcript)
   })
 
+  it('refuses to score provisional or interviewer-only history, even if called outside the UI', async () => {
+    const provisional = saveSession({ runId: 'provisional-id', report: { summary: 'Pending' },
+      evaluationStatus: 'pending', captureStatus: 'provisional',
+      transcript: [{ role: 'candidate', text: 'Answer' }],
+      config: { interviewSetup: { source: 'live' } } })
+    await expect(replaceSavedEvaluationAsync(provisional.id, { overallScore: 77 }))
+      .rejects.toThrow(/not eligible/)
+    const interviewerOnly = saveSession({ runId: 'interviewer-id', report: { summary: 'Pending' },
+      evaluationStatus: 'pending', captureStatus: 'captured',
+      transcript: [{ role: 'interviewer', text: 'Question' }],
+      config: { interviewSetup: { source: 'live' } } })
+    await expect(replaceSavedEvaluationAsync(interviewerOnly.id, { overallScore: 77 }))
+      .rejects.toThrow(/not eligible/)
+    expect(loadSessions().find(row => row.id === 'provisional-id').score).toBeNull()
+    expect(loadSessions().find(row => row.id === 'interviewer-id').score).toBeNull()
+  })
+
   it('isolates interrupted Solo drafts by Kit while preserving the shared-profile draft key', () => {
     saveSoloDraft({ transcript: [{ text: 'shared draft' }], sessionId: 's-shared' })
     saveSoloDraft({ transcript: [{ text: 'kit draft' }], sessionId: 's-kit' }, 'kit-1')
