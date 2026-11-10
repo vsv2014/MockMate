@@ -7,7 +7,7 @@ import { getSessionAsync, replaceSavedEvaluationAsync } from '../history.js'
 export function canRetrySavedEvaluation(row) {
   return row?.mode === 'live' && row.score == null &&
     ['pending', 'failed', 'cancelled'].includes(row.evaluationStatus) &&
-    row.captureStatus !== 'provisional' && row.legacyReadOnly !== true
+    row.captureStatus === 'captured' && row.legacyReadOnly !== true
 }
 
 export async function retrySavedEvaluation(sessionId, { signal, fetchSession = getSessionAsync,
