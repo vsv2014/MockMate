@@ -693,6 +693,12 @@ function ElectronShell({ auth }) {
       shot.continuationMode = nextCaptureModeRef.current
       nextCaptureModeRef.current = 'auto'
       const queuedForSession = screenSessionGenRef.current
+      // Bound pending captures so repeated shortcut presses cannot build an
+      // unbounded queue of large screenshots and expensive vision requests.
+      if (queuedCaptureCountRef.current >= 3) {
+        setScreenFlowStatus('Screenshot queue full (3 captures). Wait for analysis or dismiss the pending captures.')
+        return
+      }
       queuedCaptureCountRef.current += 1
       if (queuedCaptureCountRef.current > 1) {
         setScreenFlowStatus(`Screenshot queued (${queuedCaptureCountRef.current}) — earlier capture will not be cancelled`)
