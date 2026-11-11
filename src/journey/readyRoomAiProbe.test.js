@@ -38,6 +38,16 @@ describe('Ready Room Live streaming verification', () => {
     })
   })
 
+  it('does not mistake leaked inline metadata for a visible streaming answer', async () => {
+    const runStream = runEvents([
+      { event: 'token', data: 'META: {"type":"technical","confidence":"general"}' },
+      { event: 'done', data: {} },
+    ])
+    await expect(verifyReadyRoomLiveStream({ body, runStream })).rejects.toMatchObject({
+      code: 'empty_output',
+    })
+  })
+
   it('rejects completed streams with no readable answer or only metadata', async () => {
     const runStream = runEvents([
       { event: 'meta', data: { type: 'technical' } },
