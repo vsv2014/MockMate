@@ -671,7 +671,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
     phaseRef.current = 'setup'
   }
 
-  if (phase === 'report') return <SoloFeedback report={report} onAgain={practiceAgain} transcript={transcriptRef.current} onAgainLabel="Practice again" />
+  if (phase === 'report') return <SoloFeedback report={report} onAgain={practiceAgain} transcript={transcriptRef.current} allowRetry onAgainLabel="Practice again" />
 
   // ── SETUP ─────────────────────────────────────────────────────────────────────
   if (phase === 'setup') return (

@@ -1,14 +1,11 @@
 import { readableTextSize } from './lib/typography.js'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { T } from './auth/tokens'
 import { scoreColor } from './lib/ui'
 import { feedbackToText, transcriptToText } from './history'
 import { CopyBtn as SharedCopyBtn } from './lib/secondaryUi'
 
-// Phase-2b Solo feedback — design-system results screen. Renders only real fields from
-// the evaluator (score, dimensions, strengths, improvements, delivery) + a conversation
-// timeline built from the transcript. Per-question "ideal answers" would need a backend
-// change to the evaluate endpoint, so they're intentionally not faked here.
+import { apiFetch } from './lib/apiClient'
 
 function Ring({ value, size = 128 }) {
   const pct = Math.max(0, Math.min(100, value))
@@ -45,6 +42,7 @@ function pairs(transcript) {
       const next = transcript[i + 1] && transcript[i + 1].role !== 'interviewer' ? transcript[i + 1] : null
       out.push({
         q: transcript[i].text,
+        answerIndex: next?.role === 'candidate' ? i + 1 : null,
         a: next?.text ?? null,
         spoken: next?.meta?.spoken,
         hasMeta: !!(next && next.meta && typeof next.meta.spoken === 'boolean'),
@@ -54,8 +52,9 @@ function pairs(transcript) {
   return out
 }
 
-export default function SoloFeedback({ report, onAgain, transcript = [], onAgainLabel = 'Practice again' }) {
+export default function SoloFeedback({ report, onAgain, transcript = [], allowRetry = false, onAgainLabel = 'Practice again' }) {
   const [openQ, setOpenQ] = useState(null)
+  const [retryIndex, setRetryIndex] = useState(null)
 
   if (!report || report.error) {
     const qa = pairs(transcript)
@@ -81,6 +80,10 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
   const pct = report.overallScore == null ? null : Math.max(0, Math.min(100, report.overallScore))
   const d = report._delivery
   const qa = pairs(transcript)
+  const gaps = (Array.isArray(report.practiceGaps) ? report.practiceGaps : []).slice(0, 3)
+    .filter(gap => typeof gap?.action === 'string' && typeof gap.evidence === 'string'
+      && qa.some(item => item.answerIndex === gap.answerIndex && item.a?.includes(gap.evidence)))
+  const retryItem = allowRetry ? qa.find(item => item.answerIndex === retryIndex && item.a?.trim()) : null
   const recs = report.improvements || []
   const strengths = report.strengths || []
   const answered = qa.filter(x => x.hasMeta)
@@ -100,6 +103,20 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
           {report._storageWarning}
         </div>
       )}
+
+      {gaps.length > 0 && (
+        <section style={panel}>
+          <h2 style={h2}>What to improve next</h2>
+          {gaps.map(gap => (
+            <div key={gap.answerIndex} style={{ borderTop: `1px solid ${T.border}`, padding: '10px 0', color: T.text2 }}>
+              <div>{gap.action}</div>
+              <blockquote style={{ margin: '6px 0', overflowWrap: 'anywhere' }}>“{gap.evidence}”</blockquote>
+              {allowRetry && <button type="button" style={retryButton} onClick={() => setRetryIndex(gap.answerIndex)}>Retry this question</button>}
+            </div>
+          ))}
+        </section>
+      )}
+      {retryItem && <AnswerRetry key={retryIndex} item={retryItem} onClose={() => setRetryIndex(null)} />}
 
       {/* Overall + summary */}
       <div style={{ ...panel, display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
@@ -195,7 +212,7 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
               const open = openQ === i
               return (
                 <div key={i} style={{ border: `1px solid ${T.border}`, borderRadius: T.rCtrl, overflow: 'hidden' }}>
-                  <button onClick={() => setOpenQ(open ? null : i)}
+                  <button aria-expanded={open} onClick={() => setOpenQ(open ? null : i)}
                     style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: open ? T.surface2 : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: T.font }}>
                     <span style={{ width: 24, height: 24, flexShrink: 0, borderRadius: 6, background: 'rgba(20,184,166,0.16)', color: T.accentFrom, display: 'grid', placeItems: 'center', fontSize: readableTextSize(11), fontWeight: 700 }}>Q{i + 1}</span>
                     <span style={{ flex: 1, minWidth: 0, fontSize: readableTextSize(13), color: T.text1, whiteSpace: open ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.q}</span>
@@ -217,6 +234,7 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
                         )}
                       </div>
                       <div style={{ fontSize: readableTextSize(13), color: T.text2, lineHeight: 1.6 }}>{item.a || <span style={{ color: T.text3, fontStyle: 'italic' }}>No answer recorded.</span>}</div>
+                      {allowRetry && item.answerIndex !== null && item.a?.trim() && <button type="button" style={{ ...retryButton, alignSelf: 'flex-start' }} onClick={() => setRetryIndex(item.answerIndex)}>Retry this question</button>}
                     </div>
                   )}
                 </div>
@@ -233,6 +251,73 @@ export default function SoloFeedback({ report, onAgain, transcript = [], onAgain
         {transcript.length > 0 && <CopyBtn text={transcriptToText(transcript)} label="Copy transcript" />}
       </div>
     </div>
+  )
+}
+
+const retryButton = {
+  padding: '8px 12px', border: `1px solid ${T.border}`, borderRadius: T.rCtrl,
+  background: T.surface2, color: T.text1, fontFamily: T.font, cursor: 'pointer',
+}
+
+function AnswerRetry({ item, onClose }) {
+  const [answer, setAnswer] = useState('')
+  const [rows, setRows] = useState(null)
+  const [error, setError] = useState('')
+  const [pending, setPending] = useState(false)
+  const request = useRef(null)
+  useEffect(() => () => request.current?.abort(), [])
+
+  async function compare(event) {
+    event.preventDefault()
+    if (request.current || !answer.trim()) return
+    const controller = new AbortController()
+    request.current = controller
+    setPending(true)
+    setError('')
+    setRows(null)
+    try {
+      const response = await apiFetch('/api/evaluate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        timeoutMs: 60000, signal: controller.signal,
+        body: JSON.stringify({
+          transcript: [{ role: 'interviewer', text: item.q }, { role: 'candidate', text: item.a }],
+          retry: { answerIndex: 1, answer },
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok || !Array.isArray(data.report?.retryComparison)) {
+        throw new Error(data.error || 'Answer comparison is unavailable. Try again.')
+      }
+      if (!controller.signal.aborted) setRows(data.report.retryComparison)
+    } catch (err) {
+      if (!controller.signal.aborted) setError(err.name === 'AbortError' ? 'Comparison timed out. Try again.' : err.message)
+    } finally {
+      request.current = null
+      if (!controller.signal.aborted) setPending(false)
+    }
+  }
+
+  return (
+    <form onSubmit={compare} style={{ ...panel, display: 'grid', gap: 10, color: T.text2 }}>
+      <h2 style={{ ...h2, margin: 0 }}>Retry this question</h2>
+      <div style={{ color: T.text1, overflowWrap: 'anywhere' }}>{item.q}</div>
+      <details><summary>Original answer</summary><p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{item.a}</p></details>
+      <label>
+        Your new answer
+        <textarea autoFocus value={answer} onChange={event => { setAnswer(event.target.value); setRows(null) }}
+          rows={5} maxLength={6000} disabled={pending}
+          style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: 8, marginTop: 6,
+            font: 'inherit', background: T.surface2, color: T.text1, border: `1px solid ${T.border}`, borderRadius: T.rCtrl }} />
+      </label>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <button type="submit" style={retryButton} disabled={pending || !answer.trim()}>{pending ? 'Comparing…' : 'Compare answers'}</button>
+        <button type="button" style={retryButton} onClick={onClose}>Close retry</button>
+      </div>
+      {error && <div role="alert">{error}</div>}
+      <div aria-live="polite">
+        {rows?.map(row => <p key={row.name}><strong>{row.name}</strong> · {row.before}/5 → {row.after}/5<br />{row.comment}</p>)}
+      </div>
+    </form>
   )
 }
 
