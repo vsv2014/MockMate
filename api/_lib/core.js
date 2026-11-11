@@ -1134,12 +1134,14 @@ export async function visionComplete(opts = {}) {
   const providersAll = listVisionProviders()
   if (!providersAll.length) throw makeVisionUnavailableError(managed)
 
-  const key = fingerprint || requestId || 'vision-default'
-  const rid = requestId || key
+  // Without a caller-provided identity, independent screenshots must not share
+  // the same single-flight key (the old 'vision-default' key mixed requests).
+  const key = fingerprint || requestId || null
+  const rid = requestId || key || 'vision-unidentified'
   const run = () => visionCompleteOnce({
     imageBase64, prompt, maxTokens, detail, mime, requestId: rid, signal, imageDimensions, _callProvider, managed,
   })
-  if (_skipSingleFlight) return run()
+  if (_skipSingleFlight || !key) return run()
   return runVisionSingleFlight(key, rid, run)
 }
 
