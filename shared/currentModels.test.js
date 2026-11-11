@@ -15,7 +15,6 @@ describe('current model policy', () => {
     ['claude_sonnet', 'claude-haiku-4-5-20251001'],
     ['groq', 'openai/gpt-oss-120b'],
     ['cerebras', 'gpt-oss-120b'],
-    ['cerebras', 'zai-glm-4.7'],
   ])('accepts %s::%s', (provider, model) => {
     expect(isCurrentChatModel(provider, model)).toBe(true)
     expect(isCurrentProviderChoice(`${provider}::${model}`)).toBe(true)
@@ -31,6 +30,7 @@ describe('current model policy', () => {
     ['groq', 'llama-3.3-70b-versatile'],
     ['groq', 'groq/compound'],
     ['cerebras', 'llama-3.3-70b'],
+    ['cerebras', 'zai-glm-4.7'],
   ])('excludes old, unavailable or retired %s::%s', (provider, model) => {
     expect(isCurrentChatModel(provider, model)).toBe(false)
     expect(isCurrentProviderChoice(`${provider}::${model}`)).toBe(false)
