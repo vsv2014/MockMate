@@ -54,6 +54,7 @@ export function markVision429Family(providerId, now = Date.now()) {
   if (String(providerId).startsWith('gemini')) {
     markVision429('gemini', now)
     markVision429('gemini_flash_lite', now)
+    markVision429('gemini_3_flash', now)
   }
   if (String(providerId).startsWith('openai')) {
     markVision429('openai', now)
