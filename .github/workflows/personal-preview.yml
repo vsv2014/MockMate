@@ -4,6 +4,7 @@ name: Unsigned Personal Preview (Windows)
 # A workflow change or package.json version update on main builds personal-vX.Y.Z-1.
 # Subsequent previews can be dispatched with a fresh preview_number.
 # This builds a separate unsigned BYOK preview, never a signed stable release.
+# The mandatory production audit still blocks this preview when new advisories appear.
 on:
   push:
     branches: [main]
