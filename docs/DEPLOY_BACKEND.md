@@ -85,6 +85,28 @@ The backend is authoritative for plan enforcement:
 
 For Stripe deployment, configure the values documented in `.env.example` / `backend/.env.example` and validate test-mode checkout → webhook → entitlement → portal → cancellation before enabling production billing.
 
+## Managed text routing
+
+Use server-side credentials and optional ordered provider aliases for Live
+(`MOCKMATE_MANAGED_LIVE_PROVIDERS`) and Solo
+(`MOCKMATE_MANAGED_SOLO_PROVIDERS`). For example, stage
+`groq,gemini_flash_lite` for Live and benchmark before using it for real sessions.
+An unset lane uses the existing automatic selection. An explicit lane stays
+within its configured aliases and skips unavailable or cooling providers.
+
+Managed text allows two upstream completion calls per HTTP request, including
+provider failover, JSON repair and compatibility retries. A Live stream can
+switch providers before emitting answer text. Vision and speech have separate
+routing and usage paths. BYOK keeps its own credentials and routing.
+
+For provider comparison, replay the same synthetic behavioral, coding and
+system-design questions from the target deployment region. Compare p50 and p95
+time to visible text, completion rate, grounded answer quality, and actual
+provider cost per completed session. Test 429 and 503 before the first token
+and stream interruption after partial text. Use the packaged client to verify
+that Ready Room and Live use the same hosted lane. Test screenshots and audio
+separately. Check provider data-use terms before replaying any real interview data.
+
 ## Verify a hosted deployment
 
 Run the repository verification first:

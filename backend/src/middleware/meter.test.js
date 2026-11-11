@@ -66,9 +66,11 @@ describe('checkCap fail-closed (hosted)', () => {
   it('enforces server-owned strategy and removes explicit provider selection', async () => {
     const { enforceManagedModelPolicy } = await import('./meter.js')
     const req = { _plan: 'free', body: { provider: 'gpt_56_sol', profile: { modelStrategy: 'quality', targetRole: 'QA' } } }
-    enforceManagedModelPolicy(req, {}, () => {})
+    const { currentRequestTrace } = await import('../../../api/_lib/traceContext.js')
+    enforceManagedModelPolicy(req, {}, () => {
+      expect(currentRequestTrace()?.managedText?.remaining).toBe(2)
+    })
     expect(req.body.provider).toBe('')
-    expect(req.body.maxProviderAttempts).toBe(2)
     expect(req.body.profile.modelStrategy).toBe('fast')
     expect(req.body.profile.targetRole).toBe('QA')
   })

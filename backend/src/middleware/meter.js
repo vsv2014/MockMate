@@ -1,4 +1,5 @@
 // Usage metering for the managed-AI proxy. Runs after requireAuth.
+import { withManagedTextRouting } from '../../../api/_lib/traceContext.js'
 import { store, currentPeriod } from '../store.js'
 import { effectivePlan, limitFor, measureInputChars, estimateLlmUnits } from '../plans.js'
 
@@ -112,8 +113,11 @@ export function enforceManagedModelPolicy(req, _res, next) {
   req.body = {
     ...(req.body || {}),
     provider: '',
-    maxProviderAttempts: 2,
     profile: { ...(req.body?.profile || {}), modelStrategy: allowedStrategy },
   }
-  next()
+  const envName = ['/api/hint-stream', '/api/hint'].includes(req.path) ? 'MOCKMATE_MANAGED_LIVE_PROVIDERS'
+    : ['/api/interview', '/api/evaluate'].includes(req.path) ? 'MOCKMATE_MANAGED_SOLO_PROVIDERS' : null
+  const configured = envName && process.env[envName]?.trim()
+  const aliases = configured ? [...new Set(configured.split(',').map(alias => alias.trim()).filter(Boolean))] : null
+  return withManagedTextRouting(aliases, next)
 }
