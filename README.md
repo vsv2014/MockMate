@@ -2,6 +2,8 @@
 
 MockMate is a desktop-first interview preparation and live-performance companion. It combines Solo practice, Resume Studio, Job Matching, Documents, session history, and a content-protected Live overlay that can transcribe interview audio and generate resume-grounded guidance.
 
+> **Source/release distinction (November 2026):** The source version in `package.json` is **1.6.15**. The release notes below describe the historical **v1.6.6** unsigned personal preview, not the current source or a certified latest installer. For the newest downloadable candidate, check [GitHub Releases](https://github.com/vsv2014/MockMate/releases) and [Windows preview workflow runs](https://github.com/vsv2014/MockMate/actions/workflows/personal-preview.yml); verify the artifact version, commit, checksum and CI status before installation. A successful CI build does not substitute for physical Windows audio, overlay/privacy, update, or signing certification.
+
 ## Release status — v1.6.6 unsigned personal preview
 
 The desktop source/package version is **1.6.6**. The [v1.6.6 unsigned BYOK Personal Preview](https://github.com/vsv2014/MockMate/releases/tag/v1.6.6) is published with a Windows NSIS installer, checksum and notice; production dependency audits, tests, and packaged Electron runtime smoke passed. **Physical Windows microphone, content-protection, upgrade and signed stable release checks remain open.** This is a prerelease without an automatic updater, not a signed stable installer.
