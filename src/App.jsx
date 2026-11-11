@@ -1044,7 +1044,7 @@ function ElectronShell({ auth }) {
               </button>
             </div>}
             {historyError && <div role="alert" style={{ color: '#fca5a5', marginBottom: 12 }}>{historyError}</div>}
-            <SoloFeedback report={openSession.report} transcript={openSession.transcript}
+            <SoloFeedback key={openSession.id} report={openSession.report} transcript={openSession.transcript} allowRetry={openSession.mode === 'solo'}
               onAgain={() => setOpenSession(null)} onAgainLabel="← Back to sessions" />
           </>
         ) : (
