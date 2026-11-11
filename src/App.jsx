@@ -468,7 +468,15 @@ function ElectronShell({ auth }) {
     const base64 = typeof shot === 'string' ? shot : shot?.base64
     const mime = (typeof shot === 'object' && shot?.mime) || 'image/png'
     if (!base64) {
+      setScreenAnalyzing(false)
       setScreenAnalysis(createScreenContextRecord({ error: 'No screenshot captured', status: 'not_captured' }))
+      return
+    }
+    // Reject malformed renderer payloads before sending them to the vision API.
+    // Keep the image data out of diagnostic logs and error messages.
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(mime) || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64) || base64.length % 4 !== 0) {
+      setScreenAnalyzing(false)
+      setScreenAnalysis(createScreenContextRecord({ error: 'Screenshot format is invalid. Capture the screen again.', status: 'not_captured' }))
       return
     }
 
