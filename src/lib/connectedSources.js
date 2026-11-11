@@ -90,7 +90,9 @@ export async function approveSelectedSource(preview, input, { approved = false }
   }
   const records = loadRecords()
   const old = records.find(row => row.provider === fresh.provider && row.sourceId === fresh.sourceId
-    && row.accountLabel === fresh.accountLabel && row.connectedAccountId === fresh.connectedAccountId && row.kitId === fresh.kitId && row.sha256 === fresh.sha256)
+    && row.connectedAccountId === fresh.connectedAccountId
+    && (fresh.connectedAccountId !== null || row.accountLabel === fresh.accountLabel)
+    && row.kitId === fresh.kitId && row.sha256 === fresh.sha256)
   if (old && documentExists(old)) return { record: { ...old }, existing: true }
   const doc = addDoc({
     name: `[${SOURCE_TYPES[fresh.provider].label}] ${fresh.title}`,
