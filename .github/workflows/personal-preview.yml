@@ -1,13 +1,16 @@
 name: Unsigned Personal Preview (Windows)
 
 # Separate from release.yml: deliberately NOT triggered by v*.*.* tags.
-# The first merge on main builds personal-vX.Y.Z-1 automatically; subsequent
-# personal previews can be dispatched with a fresh preview_number.
+# A workflow change or package.json version update on main builds personal-vX.Y.Z-1.
+# Subsequent previews can be dispatched with a fresh preview_number.
+# This builds a separate unsigned BYOK preview, never a signed stable release.
+# The mandatory production audit still blocks this preview when new advisories appear.
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/personal-preview.yml'
+      - 'package.json'
   workflow_dispatch:
     inputs:
       preview_number:
