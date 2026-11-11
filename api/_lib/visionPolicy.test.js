@@ -174,6 +174,22 @@ describe('visionComplete failover (injected)', () => {
     })).rejects.toMatchObject({ code: 'VISION_RATE_LIMITED', status: 429 })
   })
 
+  it('reports a later fallback auth failure rather than an earlier 429', async () => {
+    let calls = 0
+    await expect(visionComplete({
+      imageBase64: 'aaaa',
+      prompt: 'x',
+      requestId: 'mixed-429-auth',
+      _skipSingleFlight: true,
+      _callProvider: async () => {
+        calls++
+        if (calls === 1) throw rateErr()
+        throw authErr()
+      },
+    })).rejects.toMatchObject({ code: 'VISION_AUTH', status: 401 })
+    expect(calls).toBeGreaterThan(1)
+  })
+
   it('4) 401 does not loop the same provider', async () => {
     const calls = []
     try {
