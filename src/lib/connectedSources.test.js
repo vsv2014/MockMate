@@ -63,6 +63,22 @@ describe('Track B reviewed import', () => {
     expect(listApprovedImports()).toHaveLength(0)
   })
 
+  it('deduplicates renamed connected accounts without combining distinct accounts', async () => {
+    const input = source({ connectedAccountId: 'github:1234' })
+    const first = await approveSelectedSource(await previewSelectedSource(input), input, { approved: true })
+
+    const renamed = { ...input, accountLabel: 'Work GitHub' }
+    const retry = await approveSelectedSource(await previewSelectedSource(renamed), renamed, { approved: true })
+    expect(retry).toEqual({ record: first.record, existing: true })
+    expect(listDocs()).toHaveLength(1)
+    expect(listApprovedImports()).toHaveLength(1)
+
+    const otherAccount = { ...renamed, connectedAccountId: 'github:5678' }
+    const other = await approveSelectedSource(await previewSelectedSource(otherAccount), otherAccount, { approved: true })
+    expect(other.existing).toBe(false)
+    expect(listDocs()).toHaveLength(2)
+  })
+
   it('rejects edits between preview and approval and changes of signed-in account', async () => {
     const input = source()
     const preview = await previewSelectedSource(input)
