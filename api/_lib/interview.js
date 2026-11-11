@@ -851,7 +851,12 @@ Return ONE JSON object, no markdown:
   // Language tabs are an explicit transform command. Vision models sometimes cling
   // to the language visible in the screenshot, so enforce the selected language with
   // a text-only rewrite (no second screenshot/vision call).
-  if (language && out && normalizeScreenContentType(out.screenFamily || out.contentType) === 'screen_code') {
+  // The vision response already obeying the selected language needs no second
+  // LLM call. Only rewrite when its declared language disagrees or is absent.
+  const returnedLanguage = String(out?.language || '').trim().toLowerCase()
+  const selectedLanguage = String(codeLang || '').trim().toLowerCase()
+  if (language && out && normalizeScreenContentType(out.screenFamily || out.contentType) === 'screen_code'
+      && (!returnedLanguage || returnedLanguage !== selectedLanguage)) {
     const rewritten = await _textCall({
       prompt: `Rewrite this coding-solution JSON so both code fields are completely in ${codeLang}.
 The user explicitly selected ${codeLang}; ignore any other language in the screenshot or existing solution.
