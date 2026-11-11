@@ -15,6 +15,13 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] `npm run smoke:api` green
 - [ ] `git status` shows no build artifacts tracked (dist/ ignored)
 
+## 0b. Installer user-data retention (Windows)
+- [ ] Install a preview or signed candidate with a test account; create a local interview note, settings preference and saved Kit. Record the exact `userData` path.
+- [ ] Upgrade to the next candidate and verify that existing account-scoped data remains readable and scoped to the same account.
+- [ ] Uninstall the candidate and confirm the application binaries are removed but the local user-data directory is retained (`deleteAppDataOnUninstall=false`). Reinstall and verify the test data is still available.
+- [ ] Verify explicit account deletion and any separate in-app data-erasure action still erase only the intended data; uninstall must not be presented as a privacy/data-erasure operation.
+- [ ] Test isolated Personal Preview separately from signed MockMate; their identities and user-data directories must not cross-contaminate.
+
 ## 1. Packaged app boots (catches CSP / server-fork / dangling-import bugs)
 - [ ] the Release workflow produces either a verified signed installer or the isolated `UNSIGNED` Personal Preview artifact with no updater metadata
 - [ ] Install it fresh and launch — window appears, not blank
