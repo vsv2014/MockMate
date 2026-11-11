@@ -233,6 +233,23 @@ describe('visionComplete failover (injected)', () => {
     expect(raw).toBe('ok after failover')
   })
 
+  it('does not retry a screenshot after cancellation during a transient failure', async () => {
+    const controller = new AbortController()
+    let calls = 0
+    const error = new Error('temporary upstream failure')
+    error.status = 502
+    await expect(visionComplete({
+      imageBase64: 'aaaa', prompt: 'x', requestId: 'cancel-during-retry',
+      signal: controller.signal, _skipSingleFlight: true,
+      _callProvider: async () => {
+        calls++
+        controller.abort()
+        throw error
+      },
+    })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(calls).toBe(1)
+  })
+
   it('6) timeout → failover', async () => {
     let n = 0
     const raw = await visionComplete({
