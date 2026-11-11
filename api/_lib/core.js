@@ -1415,7 +1415,8 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
       // first-token deadline below then lets failover run before anything is shown.
       // After the first token only a stall ends the stream (no new text for
       // LIVE_STREAM_STALL_TIMEOUT_MS), so a long, healthy answer is never cut off.
-      const requestOpts = { timeout: LIVE_SDK_CONNECT_TIMEOUT_MS, signal: deadline.signal }
+      // The router owns retries and failover within the Live time budget.
+      const requestOpts = { timeout: LIVE_SDK_CONNECT_TIMEOUT_MS, maxRetries: 0, signal: deadline.signal }
       const recordThinkingRejection = (_e, details = {}) => {
         providerDiagnostic('thinking_setting_rejected', { attemptId, operation: 'stream', provider: provId, model, ...details }, 'warn')
       }
@@ -1426,8 +1427,12 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
         if (chunk?.usage) usage = chunk.usage
         if (chunk?.choices?.[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason
         const tok = chunk?.choices?.[0]?.delta?.content || ''
-        if (tok) { if (!firstTokenAt) firstTokenAt = Date.now(); emitted = true; onToken?.(tok) }
-        if (firstTokenAt) deadline.progress()
+        if (tok) {
+          if (!firstTokenAt) firstTokenAt = Date.now()
+          emitted = true
+          deadline.progress()
+          onToken?.(tok)
+        }
       }
       if (finishReason === 'length') {
         if (usage && onUsage) onUsage({ model,input:usage.prompt_tokens || 0,output:usage.completion_tokens || 0 })
