@@ -34,6 +34,7 @@ function sourceFields(input) {
   // Truncating a long ID could silently import a different source.
   if (typeof input.sourceId !== 'string' || input.sourceId.trim().length > 512) fail('Invalid source identifier')
   const sourceId = clean(input.sourceId, 512)
+  if (/[\u0000-\u001f\u007f]/.test(sourceId)) fail('Invalid source identifier characters')
   if (!title || !sourceId) fail('A source title and source ID are required')
   return {
     provider, mimeType: type.mimeType, title, sourceId,
