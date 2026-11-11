@@ -52,7 +52,7 @@ function pairs(transcript) {
   return out
 }
 
-export default function SoloFeedback({ report, onAgain, transcript = [], allowRetry = false, onAgainLabel = 'Practice again' }) {
+export default function SoloFeedback({ report, onAgain, transcript = [], allowRetry = false, retryProvider = '', onAgainLabel = 'Practice again' }) {
   const [openQ, setOpenQ] = useState(null)
   const [retryIndex, setRetryIndex] = useState(null)
 
@@ -116,7 +116,7 @@ export default function SoloFeedback({ report, onAgain, transcript = [], allowRe
           ))}
         </section>
       )}
-      {retryItem && <AnswerRetry key={retryIndex} item={retryItem} onClose={() => setRetryIndex(null)} />}
+      {retryItem && <AnswerRetry key={retryIndex} item={retryItem} provider={retryProvider} onClose={() => setRetryIndex(null)} />}
 
       {/* Overall + summary */}
       <div style={{ ...panel, display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
@@ -259,7 +259,7 @@ const retryButton = {
   background: T.surface2, color: T.text1, fontFamily: T.font, cursor: 'pointer',
 }
 
-function AnswerRetry({ item, onClose }) {
+function AnswerRetry({ item, provider, onClose }) {
   const [answer, setAnswer] = useState('')
   const [rows, setRows] = useState(null)
   const [error, setError] = useState('')
@@ -281,7 +281,7 @@ function AnswerRetry({ item, onClose }) {
         timeoutMs: 60000, signal: controller.signal,
         body: JSON.stringify({
           transcript: [{ role: 'interviewer', text: item.q }, { role: 'candidate', text: item.a }],
-          retry: { answerIndex: 1, answer },
+          provider, retry: { answerIndex: 1, answer },
         }),
       })
       const data = await response.json()
