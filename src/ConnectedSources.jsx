@@ -11,7 +11,7 @@ import {
 import {
   loadProfessionalState, updateProfessionalProfile, addEvidenceQuote,
   removeEvidence, removeEvidenceForImport, addProfessionalClaim,
-  removeProfessionalClaim, linkEvidenceToClaim, recordProfessionalOutcome, recordApprovedInterviewOutcome, removeProfessionalOutcome, linkOutcomeToClaim, unlinkOutcomeFromClaim, buildProfessionalGraph, buildProfessionalReviewQueue,
+  removeProfessionalClaim, linkEvidenceToClaim, recordProfessionalOutcome, recordApprovedInterviewOutcome, removeProfessionalOutcome, linkOutcomeToClaim, unlinkOutcomeFromClaim, buildProfessionalGraph, buildProfessionalReviewQueue, evaluateProfessionalEvidence,
 } from './lib/archProfessional'
 
 const panel = {
@@ -98,6 +98,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
   const providerEntries = Object.entries(SOURCE_TYPES)
   const pendingCount = imports.filter(x => x.selectedForLive === false).length
   const reviewQueue = buildProfessionalReviewQueue(professional, imports)
+  const evidenceEvaluation = evaluateProfessionalEvidence(professional, imports)
 
   useEffect(() => {
     let current = true
@@ -740,6 +741,7 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           · {graph.staleEvidence} stale source quotation(s). Claims and outcomes are user-entered, never invented.</p>
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 9, marginBottom: 14 }}>
           <span role="status" style={small}>{reviewQueue.length} evidence-review action(s)</span>
+          <span role="status" style={{ ...small, overflowWrap: 'anywhere' }}>{evidenceEvaluation.supportedClaims}/{evidenceEvaluation.claims} claims supported · {evidenceEvaluation.conflictingClaims} conflicting · {evidenceEvaluation.staleEvidence} stale · {evidenceEvaluation.reviewReady ? 'Review ready' : 'Review incomplete'}</span>
           <button type="button" style={quiet} onClick={downloadProfessionalGraph}>Export evidence graph JSON</button>
         </div>
         {reviewQueue.length > 0 && <div role="region" aria-label="Professional evidence review queue"
