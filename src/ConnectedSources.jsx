@@ -461,6 +461,18 @@ export default function ConnectedSources({ auth, activeKit } = {}) {
           Signed-in MockMate account: <strong style={{ color: T.text1 }}>{auth?.user?.email || auth?.user?.name || (auth?.guest ? 'Guest (local)' : 'Current account')}</strong>.
           Connected credentials are encrypted by your OS and bound to this MockMate account. The app never accesses entire accounts automatically.
         </p>
+        <details style={{ ...panel, marginBottom: 12, background: T.surface2 }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Additional integrations: Composio and Activepieces</summary>
+          <p style={{ ...small, marginTop: 10 }}>
+            Composio (external app connections) and Activepieces (workflow automation) are not enabled in this build.
+            No external connection or data access occurs by opening this section. GitHub and Google connections below
+            use MockMate's native gateway.
+          </p>
+          <p style={{ ...small, marginBottom: 0 }}>
+            Future integrations must require explicit account authorization, source-by-source import preview,
+            and user approval before any data enters ARCH. External tools are never invoked on the Live answer path.
+          </p>
+        </details>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))', gap: 10 }}>
           {providerEntries.map(([id, meta]) => {
             const choices = connections.accounts.filter(row => row.provider === id)
