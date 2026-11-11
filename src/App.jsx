@@ -550,8 +550,11 @@ function ElectronShell({ auth }) {
       if (gen !== analysisGenRef.current) return
       const err = d.error || (!res.ok ? `Screen analysis failed (${res.status})` : null)
       const code = d.code || ''
-      // At most ONE delayed client retry for transient 429 — never on cancel/auth.
-      if (err && !abort.signal.aborted && (/busy|rate.?limit|429|VISION_RATE_LIMITED/i.test(err) || code === 'VISION_RATE_LIMITED') && retry < 1) {
+      // A 429 / VISION_RATE_LIMITED means the provider is cooling down.
+      // Retrying the same screenshot 1.6s later only adds lag and another request.
+      // Retry once for a temporary busy response, never for rate limits or auth.
+      const rateLimited = code === 'VISION_RATE_LIMITED' || res.status === 429 || /rate.?limit|429/i.test(err || '')
+      if (err && !abort.signal.aborted && !rateLimited && /\bbusy\b/i.test(err) && retry < 1) {
         await new Promise(r => setTimeout(r, 1600))
         if (gen !== analysisGenRef.current || abort.signal.aborted) return
         return runAnalysis({
