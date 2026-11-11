@@ -250,6 +250,24 @@ describe('visionComplete failover (injected)', () => {
   })
 })
 
+describe('vision requests without identity', () => {
+  it('does not share one response between unrelated concurrent screenshots', async () => {
+    let calls = 0
+    const call = async () => {
+      calls++
+      await new Promise(resolve => setTimeout(resolve, 10))
+      return 'response-' + calls
+    }
+    const [first, second] = await Promise.all([
+      visionComplete({ imageBase64: 'aaaa', prompt: 'first', _callProvider: call }),
+      visionComplete({ imageBase64: 'bbbb', prompt: 'second', _callProvider: call }),
+    ])
+    expect(calls).toBe(2)
+    expect(first).toBe('response-2')
+    expect(second).toBe('response-2')
+  })
+})
+
 describe('JSON repair is text-only (budget)', () => {
   it('7/8) malformed JSON uses extractJSON repair path without image call in completeTextQuick contract', async () => {
     // Simulate: vision returns prose; extractJSON fails; text repair returns JSON.
