@@ -28,6 +28,9 @@ function sourceFields(input) {
   const type = SOURCE_TYPES[provider]
   if (!type) fail('Unsupported source type')
   const title = clean(input.title, 180)
+  // Keep preview/approval bound to the exact identifier the user selected.
+  // Truncating a long ID could silently import a different source.
+  if (typeof input.sourceId !== 'string' || input.sourceId.trim().length > 512) fail('Invalid source identifier')
   const sourceId = clean(input.sourceId, 512)
   if (!title || !sourceId) fail('A source title and source ID are required')
   return {
