@@ -668,6 +668,13 @@ function ElectronShell({ auth }) {
           : payload.error === 'no_sources'
             ? 'No screen source was available. Check OS screen-recording permission and try again.'
             : `Screen capture failed: ${payload.error}`
+        // Capture errors can arrive while an earlier screenshot is still
+        // analyzing. Do not clear its loading state or replace its eventual
+        // answer with an unrelated failed capture.
+        if (queuedCaptureCountRef.current > 0) {
+          setScreenFlowStatus(message)
+          return
+        }
         setScreenFlowStatus('Capture failed — no continuation choice was carried forward')
         setScreenAnalyzing(false)
         setScreenAnalysis(createScreenContextRecord({ error: message, status: unsupported ? 'unsupported' : 'not_captured' }))
