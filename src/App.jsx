@@ -693,6 +693,12 @@ function ElectronShell({ auth }) {
         }
       if (!shot.base64) {
         nextCaptureModeRef.current = 'auto'
+        // A malformed second capture must not overwrite an earlier pending
+        // screenshot answer. Preserve the in-flight analysis and its state.
+        if (queuedCaptureCountRef.current > 0) {
+          setScreenFlowStatus('Screen not captured — existing analysis is still running')
+          return
+        }
         setScreenFlowStatus('Capture failed — no continuation choice was carried forward')
         setScreenAnalysis(createScreenContextRecord({ error: 'Screen not captured', status: 'not_captured' }))
         return
