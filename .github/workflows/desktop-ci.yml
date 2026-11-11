@@ -22,12 +22,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24.21.0
-      # Temporary metadata lookup for the November 2026 Mongoose security hotfix.
-      - name: Retrieve patched npm integrity values (security hotfix)
-        shell: bash
-        run: |
-          npm view mongoose@8.24.8 dist.integrity
-          npm view mquery@5.0.1 dist.integrity
       - run: npm run verify:platform
       - run: npm run verify:react19
       - run: npm run verify:vitest5
