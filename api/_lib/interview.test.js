@@ -3,6 +3,23 @@ import { buildHintUserContext, hintAnswerStyle, pickPlaybook, packCandidateConte
 import { classifyTurn } from '../../shared/interviewClassify.js'
 import { glanceLayers } from '../../shared/hintLayers.js'
 
+describe('screen analysis fast-path', () => {
+  it('does not call a second model when the selected language and runnable code are already correct', async () => {
+    let repairCalls = 0
+    const out = await analyzeScreen({
+      imageBase64: 'aaaa', language: 'Python',
+      _visionCall: async () => JSON.stringify({
+        contentType: 'coding', screenFamily: 'screen_code', detectedText: 'Print hello',
+        language: 'Python', code: 'print("hello")', runnableCode: 'print("hello")',
+        keyPoints: [], approach: [], edgeCases: [], fullAnswer: 'Print hello.',
+      }),
+      _textCall: async () => { repairCalls++; throw new Error('Unexpected repair model call') },
+    })
+    expect(out.language).toBe('Python')
+    expect(repairCalls).toBe(0)
+  })
+})
+
 describe('current-turn output and evidence contracts', () => {
   it('requires code and prefers the JD language when unspecified', () => {
     const out = answerRequirementBlock(
