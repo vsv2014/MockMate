@@ -34,6 +34,10 @@ describe('Track B reviewed import', () => {
   it('allows only explicitly selected, supported nonempty, size-limited text', async () => {
     await expect(previewSelectedSource(source({ selectedByUser: false }))).rejects.toThrow(/Select/)
     await expect(previewSelectedSource(source({ provider: 'mailbox' }))).rejects.toThrow(/Unsupported/)
+    await expect(previewSelectedSource(source({ provider: '__proto__' }))).rejects.toThrow(/Unsupported/)
+    await expect(previewSelectedSource(source({ provider: 'constructor' }))).rejects.toThrow(/Unsupported/)
+    await expect(previewSelectedSource(source({ sourceId: 'repo/path\nother' }))).rejects.toThrow(/Invalid source identifier characters/)
+    await expect(previewSelectedSource(source({ sourceId: 'repo/path\u0000' }))).rejects.toThrow(/Invalid source identifier characters/)
     await expect(previewSelectedSource(source({ text: 'x'.repeat(MAX_SOURCE_BYTES + 1) }))).rejects.toThrow(/250 KiB/)
     expect(() => normalizeSourceText('bad\u0000text')).toThrow(/control/)
     expect(normalizeSourceText('a\r\nb')).toBe('a\nb')

@@ -25,13 +25,16 @@ export function normalizeSourceText(value) {
 function sourceFields(input) {
   if (input?.selectedByUser !== true) fail('Select the specific source before previewing')
   const provider = clean(input.provider, 40)
-  const type = SOURCE_TYPES[provider]
+  // A plain-object lookup also resolves inherited names such as __proto__.
+  // Only explicitly registered connector providers may be imported.
+  const type = Object.hasOwn(SOURCE_TYPES, provider) ? SOURCE_TYPES[provider] : null
   if (!type) fail('Unsupported source type')
   const title = clean(input.title, 180)
   // Keep preview/approval bound to the exact identifier the user selected.
   // Truncating a long ID could silently import a different source.
   if (typeof input.sourceId !== 'string' || input.sourceId.trim().length > 512) fail('Invalid source identifier')
   const sourceId = clean(input.sourceId, 512)
+  if (/[\u0000-\u001f\u007f]/.test(sourceId)) fail('Invalid source identifier characters')
   if (!title || !sourceId) fail('A source title and source ID are required')
   return {
     provider, mimeType: type.mimeType, title, sourceId,

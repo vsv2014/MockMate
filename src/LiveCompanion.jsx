@@ -2199,6 +2199,20 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
           </div>
         )}
 
+        {/* Manual screenshot is always available, not only on detected coding sites. */}
+        <button type="button" onClick={() => onCaptureScreen?.()}
+          disabled={screenAnalyzing || !onCaptureScreen}
+          aria-label={screenAnalyzing ? 'Screenshot analysis in progress' : 'Capture screenshot and analyze'}
+          title="Capture the selected display and analyze it (F7 / Ctrl+Shift+U)"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, maxWidth: '100%',
+            marginBottom: 8, padding: '8px 12px', borderRadius: 8,
+            background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.4)',
+            color: '#ccfbf1', cursor: screenAnalyzing ? 'wait' : 'pointer',
+            opacity: screenAnalyzing ? 0.65 : 1, font: 'inherit', fontSize: 16 }}>
+          <span aria-hidden="true">📸</span>
+          {screenAnalyzing ? 'Analyzing screenshot…' : 'Screenshot · Analyze'}
+        </button>
+
         {/* Coding platform auto-detected → one tap to capture + solve (no surprise auto-captures) */}
         {codingDetected && !screenAnalyzing && !screenAnalysis && (
           <button type="button" onClick={() => onCaptureScreen?.()}

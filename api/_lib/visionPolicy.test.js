@@ -58,6 +58,14 @@ describe('visionPolicy cooldown', () => {
     expect(isVisionCooling('openai_mini')).toBe(true)
     expect(isVisionCooling('gemini')).toBe(false)
   })
+
+  it('cooldowns all Gemini slots sharing the same credential', () => {
+    markVision429Family('gemini_3_flash')
+    expect(isVisionCooling('gemini')).toBe(true)
+    expect(isVisionCooling('gemini_flash_lite')).toBe(true)
+    expect(isVisionCooling('gemini_3_flash')).toBe(true)
+    expect(isVisionCooling('openai')).toBe(false)
+  })
 })
 
 describe('vision provider configuration', () => {
@@ -225,6 +233,23 @@ describe('visionComplete failover (injected)', () => {
     expect(raw).toBe('ok after failover')
   })
 
+  it('does not retry a screenshot after cancellation during a transient failure', async () => {
+    const controller = new AbortController()
+    let calls = 0
+    const error = new Error('temporary upstream failure')
+    error.status = 502
+    await expect(visionComplete({
+      imageBase64: 'aaaa', prompt: 'x', requestId: 'cancel-during-retry',
+      signal: controller.signal, _skipSingleFlight: true,
+      _callProvider: async () => {
+        calls++
+        controller.abort()
+        throw error
+      },
+    })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(calls).toBe(1)
+  })
+
   it('6) timeout → failover', async () => {
     let n = 0
     const raw = await visionComplete({
@@ -239,6 +264,24 @@ describe('visionComplete failover (injected)', () => {
       },
     })
     expect(raw).toBe('recovered')
+  })
+})
+
+describe('vision requests without identity', () => {
+  it('does not share one response between unrelated concurrent screenshots', async () => {
+    let calls = 0
+    const call = async () => {
+      const invocation = ++calls
+      await new Promise(resolve => setTimeout(resolve, 10))
+      return 'response-' + invocation
+    }
+    const [first, second] = await Promise.all([
+      visionComplete({ imageBase64: 'aaaa', prompt: 'first', _callProvider: call }),
+      visionComplete({ imageBase64: 'bbbb', prompt: 'second', _callProvider: call }),
+    ])
+    expect(calls).toBe(2)
+    expect(first).toBe('response-1')
+    expect(second).toBe('response-2')
   })
 })
 

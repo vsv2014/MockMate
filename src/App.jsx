@@ -550,8 +550,11 @@ function ElectronShell({ auth }) {
       if (gen !== analysisGenRef.current) return
       const err = d.error || (!res.ok ? `Screen analysis failed (${res.status})` : null)
       const code = d.code || ''
-      // At most ONE delayed client retry for transient 429 — never on cancel/auth.
-      if (err && !abort.signal.aborted && (/busy|rate.?limit|429|VISION_RATE_LIMITED/i.test(err) || code === 'VISION_RATE_LIMITED') && retry < 1) {
+      // A 429 / VISION_RATE_LIMITED means the provider is cooling down.
+      // Retrying the same screenshot 1.6s later only adds lag and another request.
+      // Retry once for a temporary busy response, never for rate limits or auth.
+      const rateLimited = code === 'VISION_RATE_LIMITED' || res.status === 429 || /rate.?limit|429/i.test(err || '')
+      if (err && !abort.signal.aborted && !rateLimited && /\bbusy\b/i.test(err) && retry < 1) {
         await new Promise(r => setTimeout(r, 1600))
         if (gen !== analysisGenRef.current || abort.signal.aborted) return
         return runAnalysis({
@@ -665,6 +668,13 @@ function ElectronShell({ auth }) {
           : payload.error === 'no_sources'
             ? 'No screen source was available. Check OS screen-recording permission and try again.'
             : `Screen capture failed: ${payload.error}`
+        // Capture errors can arrive while an earlier screenshot is still
+        // analyzing. Do not clear its loading state or replace its eventual
+        // answer with an unrelated failed capture.
+        if (queuedCaptureCountRef.current > 0) {
+          setScreenFlowStatus(message)
+          return
+        }
         setScreenFlowStatus('Capture failed — no continuation choice was carried forward')
         setScreenAnalyzing(false)
         setScreenAnalysis(createScreenContextRecord({ error: message, status: unsupported ? 'unsupported' : 'not_captured' }))
@@ -683,6 +693,12 @@ function ElectronShell({ auth }) {
         }
       if (!shot.base64) {
         nextCaptureModeRef.current = 'auto'
+        // A malformed second capture must not overwrite an earlier pending
+        // screenshot answer. Preserve the in-flight analysis and its state.
+        if (queuedCaptureCountRef.current > 0) {
+          setScreenFlowStatus('Screen not captured — existing analysis is still running')
+          return
+        }
         setScreenFlowStatus('Capture failed — no continuation choice was carried forward')
         setScreenAnalysis(createScreenContextRecord({ error: 'Screen not captured', status: 'not_captured' }))
         return
@@ -690,6 +706,12 @@ function ElectronShell({ auth }) {
       shot.continuationMode = nextCaptureModeRef.current
       nextCaptureModeRef.current = 'auto'
       const queuedForSession = screenSessionGenRef.current
+      // Bound pending captures so repeated shortcut presses cannot build an
+      // unbounded queue of large screenshots and expensive vision requests.
+      if (queuedCaptureCountRef.current >= 3) {
+        setScreenFlowStatus('Screenshot queue full (3 captures). Wait for analysis or dismiss the pending captures.')
+        return
+      }
       queuedCaptureCountRef.current += 1
       if (queuedCaptureCountRef.current > 1) {
         setScreenFlowStatus(`Screenshot queued (${queuedCaptureCountRef.current}) — earlier capture will not be cancelled`)
@@ -716,7 +738,12 @@ function ElectronShell({ auth }) {
         trackProductEvent('f7_captured', { mode: shot.continuationMode || 'auto' })
         await runAnalysis(shot)
       }).finally(() => {
-        queuedCaptureCountRef.current = Math.max(0, queuedCaptureCountRef.current - 1)
+        // Dismissal starts a new screenshot session and resets the counter.
+        // A late completion from the old session must not decrement the new
+        // session's pending count or let its queue exceed the configured cap.
+        if (queuedForSession === screenSessionGenRef.current) {
+          queuedCaptureCountRef.current = Math.max(0, queuedCaptureCountRef.current - 1)
+        }
       })
     })
     return () => cleanup?.()

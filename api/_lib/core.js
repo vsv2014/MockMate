@@ -1134,12 +1134,14 @@ export async function visionComplete(opts = {}) {
   const providersAll = listVisionProviders()
   if (!providersAll.length) throw makeVisionUnavailableError(managed)
 
-  const key = fingerprint || requestId || 'vision-default'
-  const rid = requestId || key
+  // Without a caller-provided identity, independent screenshots must not share
+  // the same single-flight key (the old 'vision-default' key mixed requests).
+  const key = fingerprint || requestId || null
+  const rid = requestId || key || 'vision-unidentified'
   const run = () => visionCompleteOnce({
     imageBase64, prompt, maxTokens, detail, mime, requestId: rid, signal, imageDimensions, _callProvider, managed,
   })
-  if (_skipSingleFlight) return run()
+  if (_skipSingleFlight || !key) return run()
   return runVisionSingleFlight(key, rid, run)
 }
 
@@ -1181,6 +1183,13 @@ async function visionCompleteOnce({
     if (pi > 0) failover = true
 
     for (let attempt = 0; ; attempt++) {
+      // A cancellation may arrive while waiting between transient retries.
+      // Never start another provider request after the caller has aborted.
+      if (signal?.aborted) {
+        const cancelled = new Error('Screen analysis cancelled')
+        cancelled.name = 'AbortError'
+        throw cancelled
+      }
       const t0 = Date.now()
       try {
         const raw = await callOne(prov)
@@ -1256,7 +1265,7 @@ export async function completeTextQuick({ prompt, maxTokens = 1200, signal, requ
       const resp = await llm.chat.completions.create({
         model: prov.model, ...completionBudget(prov, maxTokens),
         messages: [{ role: 'user', content: prompt }],
-      }, signal ? { signal } : undefined)
+      }, { ...(signal ? { signal } : {}), timeout: 15000, maxRetries: 0 })
       const raw = resp.choices?.[0]?.message?.content
       if (raw) {
         lastWorkingTextProvider = baseOf(provId)
