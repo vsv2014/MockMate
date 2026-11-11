@@ -2,6 +2,7 @@ import { workspaceTextSize } from '../lib/typography.js'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { T } from '../auth/tokens'
 import { apiFetch } from '../lib/apiClient'
+import { verifyReadyRoomLiveStream } from './readyRoomAiProbe.js'
 import { isManaged } from '../lib/aiMode'
 import { LANGUAGES, STT_LANG } from '../lib/languages'
 import { trackProductEvent } from '../lib/productIntelligence'
@@ -568,28 +569,20 @@ export function ReadyRoom({
     setAiBusy(true)
     setAiTest({ status: 'testing', message: 'Sending one short test question…' })
     trackProductEvent('ready_room_ai_test_started')
+    const timeout = setTimeout(() => controller.abort(), 30_000)
     try {
-      const response = await apiFetch('/api/hint', {
-        method: 'POST', timeoutMs: 30_000, signal: controller.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // A successful /api/hint JSON response can still mask a broken Live
+      // streaming route. Probe exactly the Live SSE path through its terminal event.
+      await verifyReadyRoomLiveStream({
+        body: {
           question: 'In one short sentence, explain why clear communication matters in teamwork.',
           profile: {}, conversationHistory: [], provider: isManaged() ? '' : 'auto',
           language: 'English', style: 'balanced', autoSkip: false, mode: 'answer',
-        }),
+        },
+        signal: controller.signal,
       })
-      const data = await response.json().catch(() => ({}))
       if (aiController.current !== controller) return
-      const result = data?.hint
-      const answer = typeof result === 'string' ? result : (result?.fullAnswer || result?.sampleAnswer || result?.opener || '')
-      if (!response.ok) {
-        const error = new Error(data?.error || data?.message || `AI request failed (${response.status})`)
-        error.status = response.status
-        error.code = data?.code
-        throw error
-      }
-      if (!String(answer || '').trim()) throw new Error('The AI service returned no usable answer. No readiness claim made.')
-      setAiTest({ status: 'passed', message: `AI round trip completed at ${formatTime(new Date().toISOString())}.` })
+      setAiTest({ status: 'passed', message: `Live AI stream completed at ${formatTime(new Date().toISOString())}.` })
       trackProductEvent('ready_room_ai_test_passed')
     } catch (error) {
       if (aiController.current !== controller) return
@@ -598,6 +591,7 @@ export function ReadyRoom({
         : `${error?.message || 'AI round trip failed. Check Settings and retry.'}${error?.code ? ` (Code: ${error.code})` : ''}` })
       trackProductEvent('ready_room_ai_test_failed')
     } finally {
+      clearTimeout(timeout)
       if (aiController.current === controller) { aiController.current = null; setAiBusy(false) }
     }
   }
@@ -832,7 +826,7 @@ export function ReadyRoom({
                   : !providerReady && service.status === 'ready'
                     ? 'No configured AI provider was reported by the current service. Add or select one in Settings.'
                     : aiTest.message || 'A provider is configured, but has not completed a real test request in this Ready Room.'}
-                <div style={{ color: T.text3, fontSize: workspaceTextSize(10.5), lineHeight: 1.5, marginTop: 7 }}>The test sends one short generic question to the configured AI provider and may use API credits. It does not send this Kit, resume, or job description.</div>
+                <div style={{ color: T.text3, fontSize: workspaceTextSize(10.5), lineHeight: 1.5, marginTop: 7 }}>The test completes a Live streaming answer, including its final event, and may use API credits. It does not send this Kit, resume, or job description.</div>
               </CheckCard>
 
               <CheckCard number="03" title={audioSource === 'microphone' ? 'Microphone → Deepgram' : 'System Audio → Deepgram'} status={voiceStatus} statusText={voiceStatusText} action={
