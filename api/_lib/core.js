@@ -1157,7 +1157,6 @@ async function visionCompleteOnce({
   const imageBytes = estimateImageBytes(imageBase64)
   const dims = imageDimensions || null
   let lastError
-  let sawRate = false
   let failover = false
   const debug = process.env.MOCKMATE_DEBUG_VISION === '1'
 
@@ -1211,7 +1210,6 @@ async function visionCompleteOnce({
         }
         if (kind === 'cancelled') throw e
         if (kind === 'rate') {
-          sawRate = true
           markVision429Family(prov.id)
           // Vision lane only — do not ban text providers for a screen 429.
           break // never re-hit this provider for this request
