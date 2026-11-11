@@ -1157,7 +1157,6 @@ async function visionCompleteOnce({
   const imageBytes = estimateImageBytes(imageBase64)
   const dims = imageDimensions || null
   let lastError
-  let sawRate = false
   let failover = false
   const debug = process.env.MOCKMATE_DEBUG_VISION === '1'
 
@@ -1169,7 +1168,7 @@ async function visionCompleteOnce({
         { type: 'image_url', image_url: { url: dataUrl, detail } },
         { type: 'text', text: prompt },
       ] }],
-    }, signal ? { signal } : undefined)
+    }, { ...(signal ? { signal } : {}), timeout: 25000, maxRetries: 0 })
     return resp.choices?.[0]?.message?.content
   })
 
@@ -1211,7 +1210,6 @@ async function visionCompleteOnce({
         }
         if (kind === 'cancelled') throw e
         if (kind === 'rate') {
-          sawRate = true
           markVision429Family(prov.id)
           // Vision lane only — do not ban text providers for a screen 429.
           break // never re-hit this provider for this request
@@ -1232,7 +1230,9 @@ async function visionCompleteOnce({
   }
 
   if (isQuotaExhausted(lastError)) throw aiError('vision_quota', 402)
-  if (sawRate || classifyVisionError(lastError) === 'rate') throw makeVisionRateLimitedError(managed)
+  // Report the last attempted provider's concrete failure. A previous 429
+  // must not mask a later 401, 400, or transport error from a fallback vendor.
+  if (classifyVisionError(lastError) === 'rate') throw makeVisionRateLimitedError(managed)
   if (classifyVisionError(lastError) === 'auth') {
     const e = aiError('vision_none', 401); e.code = 'VISION_AUTH'; throw e
   }

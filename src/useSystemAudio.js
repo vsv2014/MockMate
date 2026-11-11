@@ -40,6 +40,12 @@ async function getStream(sourceId) {
     video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId, maxWidth: 1, maxHeight: 1 } }
   })
   stream.getVideoTracks().forEach(t => t.stop())
+  // Chromium can grant desktop capture with video but no loopback audio.
+  // Reject it explicitly instead of showing a connected session with no PCM.
+  if (!stream.getAudioTracks().some(track => track.readyState === 'live')) {
+    stream.getTracks().forEach(track => track.stop())
+    throw new Error('No system audio track was captured. Select a source with audio sharing enabled, or choose Microphone.')
+  }
   return stream
 }
 

@@ -22,6 +22,9 @@ const defaultVault = () => ({ version: 1, owners: {} })
 function assertOwner(owner) { if (!/^[a-zA-Z0-9._-]{1,160}$/.test(String(owner || ''))) fail('Sign in to a valid MockMate account first'); return owner }
 function providerCheck(provider) { if (!MODES.has(provider)) fail('Unsupported connector'); return provider }
 function sourceCheck(provider, sourceId) {
+  // Reject overlong identifiers instead of silently truncating them into a
+  // different, potentially valid source. Approval must bind to the exact ID.
+  if (typeof sourceId !== 'string' || sourceId.trim().length > 600) fail('Invalid connector source identifier')
   const id = clean(sourceId, 600)
   if (provider === 'github' && !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+:[A-Za-z0-9_./-]+\.(md|markdown|txt)$/i.test(id)) fail('GitHub source must be owner/repo:path.md (no traversal)')
   if (provider === 'github' && (id.includes('..') || id.includes('//'))) fail('Unsafe GitHub path')

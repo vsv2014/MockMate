@@ -98,7 +98,7 @@
       "createStartMenuShortcut": true,
       "shortcutName": "MockMate",
       "uninstallDisplayName": "MockMate ${version}",
-      "deleteAppDataOnUninstall": true,
+      "deleteAppDataOnUninstall": false,
       "runAfterFinish": false,
       "include": "build/installer.nsh"
     },

@@ -1,6 +1,6 @@
 # MockMate release checklist
 
-**Current source version: 1.6.9, published as an unsigned Personal Preview on November 9, 2026.** Its source CI and unsigned release packaging checks passed. **Physical Windows Live speaker/score, glossary accuracy, upgrades and privacy verification remain open.** Earlier preview v1.6.8 includes Ready Room fixes; v1.6.9 adds interviewer-turn separation, candidate-capture status, and context-based speech keyterms (#129). No signed v1.6.x stable release exists. The signed public gates below apply to the next signed release: missing signing credentials stop it, and no unsigned fallback is allowed. Package and lock versions must match the new immutable tag.
+**Source version: 1.6.15 (from `package.json` as of November 11, 2026).** This is a source-version identifier, **not proof of a published, signed, or physically certified installer**. Before release, verify the exact candidate SHA, artifact, workflow results, and the [GitHub Releases](https://github.com/vsv2014/MockMate/releases) listing. The historical v1.6.9 preview was published November 9, 2026; its physical Windows Live speaker/score, glossary accuracy, upgrades and privacy verification remained open. No signed v1.6.x stable release is established by this checklist. Missing signing credentials must stop the signed release; never fall back to unsigned. Package and lock versions must match the immutable tag.
 
 **Rule: do not describe any build as physically certified until every applicable box below is checked on a REAL packaged build.** The separate explicit manual unsigned-preview path may publish only as an isolated, manual-update pre-release after automated CI; it is not a substitute for these physical checks.
 Every 1.4.2 defect (CSP broke Solo+Live, STT coupled to the LLM cap, dangling `mintToken` import,
@@ -14,6 +14,13 @@ bug. Dev (`npm run dev`) hides all of them — Vite serves with no CSP and a rea
 - [ ] `npm test` green for the exact candidate commit
 - [ ] `npm run smoke:api` green
 - [ ] `git status` shows no build artifacts tracked (dist/ ignored)
+
+## 0b. Installer user-data retention (Windows)
+- [ ] Install a preview or signed candidate with a test account; create a local interview note, settings preference and saved Kit. Record the exact `userData` path.
+- [ ] Upgrade to the next candidate and verify that existing account-scoped data remains readable and scoped to the same account.
+- [ ] Uninstall the candidate and confirm the application binaries are removed but the local user-data directory is retained (`deleteAppDataOnUninstall=false`). Reinstall and verify the test data is still available.
+- [ ] Verify explicit account deletion and any separate in-app data-erasure action still erase only the intended data; uninstall must not be presented as a privacy/data-erasure operation.
+- [ ] Test isolated Personal Preview separately from signed MockMate; their identities and user-data directories must not cross-contaminate.
 
 ## 1. Packaged app boots (catches CSP / server-fork / dangling-import bugs)
 - [ ] the Release workflow produces either a verified signed installer or the isolated `UNSIGNED` Personal Preview artifact with no updater metadata
