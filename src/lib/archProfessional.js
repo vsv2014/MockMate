@@ -339,3 +339,27 @@ export function buildProfessionalReviewQueue(state = loadProfessionalState(), im
     action: 'Compare the claims and supporting source quotations; choose what to retain manually.' })
   return queue.slice(0, 200)
 }
+
+// Deterministic ARCH evidence evaluation: no model inference, no external calls.
+// Counts are intentionally descriptive, not a score of candidate ability.
+export function evaluateProfessionalEvidence(state = loadProfessionalState(), imports = listApprovedImports()) {
+  const graph = buildProfessionalGraph(state, imports)
+  const staleIds = new Set(graph.nodes.filter(node => node.kind === 'evidence' && node.stale).map(node => node.id))
+  const evidenceIds = new Set((state.evidence || []).map(item => item.id))
+  const claims = state.claims || []
+  const supported = claims.filter(claim => (claim.evidenceIds || []).some(id => evidenceIds.has(id) && !staleIds.has(id)))
+  const conflicting = new Set((graph.conflicts || []).flatMap(pair => [pair.a, pair.b]))
+  return Object.freeze({
+    schemaVersion: 1,
+    sources: imports.length,
+    claims: claims.length,
+    supportedClaims: supported.length,
+    unsupportedClaims: claims.length - supported.length,
+    conflictingClaims: conflicting.size,
+    staleEvidence: staleIds.size,
+    outcomes: (state.outcomes || []).length,
+    // A complete review requires all claims to have current supporting evidence
+    // and no unresolved contradictory claims; an empty profile is not complete.
+    reviewReady: claims.length > 0 && supported.length === claims.length && conflicting.size === 0,
+  })
+}
