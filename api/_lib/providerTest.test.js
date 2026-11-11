@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  testProviderConnection, describeAutomaticRouting, streamText, completeJSON,
+  testProviderConnection, describeAutomaticRouting, streamText, completeJSON, listModels, getFallbackProviders,
   _getProviderHealthForTests, _resetProviderHealthForTests,
 } from './core.js'
 
@@ -56,6 +56,60 @@ describe('provider connection test', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it('discovers accessible models, verifies both transports, then routes to the efficient verified model', async () => {
+    process.env.OPENAI_API_KEY = 'unit-test-openai'
+    process.env.GROQ_API_KEY = 'unit-test-groq'
+    const requests = []
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      if (String(url).endsWith('/models')) {
+        if (String(url).includes('api.openai.com')) return new Response(JSON.stringify({
+          data: [{ id: 'gpt-6-luna' }, { id: 'gpt-6.1-sol' }, { id: 'gpt-6-astra' }],
+        }), { status: 200 })
+        return new Response(JSON.stringify({ data: [{ id: 'openai/gpt-oss-120b' }] }), { status: 200 })
+      }
+      const req = JSON.parse(options.body)
+      requests.push(req)
+      return req.stream ? streamingAnswer(req.model) : jsonAnswer()
+    }))
+    await listModels()
+    const result = await testProviderConnection('openai_mini', { optimize: true })
+    expect(result).toMatchObject({
+      ok: true, provider: 'openai_mini', model: 'gpt-6.1-sol',
+      checked: ['blocking', 'streaming'], optimized: true,
+    })
+    expect(requests).toHaveLength(2)
+    expect(requests.every(req => req.model === 'gpt-6.1-sol')).toBe(true)
+    expect(describeAutomaticRouting().strong).toMatchObject({
+      id: 'openai::gpt-6.1-sol', model: 'gpt-6.1-sol', verified: true,
+    })
+    expect(getFallbackProviders('openai::gpt-6.1-sol')[0]).toBe('openai::gpt-6.1-sol')
+    expect(JSON.stringify(describeAutomaticRouting())).not.toContain('unit-test-openai')
+  })
+
+  it('tries one other discovered model with the same key when the preferred model has retired', async () => {
+    process.env.OPENAI_API_KEY = 'unit-test-key'
+    const models = []
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      if (String(url).endsWith('/models')) return new Response(JSON.stringify({
+        data: [{ id: 'gpt-6-luna' }, { id: 'gpt-6.1-sol' }],
+      }), { status: 200 })
+      const req = JSON.parse(options.body)
+      if (!req.stream) models.push(req.model)
+      if (req.model === 'gpt-6.1-sol') return new Response(JSON.stringify({
+        error: { code: 'model_not_found', type: 'invalid_request_error', message: 'Model was retired' },
+      }), { status: 404, headers: { 'Content-Type': 'application/json' } })
+      return req.stream ? streamingAnswer(req.model) : jsonAnswer()
+    }))
+    await listModels()
+    await expect(testProviderConnection('openai_mini', { optimize: true })).resolves.toMatchObject({
+      ok: true, model: 'gpt-6-luna', optimized: true,
+    })
+    expect(models).toEqual(['gpt-6.1-sol', 'gpt-6-luna'])
+    expect(describeAutomaticRouting().fast).toMatchObject({
+      id: 'openai::gpt-6-luna', verified: true,
+    })
+  })
+
   it('rejects a stream that emits text then fails before completion', async () => {
     process.env.GROQ_API_KEY = 'unit-test-groq'
     vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
@@ -74,6 +128,7 @@ describe('provider connection test', () => {
     }))
     await expect(testProviderConnection('groq')).rejects.toThrow()
     expect(_getProviderHealthForTests().lastWorkingTextProvider).toBeNull()
+    expect(_getProviderHealthForTests().verifiedRoutes).toEqual({})
   })
 
   it('probes Gemini blocking and streaming without unsupported reasoning_effort', async () => {

@@ -136,6 +136,8 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   const [testResults, setTestResults] = useState({})
   const [showAdv, setShowAdv] = useState(false)
   const [routing, setRouting] = useState(null)
+  const [optimizing, setOptimizing] = useState(false)
+  const [optimizationResult, setOptimizationResult] = useState('')
   // Single "Add API key" box: detection is a local suggestion the user confirms.
   const [addKey, setAddKey] = useState('')
   const [addChoice, setAddChoice] = useState('')     // provider env key chosen by hand ('' = follow detection)
@@ -195,9 +197,52 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
     }
   }
 
+  async function verifyAndOptimize() {
+    const rows = PROVIDERS.filter(provider => provider.testId !== 'deepgram' && isAdded(provider))
+    if (!rows.length || optimizing) return
+    setOptimizing(true)
+    setOptimizationResult('')
+    let catalogAvailable = false
+    try {
+      // Discovery identifies models listed for this particular key. It does not
+      // prove billing access; the two real inference probes below do that.
+      const response = await keyApiFetch('/api/models', { timeoutMs: 12000 })
+      if (response.ok) {
+        const data = await response.json()
+        catalogAvailable = Array.isArray(data.discoveredProviders) && data.discoveredProviders.length > 0
+      }
+    } catch {}
+    let verified = 0
+    let optimized = 0
+    for (const provider of rows) {
+      setTestResults(results => ({ ...results, [provider.k]: { status: 'testing', message: `Verifying ${provider.name} and selecting a model…` } }))
+      try {
+        const response = await keyApiFetch('/api/providers/test', {
+          method: 'POST', timeoutMs: 23000,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: provider.testId, optimize: true }),
+        })
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok || !data.ok) throw new Error(data.error || `Provider test returned HTTP ${response.status}`)
+        verified++
+        if (data.optimized) optimized++
+        const note = data.optimized ? 'Chosen from the live catalog' : 'Catalog unavailable; tested a configured fallback'
+        setTestResults(results => ({ ...results, [provider.k]: {
+          status: 'ok', message: `${data.model}: blocking + full streaming passed. ${note}.`,
+        } }))
+      } catch (error) {
+        setTestResults(results => ({ ...results, [provider.k]: { status: 'error', message: error?.message || 'Provider verification failed.' } }))
+      }
+    }
+    await refresh().catch(() => {})
+    setOptimizationResult(`Verified ${verified} of ${rows.length} saved AI keys; selected ${optimized} model${optimized === 1 ? '' : 's'} from the live catalog. Automatic routing prefers working models. ${catalogAvailable ? '' : 'Model discovery was unavailable or returned no models; fallback tests may still have succeeded.'}`)
+    setOptimizing(false)
+  }
+
   async function removeProvider(provider, label) {
     if (!window.confirm(`Clear the saved ${label} configuration from this device?`)) return
     setMsg('')
+    setOptimizationResult('')
     try {
       const result = await window.electronAPI?.removeProviderKey?.(provider)
       if (!result?.ok) throw new Error(result?.error || 'Could not remove key')
@@ -205,8 +250,9 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
       if (!applied?.ok) throw new Error(`Key cleared, but the local service could not reload: ${applied?.error || 'restart request failed'}`)
       await new Promise(resolve => setTimeout(resolve, 1200))
       await refresh()
-      const providerRow = PROVIDERS.find(row => row.providerIds.includes(provider))
-      if (providerRow) setTestResults(results => ({ ...results, [providerRow.k]: undefined }))
+      // Applying any key change restarts the local service and invalidates every
+      // provider's in-memory verification, not just the edited provider.
+      setTestResults({})
       setMsg(`✓ ${label} key cleared; updated provider configuration loaded. Connection status is not a key-validity check.`)
       onSaved?.()
     } catch (error) {
@@ -244,10 +290,10 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
 
   async function saveAddedKey() {
     if (!targetProvider || !detection.value || detection.problem) return
-    setAddSaving(true); setAddMsg(''); setMsg('')
+    setAddSaving(true); setAddMsg(''); setMsg(''); setOptimizationResult('')
     try {
       await persistKeyLines(`${targetProvider.envKey}=${detection.value}\n`)
-      setTestResults(results => ({ ...results, [targetProvider.envKey]: undefined }))
+      setTestResults({})
       setAddKey(''); setAddChoice(''); setReplacing(null)
       try {
         await refresh()
@@ -267,7 +313,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
   async function save() {
     const lines = Object.entries(keyVals).filter(([, value]) => value.trim()).map(([key, value]) => `${key}=${value.trim()}`).join('\n')
     if (!lines) { setMsg('Enter at least one key'); return }
-    setSaving(true); setMsg('')
+    setSaving(true); setMsg(''); setOptimizationResult('')
     try {
       await persistKeyLines(lines + '\n')
       try {
@@ -373,9 +419,9 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
           {keyStatus !== 'ready'
             ? <div style={muted}>{statusLoading ? 'Checking saved keys…' : 'Status unavailable — retry above.'}</div>
             : routing?.fast || routing?.strong ? (<>
-              <div style={{ fontSize: readableTextSize(12), color: T.text2 }}>Quick answers: <strong style={{ color: T.text1 }}>{routing.fast?.label || routing.strong?.label}</strong></div>
-              <div style={{ fontSize: readableTextSize(12), color: T.text2 }}>Coding &amp; system design: <strong style={{ color: T.text1 }}>{routing.strong?.label || routing.fast?.label}</strong></div>
-              <div style={muted}>Chosen automatically from the keys saved on this device.</div>
+              <div style={{ fontSize: readableTextSize(12), color: T.text2 }}>Quick answers: <strong style={{ color: T.text1 }}>{routing.fast?.label || routing.strong?.label}</strong> <span style={muted}>{(routing.fast || routing.strong)?.verified ? '✓ verified this session' : 'Not yet verified'}</span></div>
+              <div style={{ fontSize: readableTextSize(12), color: T.text2 }}>Coding &amp; system design: <strong style={{ color: T.text1 }}>{routing.strong?.label || routing.fast?.label}</strong> <span style={muted}>{(routing.strong || routing.fast)?.verified ? '✓ verified this session' : 'Not yet verified'}</span></div>
+              <div style={muted}>The initial suggestion is estimated from the catalog. After testing, verified working models are preferred. Verification resets when the service restarts.</div>
             </>)
               : <div style={muted}>Add an AI key below to see which model will answer.</div>}
         </div>
@@ -402,7 +448,7 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {canTestProviders && (
-                    <button type="button" onClick={() => testProvider(p)} disabled={testing || keyStatus !== 'ready'}
+                    <button type="button" onClick={() => testProvider(p)} disabled={testing || optimizing || keyStatus !== 'ready'}
                       title="Verifies both blocking and streaming answers; the provider may charge for two small requests."
                       aria-label={`Test ${p.name} connection`}
                       style={{ ...smallBtn('#5eead4', 'rgba(94,234,212,0.3)'), opacity: testing ? 0.55 : 1, cursor: testing ? 'not-allowed' : 'pointer' }}>
@@ -421,7 +467,17 @@ export default function ApiKeysPanel({ onSaved, showStatus = false, onModeChange
               </div>
             )
           })}
-          {canTestProviders && savedProviders.length > 0 && <div style={muted}>Testing sends one short request and may incur a small usage charge. A detected key is not proof that it works.</div>}
+          {canTestProviders && savedProviders.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <button type="button" onClick={verifyAndOptimize} disabled={optimizing || statusLoading || !!providerStatusError}
+                aria-label="Verify saved AI keys and optimize automatic model selection"
+                style={{ alignSelf: 'flex-start', padding: '7px 11px', border: `1px solid ${T.accentFrom}`, borderRadius: T.rCtrl, background: T.accent, color: '#fff', fontFamily: T.font, fontSize: readableTextSize(11.5), fontWeight: 600, opacity: optimizing ? 0.6 : 1, cursor: optimizing ? 'wait' : 'pointer' }}>
+                {optimizing ? 'Verifying saved AI keys…' : 'Verify keys & optimize model'}
+              </button>
+              <div style={muted}>Checks available catalog models, then tests one selected model per saved AI key with blocking and full streaming requests. Each provider may charge for two small requests. Speed and quality are estimated, not benchmarked.</div>
+              {optimizationResult && <div role="status" aria-live="polite" style={{ fontSize: readableTextSize(11), color: T.text2 }}>{optimizationResult}</div>}
+            </div>
+          )}
         </div>
 
         <div style={{ height: 1, background: T.border }} />

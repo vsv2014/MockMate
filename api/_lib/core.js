@@ -1,6 +1,6 @@
 import { REPORT_JSON_FIELDS } from '../../shared/reportSchema.js'
 import { currentRequestTrace } from './traceContext.js'
-import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget, claudeLowLatencyThinking, isThinkingModel, modelDisplayName } from '../../shared/modelRegistry.js'
+import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget, claudeLowLatencyThinking, isThinkingModel, modelDisplayName, modelPreferenceScore, preferredEfficientModel } from '../../shared/modelRegistry.js'
 // Shared logic for the serverless functions (api/*.js) and the local dev server
 // (server.js). Files prefixed with _ are not treated as routes by Vercel.
 import OpenAI from 'openai'
@@ -70,6 +70,10 @@ const CATALOG = Object.fromEntries(Object.entries(MODEL_CATALOG).map(([id, recor
 const discoveredModels = new Map()
 let lastSuccessfulDiscoveries = new Set()
 const quarantinedModels = new Map()
+// Per-process proof of a successful blocking AND end-to-end streaming probe.
+// Saving a key or listing /models alone never creates a verified route.
+const verifiedRoutes = new Map()
+const VERIFIED_ROUTE_TTL_MS = 30 * 60 * 1000
 const MODEL_QUARANTINE_MS = 6 * 60 * 60 * 1000
 const MODEL_REFRESH_INTERVAL_MS = 15 * 60 * 1000
 let nextModelDiscoveryAt = 0
@@ -156,7 +160,7 @@ export function availableProviders() {
 
 const PROVIDER_TEST_IDS = new Set(['groq', 'gemini', 'openai_mini', 'claude_haiku', 'cerebras', 'openrouter'])
 /** Make one small, explicit probe against a selected saved key; this is never part of normal routing. */
-export async function testProviderConnection(providerId) {
+export async function testProviderConnection(providerId, { optimize = false } = {}) {
   const id = String(providerId || '')
 
   // Deepgram is STT, not an LLM — verify the key via the auth/grant endpoint.
@@ -202,7 +206,11 @@ export async function testProviderConnection(providerId) {
   const timer = setTimeout(() => controller.abort(), 18_000)
   try {
     for (let attempt = 0; attempt < 2; attempt++) {
-      const provider = resolveProvider(id)
+      const family = modelFamily(id)
+      const discovered = [...(discoveredModels.get(family) || [])].filter(model => !isQuarantinedModel(family, model))
+      const selectedModel = optimize ? preferredEfficientModel(family, discovered) : null
+      const provider = resolveProvider(selectedModel ? `${id}::${selectedModel}` : id)
+      const attemptStartedAt = Date.now()
       const llm = clientFor(provider)
       try {
         const params = {
@@ -241,7 +249,12 @@ export async function testProviderConnection(providerId) {
         }
         clearTextProviderBan(id)
         lastWorkingTextProvider = baseOf(id)
-        return { ok: true, provider: id, model: provider.model, checked: ['blocking', 'streaming'] }
+        const probeMs = Date.now() - attemptStartedAt
+        verifiedRoutes.set(family, { family, model: provider.model, checkedAt: Date.now(), probeMs })
+        return {
+          ok: true, provider: id, model: provider.model, checked: ['blocking', 'streaming'],
+          ...(optimize ? { optimized: Boolean(selectedModel), probeMs } : {}),
+        }
       } catch (error) {
         if (controller.signal.aborted) {
           const timedOut = new Error('Provider test timed out before both blocking and streaming answers completed.')
@@ -272,6 +285,28 @@ function automaticRouteUsable(id) {
     && !(textBannedUntil[base] > Date.now())
 }
 
+// Prefer recently verified, key-accessible models to guessed catalog defaults.
+// Latency is one small probe, so scores remain heuristics, NOT a quality benchmark.
+function preferredVerifiedRoute(lane) {
+  const now = Date.now()
+  const eligible = [...verifiedRoutes.values()].filter(record => {
+    if (now - record.checkedAt > VERIFIED_ROUTE_TTL_MS) return false
+    if (!automaticRouteUsable(record.family) || isQuarantinedModel(record.family, record.model)) return false
+    const known = discoveredModels.get(record.family)
+    return !known || known.has(record.model)
+  })
+  const preference = record => {
+    const quality = modelPreferenceScore({ provider: record.family, model: record.model })
+    const latencyPenalty = Math.min(65, record.probeMs / (lane === 'fast' ? 180 : 340))
+    return lane === 'fast'
+      ? quality * 0.55 + (isThinkingModel(record.family, record.model) ? 0 : 24) - latencyPenalty
+      : quality + (isThinkingModel(record.family, record.model) ? 0 : 8) - latencyPenalty
+  }
+  eligible.sort((a, b) => preference(b) - preference(a) || a.family.localeCompare(b.family))
+  const preferred = eligible[0]
+  return preferred ? `${preferred.family}::${preferred.model}` : null
+}
+
 export function pickFastProvider() {
   const candidates = [
     process.env.GEMINI_API_KEY && (newestDiscovered('gemini', MODEL_PRIORITIES.fast.gemini) || 'gemini_flash_lite'),
@@ -281,7 +316,7 @@ export function pickFastProvider() {
     process.env.ANTHROPIC_API_KEY && (newestDiscovered('claude_sonnet', MODEL_PRIORITIES.fast.claude_sonnet) || 'claude_haiku'),
     process.env.OPENROUTER_API_KEY && (newestDiscovered('openrouter', MODEL_PRIORITIES.strong.openrouter) || 'openrouter'),
   ]
-  return candidates.find(automaticRouteUsable) || null
+  return preferredVerifiedRoute('fast') || candidates.find(automaticRouteUsable) || null
 }
 
 // Which model automatic routing would use right now for quick answers and for
@@ -292,7 +327,13 @@ export function describeAutomaticRouting() {
     try {
       const provider = resolveProvider(id)
       if (!provider?.model) return null
-      return { id, model: provider.model, label: modelDisplayName(provider.model) }
+      const family = modelFamily(id)
+      const record = verifiedRoutes.get(family)
+      const verified = Boolean(record && id === `${family}::${record.model}` && provider.model === record.model
+        && Date.now() - record.checkedAt <= VERIFIED_ROUTE_TTL_MS
+        && (!discoveredModels.has(family) || discoveredModels.get(family).has(record.model))
+        && !isQuarantinedModel(family, record.model) && automaticRouteUsable(family))
+      return { id, model: provider.model, label: modelDisplayName(provider.model), ...(verified ? { verified: true } : {}) }
     } catch { return null }
   }
   return { fast: describe(pickFastProvider()), strong: describe(pickStrongProvider()) }
@@ -305,7 +346,7 @@ export function pickStrongProvider() {
     process.env.GEMINI_API_KEY && (newestDiscovered('gemini', MODEL_PRIORITIES.strong.gemini) || 'gemini_3_flash'),
     process.env.OPENROUTER_API_KEY && (newestDiscovered('openrouter', MODEL_PRIORITIES.strong.openrouter) || 'openrouter'),
   ]
-  return candidates.find(automaticRouteUsable) || pickFastProvider()
+  return preferredVerifiedRoute('strong') || candidates.find(automaticRouteUsable) || pickFastProvider()
 }
 
 export function pickBestProvider() {
@@ -644,6 +685,7 @@ export function _resetProviderHealthForTests() {
   discoveredModels.clear()
   lastSuccessfulDiscoveries = new Set()
   quarantinedModels.clear()
+  verifiedRoutes.clear()
   nextModelDiscoveryAt = 0
   for (const k of Object.keys(textBannedUntil)) delete textBannedUntil[k]
   for (const k of Object.keys(textBannedReason)) delete textBannedReason[k]
@@ -656,6 +698,7 @@ export function _getProviderHealthForTests() {
     textBannedUntil: { ...textBannedUntil },
     textBannedReason: { ...textBannedReason },
     quarantinedModels: Object.fromEntries(quarantinedModels),
+    verifiedRoutes: Object.fromEntries(verifiedRoutes),
   }
 }
 

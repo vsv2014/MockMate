@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { claudeLowLatencyThinking, isThinkingModel, modelDisplayName, modelPreferenceScore, MODEL_CATALOG, MODEL_PRIORITIES } from './modelRegistry.js'
+import { claudeLowLatencyThinking, isThinkingModel, modelDisplayName, modelPreferenceScore, MODEL_CATALOG, MODEL_PRIORITIES, preferredEfficientModel } from './modelRegistry.js'
 import { isCurrentChatModel } from './currentModels.js'
 
 describe('Claude model generation', () => {
@@ -84,5 +84,26 @@ describe('isThinkingModel', () => {
     expect(isThinkingModel('openai', 'gpt-6-luna')).toBe(false)
     expect(isThinkingModel('gemini', 'gemini-3.5-flash-lite')).toBe(false)
     expect(isThinkingModel('gemini', 'gemini-3.8-flash')).toBe(false)
+  })
+})
+
+
+describe('verified catalog efficiency preferences', () => {
+  it('uses only discovered model ids rather than inventing an inaccessible default', () => {
+    expect(preferredEfficientModel('openai', ['gpt-6-luna', 'gpt-6.1-sol'])).toBe('gpt-6.1-sol')
+    expect(preferredEfficientModel('openai', ['gpt-6-luna'])).toBe('gpt-6-luna')
+    expect(preferredEfficientModel('openai', [])).toBeNull()
+  })
+
+  it('prefers a balanced Claude model over costly max-quality alternatives if both are accessible', () => {
+    expect(preferredEfficientModel('claude_sonnet', ['claude-fable-5', 'claude-sonnet-5-5']))
+      .toBe('claude-sonnet-5-5')
+  })
+
+  it('handles discovery-order noise and unknown future models deterministically', () => {
+    expect(preferredEfficientModel('gemini', ['gemini-4.0-flash', 'gemini-3.5-flash-lite']))
+      .toBe('gemini-3.5-flash-lite')
+    expect(preferredEfficientModel('gemini', ['gemini-4.0-flash']))
+      .toBe('gemini-4.0-flash')
   })
 })
