@@ -58,6 +58,14 @@ describe('visionPolicy cooldown', () => {
     expect(isVisionCooling('openai_mini')).toBe(true)
     expect(isVisionCooling('gemini')).toBe(false)
   })
+
+  it('cooldowns all Gemini slots sharing the same credential', () => {
+    markVision429Family('gemini_3_flash')
+    expect(isVisionCooling('gemini')).toBe(true)
+    expect(isVisionCooling('gemini_flash_lite')).toBe(true)
+    expect(isVisionCooling('gemini_3_flash')).toBe(true)
+    expect(isVisionCooling('openai')).toBe(false)
+  })
 })
 
 describe('vision provider configuration', () => {
