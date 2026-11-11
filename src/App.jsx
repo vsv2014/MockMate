@@ -725,7 +725,12 @@ function ElectronShell({ auth }) {
         trackProductEvent('f7_captured', { mode: shot.continuationMode || 'auto' })
         await runAnalysis(shot)
       }).finally(() => {
-        queuedCaptureCountRef.current = Math.max(0, queuedCaptureCountRef.current - 1)
+        // Dismissal starts a new screenshot session and resets the counter.
+        // A late completion from the old session must not decrement the new
+        // session's pending count or let its queue exceed the configured cap.
+        if (queuedForSession === screenSessionGenRef.current) {
+          queuedCaptureCountRef.current = Math.max(0, queuedCaptureCountRef.current - 1)
+        }
       })
     })
     return () => cleanup?.()
