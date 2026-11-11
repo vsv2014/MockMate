@@ -36,7 +36,9 @@ export function createSessionMetrics(kind = 'live', { runId } = {}) {
     return row
   }
 
-  function startHint() { return { t0: performance.now(), firstTokenAt: null } }
+  function startHint({ captureMs, preparationMs, retrievalMs } = {}) {
+    return { t0: performance.now(), firstTokenAt: null, captureMs, preparationMs, retrievalMs }
+  }
   function markFirstToken(hintState) {
     if (!hintState || hintState.firstTokenAt != null) return
     hintState.firstTokenAt = performance.now()
@@ -44,7 +46,15 @@ export function createSessionMetrics(kind = 'live', { runId } = {}) {
     if (counters.ttftMs.length === 0 && kind === 'live') {
       trackProductEvent('first_hint_rendered', { ttftMs: ms })
     }
-    counters.ttftMs.push(ms); counters.hints += 1; event('ttft', { ms })
+    const { captureMs, preparationMs, retrievalMs } = hintState
+    const elapsed = ms + (preparationMs ?? 0) + (retrievalMs ?? 0)
+    counters.ttftMs.push(ms)
+    counters.hints += 1
+    event('ttft', {
+      ms, preparationMs, retrievalMs, captureMs,
+      triggerToFirstMs: elapsed,
+      captureToFirstMs: captureMs == null ? undefined : captureMs + elapsed,
+    })
   }
 
   function markFallback() { counters.transportFallbacks += 1; event('stream_fallback') }

@@ -2,7 +2,9 @@ import { workspaceTextSize } from '../lib/typography.js'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { T } from '../auth/tokens'
 import { apiFetch } from '../lib/apiClient'
-import { verifyReadyRoomLiveStream } from './readyRoomAiProbe.js'
+import { readyRoomFailureFields, verifyReadyRoomLiveStream } from './readyRoomAiProbe.js'
+import { LIVE_HINT_OVERALL_TIMEOUT_MS } from '../../shared/liveTiming.js'
+import { diagnostic } from '../lib/diagnostics.js'
 import { isManaged } from '../lib/aiMode'
 import { LANGUAGES, STT_LANG } from '../lib/languages'
 import { trackProductEvent } from '../lib/productIntelligence'
@@ -569,7 +571,8 @@ export function ReadyRoom({
     setAiBusy(true)
     setAiTest({ status: 'testing', message: 'Sending one short test question…' })
     trackProductEvent('ready_room_ai_test_started')
-    const timeout = setTimeout(() => controller.abort(), 30_000)
+    const started = performance.now()
+    const timeout = setTimeout(() => controller.abort(), LIVE_HINT_OVERALL_TIMEOUT_MS)
     try {
       // A successful /api/hint JSON response can still mask a broken Live
       // streaming route. Probe exactly the Live SSE path through its terminal event.
@@ -583,12 +586,14 @@ export function ReadyRoom({
       })
       if (aiController.current !== controller) return
       setAiTest({ status: 'passed', message: `Live AI stream completed at ${formatTime(new Date().toISOString())}.` })
+      diagnostic('ready_room', 'ai_probe_passed', { durationMs: Math.round(performance.now() - started) })
       trackProductEvent('ready_room_ai_test_passed')
     } catch (error) {
       if (aiController.current !== controller) return
       setAiTest({ status: 'failed', message: error?.name === 'AbortError'
-        ? 'The AI test timed out after 30 seconds. Check the connection and provider status, then retry.'
+        ? `The AI test timed out after ${LIVE_HINT_OVERALL_TIMEOUT_MS / 1000} seconds. Check the connection and provider status, then retry.`
         : `${error?.message || 'AI round trip failed. Check Settings and retry.'}${error?.code ? ` (Code: ${error.code})` : ''}` })
+      diagnostic('ready_room', 'ai_probe_failed', { ...readyRoomFailureFields(error), durationMs: Math.round(performance.now() - started) }, 'warn')
       trackProductEvent('ready_room_ai_test_failed')
     } finally {
       clearTimeout(timeout)

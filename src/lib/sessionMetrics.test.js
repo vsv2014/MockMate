@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { sanitizeMetric, createSessionMetrics } from './sessionMetrics.js'
 
 describe('sessionMetrics (Phase 6)', () => {
@@ -31,6 +31,28 @@ describe('sessionMetrics (Phase 6)', () => {
     expect(s.streamFallbacks).toBe(1)
     expect(s.ttftAvgMs).toEqual(expect.any(Number))
     expect(s.type).toBe('session_end')
+  })
+
+  it('records capture, preparation and retrieval once per first answer', () => {
+    const appendSessionMetrics = vi.fn()
+    vi.stubGlobal('window', { electronAPI: { appendSessionMetrics } })
+    const now = vi.spyOn(performance, 'now').mockReturnValueOnce(100).mockReturnValueOnce(150)
+    try {
+      const m = createSessionMetrics('live')
+      const hint = m.startHint({ captureMs: 200, preparationMs: 10, retrievalMs: 40 })
+      m.markFirstToken(hint)
+      m.markFirstToken(hint)
+      const rows = appendSessionMetrics.mock.calls.map(([row]) => row).filter(row => row.type === 'ttft')
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({
+        ms: 50, captureMs: 200, preparationMs: 10, retrievalMs: 40,
+        triggerToFirstMs: 100, captureToFirstMs: 300,
+      })
+      m.end()
+    } finally {
+      now.mockRestore()
+      vi.unstubAllGlobals()
+    }
   })
 
   it('never persists raw provider errors containing interview questions or secrets', () => {

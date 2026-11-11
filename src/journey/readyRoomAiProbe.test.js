@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { verifyReadyRoomLiveStream } from './readyRoomAiProbe.js'
+import { readyRoomFailureFields, verifyReadyRoomLiveStream } from './readyRoomAiProbe.js'
 
 const body = { question: 'Why does clear communication matter?', autoSkip: false }
 const runEvents = (events, mode = 'stream') => vi.fn(async ({ onEvent }) => {
@@ -80,4 +80,11 @@ describe('Ready Room Live streaming verification', () => {
       body, signal: controller.signal, runStream,
     })).rejects.toMatchObject({ code: 'stream_aborted', name: 'AbortError' })
   })
+})
+
+it('keeps known failure codes and HTTP status while discarding arbitrary provider data', () => {
+  expect(readyRoomFailureFields({ code: 'code_missing', status: 502, message: 'private' }))
+    .toEqual({ code: 'code_missing', status: 502 })
+  expect(readyRoomFailureFields({ code: 'private', status: '502', message: 'private' }))
+    .toEqual({ code: 'unknown', status: undefined })
 })

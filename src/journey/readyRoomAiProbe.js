@@ -9,6 +9,22 @@ function probeError(message, code) {
   return error
 }
 
+const DIAGNOSTIC_CODES = new Set([
+  'stream_unavailable', 'stream_failed', 'unexpected_skip', 'stream_incomplete', 'empty_output',
+  'no_provider', 'provider_auth', 'model_access', 'model_unavailable', 'request_invalid',
+  'insufficient_quota', 'rate_limit', 'transient', 'provider_cooling', 'provider_limits',
+  'provider_error', 'output_truncated', 'code_missing',
+])
+
+export function readyRoomFailureFields(error) {
+  return {
+    code: error?.name === 'AbortError' ? 'stream_aborted'
+      : DIAGNOSTIC_CODES.has(error?.code) ? error.code : 'unknown',
+    status: Number.isInteger(error?.status) && error.status >= 400 && error.status <= 599
+      ? error.status : undefined,
+  }
+}
+
 export async function verifyReadyRoomLiveStream({ body, signal, runStream = streamLiveHint } = {}) {
   let rawAnswer = ''
   let sawDone = false
