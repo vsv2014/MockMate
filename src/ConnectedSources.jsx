@@ -24,6 +24,7 @@ const input = {
   color: T.text1, borderRadius: 8, fontSize: 14, fontFamily: T.font,
 }
 const action = {
+  maxWidth: '100%', minWidth: 0, whiteSpace: 'normal', overflowWrap: 'anywhere',
   padding: '9px 14px', borderRadius: 9, color: T.text1,
   border: `1px solid ${T.accentBorder}`, background: T.accentSoft,
   fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: T.font,
