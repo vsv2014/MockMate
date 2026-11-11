@@ -1256,7 +1256,7 @@ export async function completeTextQuick({ prompt, maxTokens = 1200, signal, requ
       const resp = await llm.chat.completions.create({
         model: prov.model, ...completionBudget(prov, maxTokens),
         messages: [{ role: 'user', content: prompt }],
-      }, signal ? { signal } : undefined)
+      }, { ...(signal ? { signal } : {}), timeout: 15000, maxRetries: 0 })
       const raw = resp.choices?.[0]?.message?.content
       if (raw) {
         lastWorkingTextProvider = baseOf(provId)
