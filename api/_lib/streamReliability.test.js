@@ -9,7 +9,7 @@ vi.mock('openai', () => ({
   default: class FakeOpenAI {
     constructor(config = {}) {
       this.chat = { completions: { create: async (params, opts) => {
-        calls.push({ baseURL: config.baseURL, params: { ...params } })
+        calls.push({ baseURL: config.baseURL, params: { ...params }, maxRetries: opts?.maxRetries })
         return script(params, opts)
       } } }
     }
@@ -83,6 +83,41 @@ describe('Live stream deadline', () => {
     expect(error).toBeNull()
     expect(tokens).toEqual(['backup answer'])
     expect(calls.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('lets the Live router switch providers on a 503 without SDK retries', async () => {
+    process.env.GEMINI_API_KEY = 'test-gemini'
+    process.env.GROQ_API_KEY = 'test-groq'
+    script = (params, opts) => {
+      if (params.model.startsWith('gemini')) throw Object.assign(new Error('Unavailable'), { status: 503 })
+      return tokenStream(['fallback answer'], opts)
+    }
+    const core = await import('./core.js')
+    const { tokens, error } = await runStream(core, { provider: 'gemini_flash_lite' })
+    expect(error).toBeNull()
+    expect(tokens).toEqual(['fallback answer'])
+    expect(calls).toHaveLength(2)
+    expect(calls.map(call => call.maxRetries)).toEqual([0, 0])
+  })
+
+  it('does not extend the answer stall deadline on metadata-only chunks', async () => {
+    process.env.GEMINI_API_KEY = 'test-gemini'
+    process.env.LLM_STREAM_STALL_TIMEOUT_MS = '200'
+    script = (_params, { signal }) => ({
+      async *[Symbol.asyncIterator]() {
+        yield { choices: [{ delta: { content: 'Partial answer' } }] }
+        for (let i = 0; i < 6; i++) {
+          await sleep(50)
+          if (signal.aborted) throw aborted()
+          yield { choices: [] }
+        }
+      },
+    })
+    const core = await import('./core.js')
+    const { tokens, error } = await runStream(core)
+    expect(tokens).toEqual(['Partial answer'])
+    expect(error?.message).toMatch(/Part of the answer was already shown/i)
+    expect(calls).toHaveLength(1)
   })
 
   it('ends a stream that stalls after partial output and keeps the partial answer', async () => {
