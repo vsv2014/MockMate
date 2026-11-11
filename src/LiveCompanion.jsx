@@ -692,7 +692,6 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
   const manualQRef = useRef('')
   const generateHintRef = useRef(null)
   const metricsRef = useRef(null)
-  const hintTimingRef = useRef(null)
   const captureRef = useRef(null)
   const handleCommittedRef = useRef(null)
   const handleRevisionRef = useRef(null)
@@ -1095,12 +1094,13 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
   }
 
   // Hint generation — only after QUESTION_COMMITTED (or manual Answer this).
-  async function generateHint(question, { force, manual = false, questionId: existingQuestionId } = {}) {
+  async function generateHint(question, { force, manual = false, questionId: existingQuestionId, captureMs } = {}) {
     if (!question) return
     const sameQ = question === lastHintText.current
     if (!force && sameQ && hintInFlight.current) return
     if (!force && sameQ && !hintIncompleteRef.current) return
     if (force) hintIncompleteRef.current = false
+    const preparationStarted = performance.now()
 
     const state = interviewStateRef.current
     const gm = genManagerRef.current
@@ -1295,6 +1295,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
       setBuyTimePhrase('')
       hintIncompleteRef.current = false
       const formattedAnswer = ensureCodingCodeBlock(answer, hintObj?.questionType || classification.questionType)
+      if (answer?.trim()) metricsRef.current?.markFirstToken?.(timing)
       if (formattedAnswer.includes('```') && !autoExpandedCodeRef.current.has(questionId)) {
         autoExpandedCodeRef.current.add(questionId)
         setExpandedAnswers(prev => new Set(prev).add(qText))
@@ -1365,6 +1366,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
     logTrace('generating')
 
     let ragContext = ''
+    const retrievalStarted = performance.now()
     cancelSpeculativeRag({ keepComplete: true })
     if (shouldRetrieveDocs(classification)) {
       const spec = ragSpec.current
@@ -1383,7 +1385,11 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
       attachScreen, selectedScreen, ragContext,
     }), ...(manual ? { autoSkip: false } : {}) })
 
-    hintTimingRef.current = metricsRef.current?.startHint?.() || null
+    const timing = metricsRef.current?.startHint?.({
+      captureMs,
+      preparationMs: Math.round(retrievalStarted - preparationStarted),
+      retrievalMs: Math.round(performance.now() - retrievalStarted),
+    })
     let rawAnswer = '', answer = '', hintObj = null
     // Adopt the early request only if it was prepared for exactly this request body;
     // otherwise claim() aborts it and the normal request below is sent.
@@ -1401,7 +1407,6 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
       onMarkFallback: () => { metricsRef.current?.markFallback?.() },
       onSkip: () => { metricsRef.current?.markSkip?.(); resetSkip() },
       onFallbackHint: h => {
-        metricsRef.current?.markFirstToken?.(hintTimingRef.current)
         gotToken = true
         finalize(h.fullAnswer || h.sampleAnswer || '', h)
       },
@@ -1430,7 +1435,6 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
             armPostMetaWatchdog()
           }
         } else if (ev === 'token') {
-          if (!rawAnswer) metricsRef.current?.markFirstToken?.(hintTimingRef.current)
           gotToken = true
           armStallBackstop()
           clearTimeout(postMetaTimerRef.current)
@@ -1448,6 +1452,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
             lastHintObj = hintObj
           }
           answer = cleaned.pending ? '' : cleaned.prose
+          if (answer?.trim()) metricsRef.current?.markFirstToken?.(timing)
           const formattedAnswer = ensureCodingCodeBlock(answer, hintObj?.questionType || classification.questionType)
           if (formattedAnswer.includes('```') && !autoExpandedCodeRef.current.has(questionId)) {
             autoExpandedCodeRef.current.add(questionId)
@@ -1626,7 +1631,7 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
     pendingManualQ.current = null
     manualQRef.current = ''
     setManualQ('')
-    generateHint(q.text, { force: true, questionId: q.id })
+    generateHint(q.text, { force: true, questionId: q.id, captureMs: captured.captureLatencyMs })
   }
   generateHintRef.current = generateHint
 
@@ -1883,7 +1888,6 @@ function LiveOverlay({ runId, onCaptured, initialStorageWarning = '', profile, s
     audio.start(liveSourceId, audioOpts())
     warmDocs(interviewConfigRef.current?.selectedDocumentIds, { kitId: interviewConfigRef.current?.kitId || kitId })   // pre-embed selected docs only
     metricsRef.current = createSessionMetrics('live', { runId: sessionIdRef.current })
-    hintTimingRef.current = null
     if (initialPip && !initialPip.closed) {
       initialPip.addEventListener('pagehide', () => {
         setPipWindow(null)
