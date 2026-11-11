@@ -173,7 +173,7 @@
     "livekit-client": "^2.22.3",
     "livekit-server-sdk": "^2.19.1",
     "mermaid": "^12.2.0",
-    "mongoose": "^8.24.4",
+    "mongoose": "^8.24.8",
     "openai": "^6.49.0",
     "pdfjs-dist": "^4.10.38",
     "react": "19.3.0",
