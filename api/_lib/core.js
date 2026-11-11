@@ -1183,6 +1183,13 @@ async function visionCompleteOnce({
     if (pi > 0) failover = true
 
     for (let attempt = 0; ; attempt++) {
+      // A cancellation may arrive while waiting between transient retries.
+      // Never start another provider request after the caller has aborted.
+      if (signal?.aborted) {
+        const cancelled = new Error('Screen analysis cancelled')
+        cancelled.name = 'AbortError'
+        throw cancelled
+      }
       const t0 = Date.now()
       try {
         const raw = await callOne(prov)
