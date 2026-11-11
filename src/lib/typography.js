@@ -2,8 +2,10 @@
 // This changes type, not browser zoom or native window coordinates.
 export function readableTextSize(original) {
   if (!Number.isFinite(original) || original <= 0) return 26
-  if (original <= 18) return Math.max(20, original * 2)
-  if (original < 32) return Math.max(32, original)
+  if (original <= 16) return Math.max(20, original * 2)
+  // Keep the desktop scale monotonic at the 16px boundary. Previously 18px
+  // became 36px while 19px became 32px, producing surprising label jumps.
+  if (original < 32) return 32
   return original
 }
 
