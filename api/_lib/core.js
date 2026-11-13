@@ -159,6 +159,12 @@ export function availableProviders() {
 }
 
 const PROVIDER_TEST_IDS = new Set(['groq', 'gemini', 'openai_mini', 'claude_haiku', 'cerebras', 'openrouter'])
+
+// Keep the readiness probe and Live requests aligned on providers that support stream usage.
+function supportsStreamUsage(provider) {
+  return /openai\.com|groq\.com/.test(provider.baseURL || '')
+}
+
 /** Make one small, explicit probe against a selected saved key; this is never part of normal routing. */
 export async function testProviderConnection(providerId, { optimize = false } = {}) {
   const id = String(providerId || '')
@@ -229,7 +235,7 @@ export async function testProviderConnection(providerId, { optimize = false } = 
         }
 
         const streamParams = { ...params, stream: true }
-        if (/openai\\.com|groq\\.com/i.test(provider.baseURL || '')) {
+        if (supportsStreamUsage(provider)) {
           streamParams.stream_options = { include_usage: true }
         }
         // Probe the same compatible request shape Live will use.
@@ -1415,9 +1421,7 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
       const params = { model, ...completionBudget(prov, maxTokens, thinkingTokenFloor), messages, stream: true }
       const claudeThinking = claudeThinkingFor(prov)
       if (claudeThinking) params.thinking = claudeThinking
-      // Only OpenAI/Groq reliably support stream usage; gate it so others don't 400.
-      const supportsUsage = /openai\.com|groq\.com/.test(prov.baseURL || '')
-      if (supportsUsage) params.stream_options = { include_usage: true }
+      if (supportsStreamUsage(prov)) params.stream_options = { include_usage: true }
       let usage = null, finishReason = null
       // A live interview cannot wait indefinitely for the first answer text. The SDK
       // timeout only covers connecting (it clears once response headers arrive); the
