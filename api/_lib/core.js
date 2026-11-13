@@ -159,6 +159,27 @@ export function availableProviders() {
 }
 
 const PROVIDER_TEST_IDS = new Set(['groq', 'gemini', 'openai_mini', 'claude_haiku', 'cerebras', 'openrouter'])
+
+// Keep the readiness probe and Live requests aligned on providers that support stream usage.
+function supportsStreamUsage(provider) {
+  return /openai\.com|groq\.com/.test(provider.baseURL || '')
+}
+
+// A transport returning text is not sufficient readiness evidence when the
+// provider explicitly reports a truncated or filtered completion.
+function assertProbeCompletion(finishReason) {
+  if (finishReason === 'length') {
+    throw Object.assign(new Error('Provider test reached its output limit before completing.'), {
+      status: 502, code: 'output_truncated',
+    })
+  }
+  if (finishReason === 'content_filter') {
+    throw Object.assign(new Error('Provider test was stopped by the provider content filter.'), {
+      status: 422, code: 'output_filtered',
+    })
+  }
+}
+
 /** Make one small, explicit probe against a selected saved key; this is never part of normal routing. */
 export async function testProviderConnection(providerId, { optimize = false } = {}) {
   const id = String(providerId || '')
@@ -222,6 +243,7 @@ export async function testProviderConnection(providerId, { optimize = false } = 
         if (thinking) params.thinking = thinking
         const options = { signal: controller.signal }
         const response = await createWithThinkingFallback(llm, params, options)
+        assertProbeCompletion(response.choices?.[0]?.finish_reason)
         if (!String(response.choices?.[0]?.message?.content || '').trim()) {
           const error = new Error('Blocking provider request returned no answer text.')
           error.status = 502
@@ -229,7 +251,7 @@ export async function testProviderConnection(providerId, { optimize = false } = 
         }
 
         const streamParams = { ...params, stream: true }
-        if (/openai\\.com|groq\\.com/i.test(provider.baseURL || '')) {
+        if (supportsStreamUsage(provider)) {
           streamParams.stream_options = { include_usage: true }
         }
         // Probe the same compatible request shape Live will use.
@@ -238,6 +260,7 @@ export async function testProviderConnection(providerId, { optimize = false } = 
         // before completion. Consume through DONE to verify the Live transport.
         let sawText = false
         for await (const chunk of stream) {
+          assertProbeCompletion(chunk?.choices?.[0]?.finish_reason)
           if (String(chunk?.choices?.[0]?.delta?.content || '').trim()) {
             sawText = true
           }
@@ -967,7 +990,12 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
           if (useExtras && claudeThinking) params.thinking = claudeThinking
           const requestIndex = requestCount++
           const requestStartedAt = Date.now()
-          const r = await llm.chat.completions.create(params, signal ? { signal } : undefined)
+          // The router owns retry timing and provider failover. Disable the SDK's
+          // hidden retries so a 429 can enter cooldown without extra wire calls.
+          const r = await llm.chat.completions.create(params, {
+            ...(signal ? { signal } : {}),
+            maxRetries: 0,
+          })
           signal?.throwIfAborted()
           providerDiagnostic('request_usage', {
             attemptId, operation: 'json', provider: provId, model,
@@ -995,8 +1023,10 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
             attempt--   // param-probe shouldn't consume a real transient/rate retry
             continue
           }
-          // Retry rate-limits AND transient 5xx/network hiccups with growing backoff.
-          if ((!isRateLimit(e) && !isTransient(e)) || attempt >= 2) throw e
+          // Rate limits belong to the router cooldown (including Retry-After).
+          // Retrying here would hit the same endpoint before its reset. Only
+          // transient network/server failures get bounded same-provider retries.
+          if (isQuotaExhausted(e) || isRateLimit(e) || !isTransient(e) || attempt >= 2) throw e
           await abortableSleep(800 * (attempt + 1), signal)
         }
       }
@@ -1415,9 +1445,7 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
       const params = { model, ...completionBudget(prov, maxTokens, thinkingTokenFloor), messages, stream: true }
       const claudeThinking = claudeThinkingFor(prov)
       if (claudeThinking) params.thinking = claudeThinking
-      // Only OpenAI/Groq reliably support stream usage; gate it so others don't 400.
-      const supportsUsage = /openai\.com|groq\.com/.test(prov.baseURL || '')
-      if (supportsUsage) params.stream_options = { include_usage: true }
+      if (supportsStreamUsage(prov)) params.stream_options = { include_usage: true }
       let usage = null, finishReason = null
       // A live interview cannot wait indefinitely for the first answer text. The SDK
       // timeout only covers connecting (it clears once response headers arrive); the

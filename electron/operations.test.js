@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 const require = createRequire(import.meta.url)
 const { UsageLedger, ledgerRow, summarizeUsage, summarizeOperations, summarizeModuleActivity,
   filterAccountOperations } = require('./operations.cjs')
@@ -81,6 +81,35 @@ describe('privacy-safe operational ledger and execution explorer', () => {
     expect(summarizeOperations(alice.rows, alice.ledgerEntries).usage[0].confirmedOutputTokens).toBe(5)
     expect(summarizeOperations(bob.rows, bob.ledgerEntries).usage[0].confirmedOutputTokens).toBe(9)
     expect(() => filterAccountOperations(rows, ledger, 'bad/../alice')).toThrow(/Invalid/)
+  })
+
+  it('drains every pending usage batch before reading or shutting down', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mm-ledger-burst-'))
+    const ledger = new UsageLedger(dir)
+    const record = index => ledger.record({ component: 'llm', event: 'attempt_succeeded',
+      attemptId: `burst_${index}`, operation: 'stream', provider: 'groq', inputTokens: 1, outputTokens: 2 })
+    try {
+      for (let i = 0; i < 250; i++) record(i)
+      expect(await ledger.entries()).toHaveLength(250)
+      for (let i = 250; i < 500; i++) record(i)
+      await ledger.close()
+      const reopened = new UsageLedger(dir)
+      try { expect(await reopened.entries()).toHaveLength(500) }
+      finally { await reopened.close() }
+    } finally { await ledger.close(); fs.rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('stops draining on disk failure and retains queued usage for retry', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mm-ledger-failed-'))
+    const ledger = new UsageLedger(dir)
+    const write = vi.spyOn(fs.promises, 'appendFile').mockRejectedValue(new Error('disk full'))
+    try {
+      ledger.record({ component: 'llm', event: 'attempt_failed', attemptId: 'disk_failure' })
+      await ledger.close()
+      expect(ledger.writeError).toBe('storage_unavailable')
+      expect(ledger.pending).toHaveLength(1)
+      expect(write).toHaveBeenCalledTimes(1)
+    } finally { write.mockRestore(); await ledger.close(); fs.rmSync(dir, { recursive: true, force: true }) }
   })
 
   it('durably records usage across process reopening and isolates request timelines', async () => {

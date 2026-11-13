@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import vm from 'node:vm'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -66,5 +67,53 @@ describe('Windows release signing and unsigned isolation gates', () => {
     expect(releaseWorkflow).toContain('needs: [provenance, build-windows]')
     expect(releaseWorkflow).toContain('Verify Authenticode signatures and publisher')
     expect(releaseWorkflow).toContain('Smoke packaged Windows runtime before publication')
+  })
+})
+
+
+describe('manual desktop update checks', () => {
+  function checkHarness({ isProd, updater = null, unsigned = false }) {
+    const main = fs.readFileSync(path.join(root, 'electron/main.cjs'), 'utf8')
+    const start = main.indexOf('let demoUpdateTimer = null')
+    const end = main.indexOf('// Single-instance lock', start)
+    const handlers = {}
+    const sendUpdate = vi.fn()
+    vm.runInNewContext(main.slice(start, end), {
+      isProd, isUnsignedPersonalPreview: unsigned, autoUpdaterRef: updater,
+      lastUpdateStatus: null, manualUpdateCheck: false, sendUpdate,
+      ipcMain: { handle(name, handler) { handlers[name] = handler } },
+      setInterval, clearInterval,
+    })
+    return { check: handlers['check-updates-now'], sendUpdate }
+  }
+
+  it('fails honestly when a packaged app cannot initialize its updater', () => {
+    vi.useFakeTimers()
+    try {
+      const { check, sendUpdate } = checkHarness({ isProd: true })
+      expect(check()).toEqual({ ok: false, error: 'Updater is unavailable.' })
+      expect(sendUpdate).toHaveBeenLastCalledWith({ state: 'error', scope: 'check', message: 'Updater is unavailable.' })
+      vi.advanceTimersByTime(10_000)
+      expect(sendUpdate.mock.calls.some(([status]) => status.version === 'demo')).toBe(false)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally { vi.clearAllTimers(); vi.useRealTimers() }
+  })
+
+  it('uses the actual updater when available in a packaged app', () => {
+    const updater = { checkForUpdates: vi.fn().mockResolvedValue({}) }
+    const { check, sendUpdate } = checkHarness({ isProd: true, updater })
+    expect(check()).toEqual({ ok: true })
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(1)
+    expect(sendUpdate).toHaveBeenCalledWith({ state: 'checking' })
+  })
+
+  it('keeps simulation available only for development', () => {
+    vi.useFakeTimers()
+    try {
+      const { check, sendUpdate } = checkHarness({ isProd: false })
+      expect(check()).toEqual({ ok: true, simulated: true })
+      vi.advanceTimersByTime(3_000)
+      expect(sendUpdate).toHaveBeenLastCalledWith({ state: 'ready', version: 'demo' })
+    } finally { vi.clearAllTimers(); vi.useRealTimers() }
   })
 })
