@@ -27,7 +27,11 @@ For a reproducible defect, use the project roles in `.codex/config.toml`:
    rollback, or release evidence.
 
 Run independent roles in parallel only when they own separate files or are read-only.
-The parent agent resolves conflicts, checks the final diff, and owns all external writes.
+The parent agent resolves conflicts and checks the final diff. External actions remain
+separate from local implementation: pushing branches, opening or commenting on PRs or
+issues, changing third-party systems or credentials, merging, tagging, publishing
+installers, deploying, and marking release gates complete all require explicit user
+authorization for that action or workflow.
 
 ## Required checks
 
@@ -49,5 +53,6 @@ The parent agent resolves conflicts, checks the final diff, and owns all externa
 - `evals/`: model and prompt regression evidence.
 - `docs/evidence/`: version-specific manual and physical verification records.
 
-Do not merge, tag, publish installers, deploy, or mark release gates complete without the
-user's authorization and evidence appropriate to that action.
+Do not perform any external action listed above without the user's authorization. Even
+when authorized, do not merge, tag, publish installers, deploy, or mark release gates
+complete without evidence appropriate to that action.

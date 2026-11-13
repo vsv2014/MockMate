@@ -17,18 +17,32 @@ writable.
 | `release_guard` | read-only | Audit candidate evidence and physical release gates. |
 
 Codex limits the team to six concurrent threads and one delegation level. The parent
-agent owns file allocation, conflict resolution, the final diff, and external actions.
+agent owns file allocation, conflict resolution, and the final diff. It may perform an
+external action only when the user has explicitly authorized that action or workflow,
+as required by `AGENTS.md`.
 
 ## Verify the local runner
 
-From the repository root:
+Feature availability alone does not prove that this repository's configuration loaded.
+From the repository root, first confirm the installed Codex supports multi-agent mode:
 
 ```bash
 codex features list | rg multi_agent
 ```
 
-The active Codex version must report `multi_agent` as enabled. Start a new Codex session
-after changing `.codex/config.toml`; use `/agent` in the CLI to inspect or steer roles.
+The active Codex version must report the `multi_agent` line with a final value of `true`.
+Then start a fresh session whose trusted project root is this repository. Use `/agent` to
+confirm that all six project roles are present: `explorer`, `qa`, `implementer`,
+`reviewer`, `security`, and `release_guard`. Invoke each role with a harmless inspection
+task and confirm its configured access before treating the runner as activated. A passing
+feature-list command, TOML parsing, or role-file existence check is only static evidence;
+it is not end-to-end activation proof. Higher-level host policy may still override the
+project configuration.
+
+If the active Codex home is read-only, native ECC marketplace installation, hook trust,
+and persistent plugin state cannot be activated there. The project-local roles can still
+be used from a fresh trusted session, but record them as unverified until the invocation
+check above succeeds.
 
 ## Defect workflow
 
