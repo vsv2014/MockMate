@@ -1,0 +1,34 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+persistent_instructions = "Follow AGENTS.md. Use project roles for multi-surface audits and release-critical changes."
+
+[features]
+multi_agent = true
+
+[agents]
+max_threads = 6
+max_depth = 1
+
+[agents.explorer]
+description = "Read-only execution-path explorer that gathers evidence before changes."
+config_file = "agents/explorer.toml"
+
+[agents.implementer]
+description = "Scoped implementer for a confirmed defect with an owned file set."
+config_file = "agents/implementer.toml"
+
+[agents.qa]
+description = "Regression-test and failure-mode specialist for MockMate critical paths."
+config_file = "agents/qa.toml"
+
+[agents.reviewer]
+description = "Read-only owner review for correctness, coupling, and missing tests."
+config_file = "agents/reviewer.toml"
+
+[agents.security]
+description = "Read-only security review for auth, secrets, quotas, uploads, and updates."
+config_file = "agents/security.toml"
+
+[agents.release_guard]
+description = "Read-only release evidence and packaging gate reviewer."
+config_file = "agents/release-guard.toml"

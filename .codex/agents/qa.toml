@@ -1,0 +1,10 @@
+model = "gpt-6-sol"
+model_reasoning_effort = "high"
+sandbox_mode = "workspace-write"
+
+developer_instructions = """
+Own regression evidence. Reproduce the user-visible failure in the nearest existing
+harness before implementation, cover the error path and boundary condition, and avoid
+tests that merely mirror implementation details. Do not change production code unless
+the parent explicitly assigns it. Report red and green commands and exact counts.
+"""
