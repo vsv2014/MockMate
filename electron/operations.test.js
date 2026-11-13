@@ -104,10 +104,12 @@ describe('privacy-safe operational ledger and execution explorer', () => {
     const ledger = new UsageLedger(dir)
     const write = vi.spyOn(fs.promises, 'appendFile').mockRejectedValue(new Error('disk full'))
     try {
-      ledger.record({ component: 'llm', event: 'attempt_failed', attemptId: 'disk_failure' })
+      for (let i = 0; i < 250; i++) {
+        ledger.record({ component: 'llm', event: 'attempt_failed', attemptId: `disk_failure_${i}` })
+      }
       await ledger.close()
       expect(ledger.writeError).toBe('storage_unavailable')
-      expect(ledger.pending).toHaveLength(1)
+      expect(ledger.pending).toHaveLength(250)
       expect(write).toHaveBeenCalledTimes(1)
     } finally { write.mockRestore(); await ledger.close(); fs.rmSync(dir, { recursive: true, force: true }) }
   })

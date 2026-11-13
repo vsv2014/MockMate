@@ -107,6 +107,16 @@ describe('manual desktop update checks', () => {
     expect(sendUpdate).toHaveBeenCalledWith({ state: 'checking' })
   })
 
+  it('reports an asynchronous packaged updater check failure without starting the demo flow', async () => {
+    const updater = { checkForUpdates: vi.fn().mockRejectedValue(new Error('feed unavailable')) }
+    const { check, sendUpdate } = checkHarness({ isProd: true, updater })
+    expect(check()).toEqual({ ok: true })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(sendUpdate).toHaveBeenLastCalledWith({ state: 'error', scope: 'check', message: 'feed unavailable' })
+    expect(sendUpdate.mock.calls.some(([status]) => status.version === 'demo')).toBe(false)
+  })
+
   it('keeps simulation available only for development', () => {
     vi.useFakeTimers()
     try {

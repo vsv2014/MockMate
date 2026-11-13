@@ -24,6 +24,8 @@ export async function apiFetch(path, opts = {}) {
   let signal = outerSignal
   let timer
   if (timeoutMs > 0 && typeof AbortController !== 'undefined') {
+    // This bounds connection/headers because apiFetch returns the Response.
+    // Callers doing body work must pass a signal when that work is cancellable.
     const ac = new AbortController()
     timer = setTimeout(() => ac.abort(), timeoutMs)
     // Fetch resolves at headers, but callers still need to cancel body reads.

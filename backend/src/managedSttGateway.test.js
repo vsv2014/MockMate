@@ -238,14 +238,14 @@ describe('managed streaming WebSocket policy', () => {
     const rig = await testRig({ reserveDelayMs: 40, limit: 500, initialUsage: 499 })
     try {
       const ws = await rig.open()
+      const closed = new Promise(resolve => ws.addEventListener('close', event => resolve(event.code), { once: true }))
       ws.send(new Uint8Array(32_000))
       ws.send(new Uint8Array(32_000))
-      await sleep(150)
+      expect(await closed).toBe(4009)
       expect(rig.calls.reserves.map(row => row.seconds)).toEqual([300, 1])
       expect(rig.calls.provider).toHaveLength(0)
       expect(rig.calls.refunds).toEqual([{ userId: 'u1', period: '2026-10', seconds: 1 }])
       expect(rig.balance).toBe(499)
-      ws.close()
     } finally { await rig.close() }
   })
 

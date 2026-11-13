@@ -359,6 +359,7 @@ describe('JSON envelopes containing code', () => {
 describe('JSON retry ownership and provider cooldown', () => {
   it.each([
     ['rate limit', { status: 429, headers: { 'retry-after': '60' } }],
+    ['exhausted quota', { status: 429, code: 'insufficient_quota' }],
   ])('switches providers once on %s without retrying the cooling endpoint', async (_name, failure) => {
     process.env.GEMINI_API_KEY = 'test-gemini'
     process.env.GROQ_API_KEY = 'test-groq'
