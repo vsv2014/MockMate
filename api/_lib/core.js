@@ -464,7 +464,7 @@ export function getModelDiscoveryStatus() {
 const baseOf = id => (id && id.includes('::')) ? id.slice(0, id.indexOf('::')) : id
 
 // Resolve a chosen provider id to { key, baseURL, model }, with sensible fallback.
-function resolveProvider(id) {
+function resolveProvider(id, { strict = false } = {}) {
   if (id === OPENROUTER_FREE_ROUTE) {
     const { envKey, baseURL } = CATALOG.openrouter
     if (!process.env[envKey]) throw aiError('no_provider', 402)
@@ -487,7 +487,9 @@ function resolveProvider(id) {
     const model = selectActiveModel(id)
     if (model) return { key: process.env[c.envKey], baseURL: c.baseURL, model }
   }
+  if (strict && id !== 'custom') throw aiError('no_provider', 402)
   if (process.env.LLM_API_KEY) return { key: process.env.LLM_API_KEY, baseURL: process.env.LLM_BASE_URL, model: process.env.LLM_MODEL || MODEL_CATALOG.openai_mini.defaultModel }
+  if (strict) throw aiError('no_provider', 402)
   const first = availableProviders()[0]
   if (first && CATALOG[first.id]) {
     const p = CATALOG[first.id], model = selectActiveModel(first.id)
@@ -827,6 +829,10 @@ export function getFallbackProviders(requestedId) {
   const order = ['gemini_flash_lite', 'openai_mini', 'groq', 'cerebras', 'claude_haiku', 'custom']
   const configured = availableProviders().map(p => p.id)
   const now = Date.now()
+  const managedAliases = currentRequestTrace()?.managedText?.aliases
+  if (managedAliases) {
+    return managedAliases.filter(id => configured.includes(id) && (!textBannedUntil[id] || textBannedUntil[id] < now))
+  }
   const requestedParts = String(requestedId || '').split('::')
   const discoveredChoice = requestedParts.length === 2 && discoveredModels.get(modelFamily(requestedParts[0]))?.has(requestedParts[1])
   const candidateChoice = isCurrentProviderChoice(requestedId) || discoveredChoice ? requestedId : ''
@@ -921,7 +927,7 @@ function userFacingPartialStreamError(error) {
 // One same-key recovery when a model has definitively disappeared. Do not
 // retry every sibling or restart a stream once the user saw any tokens.
 function enqueueActiveModelRecovery(queue, currentIndex, provId, previousModel, error, recoveredFamilies) {
-  if (provId === OPENROUTER_FREE_ROUTE || !isModelUnavailableError(error)) return
+  if (provId === OPENROUTER_FREE_ROUTE || currentRequestTrace()?.managedText?.aliases || !isModelUnavailableError(error)) return
   const alias = baseOf(provId)
   const family = modelFamily(alias)
   if (recoveredFamilies.has(family)) return
@@ -930,6 +936,18 @@ function enqueueActiveModelRecovery(queue, currentIndex, provId, previousModel, 
   recoveredFamilies.add(family)
   queue.splice(currentIndex + 1, 0, alias)
   providerDiagnostic('model_replacement_selected', { provider: family, previousModel, replacementModel: nextModel })
+}
+
+function createTextCompletion(llm, params, options) {
+  const policy = currentRequestTrace()?.managedText
+  if (!policy) return llm.chat.completions.create(params, options)
+  if (policy.remaining <= 0) {
+    throw Object.assign(new Error('Managed AI reached its retry limit. Please try again.'), {
+      status: 503, code: 'managed_attempt_limit',
+    })
+  }
+  policy.remaining -= 1
+  return llm.chat.completions.create(params, { timeout: 20000, ...options, maxRetries: 0 })
 }
 
 export async function completeJSON({ messages, maxTokens = 1600, provider, thinkingTokenFloor = 0, signal }) {
@@ -944,7 +962,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
     signal?.throwIfAborted()
     const provId = providerQueue[queueIndex]
     let prov
-    try { prov = resolveProvider(provId) } catch { continue }
+    try { prov = resolveProvider(provId, { strict: !!currentRequestTrace()?.managedText }) } catch { continue }
     const llm = clientFor(prov), model = prov.model
     const providerStartedAt = Date.now()
     const attemptId = newProviderAttemptId()
@@ -967,7 +985,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
           if (useExtras && claudeThinking) params.thinking = claudeThinking
           const requestIndex = requestCount++
           const requestStartedAt = Date.now()
-          const r = await llm.chat.completions.create(params, signal ? { signal } : undefined)
+          const r = await createTextCompletion(llm, params, { signal, maxRetries: 0 })
           signal?.throwIfAborted()
           providerDiagnostic('request_usage', {
             attemptId, operation: 'json', provider: provId, model,
@@ -985,7 +1003,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
           if (choice.finish_reason === 'length') throw Object.assign(new Error('The model reached its output limit. Retry for a complete answer.'),{ code:'output_truncated',status:502 })
           return choice.message.content ?? ''
         } catch (e) {
-          if (signal?.aborted || e?.name === 'AbortError' || e?.name === 'APIUserAbortError' || e?.code === 'output_truncated') throw e
+          if (signal?.aborted || e?.name === 'AbortError' || e?.name === 'APIUserAbortError' || ['output_truncated', 'managed_attempt_limit'].includes(e?.code)) throw e
           // A 400 on optional JSON-mode/thinking can indicate incompatible provider features.
           // Drop the extras and retry once before treating it as a real failure.
           if (e?.status === 400 && useExtras && (jsonMode || claudeThinking)) {
@@ -996,7 +1014,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
             continue
           }
           // Retry rate-limits AND transient 5xx/network hiccups with growing backoff.
-          if ((!isRateLimit(e) && !isTransient(e)) || attempt >= 2) throw e
+          if (currentRequestTrace()?.managedText || (!isRateLimit(e) && !isTransient(e)) || attempt >= 2) throw e
           await abortableSleep(800 * (attempt + 1), signal)
         }
       }
@@ -1018,7 +1036,7 @@ export async function completeJSON({ messages, maxTokens = 1600, provider, think
       providerDiagnostic('attempt_succeeded', { attemptId, operation: 'json', provider: provId, model, durationMs: Date.now() - providerStartedAt })
       return parsed
     } catch (e) {
-      if (signal?.aborted || e?.name === 'AbortError' || e?.name === 'APIUserAbortError' || e?.code === 'output_truncated') throw e
+      if (signal?.aborted || e?.name === 'AbortError' || e?.name === 'APIUserAbortError' || ['output_truncated', 'managed_attempt_limit'].includes(e?.code)) throw e
       lastError = e
       if (quarantineModel(provId, model, e)) {
         enqueueActiveModelRecovery(providerQueue, queueIndex, provId, model, e, recoveredFamilies)
@@ -1379,12 +1397,12 @@ export function thinkingRejectionDetails(error) {
 }
 async function createWithThinkingFallback(llm, params, requestOpts, onRejected) {
   try {
-    return await llm.chat.completions.create(params, requestOpts)
+    return await createTextCompletion(llm, params, requestOpts)
   } catch (e) {
     if (!params.thinking || Number(e?.status) !== 400 || requestOpts?.signal?.aborted) throw e
     const { thinking: _rejected, ...withoutThinking } = params
     try { onRejected?.(e, thinkingRejectionDetails(e)) } catch {}
-    return await llm.chat.completions.create(withoutThinking, requestOpts)
+    return await createTextCompletion(llm, withoutThinking, requestOpts)
   }
 }
 
@@ -1397,7 +1415,7 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
   for (let attemptIndex = 0; attemptIndex < providerQueue.length; attemptIndex++) {
     const provId = providerQueue[attemptIndex]
     let prov
-    try { prov = resolveProvider(provId) } catch { continue }
+    try { prov = resolveProvider(provId, { strict: !!currentRequestTrace()?.managedText }) } catch { continue }
     const llm = clientFor(prov), model = prov.model
     const providerStartedAt = Date.now()
     let firstTokenAt = null
@@ -1465,6 +1483,7 @@ export async function streamText({ messages, maxTokens = 700, provider, thinking
         try { onProviderEvent?.({ type: 'cancelled', attemptId, attemptIndex, provider: provId, emitted }) } catch {}
         throw e
       }
+      if (e?.code === 'managed_attempt_limit') throw e
       lastError = e
       if (quarantineModel(provId, model, e) && !emitted) {
         enqueueActiveModelRecovery(providerQueue, attemptIndex, provId, model, e, recoveredFamilies)
