@@ -368,6 +368,7 @@ describe('native connected account security and sync', () => {
 
   it('completes Google Desktop PKCE callback with state verification and encrypted identity', async () => {
     const opened = []
+    const externalRequests = []
     const safeStorage = {
       isEncryptionAvailable: () => true,
       encryptString: value => Buffer.from('safe:' + value),
@@ -377,6 +378,7 @@ describe('native connected account security and sync', () => {
       userData: dir, safeStorage,
       openExternal: async url => { opened.push(url) },
       fetchImpl: async url => {
+        externalRequests.push(url)
         if (url === 'https://oauth2.googleapis.com/token') return fakeResponse({
           access_token: 'GOOGLE_PRIVATE_ACCESS_TOKEN', refresh_token: 'GOOGLE_PRIVATE_REFRESH',
           expires_in: 3600, scope: 'openid email profile',
@@ -398,6 +400,20 @@ describe('native connected account security and sync', () => {
       assert.match(redirect, /^http:\/\/127\.0\.0\.1:[0-9]+\/oauth\/callback$/)
       const invalid = await fetch(redirect + '?state=wrong&code=invalid')
       assert.equal(invalid.status, 400)
+      const expectedState = auth.searchParams.get('state')
+      const wrongAscii = (expectedState[0] === 'a' ? 'b' : 'a') + expectedState.slice(1)
+      // Same JS length is not the same UTF-8 byte length. Exercise the actual
+      // HTTP callback instead of mocking timingSafeEqual or the receiver.
+      for (const malformed of [wrongAscii, 'é' + expectedState.slice(1), '😀' + expectedState.slice(2)]) {
+        assert.equal(malformed.length, expectedState.length)
+        const rejected = await fetch(redirect + '?state=' + encodeURIComponent(malformed) + '&code=invalid', {
+          signal: AbortSignal.timeout(1000),
+        })
+        assert.equal(rejected.status, 400)
+        assert.equal(await rejected.text(), 'Invalid OAuth state')
+      }
+      assert.equal(externalRequests.length, 0, 'invalid state must not exchange a code or fetch identity')
+      assert.equal((await google.pollFlow('account-a', flow.flowId)).status, 'pending')
       const good = await fetch(redirect + '?state=' + encodeURIComponent(auth.searchParams.get('state')) + '&code=authorized')
       assert.equal(good.status, 200)
       let result
