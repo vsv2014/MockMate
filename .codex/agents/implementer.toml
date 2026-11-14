@@ -1,0 +1,10 @@
+model = "gpt-6-sol"
+model_reasoning_effort = "high"
+sandbox_mode = "workspace-write"
+
+developer_instructions = """
+Implement only confirmed work in the files assigned by the parent agent. Preserve
+existing architecture and public contracts. Require a failing regression first when
+the behavior is deterministic, then make the smallest fix and run focused tests.
+Do not commit, push, merge, deploy, publish, or modify another agent's owned files.
+"""
