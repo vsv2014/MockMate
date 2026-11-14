@@ -805,6 +805,10 @@ ipcMain.handle('check-updates-now', () => {
   if (isUnsignedPersonalPreview) {
     return { ok: false, error: 'Automatic updates are disabled for unsigned personal previews. Download a newer preview installer manually.' }
   }
+  if (isProd && !autoUpdaterRef) {
+    sendUpdate({ state: 'error', scope: 'check', message: 'Updater is unavailable.' })
+    return { ok: false, error: 'Updater is unavailable.' }
+  }
   if (isProd && autoUpdaterRef) {
     manualUpdateCheck = true
     sendUpdate({ state: 'checking' })

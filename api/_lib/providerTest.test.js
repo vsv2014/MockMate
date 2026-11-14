@@ -56,6 +56,9 @@ describe('provider connection test', () => {
       checked: ['blocking', 'streaming'],
     })
     expect(fetchMock).toHaveBeenCalledTimes(2)
+    const [blocking, streaming] = fetchMock.mock.calls.map(([, options]) => JSON.parse(options.body))
+    expect(blocking).not.toHaveProperty('stream_options')
+    expect(streaming).toMatchObject({ stream: true, stream_options: { include_usage: true } })
   })
 
   it('discovers accessible models, verifies both transports, then routes to the efficient verified model', async () => {
@@ -114,8 +117,10 @@ describe('provider connection test', () => {
 
   it('rejects a stream that emits text then fails before completion', async () => {
     process.env.GROQ_API_KEY = 'unit-test-groq'
+    const requests = []
     vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
       const req = JSON.parse(options.body)
+      requests.push(req)
       if (!req.stream) return jsonAnswer()
       const encoder = new TextEncoder()
       const stream = new ReadableStream({
@@ -129,6 +134,9 @@ describe('provider connection test', () => {
       return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
     }))
     await expect(testProviderConnection('groq')).rejects.toThrow()
+    expect(requests).toHaveLength(2)
+    expect(requests[0]).not.toHaveProperty('stream_options')
+    expect(requests[1]).toMatchObject({ stream: true, stream_options: { include_usage: true } })
     expect(_getProviderHealthForTests().lastWorkingTextProvider).toBeNull()
     expect(_getProviderHealthForTests().verifiedRoutes).toEqual({})
   })
@@ -151,6 +159,7 @@ describe('provider connection test', () => {
     })
     expect(requests).toHaveLength(2)
     expect(requests.every(req => !('reasoning_effort' in req))).toBe(true)
+    expect(requests.every(req => !('stream_options' in req))).toBe(true)
   })
 
   it('uses a single compatible Gemini attempt in Live streaming and structured JSON', async () => {
@@ -308,5 +317,31 @@ describe('managed text routing', () => {
     }))).rejects.toBeTruthy()
     expect(fetchMock).not.toHaveBeenCalled()
     expect(getFallbackProviders('openai_mini')[0]).toBe('openai_mini')
+  })
+})
+
+describe('readiness requires complete provider answers', () => {
+  it.each([
+    ['blocking', 'length'], ['streaming', 'length'],
+    ['blocking', 'content_filter'], ['streaming', 'content_filter'],
+  ])('does not certify a %s answer ending with %s', async (transport, finishReason) => {
+    process.env.GROQ_API_KEY = 'unit-test-groq'
+    const fetchMock = vi.fn(async (_url, options) => {
+      const request = JSON.parse(options.body)
+      if (!request.stream) return transport === 'blocking'
+        ? Response.json({ choices: [{ message: { content: 'Partial' }, finish_reason: finishReason }] })
+        : jsonAnswer()
+      const event = { choices: [{ delta: { content: 'Partial' }, finish_reason: finishReason }] }
+      return new Response(`data: ${JSON.stringify(event)}\n\ndata: [DONE]\n\n`, {
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(testProviderConnection('groq')).rejects.toMatchObject({
+      code: finishReason === 'length' ? 'output_truncated' : 'output_filtered',
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(transport === 'blocking' ? 1 : 2)
+    expect(_getProviderHealthForTests().verifiedRoutes).toEqual({})
+    expect(_getProviderHealthForTests().lastWorkingTextProvider).toBeNull()
   })
 })

@@ -48,4 +48,28 @@ describe('apiFetch timeoutMs', () => {
     const opts = fetch.mock.calls[0][1]
     expect(opts.signal).toBeUndefined()
   })
+
+  it('still cancels response-body work when the caller aborts after headers arrive', async () => {
+    const controller = new AbortController()
+    fetch.mockImplementation(async (_url, { signal }) => new Response(new ReadableStream({
+      start(body) {
+        body.enqueue(new TextEncoder().encode('{"report":'))
+        signal.addEventListener('abort', () => body.error(signal.reason), { once: true })
+      },
+    })))
+    const response = await apiFetch('/api/evaluate', { timeoutMs: 45000, signal: controller.signal })
+    const requestSignal = fetch.mock.calls[0][1].signal
+    expect(requestSignal.aborted).toBe(false)
+    controller.abort()
+    expect(requestSignal.aborted).toBe(true)
+    await expect(response.json()).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it('preserves an already aborted caller signal when a timeout is requested', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    fetch.mockImplementation(async (_url, { signal }) => signal.throwIfAborted())
+    await expect(apiFetch('/api/evaluate', { timeoutMs: 45000, signal: controller.signal }))
+      .rejects.toMatchObject({ name: 'AbortError' })
+  })
 })

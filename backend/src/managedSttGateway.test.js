@@ -234,6 +234,21 @@ describe('managed streaming WebSocket policy', () => {
     } finally { await rig.close() }
   })
 
+  it('rejects buffered audio beyond a reduced quota lease before starting the provider', async () => {
+    const rig = await testRig({ reserveDelayMs: 40, limit: 500, initialUsage: 499 })
+    try {
+      const ws = await rig.open()
+      const closed = new Promise(resolve => ws.addEventListener('close', event => resolve(event.code), { once: true }))
+      ws.send(new Uint8Array(32_000))
+      ws.send(new Uint8Array(32_000))
+      expect(await closed).toBe(4009)
+      expect(rig.calls.reserves.map(row => row.seconds)).toEqual([300, 1])
+      expect(rig.calls.provider).toHaveLength(0)
+      expect(rig.calls.refunds).toEqual([{ userId: 'u1', period: '2026-10', seconds: 1 }])
+      expect(rig.balance).toBe(499)
+    } finally { await rig.close() }
+  })
+
   it('stops after a bounded capture duration, and prevents unbounded provider spend', async () => {
     const rig = await testRig({ maxSeconds: 1 })
     try {

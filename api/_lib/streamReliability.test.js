@@ -354,3 +354,23 @@ describe('JSON envelopes containing code', () => {
     expect(core.extractJSON(raw).fullAnswer).toBe(code)
   })
 })
+
+
+describe('JSON retry ownership and provider cooldown', () => {
+  it.each([
+    ['rate limit', { status: 429, headers: { 'retry-after': '60' } }],
+    ['exhausted quota', { status: 429, code: 'insufficient_quota' }],
+  ])('switches providers once on %s without retrying the cooling endpoint', async (_name, failure) => {
+    process.env.GEMINI_API_KEY = 'test-gemini'
+    process.env.GROQ_API_KEY = 'test-groq'
+    script = (params) => {
+      if (params.model.startsWith('gemini')) throw Object.assign(new Error(_name), failure)
+      return { choices: [{ message: { content: '{"ok":true}' } }] }
+    }
+    const core = await import('./core.js')
+    await expect(core.completeJSON({ messages: [], provider: 'gemini_flash_lite' })).resolves.toEqual({ ok: true })
+    expect(calls.filter(call => call.params.model.startsWith('gemini'))).toHaveLength(1)
+    expect(calls).toHaveLength(2)
+    expect(calls.map(call => call.maxRetries)).toEqual([0, 0])
+  })
+})
