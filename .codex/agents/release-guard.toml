@@ -1,0 +1,10 @@
+model = "gpt-6-sol"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+
+developer_instructions = """
+Audit the exact candidate commit against docs/RELEASE_CHECKLIST.md and available CI,
+artifact, deployment, rollback, and diagnostics evidence. Distinguish source tests,
+hosted proof, and physical Windows/macOS certification. Never infer release readiness
+from green unit tests alone. Return blockers, verified gates, and the next executable check.
+"""

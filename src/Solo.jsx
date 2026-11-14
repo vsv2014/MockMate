@@ -1,3 +1,4 @@
+import { OPENROUTER_FREE_ROUTE } from '../shared/modelRegistry.js'
 import { readableTextSize } from './lib/typography.js'
 import React, { useState, useRef, useEffect, useMemo, useId } from 'react'
 import { apiFetch } from './lib/apiClient'
@@ -108,9 +109,8 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
   const [tts, setTts] = useState(true)
   const [providers, setProviders] = useState([])
   const managed = isManaged()
-  // Both managed and BYOK use the same adaptive backend router.
-  // Never replay a historical user-chosen model that has since been retired.
-  const effProvider = ''
+  const [freeModels, setFreeModels] = useState(false)
+  const effProvider = freeModels ? OPENROUTER_FREE_ROUTE : ''
   const [dgAvailable, setDgAvailable] = useState(false)
   const [setupError, setSetupError] = useState('')
   const [resumeDraft, setResumeDraft] = useState(() => loadSoloDraft(draftScope))
@@ -184,10 +184,10 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
       transcript, answer, practiceQ, currentQuestion,
       elapsedMs: Math.max(0, Date.now() - startedAt.current),
       profile, interviewConfig: interviewConfigRef.current,
-      interviewType, voiceStyle, followupDepth, relentless, tts,
+      interviewType, voiceStyle, followupDepth, relentless, tts, freeModels,
     }, draftScope), 250)
     return () => clearTimeout(timer)
-  }, [phase, transcript, answer, practiceQ, currentQuestion, profile, interviewType, voiceStyle, followupDepth, relentless, tts, draftScope])
+  }, [phase, transcript, answer, practiceQ, currentQuestion, profile, interviewType, voiceStyle, followupDepth, relentless, tts, freeModels, draftScope])
 
   // Unmount: invalidate all in-flight work
   useEffect(() => () => {
@@ -430,6 +430,8 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
   function resumeInterrupted() {
     const draft = resumeDraft
     if (!draft?.transcript?.length) { clearSoloDraft(draftScope); setResumeDraft(null); return }
+    if (draft.freeModels && managed) { setSetupError('Switch to your own API keys to resume this OpenRouter Free session.'); return }
+    setFreeModels(draft.freeModels === true)
     const restoredProfile = { ...profile, ...(draft.profile || {}) }
     saveProfile(restoredProfile)
     setInterviewType(draft.interviewType || restoredProfile.interviewType || 'Technical')
@@ -616,7 +618,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
         body: JSON.stringify({ config, transcript: transcriptRef.current, profile, provider: effProvider })
       }).then(r => r.json())
       let rep = res.report || { error: res.error || 'Evaluation failed' }
-      const stored = await saveSession({ report: rep, transcript: transcriptRef.current, config: { ...config, interviewSetup: interviewConfigRef.current }, profile })
+      const stored = await saveSession({ report: rep, transcript: transcriptRef.current, config: { ...config, freeModels, interviewSetup: interviewConfigRef.current }, profile })
       if (!stored) rep = { ...rep, _storageWarning: 'This session could not be saved. Copy the transcript before leaving this screen.' }
       else if (stored.storagePruned) rep = { ...rep, _storageWarning: `Saved this session after removing ${stored.storagePruned} oldest local session${stored.storagePruned === 1 ? '' : 's'} to free space.` }
       setReport(rep)
@@ -624,7 +626,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
       phaseRef.current = 'report'
     } catch (e) {
       let rep = { error: e.message || 'Evaluation failed' }
-      const stored = await saveSession({ report: rep, transcript: transcriptRef.current, config: { ...config, interviewSetup: interviewConfigRef.current }, profile, note: 'evaluate_error' })
+      const stored = await saveSession({ report: rep, transcript: transcriptRef.current, config: { ...config, freeModels, interviewSetup: interviewConfigRef.current }, profile, note: 'evaluate_error' })
       if (!stored) rep = { ...rep, _storageWarning: 'This session could not be saved. Copy the transcript before leaving this screen.' }
       else if (stored.storagePruned) rep = { ...rep, _storageWarning: `Saved this session after removing ${stored.storagePruned} oldest local session${stored.storagePruned === 1 ? '' : 's'} to free space.` }
       setReport(rep)
@@ -671,7 +673,7 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
     phaseRef.current = 'setup'
   }
 
-  if (phase === 'report') return <SoloFeedback report={report} onAgain={practiceAgain} transcript={transcriptRef.current} allowRetry onAgainLabel="Practice again" />
+  if (phase === 'report') return <SoloFeedback report={report} onAgain={practiceAgain} transcript={transcriptRef.current} allowRetry retryProvider={effProvider} onAgainLabel="Practice again" />
 
   // ── SETUP ─────────────────────────────────────────────────────────────────────
   if (phase === 'setup') return (
@@ -803,8 +805,15 @@ export default function Solo({ onHome, noProviders, initialProfile, kitId, kitNa
             <Chips label="Voice style" options={['Professional', 'Friendly', 'Concise', 'Detailed']} value={voiceStyle} onChange={v => { setVoiceStyle(v); patchProfile({ voiceStyle: v }) }} />
           </div>
           <div role="status" style={{ fontSize: readableTextSize(11), color: T.text2, lineHeight: 1.5 }}>
-            AI runs automatically from your connected provider keys. MockMate selects an available model for each question and switches when necessary; no model setup is needed here.
+            {freeModels
+              ? 'OpenRouter selects an available free text model. Rate limits apply. Document retrieval and voice use their own providers.'
+              : 'MockMate selects an available model automatically and switches when necessary.'}
           </div>
+          {!managed && (freeModels || providers.some(provider => provider.id === 'openrouter')) && (
+            <label style={{ color: T.text2, fontSize: readableTextSize(13) }}>
+              <input type="checkbox" checked={freeModels} onChange={e => setFreeModels(e.target.checked)} /> Use OpenRouter Free Models for Solo
+            </label>
+          )}
           <div>
             <Label htmlFor={`${soloFormId}-language`}>Language</Label>
             <select id={`${soloFormId}-language`} value={profile.language || 'English'} onChange={e => patchProfile({ language: e.target.value })} style={{ ...textInput, maxWidth: 340 }}>

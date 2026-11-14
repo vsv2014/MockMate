@@ -1,3 +1,4 @@
+import { OPENROUTER_FREE_ROUTE } from '../shared/modelRegistry.js'
 import { readableTextSize } from './lib/typography.js'
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react'
 import { apiFetch } from './lib/apiClient'
@@ -1071,7 +1072,7 @@ function ElectronShell({ auth }) {
               </button>
             </div>}
             {historyError && <div role="alert" style={{ color: '#fca5a5', marginBottom: 12 }}>{historyError}</div>}
-            <SoloFeedback key={openSession.id} report={openSession.report} transcript={openSession.transcript} allowRetry={openSession.mode === 'solo'}
+            <SoloFeedback key={openSession.id} report={openSession.report} transcript={openSession.transcript} allowRetry={openSession.mode === 'solo'} retryProvider={openSession.setup?.freeModels ? OPENROUTER_FREE_ROUTE : ''}
               onAgain={() => setOpenSession(null)} onAgainLabel="← Back to sessions" />
           </>
         ) : (

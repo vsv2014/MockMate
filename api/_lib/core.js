@@ -1,6 +1,6 @@
 import { REPORT_JSON_FIELDS } from '../../shared/reportSchema.js'
 import { currentRequestTrace } from './traceContext.js'
-import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget, claudeLowLatencyThinking, isThinkingModel, modelDisplayName, modelPreferenceScore, preferredEfficientModel } from '../../shared/modelRegistry.js'
+import { MODEL_CATALOG, MODEL_PRIORITIES, EMBEDDING_MODELS, configuredModel, usesCompletionTokenBudget, claudeLowLatencyThinking, isThinkingModel, modelDisplayName, modelPreferenceScore, preferredEfficientModel, OPENROUTER_FREE_ROUTE } from '../../shared/modelRegistry.js'
 // Shared logic for the serverless functions (api/*.js) and the local dev server
 // (server.js). Files prefixed with _ are not treated as routes by Vercel.
 import OpenAI from 'openai'
@@ -465,6 +465,11 @@ const baseOf = id => (id && id.includes('::')) ? id.slice(0, id.indexOf('::')) :
 
 // Resolve a chosen provider id to { key, baseURL, model }, with sensible fallback.
 function resolveProvider(id) {
+  if (id === OPENROUTER_FREE_ROUTE) {
+    const { envKey, baseURL } = CATALOG.openrouter
+    if (!process.env[envKey]) throw aiError('no_provider', 402)
+    return { key: process.env[envKey], baseURL, model: 'openrouter/free' }
+  }
   // Encoded "providerId::modelId" — use that provider's key/endpoint with the exact chosen model.
   if (id && id.includes('::')) {
     const base = id.slice(0, id.indexOf('::')), model = id.slice(id.indexOf('::') + 2)
@@ -806,6 +811,10 @@ export function assertProviderConfigured() {
 }
 
 export function getFallbackProviders(requestedId) {
+  if (requestedId === OPENROUTER_FREE_ROUTE) {
+    if (!process.env.OPENROUTER_API_KEY) throw aiError('no_provider', 402)
+    return [OPENROUTER_FREE_ROUTE]
+  }
   scheduleModelDiscovery()
   // Preferred try-order (fast/cheap first), then EVERY other configured provider appended —
   // so ANY second key you add (Anthropic/Claude, Groq, Gemini, a custom endpoint, …) is part
@@ -912,7 +921,7 @@ function userFacingPartialStreamError(error) {
 // One same-key recovery when a model has definitively disappeared. Do not
 // retry every sibling or restart a stream once the user saw any tokens.
 function enqueueActiveModelRecovery(queue, currentIndex, provId, previousModel, error, recoveredFamilies) {
-  if (!isModelUnavailableError(error)) return
+  if (provId === OPENROUTER_FREE_ROUTE || !isModelUnavailableError(error)) return
   const alias = baseOf(provId)
   const family = modelFamily(alias)
   if (recoveredFamilies.has(family)) return
@@ -925,7 +934,7 @@ function enqueueActiveModelRecovery(queue, currentIndex, provId, previousModel, 
 
 export async function completeJSON({ messages, maxTokens = 1600, provider, thinkingTokenFloor = 0, signal }) {
   signal?.throwIfAborted()
-  assertProviderConfigured()
+  if (provider !== OPENROUTER_FREE_ROUTE) assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
   if (!providerQueue.length) throw textProviderCoolingError()
   let lastError, sawQuota = false, sawRate = false, sawTransient = false, retryAfterMs = 0
@@ -1380,7 +1389,7 @@ async function createWithThinkingFallback(llm, params, requestOpts, onRejected) 
 }
 
 export async function streamText({ messages, maxTokens = 700, provider, thinkingTokenFloor = 0, onToken, onUsage, onProviderEvent, signal }) {
-  assertProviderConfigured()
+  if (provider !== OPENROUTER_FREE_ROUTE) assertProviderConfigured()
   const providerQueue = getFallbackProviders(provider)
   if (!providerQueue.length) throw textProviderCoolingError()
   let lastError, emitted = false, sawQuota = false, sawRate = false, sawTransient = false, retryAfterMs = 0

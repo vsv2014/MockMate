@@ -48,7 +48,9 @@ The Hobby deployment is intentionally kept at **12 Serverless Functions**. Four 
 - `/api/resume-latex`
 - `/api/tailor-resume`
 
-Adding new top-level `api/*.js` files can push the deployment back over Hobby's limit; re-check the function count whenever the API surface changes.
+Adding any top-level `api/*.js` file, including a test or helper, can push the deployment
+back over Hobby's limit. Keep tests and shared code under `api/_lib/`; the automated
+function-budget regression must remain at exactly 12 deployable entries.
 
 Public Vercel AI access remains default-deny unless explicitly enabled.
 

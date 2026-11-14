@@ -52,6 +52,7 @@ export function saveSoloDraft(draft = {}, scope = '') {
       } : {},
       interviewConfig: draft.interviewConfig && typeof draft.interviewConfig === 'object' ? draft.interviewConfig : null,
       interviewType: draft.interviewType || 'Technical', voiceStyle: draft.voiceStyle || 'Professional',
+      freeModels: draft.freeModels === true,
       followupDepth: draft.followupDepth || 'normal', relentless: !!draft.relentless, tts: draft.tts !== false,
     }
     if (!setScopedItem(soloDraftStorageKey(scope), JSON.stringify(row))) return false
@@ -119,6 +120,7 @@ export function saveSession({ report, transcript = [], config = {}, profile = {}
         language: setup.language || profile.language || 'English',
         responseStyle: setup.responseStyle || profile.responseStyle || profile.answerStyle || 'balanced',
         modelStrategy: setup.modelStrategy || profile.modelStrategy || null,
+        ...(config.freeModels === true ? { freeModels: true } : {}),
       },
       ...(kitSnapshot ? { kitSnapshot } : {}),
       score: typeof report.overallScore === 'number' ? report.overallScore : null,

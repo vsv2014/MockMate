@@ -1,3 +1,5 @@
+export const OPENROUTER_FREE_ROUTE = 'openrouter::openrouter/free'
+
 // Provider-specific lifecycle exclusions override discovery, including id-only records.
 // Deprecated is not the same as retired: exclude from new automatic selections.
 export const MODEL_LIFECYCLE = {
