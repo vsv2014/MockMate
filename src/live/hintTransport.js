@@ -99,13 +99,17 @@ export async function streamLiveHint({ body, signal, isCurrent = () => true, onE
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let sseBuf = ''
-  let sawTerminalEvent = false
   const dispatch = async events => {
     for (const ev of events) {
-      if (['done', 'skip', 'error'].includes(ev.event)) sawTerminalEvent = true
       if (!isCurrent() || signal?.aborted) { try { await reader.cancel() } catch {}; return 'aborted' }
       const result = await onEvent?.(ev)
       if (result === 'stop') { try { await reader.cancel() } catch {}; return 'stopped' }
+      if (['done', 'skip', 'error'].includes(ev.event)) {
+        // The protocol is complete even if the HTTP connection stays open.
+        // Do not let asynchronous cancellation delay the terminal result.
+        void reader.cancel().catch(() => {})
+        return 'stream'
+      }
     }
     return null
   }
@@ -130,16 +134,12 @@ export async function streamLiveHint({ body, signal, isCurrent = () => true, onE
     if (terminal) return { mode: terminal }
   }
   if (!isCurrent() || signal?.aborted) return { mode: 'aborted' }
-  if (!sawTerminalEvent) {
-    // A successful HTTP status does not prove the LLM completed. Do not
-    // silently mark partially streamed answers as complete or bill twice via
-    // a speculative fallback call.
-    const terminal = await dispatch([{ event: 'error', data: {
-      error: 'The answer stream disconnected before completion. Please retry.',
-    } }])
-    return { mode: terminal || 'incomplete' }
-  }
-  return { mode: 'stream' }
+  // A successful HTTP status does not prove the LLM completed. A truncated
+  // stream must report an error without issuing a second paid request.
+  const result = await onEvent?.({ event: 'error', data: {
+    error: 'The answer stream disconnected before completion. Please retry.',
+  } })
+  return { mode: result === 'stop' ? 'stopped' : 'incomplete' }
 }
 
 export async function fetchLiveHintFallback({ body, signal, isCurrent = () => true }) {

@@ -50,3 +50,34 @@ Account-scoped, versioned graph built from professional goals, approved source r
 - Packaged Windows CI plus physical installation, 100%/125%/150% display scaling and UI keyboard/accessibility checks.
 
 No third-party client credentials are checked into the source tree. A working OAuth connection can only be completed after the user/maintainer registers the external application and consents on the provider's site.
+
+
+## Connector backlog: Import JD from URL
+
+- Read a canonical public posting from an official careers site, starting with Google,
+  Amazon or Microsoft engineering roles in Hyderabad/Bengaluru when available.
+- Deterministic extraction and preview with zero LLM calls; explicit approval before
+  saving. Preserve canonical URL, source revision/content hash and account-scoped
+  deduplication on retries/reimport.
+- Bound fetch size/time and redirects, validate destination addresses, and reject
+  private-network destinations. Fetch only outside Live; Live consumes saved context.
+- Independently source and verify an accessible posting when implementing extraction.
+  Use synthetic fixtures in CI and record the exact public URLs actually tested.
+- Acceptance includes a dedicated account's JD + project-note pack, deterministic
+  preview, confirmed import, duplicate-free reimport and Solo grounding. Saved Live
+  context must remain usable with connector/provider network access blocked and zero
+  connector calls. Compare setup time/grounding with copy-paste only when a real trial
+  is available. This backlog entry does not claim URL import or real trials exist.
+
+## OAuth callback regression evidence (2026-11-12)
+
+The loopback callback fixture sends wrong ASCII, accented and astral-character states
+through the real local HTTP server. Every invalid state must return HTTP 400 without
+any provider request, leave the flow pending, and permit a subsequent valid callback
+and account-isolated encrypted save. The prior character-length check threw
+ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH for equal-length strings with different UTF-8 byte
+lengths. The guard now compares byte lengths before timingSafeEqual.
+
+Provider token/userinfo replies and safeStorage are fixtures. This verifies callback
+control flow, not real OS encryption or packaged Google consent. Dedicated credentials
+and Windows packaged acceptance are still required under the checklist above.

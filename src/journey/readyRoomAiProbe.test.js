@@ -1,3 +1,4 @@
+import { streamLiveHint } from '../live/hintTransport.js'
 import { describe, expect, it, vi } from 'vitest'
 import { readyRoomFailureFields, verifyReadyRoomLiveStream } from './readyRoomAiProbe.js'
 
@@ -87,4 +88,29 @@ it('keeps known failure codes and HTTP status while discarding arbitrary provide
     .toEqual({ code: 'code_missing', status: 502 })
   expect(readyRoomFailureFields({ code: 'private', status: '502', message: 'private' }))
     .toEqual({ code: 'unknown', status: undefined })
+})
+
+it('passes after a complete answer even while the response stays open', async () => {
+  const cancel = vi.fn()
+  const response = new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(
+        'event: token\ndata: "A complete answer."\n\nevent: done\ndata: {}\n\n',
+      ))
+    },
+    cancel,
+  }))
+  const probe = verifyReadyRoomLiveStream({
+    runStream: options => streamLiveHint({ ...options, response }),
+  })
+  let timer
+  try {
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Probe waited after done')), 100)
+    })
+    await expect(Promise.race([probe, deadline])).resolves.toEqual({ ok: true, completed: true })
+    expect(cancel).toHaveBeenCalledOnce()
+  } finally {
+    clearTimeout(timer)
+  }
 })

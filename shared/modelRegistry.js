@@ -1,3 +1,5 @@
+export const OPENROUTER_FREE_ROUTE = 'openrouter::openrouter/free'
+
 // Provider/model configuration shared by UI and execution. Keys remain server-side.
 export const MODEL_CATALOG = {
   openai: { score: 220, label: 'OpenAI · GPT-6.1 Sol (balanced)', envKey: 'OPENAI_API_KEY', baseURL: 'https://api.openai.com/v1', envOverrides: ['OPENAI_MODEL', 'OPENAI_BALANCED_MODEL'], defaultModel: 'gpt-6.1-sol' },

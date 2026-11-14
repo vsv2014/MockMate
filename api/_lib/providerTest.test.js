@@ -1,3 +1,4 @@
+import { OPENROUTER_FREE_ROUTE } from '../../shared/modelRegistry.js'
 import { withManagedTextRouting } from './traceContext.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -231,6 +232,39 @@ describe('provider connection test', () => {
   })
 })
 
+
+describe('OpenRouter free text routing', () => {
+  it('uses the free router even when discovery lists only paid models', async () => {
+    process.env.OPENROUTER_API_KEY = 'unit-test-openrouter'
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      expect(String(url)).toMatch(/^https:\/\/openrouter\.ai\/api\/v1\//)
+      if (String(url).endsWith('/models')) {
+        return Response.json({ data: [{ id: 'anthropic/claude-sonnet-5.5' }] })
+      }
+      expect(JSON.parse(options.body).model).toBe('openrouter/free')
+      return Response.json({ choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }] })
+    }))
+    await listModels()
+    await expect(completeJSON({ messages: [{ role: 'user', content: 'Q' }], provider: OPENROUTER_FREE_ROUTE }))
+      .resolves.toEqual({ ok: true })
+  })
+
+  it('never fails over to paid routes on model unavailability or a missing OpenRouter key', async () => {
+    process.env.OPENROUTER_API_KEY = 'unit-test-openrouter'
+    process.env.OPENAI_API_KEY = 'unit-test-openai'
+    const fetchMock = vi.fn(async (_url, options) => {
+      expect(JSON.parse(options.body).model).toBe('openrouter/free')
+      return Response.json({ error: { code: 'model_not_found', message: 'Model not found' } }, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const args = { messages: [{ role: 'user', content: 'Q' }], provider: OPENROUTER_FREE_ROUTE }
+    await expect(completeJSON(args)).rejects.toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledOnce()
+    delete process.env.OPENROUTER_API_KEY
+    await expect(completeJSON(args)).rejects.toMatchObject({ code: 'no_provider' })
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+})
 
 describe('managed text routing', () => {
   it.each([429, 503])('switches from a managed primary after HTTP %i without SDK retries', async status => {

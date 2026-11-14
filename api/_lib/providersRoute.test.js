@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('./_lib/publicProxyGuard.js', () => ({ publicProxyDisabled: () => false }))
-vi.mock('./_lib/core.js', () => ({
+vi.mock('./publicProxyGuard.js', () => ({ publicProxyDisabled: () => false }))
+vi.mock('./core.js', () => ({
   availableProviders: () => [{ id: 'groq', label: 'Groq · GPT-OSS 120B' }],
   allProviders: () => [{ id: 'groq', configured: true }],
   deepgramConfigured: () => true,
@@ -14,7 +14,7 @@ vi.mock('./_lib/core.js', () => ({
   }),
 }))
 
-import handler from './providers.js'
+import handler from '../providers.js'
 
 describe('providers settings route', () => {
   it('returns explicit current routing for quick and coding/design answers', async () => {
