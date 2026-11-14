@@ -1,4 +1,5 @@
 import { OPENROUTER_FREE_ROUTE } from '../../shared/modelRegistry.js'
+import { withManagedTextRouting } from './traceContext.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   testProviderConnection, describeAutomaticRouting, streamText, completeJSON, listModels, getFallbackProviders,
@@ -274,6 +275,50 @@ describe('OpenRouter free text routing', () => {
   })
 })
 
+describe('managed text routing', () => {
+  it.each([429, 503])('switches from a managed primary after HTTP %i without SDK retries', async status => {
+    process.env.GROQ_API_KEY = 'unit-test-groq'
+    process.env.GEMINI_API_KEY = 'unit-test-gemini'
+    process.env.OPENAI_API_KEY = 'unit-test-openai'
+    const hosts = []
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      const host = new URL(url).hostname
+      hosts.push(host)
+      if (host === 'api.groq.com') return Response.json({ error: { message: 'Try later' } }, { status })
+      return streamingAnswer(JSON.parse(options.body).model)
+    }))
+    const tokens = []
+    await withManagedTextRouting(['groq', 'gemini_flash_lite'], () => streamText({
+      messages: [{ role: 'user', content: 'Q' }], provider: 'openai_mini', onToken: token => tokens.push(token),
+    }))
+    expect(tokens).toEqual(['OK'])
+    expect(hosts).toEqual(['api.groq.com', 'generativelanguage.googleapis.com'])
+  })
+
+  it('counts JSON repair calls against the actual request-wide budget', async () => {
+    process.env.GROQ_API_KEY = 'unit-test-groq'
+    process.env.GEMINI_API_KEY = 'unit-test-gemini'
+    const fetchMock = vi.fn(async () => Response.json({
+      choices: [{ message: { content: 'invalid JSON' }, finish_reason: 'stop' }],
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const args = { messages: [{ role: 'user', content: 'Q' }] }
+    await expect(withManagedTextRouting(['groq', 'gemini_flash_lite'], () => completeJSON(args)))
+      .rejects.toMatchObject({ code: 'managed_attempt_limit' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps hosted requests inside the configured lane when its only key is missing', async () => {
+    process.env.OPENAI_API_KEY = 'unit-test-openai'
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(withManagedTextRouting(['groq'], () => completeJSON({
+      messages: [{ role: 'user', content: 'Q' }], provider: 'openai_mini',
+    }))).rejects.toBeTruthy()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(getFallbackProviders('openai_mini')[0]).toBe('openai_mini')
+  })
+})
 
 describe('readiness requires complete provider answers', () => {
   it.each([

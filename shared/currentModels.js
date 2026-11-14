@@ -1,4 +1,4 @@
-import { CURRENT_MODELS, MODEL_CATALOG } from './modelRegistry.js'
+import { CURRENT_MODELS, MODEL_CATALOG, isExcludedModel } from './modelRegistry.js'
 // Single source of truth for the curated *current* chat-model picker. This is a
 // UI/automatic-routing allowlist, not a claim that every other model is retired.
 // Older models can be active but are intentionally omitted from the compact picker.
@@ -7,7 +7,7 @@ const BASE_ALIASES = new Set([...Object.keys(MODEL_CATALOG), 'custom'])
 
 export function isCurrentChatModel(provider, model) {
   const test = CURRENT_MODELS[provider]
-  return Boolean(test && typeof model === 'string' && test.test(model))
+  return Boolean(!isExcludedModel(provider, model) && test && typeof model === 'string' && test.test(model))
 }
 
 // Old saved choices should reset to Automatic instead of sending a retired model
@@ -53,7 +53,7 @@ export function isModelUnavailableError(error) {
 // supported chat families can recover a retired default without a new release.
 // Reject specialized/preview endpoints even if the provider lists them.
 export function isDiscoveredChatModel(provider, model, record = {}) {
-  if (!isActiveModelRecord(record) || typeof model !== 'string') return false
+  if (isExcludedModel(provider, model) || !isActiveModelRecord(record) || typeof model !== 'string') return false
   if (/audio|realtime|transcrib|tts|image|embedding|moderation|search|guard|preview|experimental|live|omni|dall|whisper/i.test(model)) return false
   if (isCurrentChatModel(provider, model)) return true
   if (provider === 'openai') return /^gpt-(?:[6-9]|[1-9]\d+)(?:\.\d+)?-(?:astra|sol|luna)(?:-\d{4}-\d{2}-\d{2})?$/i.test(model)

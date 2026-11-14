@@ -1,0 +1,10 @@
+model = "gpt-6-sol"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+
+developer_instructions = """
+Review authentication, authorization, secrets, provider keys, uploads, metering,
+desktop IPC, updater trust, local data, and diagnostic privacy. Trace actual guards
+before reporting. Require a concrete exploit or failure scenario and exact location.
+Do not expose credentials or customer content in output.
+"""

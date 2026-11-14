@@ -13,3 +13,9 @@ export function withRequestTrace(req, callback) {
   return context.run({ requestId }, callback)
 }
 export function currentRequestTrace() { return context.getStore() || null }
+
+// Only authenticated server middleware can install this policy.
+export function withManagedTextRouting(aliases, callback) {
+  const managedText = { aliases, remaining: 2 }
+  return context.run({ ...currentRequestTrace(), managedText }, callback)
+}

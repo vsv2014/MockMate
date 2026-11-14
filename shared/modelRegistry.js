@@ -1,5 +1,21 @@
 export const OPENROUTER_FREE_ROUTE = 'openrouter::openrouter/free'
 
+// Provider-specific lifecycle exclusions override discovery, including id-only records.
+// Deprecated is not the same as retired: exclude from new automatic selections.
+export const MODEL_LIFECYCLE = {
+  cerebras: {
+    'zai-glm-4.7': {
+      status: 'deprecated', announcedAt: '2026-08-17', verifiedAt: '2026-11-11',
+      source: 'https://inference-docs.cerebras.ai/support/deprecation',
+      // App-selected active candidate, not a claimed provider migration directive.
+      suggestedAlternative: 'gpt-oss-120b',
+    },
+  },
+}
+export function isExcludedModel(provider, model) {
+  return ['deprecated', 'retired'].includes(MODEL_LIFECYCLE[provider]?.[model]?.status)
+}
+
 // Provider/model configuration shared by UI and execution. Keys remain server-side.
 export const MODEL_CATALOG = {
   openai: { score: 220, label: 'OpenAI · GPT-6.1 Sol (balanced)', envKey: 'OPENAI_API_KEY', baseURL: 'https://api.openai.com/v1', envOverrides: ['OPENAI_MODEL', 'OPENAI_BALANCED_MODEL'], defaultModel: 'gpt-6.1-sol' },
@@ -37,7 +53,7 @@ const EXTRA_SCORES = {
   openai: { 'gpt-6-sol': 190 },
   gemini: { 'gemini-3.7-flash': 170 },
   groq: { 'qwen/qwen3.8-27b': 160, 'openai/gpt-oss-20b': 125 },
-  cerebras: { 'zai-glm-4.7': 190 },
+
   claude_sonnet: { [CLAUDE_PREVIOUS.sonnet]: 190, [CLAUDE_PREVIOUS.haiku]: 120 },
 }
 // Anthropic publishes undated aliases and dated snapshots (claude-haiku-4-5-20251001).
@@ -66,12 +82,12 @@ export const EFFICIENT_MODEL_ORDER = {
   gemini: ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.5-flash-lite'],
   claude_sonnet: ['claude-sonnet-5-5', 'claude-sonnet-5', 'claude-haiku-5-5', 'claude-haiku-4-5-20251001', 'claude-opus-5', 'claude-fable-5'],
   groq: ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b'],
-  cerebras: ['gpt-oss-120b', 'zai-glm-4.7'],
+  cerebras: ['gpt-oss-120b'],
   openrouter: [MODEL_CATALOG.openrouter.defaultModel],
 }
 
 export function preferredEfficientModel(provider, discoveredIds = []) {
-  const ids = [...new Set(discoveredIds.filter(id => typeof id === 'string' && id.trim()))]
+  const ids = [...new Set(discoveredIds.filter(id => typeof id === 'string' && id.trim() && !isExcludedModel(provider, id)))]
   if (!ids.length) return null
   const order = EFFICIENT_MODEL_ORDER[provider] || []
   const priority = id => {
@@ -146,7 +162,7 @@ export const CURRENT_MODELS = {
   claude_sonnet: /^claude-(?:(?:fable|opus|sonnet)-5(?:-\d+)?|haiku-[45]-5(?:-\d{8})?)$/i,
   gemini: /^gemini-(?:3\.8-flash|3\.7-flash|3\.6-flash|3\.5-flash-lite)$/i,
   groq: /^(?:openai\/gpt-oss-(?:120b|20b)|qwen\/qwen3\.8-27b)$/i,
-  cerebras: /^(?:gpt-oss-120b|zai-glm-4\.7)$/i,
+  cerebras: /^gpt-oss-120b$/i,
   openrouter: /^[a-z][a-z0-9._-]*\/[a-z][a-z0-9._-]*$/i,
 }
 

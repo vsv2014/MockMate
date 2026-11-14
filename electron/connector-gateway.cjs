@@ -298,7 +298,12 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
       if (u.pathname !== '/oauth/callback') { res.writeHead(404); res.end('Not found'); return }
       const code = u.searchParams.get('code')
       const returnedState = u.searchParams.get('state') || ''
-      if (returnedState.length !== stateValue.length || !crypto.timingSafeEqual(Buffer.from(returnedState), Buffer.from(stateValue))) {
+      // timingSafeEqual requires equal byte lengths, not JavaScript string
+      // lengths. Reject malformed Unicode states without throwing in this
+      // asynchronous HTTP handler or consuming the pending authorization.
+      const returnedStateBytes = Buffer.from(returnedState, 'utf8')
+      const expectedStateBytes = Buffer.from(stateValue, 'utf8')
+      if (returnedStateBytes.length !== expectedStateBytes.length || !crypto.timingSafeEqual(returnedStateBytes, expectedStateBytes)) {
         res.writeHead(400); res.end('Invalid OAuth state'); return
       }
       if (!code || flow.status !== 'pending') { res.writeHead(400); res.end('No pending authorization'); return }
