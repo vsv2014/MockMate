@@ -23,18 +23,15 @@ export async function apiFetch(path, opts = {}) {
 
   let signal = outerSignal
   let timer
-  let abortRelay = null
   if (timeoutMs > 0 && typeof AbortController !== 'undefined') {
+    // This bounds connection/headers because apiFetch returns the Response.
+    // Callers doing body work must pass a signal when that work is cancellable.
     const ac = new AbortController()
-    if (outerSignal) {
-      if (outerSignal.aborted) ac.abort()
-      else {
-        abortRelay = () => ac.abort()
-        outerSignal.addEventListener('abort', abortRelay, { once: true })
-      }
-    }
     timer = setTimeout(() => ac.abort(), timeoutMs)
-    signal = ac.signal
+    // Fetch resolves at headers, but callers still need to cancel body reads.
+    // Native composition keeps cancellation connected for the response lifetime
+    // without retaining a manual listener past this function's cleanup.
+    signal = outerSignal ? AbortSignal.any([outerSignal, ac.signal]) : ac.signal
   }
 
   diagnostic('api', 'request_started', { requestId, path, method: rest.method || 'GET', mode: base ? 'managed' : 'byok', timeoutMs: timeoutMs || 0 })
@@ -54,7 +51,6 @@ export async function apiFetch(path, opts = {}) {
     throw err
   } finally {
     if (timer) clearTimeout(timer)
-    if (outerSignal && abortRelay) outerSignal.removeEventListener('abort', abortRelay)
   }
 }
 

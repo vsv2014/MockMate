@@ -387,6 +387,12 @@ export function makeManagedSttGateway({
           }
           return
         }
+        // Audio can arrive while quota reservation is pending. The fallback
+        // reservation may be smaller than the initial segment allowance, so
+        // recheck queued PCM against the actual lease before any provider spend.
+        if (audioBytes > reservedSeconds * STT_PCM_BYTES_PER_SECOND) {
+          return close(4009, 'STT segment elapsed: reconnect to continue')
+        }
         connectedAt = now()
         leaseTimer = setTimeout(() => close(4009, 'STT segment elapsed: reconnect to continue'), reservedSeconds * 1000)
         const upstream = connectProvider(upstreamUrl, getProviderKey())

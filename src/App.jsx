@@ -561,7 +561,9 @@ function ElectronShell({ auth }) {
         return runAnalysis({
           base64, mime, displayId: shot?.displayId, displayName: shot?.displayName,
           width: shot?.width, height: shot?.height,
-          previousScreenRecord, continuationMode,
+          previousScreenRecord: previousRecord,
+          previousShot: shot?.previousShot || null,
+          continuationMode,
         }, language, { retry: retry + 1 })
       }
       if (err) {

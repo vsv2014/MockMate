@@ -33,3 +33,37 @@ describe('durable usage release', () => {
     expect(disk.usage[0].llmCalls).toBe(1)
   })
 })
+
+describe('Mongo identity lookup failure semantics', () => {
+  let mongoose, oldMongo, oldSecret
+  beforeEach(async () => {
+    mongoose = (await import('mongoose')).default
+    oldMongo = process.env.MONGO_URI
+    oldSecret = process.env.JWT_SECRET
+    process.env.MONGO_URI = 'mongodb://unit-test'
+    process.env.JWT_SECRET = 'identity-regression-test-secret'
+    vi.spyOn(mongoose, 'connect').mockResolvedValue(mongoose)
+    await initStore()
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    if (oldMongo === undefined) delete process.env.MONGO_URI; else process.env.MONGO_URI = oldMongo
+    if (oldSecret === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = oldSecret
+  })
+
+  it('propagates a Mongo outage as 503 through authentication instead of invalidating the session', async () => {
+    vi.spyOn(mongoose.models.User, 'findById').mockRejectedValue(new Error('database unavailable'))
+    const { requireAuth, signToken } = await import('./middleware/auth.js')
+    const req = { headers: { authorization: `Bearer ${signToken('0123456789abcdef01234567')}` } }
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() }
+    const next = vi.fn()
+    await requireAuth(req, res, next)
+    expect(res.status).toHaveBeenCalledWith(503)
+    expect(next).not.toHaveBeenCalled()
+  })
+
+  it('still treats an invalid user id as a missing identity', async () => {
+    vi.spyOn(mongoose.models.User, 'findById').mockRejectedValue(new mongoose.Error.CastError('ObjectId', 'invalid', '_id'))
+    await expect(store().findUserById('invalid')).resolves.toBeNull()
+  })
+})

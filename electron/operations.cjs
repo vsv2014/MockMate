@@ -83,9 +83,17 @@ class UsageLedger {
     return this.flushing
   }
 
+  async drain() {
+    // flush() writes one batch (or joins an in-flight write). Reads and shutdown
+    // must drain all queued batches; stop on storage errors so quitting cannot hang.
+    while (this.pending.length || this.flushing) {
+      await this.flush()
+      if (this.writeError) break
+    }
+  }
+
   async entries() {
-    await this.flush()
-    if (this.flushing) await this.flushing
+    await this.drain()
     return [...readJsonl(this.file + '.1'), ...readJsonl(this.file)]
   }
 
@@ -98,8 +106,7 @@ class UsageLedger {
 
   async close() {
     clearInterval(this.timer)
-    await this.flush()
-    if (this.flushing) await this.flushing
+    await this.drain()
   }
 }
 
