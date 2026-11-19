@@ -306,7 +306,20 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
       if (returnedStateBytes.length !== expectedStateBytes.length || !crypto.timingSafeEqual(returnedStateBytes, expectedStateBytes)) {
         res.writeHead(400); res.end('Invalid OAuth state'); return
       }
-      if (!code || flow.status !== 'pending') { res.writeHead(400); res.end('No pending authorization'); return }
+      if (flow.status !== 'pending') { res.writeHead(400); res.end('No pending authorization'); return }
+      // Consent denial is a terminal callback too. Authenticate it with state
+      // first and never reflect provider-controlled error descriptions.
+      if (u.searchParams.has('error')) {
+        flow.status = 'error'
+        flow.error = u.searchParams.get('error') === 'access_denied'
+          ? 'Google authorization was declined. Connect again when ready.'
+          : 'Google authorization failed. Please connect again.'
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' })
+        res.end(flow.error)
+        server.close()
+        return
+      }
+      if (!code) { res.writeHead(400); res.end('No pending authorization'); return }
       flow.status = 'processing'
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' })
       res.end('MockMate received your authorization. You can close this page and return to the app.')

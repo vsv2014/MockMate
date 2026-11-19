@@ -432,6 +432,44 @@ describe('native connected account security and sync', () => {
     } finally { google.close() }
   })
 
+  it.each(['access_denied', 'server_error'])('finishes Google consent error %s without provider calls or untrusted details', async error => {
+    const opened = []
+    let providerCalls = 0
+    const google = createConnectorGateway({
+      userData: dir,
+      safeStorage: { isEncryptionAvailable: () => true,
+        encryptString: () => { throw Error('Denial must not store credentials') },
+        decryptString: () => { throw Error('Denial must not read credentials') } },
+      openExternal: async url => opened.push(url),
+      fetchImpl: async () => { providerCalls++; throw Error('Unexpected provider request') },
+    })
+    try {
+      const flow = await google.startGoogle('account-a', 'googledrive', '123456-mockmate.apps.googleusercontent.com')
+      const auth = new URL(opened[0])
+      const redirect = auth.searchParams.get('redirect_uri')
+      const denied = state => redirect + '?' + new URLSearchParams({
+        state, error, error_description: 'UNTRUSTED_SECRET_DETAIL',
+      })
+      const invalid = await fetch(denied('wrong'))
+      assert.equal(invalid.status, 400)
+      assert.equal((await google.pollFlow('account-a', flow.flowId)).status, 'pending')
+      const response = await fetch(denied(auth.searchParams.get('state')))
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cache-control'), 'no-store')
+      const body = await response.text()
+      assert.equal(body.includes('UNTRUSTED_SECRET_DETAIL'), false)
+      const result = await google.pollFlow('account-a', flow.flowId)
+      assert.deepEqual(result, { status: 'error', error: error === 'access_denied'
+        ? 'Google authorization was declined. Connect again when ready.'
+        : 'Google authorization failed. Please connect again.' })
+      assert.equal(providerCalls, 0)
+      assert.deepEqual(google.state('account-a').accounts, [])
+      await assert.rejects(google.pollFlow('account-a', flow.flowId), /not found/)
+      await assert.rejects(fetch(redirect, { signal: AbortSignal.timeout(1000) }),
+        error => error.cause?.code === 'ECONNREFUSED')
+    } finally { google.close() }
+  })
+
   it('refuses plaintext token storage when OS encryption is not available', () => {
     const blocked = createConnectorGateway({ userData: dir, safeStorage: {
       isEncryptionAvailable: () => false,
