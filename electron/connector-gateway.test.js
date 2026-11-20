@@ -470,6 +470,27 @@ describe('native connected account security and sync', () => {
     } finally { google.close() }
   })
 
+  it.each([false, true])('blocks insecure storage before vault access or OAuth (available=%s)', async available => {
+    const { writeFileSync, readFileSync } = require('node:fs')
+    const vaultPath = path.join(dir, 'connected-accounts.v1.bin')
+    const original = Buffer.from('existing-vault-must-survive')
+    writeFileSync(vaultPath, original)
+    let calls = 0
+    const unexpected = () => { calls++; throw Error('insecure operation reached') }
+    const blocked = createConnectorGateway({ userData: dir, safeStorage: {
+      isEncryptionAvailable: () => available,
+      getSelectedStorageBackend: () => 'basic_text',
+      encryptString: unexpected, decryptString: unexpected,
+    }, openExternal: unexpected, fetchImpl: unexpected })
+    try {
+      assert.throws(() => blocked.state('account-a'), /encryption unavailable/)
+      await assert.rejects(blocked.startGithub('account-a', 'Iv1abcdef12345'), /encryption unavailable/)
+      await assert.rejects(blocked.startGoogle('account-a', 'googledrive', '123-test.apps.googleusercontent.com'), /encryption unavailable/)
+      assert.equal(calls, 0)
+      assert.deepEqual(readFileSync(vaultPath), original)
+    } finally { blocked.close() }
+  })
+
   it('refuses plaintext token storage when OS encryption is not available', () => {
     const blocked = createConnectorGateway({ userData: dir, safeStorage: {
       isEncryptionAvailable: () => false,
