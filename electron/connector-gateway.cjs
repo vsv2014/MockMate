@@ -78,7 +78,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
   const busy = new Set()
   let livePaused = false
   function ensureEncryption() {
-    if (!safeStorage.isEncryptionAvailable()) fail('OS credential encryption unavailable. Connections are disabled; no plaintext token fallback.')
+    if (!safeStorage.isEncryptionAvailable() || safeStorage.getSelectedStorageBackend?.() === 'basic_text') fail('OS credential encryption unavailable. Connections are disabled; no plaintext token fallback.')
   }
   function readVault() {
     ensureEncryption()
@@ -232,6 +232,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     return flow
   }
   async function startGithub(owner, clientId, { privateRepos = false } = {}) {
+    ensureEncryption()
     const client = clean(clientId, 160)
     if (!/^[a-zA-Z0-9._-]{10,160}$/.test(client)) fail('A GitHub OAuth App client ID is required')
     const scope = privateRepos === true ? 'read:user repo' : 'read:user'
@@ -281,6 +282,7 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     return { status: 'connected', account: flow.account }
   }
   async function startGoogle(owner, provider, clientId, clientSecret = '') {
+    ensureEncryption()
     if (!GOOGLE_SCOPES[provider]) fail('Choose Google Drive or Google Calendar')
     const client = clean(clientId, 256)
     if (!/^[0-9]+-[A-Za-z0-9_.-]+\.apps\.googleusercontent\.com$/.test(client)) fail('Use a Google Desktop OAuth client ID')
