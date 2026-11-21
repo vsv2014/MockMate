@@ -11,10 +11,11 @@ let dir, gateway, requests
 function fakeResponse(object, status = 200) {
   return new Response(JSON.stringify(object), { status, headers: { 'content-type': 'application/json' } })
 }
-function init() {
+function init(storageBackend) {
   dir = mkdtempSync(path.join(tmpdir(), 'mockmate-connectors-'))
   requests = []
   const safeStorage = { isEncryptionAvailable: () => true,
+    ...(storageBackend ? { getSelectedStorageBackend: () => storageBackend } : {}),
     encryptString: s => Buffer.from('encrypted:' + s),
     decryptString: buf => { const text = buf.toString(); if (!text.startsWith('encrypted:')) throw Error('corrupted'); return text.slice(10) },
   }
@@ -51,7 +52,8 @@ describe('native connected account security and sync', () => {
     assert.throws(() => sourceCheck('googlecalendar', 'bad:event:other'))
     assert.throws(() => normalizedText('x\0y'))
   })
-  it('authorizes device flow and keeps connected credentials out of account metadata', async () => {
+  it.each([undefined, 'gnome_libsecret'])('authorizes and imports with secure or legacy storage (%s)', async storageBackend => {
+    if (storageBackend) { gateway.close(); rmSync(dir, { recursive: true, force: true }); init(storageBackend) }
     const { flowId, userCode } = await gateway.startGithub('account-a', 'Iv1abcdef12345')
     assert.equal(userCode, 'ABC-123')
     const result = await gateway.pollFlow('account-a', flowId)
@@ -470,7 +472,7 @@ describe('native connected account security and sync', () => {
     } finally { google.close() }
   })
 
-  it.each([false, true])('blocks insecure storage before vault access or OAuth (available=%s)', async available => {
+  it.each([false, true].flatMap(available => ['state', 'github', 'google'].map(operation => ({ available, operation }))))('blocks insecure storage before $operation (available=$available)', async ({ available, operation }) => {
     const { writeFileSync, readFileSync } = require('node:fs')
     const vaultPath = path.join(dir, 'connected-accounts.v1.bin')
     const original = Buffer.from('existing-vault-must-survive')
@@ -483,9 +485,9 @@ describe('native connected account security and sync', () => {
       encryptString: unexpected, decryptString: unexpected,
     }, openExternal: unexpected, fetchImpl: unexpected })
     try {
-      assert.throws(() => blocked.state('account-a'), /encryption unavailable/)
-      await assert.rejects(blocked.startGithub('account-a', 'Iv1abcdef12345'), /encryption unavailable/)
-      await assert.rejects(blocked.startGoogle('account-a', 'googledrive', '123-test.apps.googleusercontent.com'), /encryption unavailable/)
+      if (operation === 'state') assert.throws(() => blocked.state('account-a'), /encryption unavailable/)
+      if (operation === 'github') await assert.rejects(blocked.startGithub('account-a', 'Iv1abcdef12345'), /encryption unavailable/)
+      if (operation === 'google') await assert.rejects(blocked.startGoogle('account-a', 'googledrive', '123-test.apps.googleusercontent.com'), /encryption unavailable/)
       assert.equal(calls, 0)
       assert.deepEqual(readFileSync(vaultPath), original)
     } finally { blocked.close() }
