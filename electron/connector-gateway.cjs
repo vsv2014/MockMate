@@ -273,6 +273,16 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     const github = await request('https://api.github.com/user', {
       headers: { Authorization: 'Bearer ' + token.access_token, 'User-Agent': 'MockMate-Desktop' }, fetchImpl,
     })
+    // The session can change while the device-token/identity requests are in
+    // flight. Revalidate immediately before persisting, as Google OAuth does.
+    // Consume failed attempts so they cannot be resumed after signing back in.
+    try {
+      if (typeof currentOwner === 'function' && await currentOwner() !== owner)
+        fail('MockMate account changed during external authorization; no credential was stored')
+    } catch (error) {
+      flows.delete(id)
+      throw error
+    }
     flow.account = saveConnected(owner, 'github',
       { subject: github.id, label: github.login || github.name || 'GitHub account' },
       token, { clientId: flow.clientId, scopes: flow.requestedScopes })

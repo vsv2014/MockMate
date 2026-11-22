@@ -84,6 +84,44 @@ describe('native connected account security and sync', () => {
     gateway.purgeOwner('account-a')
     assert.deepEqual(gateway.state('account-a').accounts, [])
   })
+  it.each(['account-a', 'account-b', null, 'revoked'])('rechecks the session after GitHub identity resolves: %s', async nextOwner => {
+    let owner = 'account-a', releaseIdentity, identityStarted
+    const started = new Promise(resolve => { identityStarted = resolve })
+    const identity = new Promise(resolve => { releaseIdentity = resolve })
+    const scoped = createConnectorGateway({
+      userData: dir,
+      safeStorage: { isEncryptionAvailable: () => true,
+        encryptString: value => Buffer.from('encrypted:' + value),
+        decryptString: value => value.toString().slice(10) },
+      currentOwner: async () => {
+        if (owner === 'revoked') throw new Error('Session revoked')
+        return owner
+      },
+      fetchImpl: async url => {
+        if (url.endsWith('/login/device/code')) return fakeResponse({ device_code: 'dc', user_code: 'CODE' })
+        if (url.endsWith('/login/oauth/access_token')) return fakeResponse({ access_token: 'PRIVATE_TOKEN' })
+        if (url === 'https://api.github.com/user') { identityStarted(); return identity }
+        throw new Error('Unexpected endpoint')
+      },
+    })
+    try {
+      const { flowId } = await scoped.startGithub('account-a', 'Iv1abcdef12345')
+      const pending = scoped.pollFlow('account-a', flowId)
+      await started
+      owner = nextOwner
+      releaseIdentity(fakeResponse({ id: 1234, login: 'dev' }))
+      if (nextOwner === 'account-a') {
+        assert.equal((await pending).status, 'connected')
+        assert.equal(scoped.state('account-a').accounts.length, 1)
+      } else {
+        await assert.rejects(pending, /account changed|Session revoked/)
+        assert.deepEqual(scoped.state('account-a').accounts, [])
+        assert.equal(require('node:fs').existsSync(path.join(dir, 'connected-accounts.v1.bin')), false)
+      }
+      assert.deepEqual(scoped.state('account-b').accounts, [])
+      await assert.rejects(scoped.pollFlow('account-a', flowId), /not found/)
+    } finally { scoped.close() }
+  })
   it('paginates only explicitly browsed Drive and Calendar sources without broad imports', async () => {
     const pages = []
     const scoped = createConnectorGateway({
