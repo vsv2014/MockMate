@@ -47,3 +47,41 @@ describe('jwt secret ownership', () => {
     expect(body).not.toContain('catch {}')
   })
 })
+
+// Execute the production session checker, including reads of the real temporary
+// token file. Only OS encryption, JWT verification and HTTP are fixture boundaries.
+describe('connector session changes during verification', () => {
+  for (const phase of ['headers', 'body']) {
+    it.each(['unchanged', 'switched', 'signed-out'])(`${phase}: %s session`, async change => {
+      const { tmpdir } = await import('node:os')
+      const dir = fs.mkdtempSync(path.join(tmpdir(), 'connector-owner-'))
+      const file = path.join(dir, 'token')
+      fs.writeFileSync(file, 'token-a')
+      let release, started
+      const paused = new Promise(resolve => { release = resolve })
+      const reached = new Promise(resolve => { started = resolve })
+      const source = main.slice(main.indexOf('async function connectorOwner()'), main.indexOf('\nfunction connectorSender'))
+      const check = new Function('fs', 'AUTH_TOKEN_FILE', 'safeStorage', 'jwt', 'getJwtSecret', 'fetch', 'API_BASE',
+        source + '\nreturn connectorOwner')(
+        fs, () => file, { isEncryptionAvailable: () => true, decryptString: bytes => bytes.toString() },
+        { verify: token => { expect(token).toBe('token-a'); return { sub: 'account-a' } } }, () => 'fixture-secret',
+        async (_url, options) => {
+          expect(options.headers.Authorization).toBe('Bearer token-a')
+          if (phase === 'headers') { started(); await paused }
+          return { ok: true, json: async () => {
+            if (phase === 'body') { started(); await paused }
+            return { user: { id: 'account-a' } }
+          } }
+        }, 'http://fixture.invalid')
+      try {
+        const pending = check()
+        await reached
+        if (change === 'switched') fs.writeFileSync(file, 'token-b')
+        if (change === 'signed-out') fs.unlinkSync(file)
+        release()
+        if (change === 'unchanged') await expect(pending).resolves.toBe('account-a')
+        else await expect(pending).rejects.toThrow(/session changed/i)
+      } finally { release(); fs.rmSync(dir, { recursive: true, force: true }) }
+    })
+  }
+})

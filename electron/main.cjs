@@ -1131,6 +1131,15 @@ async function connectorOwner() {
   const identity = await status.json()
   if (String(identity?.user?.id || identity?.user?._id || '') !== String(decoded.sub))
     throw new Error('Signed account identity mismatch')
+  // The token used above is only a snapshot. Sign-out or account switching
+  // can replace/remove it while either HTTP headers or the body are pending.
+  // Re-read after the final await; never authorize using the stale snapshot.
+  let currentTokenBytes
+  try { currentTokenBytes = fs.readFileSync(AUTH_TOKEN_FILE()) } catch {
+    throw new Error('MockMate account session changed; sign in again')
+  }
+  if (!tokenBytes.equals(currentTokenBytes))
+    throw new Error('MockMate account session changed; retry the connector action')
   return String(decoded.sub)
 }
 function connectorSender(event) {
