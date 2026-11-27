@@ -273,6 +273,19 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     const github = await request('https://api.github.com/user', {
       headers: { Authorization: 'Bearer ' + token.access_token, 'User-Agent': 'MockMate-Desktop' }, fetchImpl,
     })
+    // The session can change while the device-token/identity requests are in
+    // flight. Revalidate immediately before persisting, as Google OAuth does.
+    // Consume failed attempts so they cannot be resumed after signing back in.
+    try {
+      if (typeof currentOwner === 'function' && await currentOwner() !== owner)
+        fail('MockMate account changed during external authorization; no credential was stored')
+      // Purge, shutdown, or expiry can invalidate this attempt while either
+      // the provider or session verification is pending. Do not revive it.
+      if (activeFlow(owner, id) !== flow) fail('Authorization flow not found for this account')
+    } catch (error) {
+      flows.delete(id)
+      throw error
+    }
     flow.account = saveConnected(owner, 'github',
       { subject: github.id, label: github.login || github.name || 'GitHub account' },
       token, { clientId: flow.clientId, scopes: flow.requestedScopes })
@@ -339,6 +352,8 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
         if (!user.sub || !user.email) fail('Google did not return a verified identity')
         if (typeof currentOwner === 'function' && await currentOwner() !== owner)
           fail('MockMate account changed during external authorization; no credential was stored')
+        // A callback already being processed must still belong to a live flow.
+        if (activeFlow(owner, id) !== flow) fail('Authorization flow not found for this account')
         flow.account = saveConnected(owner, provider, { subject: user.sub, label: user.email },
           token, { clientId: client, clientSecret: secret, scopes: GOOGLE_SCOPES[provider] })
         flow.status = 'success'
