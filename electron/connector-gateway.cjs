@@ -279,6 +279,9 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
     try {
       if (typeof currentOwner === 'function' && await currentOwner() !== owner)
         fail('MockMate account changed during external authorization; no credential was stored')
+      // Purge, shutdown, or expiry can invalidate this attempt while either
+      // the provider or session verification is pending. Do not revive it.
+      if (activeFlow(owner, id) !== flow) fail('Authorization flow not found for this account')
     } catch (error) {
       flows.delete(id)
       throw error
@@ -349,6 +352,8 @@ function createConnectorGateway({ userData, safeStorage, openExternal, currentOw
         if (!user.sub || !user.email) fail('Google did not return a verified identity')
         if (typeof currentOwner === 'function' && await currentOwner() !== owner)
           fail('MockMate account changed during external authorization; no credential was stored')
+        // A callback already being processed must still belong to a live flow.
+        if (activeFlow(owner, id) !== flow) fail('Authorization flow not found for this account')
         flow.account = saveConnected(owner, provider, { subject: user.sub, label: user.email },
           token, { clientId: client, clientSecret: secret, scopes: GOOGLE_SCOPES[provider] })
         flow.status = 'success'

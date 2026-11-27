@@ -122,6 +122,50 @@ describe('native connected account security and sync', () => {
       await assert.rejects(scoped.pollFlow('account-a', flowId), /not found/)
     } finally { scoped.close() }
   })
+  it.each(['identity', 'owner'].flatMap(phase =>
+    ['purge', 'close', 'expire', 'unchanged'].map(action => [phase, action])))
+  ('rejects invalidated GitHub authorization during %s: %s', async (phase, action) => {
+    let release, signalStarted, clock = 1000
+    const started = new Promise(resolve => { signalStarted = resolve })
+    const barrier = new Promise(resolve => { release = resolve })
+    const scoped = createConnectorGateway({
+      userData: dir, now: () => clock,
+      safeStorage: { isEncryptionAvailable: () => true,
+        encryptString: value => Buffer.from('encrypted:' + value),
+        decryptString: value => value.toString().slice(10) },
+      currentOwner: async () => {
+        if (phase === 'owner') { signalStarted(); await barrier }
+        return 'account-a'
+      },
+      fetchImpl: async url => {
+        if (url.endsWith('/login/device/code')) return fakeResponse({ device_code: 'dc', user_code: 'CODE' })
+        if (url.endsWith('/login/oauth/access_token')) return fakeResponse({ access_token: 'PRIVATE_TOKEN' })
+        if (url === 'https://api.github.com/user') {
+          if (phase === 'identity') { signalStarted(); await barrier }
+          return fakeResponse({ id: 1234, login: 'dev' })
+        }
+        throw new Error('Unexpected endpoint')
+      },
+    })
+    try {
+      const { flowId } = await scoped.startGithub('account-a', 'Iv1abcdef12345')
+      const pending = scoped.pollFlow('account-a', flowId)
+      await started
+      if (action === 'purge') scoped.purgeOwner('account-a')
+      if (action === 'close') scoped.close()
+      if (action === 'expire') clock += 10 * 60 * 1000 + 1
+      release()
+      if (action === 'unchanged') {
+        assert.equal((await pending).status, 'connected')
+        assert.equal(scoped.state('account-a').accounts.length, 1)
+      } else {
+        await assert.rejects(pending, /not found|expired/)
+        assert.deepEqual(scoped.state('account-a').accounts, [])
+        assert.equal(JSON.stringify(scoped._forTests.readVault()).includes('PRIVATE_TOKEN'), false)
+      }
+      await assert.rejects(scoped.pollFlow('account-a', flowId), /not found/)
+    } finally { scoped.close() }
+  })
   it('paginates only explicitly browsed Drive and Calendar sources without broad imports', async () => {
     const pages = []
     const scoped = createConnectorGateway({
@@ -467,6 +511,48 @@ describe('native connected account security and sync', () => {
       assert.equal(JSON.stringify(verified).includes('GOOGLE_PRIVATE'), false)
       assert.deepEqual(google.state('account-b').accounts, [])
       assert.equal(JSON.stringify(google.state('account-a')).includes('GOOGLE_PRIVATE'), false)
+    } finally { google.close() }
+  })
+
+  it.each(['purge', 'close', 'expire', 'unchanged'])
+  ('does not revive Google authorization invalidated during owner verification: %s', async action => {
+    let opened, releaseOwner, ownerStarted, clock = 1000
+    const started = new Promise(resolve => { ownerStarted = resolve })
+    const owner = new Promise(resolve => { releaseOwner = resolve })
+    const google = createConnectorGateway({
+      userData: dir, now: () => clock,
+      safeStorage: { isEncryptionAvailable: () => true,
+        encryptString: value => Buffer.from('safe:' + value),
+        decryptString: value => value.toString().slice(5) },
+      openExternal: async url => { opened = new URL(url) },
+      currentOwner: async () => { ownerStarted(); return owner },
+      fetchImpl: async url => {
+        if (url === 'https://oauth2.googleapis.com/token') return fakeResponse({ access_token: 'GOOGLE_PRIVATE_TOKEN' })
+        if (url === 'https://www.googleapis.com/oauth2/v3/userinfo') return fakeResponse({ sub: '123', email: 'dev@example.test' })
+        throw new Error('Unexpected endpoint')
+      },
+    })
+    try {
+      const { flowId } = await google.startGoogle('account-a', 'googledrive', '123456-mockmate.apps.googleusercontent.com')
+      const response = await fetch(opened.searchParams.get('redirect_uri') + '?state=' +
+        encodeURIComponent(opened.searchParams.get('state')) + '&code=authorized')
+      assert.equal(response.status, 200)
+      await response.text()
+      await started
+      if (action === 'purge') google.purgeOwner('account-a')
+      if (action === 'close') google.close()
+      if (action === 'expire') clock += 10 * 60 * 1000 + 1
+      releaseOwner('account-a')
+      // Drain the callback continuation after the deferred ownership check.
+      await new Promise(resolve => setImmediate(resolve))
+      if (action === 'unchanged') {
+        assert.equal((await google.pollFlow('account-a', flowId)).status, 'connected')
+        assert.equal(google.state('account-a').accounts.length, 1)
+      } else {
+        assert.deepEqual(google.state('account-a').accounts, [])
+        assert.equal(JSON.stringify(google._forTests.readVault()).includes('GOOGLE_PRIVATE_TOKEN'), false)
+        await assert.rejects(google.pollFlow('account-a', flowId), /not found|expired/)
+      }
     } finally { google.close() }
   })
 
